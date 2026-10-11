@@ -1,0 +1,42 @@
+import { describe, expect, it } from "vitest";
+import type { ChoiceAnswers, ChoiceQuestions, Classifier } from "../../src/ports/classifier.ts";
+import { Router } from "../../src/router/router.ts";
+import { TemplatePlanner } from "../../src/fakes/template-planner.ts";
+import { KeywordClassifier } from "../../src/fakes/keyword-classifier.ts";
+import { todoSpec } from "../harness.ts";
+
+class FixedClassifier implements Classifier {
+  readonly model = "fixed";
+  constructor(private readonly answers: Record<string, { choice: string; confidence: number }>) {}
+  async choose<const Q extends ChoiceQuestions>(_state: unknown, questions: Q): Promise<ChoiceAnswers<Q>> {
+    const out: Record<string, unknown> = {};
+    for (const name of Object.keys(questions)) out[name] = { probabilities: {}, ...(this.answers[name] ?? { choice: "none", confidence: 0 }) };
+    return out as ChoiceAnswers<Q>;
+  }
+}
+
+describe("router", () => {
+  const spec = [todoSpec];
+
+  it("routes by rules first", async () => {
+    const router = new Router({ classifier: new KeywordClassifier(), planner: new TemplatePlanner() });
+    expect(await router.route("@todo-add fix the crash on empty text", spec)).toMatchObject({ intent: "change_feature", featureId: "todo-add", changeKind: "bug", via: "rules" });
+    expect(await router.route("/new dark mode", spec)).toMatchObject({ intent: "new_feature", via: "rules" });
+    expect(await router.route("how does the todo list store items?", spec)).toMatchObject({ intent: "question", via: "rules" });
+  });
+
+  it("accepts a confident classifier answer", async () => {
+    const classifier = new FixedClassifier({ intent: { choice: "change_feature", confidence: 0.95 }, feature: { choice: "todo-add", confidence: 0.9 }, change: { choice: "extend", confidence: 0.9 } });
+    const router = new Router({ classifier, planner: new TemplatePlanner() });
+    expect(await router.route("let people mark todos as important", spec)).toMatchObject({ intent: "change_feature", featureId: "todo-add", changeKind: "extend", via: "classifier" });
+  });
+
+  it("falls back to the planner when the classifier is unsure", async () => {
+    const classifier = new FixedClassifier({ intent: { choice: "change_feature", confidence: 0.4 } });
+    const planner = new TemplatePlanner();
+    const router = new Router({ classifier, planner });
+    const decision = await router.route("Add an item to a todo list faster", spec);
+    expect(decision.via).toBe("planner");
+    expect(planner.triaged).toHaveLength(1);
+  });
+});
