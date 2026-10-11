@@ -11,7 +11,8 @@
     "./workers-previews": "./src/workers-previews.ts",
     "./anthropic": "./src/anthropic.ts",
     "./vectorize": "./src/vectorize.ts",
-    "./gpt-live": "./src/gpt-live.ts"
+    "./gpt-live": "./src/gpt-live.ts",
+    "./workers-ai-reviewer": "./src/workers-ai-reviewer.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
