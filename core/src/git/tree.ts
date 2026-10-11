@@ -53,7 +53,7 @@ export interface MergeResult {
   readonly conflicts: readonly string[];
 }
 
-export function threeWayMerge(base: Tree, ours: Tree, theirs: Tree, resolvers: Readonly<Record<string, Resolver>> = {}): MergeResult {
+export function threeWayMerge(base: Tree, ours: Tree, theirs: Tree, resolvers: Readonly<Record<string, Resolver>> = {}, options: { readonly markConflicts?: boolean } = {}): MergeResult {
   const merged: Record<string, string> = {};
   const conflicts: string[] = [];
   const pending: string[] = [];
@@ -81,7 +81,10 @@ export function threeWayMerge(base: Tree, ours: Tree, theirs: Tree, resolvers: R
     const resolved = resolver?.({ path, base: base[path], ours: ours[path], theirs: theirs[path], merged: sortTree(merged) });
     if (typeof resolved === "string") merged[path] = resolved;
     else if (resolved === null) continue;
-    else conflicts.push(path);
+    else {
+      conflicts.push(path);
+      if (options.markConflicts) merged[path] = markConflict(base[path], ours[path], theirs[path]);
+    }
   }
   for (const [path, resolver] of Object.entries(resolvers)) {
     if (pending.includes(path) || !(path in merged)) continue;
@@ -89,6 +92,48 @@ export function threeWayMerge(base: Tree, ours: Tree, theirs: Tree, resolvers: R
     if (typeof regenerated === "string") merged[path] = regenerated;
   }
   return { tree: sortTree(merged), conflicts: conflicts.sort() };
+}
+
+function markConflict(base: string | undefined, ours: string | undefined, theirs: string | undefined): string {
+  if (ours !== undefined && theirs !== undefined) return conflictMarkers(base ?? "", ours, theirs);
+  return `<<<<<<< session\n${ours ?? ""}\n=======\n${theirs ?? ""}\n>>>>>>> main\n`;
+}
+
+export function conflictMarkers(base: string, ours: string, theirs: string): string {
+  const b = base.split("\n");
+  const tagged = [...hunks(b, ours.split("\n")).map((h) => ({ ...h, side: "ours" as const })), ...hunks(b, theirs.split("\n")).map((h) => ({ ...h, side: "theirs" as const }))].sort((x, y) => x.start - y.start || x.end - y.end);
+  const clusters: { start: number; end: number; members: typeof tagged }[] = [];
+  for (const hunk of tagged) {
+    const last = clusters.at(-1);
+    if (last && hunk.start <= last.end) {
+      last.end = Math.max(last.end, hunk.end);
+      last.members.push(hunk);
+    } else clusters.push({ start: hunk.start, end: hunk.end, members: [hunk] });
+  }
+  const side = (members: typeof tagged, which: "ours" | "theirs", start: number, end: number) => {
+    const out: string[] = [];
+    let cursor = start;
+    for (const hunk of members.filter((m) => m.side === which)) {
+      out.push(...b.slice(cursor, hunk.start), ...hunk.lines);
+      cursor = hunk.end;
+    }
+    out.push(...b.slice(cursor, end));
+    return out;
+  };
+  const out: string[] = [];
+  let cursor = 0;
+  for (const cluster of clusters) {
+    out.push(...b.slice(cursor, cluster.start));
+    const mine = side(cluster.members, "ours", cluster.start, cluster.end);
+    const other = side(cluster.members, "theirs", cluster.start, cluster.end);
+    const sides = new Set(cluster.members.map((m) => m.side));
+    if (sides.size === 1) out.push(...(sides.has("ours") ? mine : other));
+    else if (mine.join("\n") === other.join("\n")) out.push(...mine);
+    else out.push("<<<<<<< session", ...mine, "=======", ...other, ">>>>>>> main");
+    cursor = cluster.end;
+  }
+  out.push(...b.slice(cursor));
+  return out.join("\n");
 }
 
 interface Hunk {

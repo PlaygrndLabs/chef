@@ -188,11 +188,13 @@ export class ArtifactsRepoHost implements RepoHost {
     }
     const [baseId] = await git.findMergeBase({ fs: cached.fs, gitdir: GITDIR, oids: [ours, theirs] });
     const baseTree: Tree = baseId ? (await this.loadCommit(cached, baseId)).tree : {};
-    const result = threeWayMerge(baseTree, (await this.loadCommit(cached, ours)).tree, (await this.loadCommit(cached, theirs)).tree, input.resolvers);
-    if (result.conflicts.length > 0) return { status: "conflict", paths: result.conflicts };
+    const markers = input.onConflict === "commit-markers";
+    const result = threeWayMerge(baseTree, (await this.loadCommit(cached, ours)).tree, (await this.loadCommit(cached, theirs)).tree, input.resolvers, { markConflicts: markers });
+    if (result.conflicts.length > 0 && !markers) return { status: "conflict", paths: result.conflicts };
     const final = await this.writeCommit(cached, result.tree, [ours, theirs], input.message, input.author);
     await this.push(cached, token, input.into, final, false, ours);
     await this.copyNotes(cached, token, input.from.repo, theirs);
+    if (result.conflicts.length > 0) return { status: "conflicted", commitId: final, paths: result.conflicts };
     return { status: "merged", commitId: final };
   }
 

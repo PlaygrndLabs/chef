@@ -123,10 +123,12 @@ export class MemoryRepoHost implements RepoHost {
     }
     const baseId = this.mergeBase(ours, theirs);
     const baseTree = baseId ? (this.objects.get(baseId)?.tree ?? {}) : {};
-    const result = threeWayMerge(baseTree, this.tree(ours), this.tree(theirs), input.resolvers);
-    if (result.conflicts.length > 0) return { status: "conflict", paths: result.conflicts };
+    const markers = input.onConflict === "commit-markers";
+    const result = threeWayMerge(baseTree, this.tree(ours), this.tree(theirs), input.resolvers, { markConflicts: markers });
+    if (result.conflicts.length > 0 && !markers) return { status: "conflict", paths: result.conflicts };
     const commit = this.store({ parents: [ours, theirs], tree: result.tree, message: input.message, author: input.author });
     this.setRef(repo, input.into, commit.id);
+    if (result.conflicts.length > 0) return { status: "conflicted", commitId: commit.id, paths: result.conflicts };
     return { status: "merged", commitId: commit.id };
   }
 

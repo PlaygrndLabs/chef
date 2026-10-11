@@ -54,8 +54,9 @@ A failed gate or rejected review sends the session back to coding with the failu
 ## Merging and sync
 
 - `threeWayMerge` in `core/src/git/tree.ts` merges trees line by line. Generated files such as `src/registry.gen.ts` are never merged; resolvers regenerate them from the merged tree.
-- A push to canonical `main` emits `cf.artifacts.repo.pushed`, which starts the `upstream-sync` Workflow. It ignores forks and non-`main` refs and tells `ProjectAgent`, which marks every active session for sync. Sync runs between turns. A conflict becomes a conflict work item for the same session, using the conflict-resolver profile when one exists.
-- `revertMerge` reverts a merge when `main` goes red and reopens its session with the failure log.
+- A push to canonical `main` emits `cf.artifacts.repo.pushed`, which starts the `upstream-sync` Workflow. It ignores forks and non-`main` refs and tells `ProjectAgent`, which marks every active session for sync. Sync runs between turns: a session that is mid-turn is synced when the turn ends.
+- A conflicting sync is still committed: the fork gets a two-parent merge commit with hunk-level conflict markers, and the session gets a conflict work item, using the conflict-resolver profile when one exists. Since both parents are recorded, later syncs and the gate do not recompute the same conflict.
+- After every merge the gate runs the checks on `main`. If they fail, `main` is reverted to the commit before the merge and the session reopens on its restored work with the failure log. `revertMerge` does the same for a failure reported later.
 
 ## Template
 
