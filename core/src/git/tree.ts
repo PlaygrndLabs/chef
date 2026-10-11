@@ -17,12 +17,12 @@ export interface Commit {
 }
 
 export function applyChanges(tree: Tree, changes: FileChanges): Tree {
-  const next: Record<string, string> = { ...tree };
+  const next = new Map(Object.entries(tree));
   for (const [path, content] of Object.entries(changes)) {
-    if (content === null) delete next[path];
-    else next[path] = content;
+    if (content === null) next.delete(path);
+    else next.set(path, content);
   }
-  return sortTree(next);
+  return sortTree(Object.fromEntries(next));
 }
 
 export function diffTrees(from: Tree, to: Tree): FileChanges {
