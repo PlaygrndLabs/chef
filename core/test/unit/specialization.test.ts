@@ -57,5 +57,8 @@ describe("specialization building blocks", () => {
     expect(red.state).toBe("testing");
     expect(red.feedback).toContain("pass before the feature is implemented");
     expect(red.feedback).toContain("- AC1: adds");
+    const committed = transition(red, { type: "tests_committed" }, DEFAULT_BUDGET, 2);
+    expect(committed.state).toBe("coding");
+    expect(committed.feedback).toBeNull();
   });
 });

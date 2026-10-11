@@ -31,6 +31,7 @@ pnpm run verify                                      # typecheck, lint, spec lin
 node --import tsx cli/src/bin.ts demo                # one feature through every state with real tsc, tests and proof
 node --import tsx cli/src/bin.ts route "fix the add button"
 node --import tsx cli/src/bin.ts spike jev           # Jev routing spike; uses Jev when TYPESAFE_API_KEY is set
+node --import tsx cli/src/bin.ts bench               # 10-feature benchmark, Phase 2 versus Phase 3 settings, real checks
 node --import tsx cli/src/bin.ts llm check           # planner and reviewer through the local CPA, see dev/cpa/README.md
 ```
 
