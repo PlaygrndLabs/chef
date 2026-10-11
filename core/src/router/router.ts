@@ -1,4 +1,4 @@
-import type { Classifier } from "../ports/classifier.ts";
+import type { ChoiceAnswers, ChoiceQuestions, Classifier } from "../ports/classifier.ts";
 import type { Planner } from "../ports/planner.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
 import type { ChangeKind, RouteDecision, RouteIntent } from "./decision.ts";
@@ -33,6 +33,47 @@ export function routeByRules(prompt: string, spec: readonly FeatureSpec[]): Rout
   return null;
 }
 
+export function routingQuestions(prompt: string, spec: readonly FeatureSpec[]) {
+  const featureCriteria: Record<string, string | null> = { none: "none of these features" };
+  for (const feature of spec) featureCriteria[feature.id] = feature.title;
+  const state = { prompt, features: spec.map((f) => ({ id: f.id, title: f.title })) };
+  const questions = {
+    intent: {
+      type: "choice",
+      instructions: "What does this request to a software builder ask for?",
+      criteria: {
+        new_feature: "add or build a new capability the product does not have yet",
+        change_feature: "fix, extend or refactor an existing feature",
+        question: "a question that needs an answer, not a code change",
+      },
+    },
+    feature: { type: "choice", instructions: "Which existing feature does the request change?", criteria: featureCriteria },
+    change: {
+      type: "choice",
+      instructions: "If it changes an existing feature, what kind of change is it?",
+      criteria: { bug: "something is broken or wrong and must be fixed", extend: "add behavior to an existing feature", refactor: "restructure code without changing behavior" },
+    },
+  } as const satisfies ChoiceQuestions;
+  return { state, questions };
+}
+
+export type RoutingAnswers = ChoiceAnswers<ReturnType<typeof routingQuestions>["questions"]>;
+
+export function decideFromAnswers(answers: RoutingAnswers, config: RouterConfig, model: string): RouteDecision | null {
+  const intent = answers.intent.choice as RouteIntent;
+  if (answers.intent.confidence < config.thresholds[intent]) return null;
+  if (intent !== "change_feature") return { intent, featureId: null, changeKind: null, via: "classifier", confidence: answers.intent.confidence, reason: `classifier ${model}` };
+  if (answers.feature.choice === "none" || answers.feature.confidence < config.featureThreshold) return null;
+  return {
+    intent,
+    featureId: answers.feature.choice,
+    changeKind: answers.change.choice as ChangeKind,
+    via: "classifier",
+    confidence: Math.min(answers.intent.confidence, answers.feature.confidence),
+    reason: `classifier ${model}`,
+  };
+}
+
 export class Router {
   constructor(
     private readonly deps: { readonly classifier: Classifier; readonly planner: Planner },
@@ -49,37 +90,8 @@ export class Router {
   }
 
   private async classify(prompt: string, spec: readonly FeatureSpec[]): Promise<RouteDecision | null> {
-    const featureCriteria: Record<string, string | null> = { none: "none of these features" };
-    for (const feature of spec) featureCriteria[feature.id] = feature.title;
-    const state = { prompt, features: spec.map((f) => ({ id: f.id, title: f.title })) };
-    const answers = await this.deps.classifier.choose(state, {
-      intent: {
-        type: "choice",
-        instructions: "What does this request to a software builder ask for?",
-        criteria: {
-          new_feature: "add or build a new capability the product does not have yet",
-          change_feature: "fix, extend or refactor an existing feature",
-          question: "a question that needs an answer, not a code change",
-        },
-      },
-      feature: { type: "choice", instructions: "Which existing feature does the request change?", criteria: featureCriteria },
-      change: {
-        type: "choice",
-        instructions: "If it changes an existing feature, what kind of change is it?",
-        criteria: { bug: "something is broken or wrong and must be fixed", extend: "add behavior to an existing feature", refactor: "restructure code without changing behavior" },
-      },
-    });
-    const intent = answers.intent.choice as RouteIntent;
-    if (answers.intent.confidence < this.config.thresholds[intent]) return null;
-    if (intent !== "change_feature") return { intent, featureId: null, changeKind: null, via: "classifier", confidence: answers.intent.confidence, reason: `classifier ${this.deps.classifier.model}` };
-    if (answers.feature.choice === "none" || answers.feature.confidence < this.config.featureThreshold) return null;
-    return {
-      intent,
-      featureId: answers.feature.choice,
-      changeKind: answers.change.choice as ChangeKind,
-      via: "classifier",
-      confidence: Math.min(answers.intent.confidence, answers.feature.confidence),
-      reason: `classifier ${this.deps.classifier.model}`,
-    };
+    const { state, questions } = routingQuestions(prompt, spec);
+    const answers = await this.deps.classifier.choose(state, questions);
+    return decideFromAnswers(answers, this.config, this.deps.classifier.model);
   }
 }

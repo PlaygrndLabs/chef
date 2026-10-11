@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { checkTree, formatProblems, type CodeRule } from "@kargah/core/checks";
 import { lintSpecFiles, parseFeature, Router, readSpec, type KargahEvent } from "@kargah/core";
 import { KeywordClassifier, TemplatePlanner } from "@kargah/core/fakes";
 import { readTree } from "./fs.ts";
 import { demoScript } from "./demo.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
+import { report, runSpike, type SpikeDataset, type SpikeMode } from "./spike/jev.ts";
 
 function option(args: readonly string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
@@ -98,6 +99,27 @@ async function demo(args: readonly string[]): Promise<number> {
   return record.machine.state === "merged" ? 0 : 1;
 }
 
+async function spikeJev(args: readonly string[]): Promise<number> {
+  const dataset = JSON.parse(readFileSync(resolve(option(args, "data") ?? join(REPO_ROOT, "docs", "spikes", "jev-routing", "prompts.json")), "utf8")) as SpikeDataset;
+  const mode = option(args, "mode") ?? "both";
+  const modes: SpikeMode[] = mode === "both" ? ["raw", "translated"] : [mode as SpikeMode];
+  const classifier = process.env["TYPESAFE_API_KEY"] ? (await import("@kargah/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
+  let done = 0;
+  const results = await runSpike(classifier, dataset, modes, undefined, () => {
+    done++;
+    if (done % 20 === 0) process.stderr.write(`${done} prompts routed\n`);
+  });
+  const text = report(classifier.model, results);
+  const out = option(args, "out");
+  if (out) {
+    mkdirSync(dirname(resolve(out)), { recursive: true });
+    writeFileSync(resolve(out), text);
+    writeFileSync(resolve(out).replace(/\.md$/, ".json"), `${JSON.stringify(results, null, 1)}\n`);
+  }
+  process.stdout.write(text);
+  return 0;
+}
+
 async function main(args: readonly string[]): Promise<number> {
   const [command, sub] = args;
   if (command === "spec" && sub === "lint") return specLint(positional(args)[2] ?? "spec");
@@ -107,7 +129,8 @@ async function main(args: readonly string[]): Promise<number> {
   }
   if (command === "route" && sub) return route(positional(args)[1] as string, option(args, "spec"));
   if (command === "demo") return demo(args);
-  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks]\n");
+  if (command === "spike" && sub === "jev") return spikeJev(args);
+  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md]\n");
   return 2;
 }
 
