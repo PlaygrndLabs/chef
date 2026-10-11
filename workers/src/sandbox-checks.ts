@@ -1,0 +1,82 @@
+import { checkTree, formatProblems } from "@kargah/core/checks";
+import { lintSpecFiles, type CheckResult, type CheckRunner, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@kargah/core";
+import type { ChecksJob, CommandResult } from "./session-agent.ts";
+
+type ChecksStub = { runChecks(job: ChecksJob): Promise<CommandResult[]> };
+
+function tail(text: string, lines = 40): string {
+  return text.trim().split("\n").slice(-lines).join("\n");
+}
+
+async function job(repos: RepoHost, repo: string, commitId: string, commands: ChecksJob["commands"], allowHosts: readonly string[] = []): Promise<Omit<ChecksJob, "sessionId"> & { token: () => Promise<void> }> {
+  const info = await repos.info(repo);
+  if (!info) throw new Error(`unknown repo ${repo}`);
+  const token = await repos.createToken(repo, "read", 900);
+  return { remote: info.remote, ref: info.defaultBranch, commitId, readToken: token.secret, commands, allowHosts, token: () => repos.revokeToken(token) };
+}
+
+function sessionOf(repo: string): string {
+  return repo.split("--").at(-1) ?? repo;
+}
+
+export class SandboxCheckRunner implements CheckRunner {
+  constructor(
+    private readonly sessions: DurableObjectNamespace,
+    private readonly repos: RepoHost,
+  ) {}
+
+  async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
+    const sessionId = sessionOf(input.repo);
+    const prepared = await job(this.repos, input.repo, input.commitId, [
+      { name: "typecheck", argv: ["npx", "tsc", "-p", "tsconfig.json"] },
+      { name: "test", argv: ["npm", "test", "--silent"] },
+      { name: "generated", argv: ["npm", "run", "--silent", "app", "--", "gen", "--check"] },
+    ]);
+    const stub = this.sessions.get(this.sessions.idFromName(sessionId)) as unknown as ChecksStub;
+    let results: CommandResult[];
+    try {
+      const { token, ...rest } = prepared;
+      void token;
+      results = await stub.runChecks({ ...rest, sessionId });
+    } finally {
+      await prepared.token();
+    }
+    const code = checkTree(input.tree);
+    const specFiles: Record<string, string> = {};
+    for (const [path, content] of Object.entries(input.tree)) if (path.startsWith("spec/")) specFiles[path] = content;
+    const spec = lintSpecFiles(specFiles).problems;
+    return [
+      ...results.map((r) => ({ name: r.name, ok: r.code === 0, log: tail(`${r.stdout}\n${r.stderr}`) || `${r.name} ok` })),
+      { name: "lint", ok: code.length === 0, log: formatProblems(code) || "no problems" },
+      { name: "spec-lint", ok: spec.length === 0, log: spec.map((p) => `${p.path}: ${p.message}`).join("\n") || "spec ok" },
+    ];
+  }
+}
+
+export class SandboxProofRunner implements ProofRunner {
+  constructor(
+    private readonly sessions: DurableObjectNamespace,
+    private readonly repos: RepoHost,
+  ) {}
+
+  async prove(input: { repo: string; feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord> {
+    const repo = input.repo;
+    const prepared = await job(this.repos, repo, input.commitId, [{ name: "proof", argv: ["npm", "run", "--silent", "app", "--", "proof", input.feature, "--url", input.url, "--commit", input.commitId] }], [new URL(input.url).hostname]);
+    const stub = this.sessions.get(this.sessions.idFromName(sessionOf(repo))) as unknown as ChecksStub;
+    let result: CommandResult | undefined;
+    try {
+      const { token, ...rest } = prepared;
+      void token;
+      result = (await stub.runChecks({ ...rest, sessionId: sessionOf(repo) }))[0];
+    } finally {
+      await prepared.token();
+    }
+    let parsed: { ok?: boolean; steps?: ProofRecord["steps"] } = {};
+    try {
+      parsed = JSON.parse(result?.stdout ?? "") as typeof parsed;
+    } catch {
+      parsed = { ok: false, steps: [{ name: "run proof", ok: false, detail: tail(`${result?.stdout ?? ""}\n${result?.stderr ?? ""}`, 10) }] };
+    }
+    return { feature: input.feature, flow: input.flow, url: input.url, commitId: input.commitId, ok: result?.code === 0 && parsed.ok === true, steps: parsed.steps ?? [], at: Date.now() };
+  }
+}

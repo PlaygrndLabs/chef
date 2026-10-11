@@ -1,0 +1,26 @@
+{
+  "name": "@kargah/workers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "embed": "node --import tsx scripts/embed.ts",
+    "typecheck": "node --import tsx scripts/embed.ts --check && tsc -p tsconfig.json",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "1.0.0",
+    "@kargah/adapters": "workspace:*",
+    "@kargah/core": "workspace:*",
+    "@kargah/template": "workspace:*",
+    "agents": "0.28.0",
+    "@typesafe-ai/sdk": "0.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261011.1",
+    "wrangler": "4.149.0",
+    "tsx": "4.23.15"
+  }
+}

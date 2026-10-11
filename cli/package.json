@@ -1,0 +1,21 @@
+{
+  "name": "@kargah/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "kargah": "./src/bin.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./local": "./src/local/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kargah/core": "workspace:*",
+    "@kargah/template": "workspace:*",
+    "@kargah/adapters": "workspace:*"
+  }
+}
