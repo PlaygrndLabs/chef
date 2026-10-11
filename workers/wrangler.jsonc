@@ -22,6 +22,8 @@
     }
   ],
   "workflows": [{ "name": "upstream-sync", "binding": "UPSTREAM_SYNC", "class_name": "UpstreamSync" }],
+  "vectorize": [{ "binding": "MEMORY", "index_name": "kargah-memory" }],
+  "ai": { "binding": "AI" },
   "triggers": {
     "events": [
       {

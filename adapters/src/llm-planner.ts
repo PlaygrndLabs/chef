@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FeatureFrontmatter, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@kargah/core";
+import { FeatureFrontmatter, type AnswerInput, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@kargah/core";
 import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
 const TriageSchema = z.object({
@@ -21,6 +21,8 @@ const PlanSchema = z.object({
   }),
   items: z.array(z.object({ kind: z.enum(["test", "code", "fix", "refactor"]), role: z.enum(["test", "backend", "frontend"]), prompt: z.string() })),
 });
+
+const AnswerSchema = z.object({ answer: z.string() });
 
 const SYSTEM = `You are the planner of kargah, a spec-driven builder. The spec is the memory: one feature per entry, each with acceptance criteria that a user can observe through the feature's entrypoint.
 Projects use vertical slices: features/<id>/ holds a feature's code, its tests named after acceptance criterion ids ("AC1: ..."), and flow.ts, which drives the entrypoint. shared/ holds contracts; list a shared path only when the feature must change it.
@@ -61,6 +63,18 @@ export class LlmPlanner implements Planner {
       ].join("\n\n"),
     });
     return toPlan(result, existing, this.model);
+  }
+
+  async answer(input: AnswerInput): Promise<string> {
+    const context = input.context.map((h) => `### ${h.doc.path}\n${h.doc.text.slice(0, 3000)}`).join("\n\n");
+    const result = await structured(this.llm, {
+      model: this.model,
+      system: SYSTEM,
+      effort: "low",
+      schema: AnswerSchema,
+      prompt: `Project memory:\n\n${context || "(empty)"}\n\nQuestion:\n${input.question}\n\nAnswer in a few sentences using only the project memory above, and name the files you used. If the memory does not answer it, say so.`,
+    });
+    return result.answer;
   }
 }
 

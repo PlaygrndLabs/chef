@@ -27,6 +27,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 | `Reviewer` | `RuleReviewer` | `LlmReviewer` (`adapters/src/llm-reviewer.ts`) |
 | `PreviewHost` | `MemoryPreviewHost` | `WorkersBuildsPreviewHost` (`adapters/src/workers-previews.ts`) |
 | `CheckRunner`, `ProofRunner` | `FakeCheckRunner`, `FakeProofRunner` | `LocalCheckRunner` and `LocalProofRunner` (`cli/src/local`), `SandboxCheckRunner` and `SandboxProofRunner` (`workers/src/sandbox-checks.ts`) |
+| `MemoryIndex` | `LexicalIndex` (TF-IDF) | `VectorizeIndex` (`adapters/src/vectorize.ts`, Vectorize plus Workers AI `@cf/baai/bge-base-en-v1.5`) |
 | `EventBus`, `KeyValueStore`, `Clock`, `IdSource` | memory versions | `DurableEventBus`, `DurableStore` in `workers/src` |
 
 The planner and reviewer call Claude through `adapters/src/anthropic.ts` with structured output validated by zod. `llmFromEnv` picks the endpoint: CPA (CLIProxyAPI with a Claude subscription login, `CPA_BASE_URL` and `CPA_API_KEY`) when it is configured, otherwise the Anthropic API with `ANTHROPIC_API_KEY`. Only the direct API path opts into server-side model fallbacks; CPA does not pass beta headers. The local CPA setup is in `dev/cpa`.
@@ -38,11 +39,13 @@ The planner and reviewer call Claude through `adapters/src/anthropic.ts` with st
 3. **Session**. The orchestrator forks canonical `main` into `<project>--<feature>--<session>` and drives the state machine in `core/src/session/machine.ts`:
    `queued → planning → testing → coding → reviewing → gating → merged | stuck | dropped`.
    A prompt can start several attempts. Each attempt is its own session with its own fork and its own preview branch `preview/<feature>--<session>` until it wins.
-4. **Turns**. Each coder turn runs one work item under one profile. Its changed files become one commit on the fork with a note under `refs/notes/kargah` (prompt, root prompt, run id, model, role, spec revision, paths). A turn is rejected before it is committed, and the reason fed back, when it writes outside its role's scope, when a non-test role changes a test the test role wrote (locked tests), or when a test turn adds tests that pass against an empty stub of the feature (red check, using per-test results from node's TAP output). Each profile runs in Copilot as a custom agent named `kargah-<role>`.
+4. **Turns**. Each coder turn runs one work item under one profile. Its changed files become one commit on the fork with a note under `refs/notes/kargah` (prompt, root prompt, run id, model, role, spec revision, paths). A turn is rejected before it is committed, and the reason fed back, when it writes outside its role's scope, when a non-test role changes a test the test role wrote (locked tests), when a test turn adds tests that pass against an empty stub of the feature (red check, using per-test results from node's TAP output), or when it breaks a project lint rule in `lint/rules/` (project-lint). Before each turn the orchestrator recalls up to three memory documents, lessons and feature memories of the same feature first, and appends them to the prompt. Each profile runs in Copilot as a custom agent named `kargah-<role>`.
 5. **Preview**. After each commit, `PreviewPublisher` pushes the fork head to `preview/<feature>` on the canonical repo, and the preview host reads the deployed URL back.
 6. **Review**. The reviewer compares the diff from the session's base to its head against the spec. When every live attempt of a prompt has reached the gate, each attempt's code runs against the tests of all attempts and the reviewer picks one; the others are `dropped`.
 7. **Gate** (`Orchestrator.gate`). Sync from `main`, then typecheck, lint (no comments, import boundaries), tests, generated files, spec lint, write scope of every commit by the role in its note, no coder commit touching a locked test, a reviewer approval from a model that wrote no code in the session of the current head, and a proof: the feature's flow driven against its preview, stored under `refs/notes/kargah-proof`. Merges run one at a time through a mutex; if `main` moved, the session syncs and is gated again.
-8. **Merge**. A gardener commit sets the feature's status to `merged`, then `MainWriter.mergeFork` merges the fork into `main`. Only the gate holds `MainWriter`.
+8. **Merge**. A gardener commit sets the feature's status to `merged`, adds spec entries for feature folders that have none, condenses the session into `memory/features/<id>.md`, and writes any lint rule mined from corrections. Then `MainWriter.mergeFork` merges the fork into `main`. Only the gate holds `MainWriter`.
+
+A prompt routed as a question starts no session: it is answered from the memory index, by the planner when it has an `answer` method, and the answer lists the files it used.
 
 A failed gate or rejected review sends the session back to coding with the failure log. Budgets on attempts, tokens and time turn a session `stuck`; a stuck session blocks no other session.
 
@@ -58,6 +61,33 @@ A failed gate or rejected review sends the session back to coding with the failu
 - A push to canonical `main` emits `cf.artifacts.repo.pushed`, which starts the `upstream-sync` Workflow. It ignores forks and non-`main` refs and tells `ProjectAgent`, which marks every active session for sync. Sync runs between turns: a session that is mid-turn is synced when the turn ends.
 - A conflicting sync is still committed: the fork gets a two-parent merge commit with hunk-level conflict markers, and the session gets a conflict work item, using the conflict-resolver profile when one exists. Since both parents are recorded, later syncs and the gate do not recompute the same conflict.
 - After every merge the gate runs the checks on `main`. If they fail, the merge is reverted and the session reopens on its restored work with the failure log. `revertMerge` does the same for a failure reported later: it undoes only that merge when later merges allow it, and otherwise returns `main` to before it and reopens every session merged since, without charging their attempt budgets.
+
+## Memory
+
+The project repo is the memory; the index is a cache of it.
+
+| Kind | Where | Written by |
+| --- | --- | --- |
+| Project memory | `memory/**/*.md` with `kind` and `feature` frontmatter, and the spec | the gardener and the gate, through commits on `main` |
+| Lessons | `memory/lessons/<feature>-<commit>.md`: the failing checks, the acceptance criteria and the prompts behind a reverted merge | the revert commit itself |
+| Feature memory | `memory/features/<id>.md`: one section per session (parent session, prompt, turns, corrections) | the gardener commit before each merge |
+| Learned lint rules | `lint/rules/<id>.json` (`files` glob, `forbid` line regex, evidence) | the gardener, from corrections |
+| Session memory | the session record (`history` of feedback, `parent`) and pending corrections, in the Durable Object's SQLite | the orchestrator |
+| Episodic memory | commits and their notes under `refs/notes/kargah` | every turn |
+
+After bootstrap, every merge and every revert, `syncMemory` compares content hashes of the memory documents on `main` with the last indexed set and upserts or removes only what changed. Sessions on the same feature form a tree: a new session's `parent` is the previous live session of its feature.
+
+A correction is a rejected or failed turn followed by the turn that was accepted. For red-test corrections the candidate lines are the bodies of the tests that passed against the stub; for others, the lines the accepted turn removed. Literals are generalized. A line becomes a rule when corrections from at least three sessions share it, no accepted turn and no file on `main` matches it, and no rule already forbids it. Turns rejected by a learned rule do not produce new rules. `checkTree` also enforces the rules, so the gate fails on any match.
+
+`verifyMain` adds a `feature-map` check after every merge: every `features/<id>/index.ts` has a spec entry and every merged spec entry has its folder.
+
+The Worker binds the index as `MEMORY` (index `kargah-memory`, 768 dimensions, cosine) and Workers AI as `AI`. Queries filter on the `project` and `kind` metadata fields, which need metadata indexes created before any vector is inserted:
+
+```
+npx wrangler vectorize create kargah-memory --dimensions=768 --metric=cosine
+npx wrangler vectorize create-metadata-index kargah-memory --property-name=project --type=string
+npx wrangler vectorize create-metadata-index kargah-memory --property-name=kind --type=string
+```
 
 ## Template
 
@@ -82,7 +112,7 @@ Served by the kargah Worker (`workers/src/index.ts`):
 | Method and path | Effect |
 | --- | --- |
 | `POST /api/projects/:name/bootstrap` | Creates the canonical repo from the template if it does not exist |
-| `POST /api/projects/:name/prompts` | Routes `{ prompt }` and starts a session when there is work |
+| `POST /api/projects/:name/prompts` | Routes `{ prompt }` and starts a session when there is work; a question returns `answer` with its sources |
 | `GET /api/projects/:name/sessions` | Session records |
 | `GET /api/projects/:name/events?after=<seq>` | Stored events after a sequence number |
 | `WS /agents/project-agent/:name` | Live events, replayed from the start on connect |

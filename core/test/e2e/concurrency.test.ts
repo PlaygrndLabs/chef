@@ -64,7 +64,9 @@ describe("phase 2 concurrency on fakes", () => {
     const revert = history.find((c) => c.message.startsWith("Revert todo-add"));
     expect(revert).toBeDefined();
     const revertTree = (await w.repos.readCommit("demo", revert?.id as string))?.tree ?? {};
-    expect(revertTree).toEqual((await w.repos.readCommit("demo", initial))?.tree);
+    const lessons = Object.keys(revertTree).filter((path) => path.startsWith("memory/lessons/todo-add-"));
+    expect(lessons).toHaveLength(1);
+    expect(Object.fromEntries(Object.entries(revertTree).filter(([path]) => !lessons.includes(path)))).toEqual((await w.repos.readCommit("demo", initial))?.tree);
     const main = await w.repos.readCommit("demo", (await w.repos.resolveRef("demo", "main")) as string);
     expect(main?.tree["features/todo-add/index.ts"]).toBeDefined();
     expect(readSpec(main?.tree ?? {}).find((f) => f.id === "todo-add")?.status).toBe("merged");

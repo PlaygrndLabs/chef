@@ -7,3 +7,4 @@ export type * from "./preview-host.ts";
 export type * from "./check-runner.ts";
 export type * from "./event-bus.ts";
 export type * from "./runtime.ts";
+export type * from "./memory-index.ts";
