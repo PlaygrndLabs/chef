@@ -281,7 +281,7 @@ export class Orchestrator {
     if (record.machine.state !== "gating") return;
     if (outcome.ok) {
       await this.apply(record, { type: "gate_passed" });
-      await this.emit({ type: "main.merged", sessionId: record.id, featureId: record.featureId, commitId: record.head as string });
+      await this.emit({ type: "main.merged", sessionId: record.id, featureId: record.featureId, commitId: record.baseMain as string });
     } else {
       await this.apply(record, { type: "gate_failed", log: formatChecks(outcome.checks.filter((c) => !c.ok)) });
     }
