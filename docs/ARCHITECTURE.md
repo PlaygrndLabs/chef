@@ -24,7 +24,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 | `Coder` | `ScriptedCoder` | `SandboxCoder` (`workers/src/sandbox-coder.ts`) |
 | `Classifier` | `KeywordClassifier` | `JevClassifier` (`adapters/src/jev.ts`) |
 | `Planner` | `TemplatePlanner` | `LlmPlanner` (`adapters/src/llm-planner.ts`) |
-| `Reviewer` | `RuleReviewer` | `LlmReviewer` (`adapters/src/llm-reviewer.ts`) |
+| `Reviewer` | `RuleReviewer` | `LlmReviewer` (`adapters/src/llm-reviewer.ts`), or `WorkersAiReviewer` (`adapters/src/workers-ai-reviewer.ts`, a tuned LoRA on Workers AI) when `REVIEWER_LORA` is set |
 | `PreviewHost` | `MemoryPreviewHost` | `WorkersBuildsPreviewHost` (`adapters/src/workers-previews.ts`) |
 | `CheckRunner`, `ProofRunner` | `FakeCheckRunner`, `FakeProofRunner` | `LocalCheckRunner` and `LocalProofRunner` (`cli/src/local`), `SandboxCheckRunner` and `SandboxProofRunner` (`workers/src/sandbox-checks.ts`) |
 | `VoiceHost` | `ScriptedVoiceHost` | `GptLiveHost` (`adapters/src/gpt-live.ts`, GPT-Live `gpt-live-1`) |
@@ -100,6 +100,16 @@ The voice front end hands spoken requests to the same router as typed prompts; G
 4. From there the session runs as any other; the dashboard shows the transcript and the spoken requests.
 
 `kargah voice --say "<request>"` runs the same path locally: scripted transcripts by default, or with `--live` the request is synthesized with OpenAI text to speech and streamed to a server-side GPT-Live session over WebSocket.
+
+## Learning
+
+Every session leaves a labelled record: the change the reviewer approved, and what happened to it afterwards.
+
+1. `review.verdict` events carry the reviewed head and base commits. `reviewPoints` (`core/src/learning/export.ts`) follows each approved review to its outcome: `gate-failed` when the merge gate failed, `reverted` when the merge was later reverted from main, and `merged` otherwise.
+2. `exportOutcomes` turns each point into a reviewer example: the spec's acceptance criteria and the feature's files (`reviewMessages` in `core/src/learning/review-prompt.ts`), with `approve` as the target for merged changes and `reject: <why>` for the others. Each coder turn (its prompt and its changes, from the commit's note) is labelled positive or negative by the review it led to.
+3. `kargah tune data` runs the benchmark's 20 training features and 10 held-out features in separate projects with real checks and writes `tune/data/{train,heldout}.jsonl`, the coder turns, and each run's benchmark report.
+4. `tune/train.py` trains a LoRA (rank 8 on the attention projections) on Gemma 2B, the base Workers AI serves for LoRA adapters, and compares it with the base model on the held-out examples. It writes the adapter with `model_type: gemma`, which Workers AI requires.
+5. In production the adapter is uploaded with `npx wrangler ai finetune create @cf/google/gemma-2b-it-lora kargah-reviewer <adapter dir>` and turned on with the `REVIEWER_LORA` var. `WorkersAiReviewer` then reviews with `env.AI.run(model, { prompt, raw: true, lora })` and leaves picking between parallel attempts to the Claude reviewer.
 
 ## Template
 
