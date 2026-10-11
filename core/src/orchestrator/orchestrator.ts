@@ -66,6 +66,7 @@ export interface SubmitResult {
   readonly decision: RouteDecision;
   readonly sessionId: string | null;
   readonly sessionIds: readonly string[];
+  readonly featureId?: string;
   readonly answer?: { readonly text: string; readonly sources: readonly string[] };
 }
 
@@ -173,7 +174,13 @@ export class Orchestrator {
       await this.save(record);
       await this.emit({ type: "session.created", sessionId, featureId: record.featureId, fork: record.fork, reason: decision.reason, attempt: record.attempt, parent });
     }
-    return { decision, sessionId: group, sessionIds: ids };
+    return { decision, sessionId: group, sessionIds: ids, featureId: plan.feature.id };
+  }
+
+  async submitSpoken(prompt: string, call: { readonly voiceSessionId: string; readonly delegationId: string }): Promise<SubmitResult> {
+    const result = await this.submit(prompt);
+    await this.emit({ type: "voice.request", voiceSessionId: call.voiceSessionId, delegationId: call.delegationId, prompt, intent: result.decision.intent, sessionId: result.sessionId, featureId: result.featureId ?? result.decision.featureId });
+    return result;
   }
 
   async session(id: string): Promise<SessionRecord> {

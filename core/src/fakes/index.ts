@@ -8,3 +8,4 @@ export * from "./scripted-coder.ts";
 export * from "./rule-reviewer.ts";
 export * from "./fake-checks.ts";
 export * from "./lexical-index.ts";
+export * from "./scripted-voice.ts";
