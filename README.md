@@ -1,8 +1,9 @@
 # kargah
 
-A human-free, spec-driven software builder on Cloudflare: each feature = one agent session = one folder = one branch = one live preview.
+A human-free, spec-driven software builder on Cloudflare: each feature has one spec entry and one live preview, and every piece of work on it runs as a session in its own Artifacts fork.
 
 - Concept doc: https://claude.ai/code/artifact/21197d74-c9ea-42da-b7ba-c34d4b201e77
+- Implementation goal: [GOAL.md](GOAL.md)
 - Status: design only; no code yet.
 
 ## Layout
