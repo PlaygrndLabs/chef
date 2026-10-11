@@ -1,5 +1,6 @@
 import type { ChangeKind, RouteIntent } from "../router/decision.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
+import type { MemoryHit } from "./memory-index.ts";
 
 export type WorkKind = "spec_change" | "test" | "code" | "fix" | "refactor" | "conflict";
 
@@ -40,8 +41,14 @@ export interface Plan {
   readonly model: string;
 }
 
+export interface AnswerInput {
+  readonly question: string;
+  readonly context: readonly MemoryHit[];
+}
+
 export interface Planner {
   readonly model: string;
   triage(input: TriageInput): Promise<Triage>;
   plan(input: PlanInput): Promise<Plan>;
+  answer?(input: AnswerInput): Promise<string>;
 }

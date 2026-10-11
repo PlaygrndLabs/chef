@@ -24,6 +24,8 @@ export interface SessionRecord {
   merge: { commitId: string; mainBefore: string } | null;
   readonly attempt: { readonly group: string; readonly index: number; readonly of: number };
   previewKey: string;
+  readonly parent: string | null;
+  history: string[];
   createdAt: number;
   updatedAt: number;
 }

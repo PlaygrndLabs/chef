@@ -1,4 +1,4 @@
-import { diffTrees, threeWayMerge, type Author, type Resolver } from "../git/tree.ts";
+import { applyChanges, diffTrees, threeWayMerge, type Author, type FileChanges, type Resolver } from "../git/tree.ts";
 import type { MergeOutcome, RepoHost } from "../ports/repo-host.ts";
 
 export class PreviewPublisher {
@@ -36,7 +36,7 @@ export class MainWriter {
     }
   }
 
-  async revert(input: { to: string; merged: string; message: string; author: Author; expectedHead: string; resolvers?: Readonly<Record<string, Resolver>> }): Promise<{ commitId: string; cascaded: boolean }> {
+  async revert(input: { to: string; merged: string; message: string; author: Author; expectedHead: string; resolvers?: Readonly<Record<string, Resolver>>; extra?: FileChanges }): Promise<{ commitId: string; cascaded: boolean }> {
     const token = await this.repos.createToken(this.canonical, "write", this.ttlSeconds);
     try {
       const head = await this.repos.resolveRef(this.canonical, "main");
@@ -47,7 +47,7 @@ export class MainWriter {
       if (!before || !merged || !current) throw new Error("cannot revert: commit missing");
       const inverse = threeWayMerge(merged.tree, current.tree, before.tree, input.resolvers ?? {});
       const cascaded = inverse.conflicts.length > 0;
-      const target = cascaded ? before.tree : inverse.tree;
+      const target = applyChanges(cascaded ? before.tree : inverse.tree, input.extra ?? {});
       const message = cascaded ? `${input.message}\n\nReverting only ${input.merged} conflicted in ${inverse.conflicts.join(", ")}, so main returns to ${input.to}.` : input.message;
       const commit = await this.repos.commit(token, { ref: "main", parent: head, changes: diffTrees(current.tree, target), message, author: input.author });
       return { commitId: commit.id, cascaded };

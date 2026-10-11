@@ -17,7 +17,7 @@ export type SessionEvent =
   | { readonly type: "dropped"; readonly reason: string }
   | { readonly type: "fail"; readonly reason: string };
 
-export type RejectionRule = "write-scope" | "locked-tests" | "red-tests";
+export type RejectionRule = "write-scope" | "locked-tests" | "red-tests" | "project-lint";
 
 export interface Budget {
   readonly maxAttempts: number;
@@ -124,6 +124,8 @@ function rejectionFeedback(event: Extract<SessionEvent, { type: "turn_rejected" 
       return `Your last turn wrote outside your write scope and was discarded.\nRejected paths:\n${paths}\nAllowed scope:\n${event.scope.map((p) => `- ${p}`).join("\n")}`;
     case "locked-tests":
       return `Your last turn changed tests the test agent wrote. They are locked, so the turn was discarded. Make the code pass them instead.\nLocked paths:\n${paths}`;
+    case "project-lint":
+      return `Your last turn broke a project lint rule the gardener learned from earlier corrections, so it was discarded.\n${event.detail ?? ""}`.trim();
     case "red-tests":
       return `Your tests were discarded because some of them pass before the feature is implemented, so they do not test it. Make every new test exercise the feature through its entrypoint.\n${event.detail ?? ""}\nFiles:\n${paths}`.trim();
   }

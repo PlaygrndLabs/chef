@@ -1,4 +1,4 @@
-import { apply, emptyState, features, metrics, stuck } from "/state.js";
+import { apply, emptyState, features, memory, metrics, stuck } from "/state.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -45,6 +45,8 @@ function render() {
     stat("revert rate", percent(m.revertRate)),
     stat("human actions per merged feature", m.humanActionsPerMergedFeature.toFixed(2)),
     stat("attempt picks", m.picks),
+    stat("lessons / recalls", `${m.lessons} / ${m.lessonRecalls}`),
+    stat("corrections / lint rules", `${m.corrections} / ${m.rules}`),
     stat("rejected turns", Object.entries(m.rejections).map(([rule, count]) => `${rule} ${count}`).join(", ") || "0"),
   );
   $("features").replaceChildren(
@@ -76,6 +78,17 @@ function render() {
         )
       : [h("li", { class: "muted" }, "No parallel attempts yet.")]),
   );
+  const learned = memory(state);
+  $("lessons").replaceChildren(
+    ...(learned.lessons.length
+      ? [...learned.lessons].reverse().map((l) => h("li", null, h("code", null, l.path), h("span", { class: "muted" }, ` recalled ${l.recalls} times`)))
+      : [h("li", { class: "muted" }, "No lessons yet. A lesson is written when a merge is reverted.")]),
+  );
+  $("rules").replaceChildren(
+    ...(learned.rules.length
+      ? [...learned.rules].reverse().map((r) => h("li", null, h("code", null, r.id), h("div", null, r.message), h("div", { class: "muted" }, `from sessions ${r.sessions.map(short).join(", ")}`)))
+      : [h("li", { class: "muted" }, "No learned lint rules yet.")]),
+  );
   const stuckSessions = stuck(state);
   $("stuck").replaceChildren(
     ...(stuckSessions.length
@@ -89,7 +102,8 @@ function render() {
         "div",
         { class: "card" },
         h("div", null, h("code", null, s.featureId), " ", badge(s.state)),
-        h("div", { class: "muted" }, s.fork || short(s.id), s.attempt && s.attempt.of > 1 ? ` attempt ${s.attempt.index} of ${s.attempt.of}` : ""),
+        h("div", { class: "muted" }, s.fork || short(s.id), s.attempt && s.attempt.of > 1 ? ` attempt ${s.attempt.index} of ${s.attempt.of}` : "", s.parent ? ` follows ${short(s.parent)}` : ""),
+        s.recalled.length ? h("div", { class: "muted" }, `recalled ${s.recalled.join(", ")}`) : null,
         h("div", null, s.reason),
         h("div", null, s.commits.length === 1 ? "1 commit" : `${s.commits.length} commits`, s.commits.length ? h("span", { class: "muted" }, ` last ${short(s.commits[s.commits.length - 1].id)}`) : null),
         h("div", null, "preview ", link(s.preview?.url)),
@@ -173,7 +187,7 @@ $("prompt-form").addEventListener("submit", async (event) => {
   if (!prompt) return;
   const response = await fetch(`/api/projects/${project}/prompts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt }) });
   const body = await response.json();
-  $("prompt-result").textContent = body.error ?? (body.sessionId ? `Session ${short(body.sessionId)} started` : `Routed: ${body.decision?.intent ?? "done"}`);
+  $("prompt-result").textContent = body.error ?? (body.sessionId ? `Session ${short(body.sessionId)} started` : body.answer ? `${body.answer.text}${body.answer.sources.length ? ` (from ${body.answer.sources.join(", ")})` : ""}` : `Routed: ${body.decision?.intent ?? "done"}`);
   if (response.ok) $("prompt").value = "";
 });
 

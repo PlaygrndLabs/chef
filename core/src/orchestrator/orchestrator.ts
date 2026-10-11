@@ -8,6 +8,7 @@ import type { EventBus } from "../ports/event-bus.ts";
 import type { Planner, WorkItem } from "../ports/planner.ts";
 import type { PreviewHost } from "../ports/preview-host.ts";
 import type { PushedEvent, RepoHost, RepoToken } from "../ports/repo-host.ts";
+import type { MemoryHit, MemoryIndex } from "../ports/memory-index.ts";
 import type { PickCandidate, Reviewer } from "../ports/reviewer.ts";
 import type { Clock, IdSource, KeyValueStore } from "../ports/runtime.ts";
 import { customAgent, outOfScope, scopeFor, type Profiles } from "../profiles/profile.ts";
@@ -19,6 +20,10 @@ import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
 import { MainWriter, Mutex, PreviewPublisher } from "./capabilities.ts";
+import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderLesson, renderRecall, MEMORY_DIR } from "../memory/memory.ts";
+import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
+import { projectRuleProblems, renderRule, rulePath } from "../checks/project-rules.ts";
+import { hashHex } from "../util/hash.ts";
 
 export interface Deps {
   readonly repos: RepoHost;
@@ -33,6 +38,7 @@ export interface Deps {
   readonly clock: Clock;
   readonly ids: IdSource;
   readonly store: KeyValueStore;
+  readonly memory: MemoryIndex;
 }
 
 export type Generators = Readonly<Record<string, (tree: Tree) => string>>;
@@ -60,6 +66,7 @@ export interface SubmitResult {
   readonly decision: RouteDecision;
   readonly sessionId: string | null;
   readonly sessionIds: readonly string[];
+  readonly answer?: { readonly text: string; readonly sources: readonly string[] };
 }
 
 export interface GateOutcome {
@@ -111,6 +118,7 @@ export class Orchestrator {
     try {
       const tree = this.regenerate(template);
       const commit = await this.deps.repos.commit(token, { ref: "main", parent: null, changes: tree, message: "Create project from kargah template", author: this.config.author });
+      await this.syncMemory();
       return commit.id;
     } finally {
       await this.deps.repos.revokeToken(token);
@@ -128,11 +136,12 @@ export class Orchestrator {
     const spec = readSpec(tree);
     const decision = await this.router.route(prompt, spec);
     await this.emit({ type: "route.decided", prompt, decision });
-    if (decision.intent === "question") return { decision, sessionId: null, sessionIds: [] };
+    if (decision.intent === "question") return { decision, sessionId: null, sessionIds: [], answer: await this.answer(prompt) };
     const plan = await this.deps.planner.plan({ prompt, intent: decision.intent, changeKind: decision.changeKind, featureId: decision.featureId, spec });
     const attempts = Math.max(1, Math.floor(options.attempts ?? this.specialization.attempts));
     const ids = Array.from({ length: attempts }, () => this.deps.ids.next("s"));
     const group = ids[0] as string;
+    const parent = (await this.sessions()).filter((s) => s.featureId === plan.feature.id && s.machine.state !== "dropped").at(-1)?.id ?? null;
     for (const [index, sessionId] of ids.entries()) {
       const now = this.deps.clock.now();
       const record: SessionRecord = {
@@ -155,12 +164,14 @@ export class Orchestrator {
         syncPending: false,
         merge: null,
         attempt: { group, index: index + 1, of: attempts },
+        parent,
+        history: [],
         previewKey: attempts > 1 ? `${plan.feature.id}--${sessionId}` : plan.feature.id,
         createdAt: now,
         updatedAt: now,
       };
       await this.save(record);
-      await this.emit({ type: "session.created", sessionId, featureId: record.featureId, fork: record.fork, reason: decision.reason, attempt: record.attempt });
+      await this.emit({ type: "session.created", sessionId, featureId: record.featureId, fork: record.fork, reason: decision.reason, attempt: record.attempt, parent });
     }
     return { decision, sessionId: group, sessionIds: ids };
   }
@@ -342,8 +353,12 @@ export class Orchestrator {
       record.baseMain = outcome.commitId;
       record.merge = { commitId: outcome.commitId, mainBefore: mainHead };
       const verified = await this.verifyMain(outcome.commitId);
-      if (verified.ok) return { ok: true, checks };
-      const { revertId } = await this.revertLocked(record.featureId, outcome.commitId, mainHead, verified.log);
+      if (verified.ok) {
+        await this.syncMemory();
+        return { ok: true, checks };
+      }
+      const { revertId } = await this.revertLocked(record.featureId, outcome.commitId, mainHead, verified.log, [record.rootPrompt]);
+      await this.syncMemory();
       return { ok: true, checks, reverted: { commitId: outcome.commitId, revertId, log: verified.log } };
     });
   }
@@ -351,16 +366,20 @@ export class Orchestrator {
   private async verifyMain(commitId: string): Promise<{ ok: boolean; log: string }> {
     const commit = await this.commitOf(this.canonical, commitId);
     const results = await this.deps.checks.run({ repo: this.canonical, commitId, tree: commit.tree });
-    const failed = results.filter((c) => !c.ok);
+    const map = featureMapProblems(commit.tree);
+    const failed = [...results, { name: "feature-map", ok: map.length === 0, log: map.join("\n") || "feature map matches the code" }].filter((c) => !c.ok);
     return { ok: failed.length === 0, log: failed.length ? `main went red after merging ${commitId.slice(0, 12)}\n\n${formatChecks(failed)}` : "main green" };
   }
 
-  private async revertLocked(featureId: string, mergedCommit: string, mainBefore: string, log: string): Promise<{ revertId: string; undone: string[] }> {
+  private async revertLocked(featureId: string, mergedCommit: string, mainBefore: string, log: string, prompts: readonly string[]): Promise<{ revertId: string; undone: string[] }> {
     const head = await this.deps.repos.resolveRef(this.canonical, "main");
     if (!head) throw new Error("main has no head to revert");
     const before = await this.ancestors(mainBefore, new Set());
     const later = [...(await this.ancestors(head, before))].filter((id) => id !== mergedCommit);
-    const reverted = await this.main.revert({ to: mainBefore, merged: mergedCommit, expectedHead: head, message: `Revert ${featureId}: main went red`, author: this.config.author, resolvers: this.resolvers });
+    const mergedTree = (await this.commitOf(this.canonical, mergedCommit)).tree;
+    const lesson = { [lessonPath(featureId, mergedCommit)]: renderLesson({ feature: readSpec(mergedTree).find((f) => f.id === featureId), featureId, mergedCommit, log, prompts }) };
+    const reverted = await this.main.revert({ to: mainBefore, merged: mergedCommit, expectedHead: head, message: `Revert ${featureId}: main went red`, author: this.config.author, resolvers: this.resolvers, extra: lesson });
+    await this.emit({ type: "memory.recorded", featureId, path: Object.keys(lesson)[0] as string, kind: "lesson" });
     await this.emit({ type: "main.reverted", featureId, revertedCommit: mergedCommit, commitId: reverted.commitId, log });
     return { revertId: reverted.commitId, undone: reverted.cascaded ? later : [] };
   }
@@ -392,9 +411,10 @@ export class Orchestrator {
       const before = owner?.merge?.mainBefore ?? (await this.mainParentBefore(mergedCommit));
       if (!before) return null;
       const note = parseNote(await this.deps.repos.readNote(this.canonical, NOTES_NAMESPACE, mergedCommit));
-      return this.revertLocked(owner?.featureId ?? note?.feature ?? "unknown", mergedCommit, before, log);
+      return this.revertLocked(owner?.featureId ?? note?.feature ?? "unknown", mergedCommit, before, log, owner ? [owner.rootPrompt] : note ? [note.rootPrompt] : []);
     });
     if (!outcome) return null;
+    await this.syncMemory();
     if (owner) {
       await this.reopen(owner, outcome.revertId, log);
       await this.save(owner);
@@ -415,7 +435,7 @@ export class Orchestrator {
       if (outcome.status === "conflict") return;
       const revertCommit = await this.commitOf(this.canonical, revertId);
       const merged = await this.commitOf(record.fork, outcome.commitId);
-      const restore = diffTrees(merged.tree, (await this.commitOf(record.fork, record.head)).tree);
+      const restore = Object.fromEntries(Object.entries(diffTrees(merged.tree, (await this.commitOf(record.fork, record.head)).tree)).filter(([path]) => !path.startsWith(MEMORY_DIR)));
       record.head = outcome.commitId;
       if (Object.keys(restore).length > 0 || revertCommit.id === outcome.commitId) {
         const path = specPath(record.featureId);
@@ -448,16 +468,86 @@ export class Orchestrator {
     const current = readSpec(head.tree).find((f) => f.id === record.featureId);
     if (!current || current.status === "merged") return;
     const updated: FeatureSpec = { ...current, status: "merged" };
+    const tree = applyChanges(head.tree, { [path]: renderFeature(updated) });
+    const memoryPath = featureMemoryPath(record.featureId);
+    const turns: { role: string; message: string }[] = [];
+    for (const commitId of record.commits) {
+      const note = parseNote(await this.deps.repos.readNote(record.fork, NOTES_NAMESPACE, commitId));
+      const commit = await this.deps.repos.readCommit(record.fork, commitId);
+      if (note && commit && note.kind !== "sync") turns.push({ role: note.role, message: commit.message });
+    }
+    const memory = renderFeatureMemory(tree[memoryPath], { feature: updated, sessionId: record.id, parent: record.parent, rootPrompt: record.rootPrompt, attempt: record.attempt, turns, feedback: record.history });
+    const corrections = [...(await this.deps.store.list<Correction | null>("corrections/")).entries()].filter(([key, c]) => !key.startsWith("corrections/pending/") && c !== null).map(([, c]) => c as Correction);
+    const mined = mineRules(corrections, tree);
+    const changes: Record<string, string | null> = { [path]: renderFeature(updated), ...gardenFeatureMap(tree), [memoryPath]: memory };
+    for (const { rule } of mined) changes[rulePath(rule.id)] = renderRule(rule);
     await this.commitTurn(record, {
-      changes: { [path]: renderFeature(updated) },
+      changes,
       role: "gardener",
       kind: "spec_change",
       workItem: null,
-      prompt: `Mark ${record.featureId} merged`,
-      model: "kargah-gate",
+      prompt: `Mark ${record.featureId} merged and garden the feature map, memory and lint rules`,
+      model: "kargah-gardener",
       runId: this.deps.ids.next("run"),
       message: `spec: mark ${record.featureId} merged`,
     });
+    await this.emit({ type: "memory.recorded", featureId: record.featureId, path: memoryPath, kind: "feature" });
+    for (const { rule, sessions } of mined) await this.emit({ type: "lint.rule.added", sessionId: record.id, featureId: record.featureId, ruleId: rule.id, message: rule.message, sessions, evidence: rule.evidence });
+  }
+
+  private async syncMemory(): Promise<void> {
+    const { tree } = await this.mainTree();
+    const docs = memoryDocs(tree);
+    const indexed = (await this.deps.store.get<Record<string, string>>("memory-index")) ?? {};
+    const next: Record<string, string> = {};
+    const changed = docs.filter((doc) => {
+      next[doc.path] = hashHex(`${doc.kind}\n${doc.feature ?? ""}\n${doc.text}`);
+      return indexed[doc.path] !== next[doc.path];
+    });
+    const removed = Object.keys(indexed).filter((path) => !(path in next));
+    if (changed.length) await this.deps.memory.upsert(changed);
+    if (removed.length) await this.deps.memory.remove(removed);
+    await this.deps.store.put("memory-index", next);
+  }
+
+  private async recall(record: SessionRecord, feature: FeatureSpec, item: WorkItem): Promise<MemoryHit[]> {
+    const query = [feature.id, feature.title, ...feature.acceptance.map((c) => c.text), item.prompt].join("\n");
+    const hits = await this.deps.memory.query(query, 8, ["lesson", "feature"]);
+    const ranked = [...hits].sort((a, b) => Number(b.doc.feature === record.featureId) - Number(a.doc.feature === record.featureId) || b.score - a.score);
+    return ranked.slice(0, 3);
+  }
+
+  private async answer(question: string): Promise<{ text: string; sources: string[] }> {
+    const hits = await this.deps.memory.query(question, 5);
+    const sources = hits.map((h) => h.doc.path);
+    if (this.deps.planner.answer) return { text: await this.deps.planner.answer({ question, context: hits }), sources };
+    const text = hits.length ? hits.map((h) => `${h.doc.path}: ${(h.doc.text.split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? "").trim()}`).join("\n") : "Nothing in the project memory answers that yet.";
+    return { text, sources };
+  }
+
+  private async recordCorrection(record: SessionRecord, role: string, before: Tree, changes: FileChanges): Promise<void> {
+    const pendingKey = `corrections/pending/${record.id}/${role}`;
+    const pending = await this.deps.store.get<{ signature: string; before: Record<string, string | null>; passing: string[] } | null>(pendingKey);
+    if (!pending && !record.machine.feedback) return;
+    const after: Record<string, string | null> = {};
+    const previous: Record<string, string | null> = {};
+    for (const [path, content] of Object.entries(changes)) {
+      after[path] = content;
+      previous[path] = before[path] ?? null;
+    }
+    const correction: Correction = {
+      id: this.deps.ids.next("c"),
+      featureId: record.featureId,
+      sessionId: record.id,
+      role,
+      signature: pending?.signature ?? record.machine.reason,
+      before: pending?.before ?? previous,
+      after,
+      passing: pending?.passing ?? [],
+    };
+    await this.deps.store.put(`corrections/${correction.id}`, correction);
+    if (pending) await this.deps.store.put(pendingKey, null);
+    await this.emit({ type: "correction.recorded", sessionId: record.id, featureId: record.featureId, role, signature: correction.signature, correctionId: correction.id });
   }
 
   private async scopeCheck(record: SessionRecord): Promise<CheckResult> {
@@ -617,7 +707,9 @@ export class Orchestrator {
     const agent = customAgent(profile, record.featureId, scope);
     const readToken = await this.deps.repos.createToken(record.fork, "read", this.ttl);
     const info = await this.deps.repos.info(record.fork);
-    const prompt = feedback ? `${item.prompt}\n\n${feedback}` : item.prompt;
+    const recalled = await this.recall(record, feature, item);
+    if (recalled.length) await this.emit({ type: "memory.recalled", sessionId: record.id, featureId: record.featureId, paths: recalled.map((h) => h.doc.path) });
+    const prompt = [item.prompt, feedback, renderRecall(recalled)].filter(Boolean).join("\n\n");
     let result;
     try {
       result = await this.deps.coder.runTurn({
@@ -640,30 +732,34 @@ export class Orchestrator {
     const generated = new Set(Object.keys(this.config.generated));
     const paths = changedPaths(result.changes).filter((p) => !generated.has(p));
     const outside = outOfScope(paths, scope);
-    if (outside.length > 0) return this.reject(record, item.role, "write-scope", outside, scope);
+    if (outside.length > 0) return this.reject(record, item.role, "write-scope", outside, scope, undefined, result.changes);
     if (this.specialization.lockTests && item.role !== "test") {
       const locked = await this.lockedPaths(record);
       const touched = paths.filter((p) => locked.has(p) && !hasMarkers(head.tree[p]));
-      if (touched.length > 0) return this.reject(record, item.role, "locked-tests", touched, scope);
+      if (touched.length > 0) return this.reject(record, item.role, "locked-tests", touched, scope, undefined, result.changes);
     }
     const tree = applyChanges(head.tree, result.changes);
+    const linted = projectRuleProblems(tree, paths);
+    if (linted.length > 0) return this.reject(record, item.role, "project-lint", [...new Set(linted.map((p) => p.path))], scope, linted.map((p) => `${p.path}:${p.line} ${p.message}`).join("\n"), result.changes);
     if (item.kind === "test") {
       const red = await this.redCheck(record, head, tree, feature);
-      if (red) return this.reject(record, item.role, "red-tests", red.paths, scope, red.detail);
+      if (red) return this.reject(record, item.role, "red-tests", red.paths, scope, red.detail, result.changes, red.passing);
     }
     const changes = diffTrees(head.tree, this.regenerate(tree));
     if (Object.keys(changes).length === 0) return "empty";
+    if (item.kind !== "conflict") await this.recordCorrection(record, item.role, head.tree, changes);
     await this.commitTurn(record, { changes, role: item.role, kind: item.kind, workItem: item.id, prompt, model: result.model, runId: result.runId, message: `${item.kind}(${record.featureId}): ${firstLine(result.summary || item.prompt)}` });
     return "committed";
   }
 
-  private async reject(record: SessionRecord, role: string, rule: RejectionRule, paths: readonly string[], scope: readonly string[], detail?: string): Promise<"rejected"> {
+  private async reject(record: SessionRecord, role: string, rule: RejectionRule, paths: readonly string[], scope: readonly string[], detail?: string, changes: FileChanges = {}, passing: readonly string[] = []): Promise<"rejected"> {
     await this.emit({ type: "turn.rejected", sessionId: record.id, featureId: record.featureId, role, rule, paths });
+    await this.deps.store.put(`corrections/pending/${record.id}/${role}`, { signature: rule, before: { ...changes }, passing: [...passing] });
     await this.apply(record, { type: "turn_rejected", rule, paths, scope, ...(detail ? { detail } : {}) });
     return "rejected";
   }
 
-  private async redCheck(record: SessionRecord, head: Commit, candidate: Tree, feature: FeatureSpec): Promise<{ paths: string[]; detail: string } | null> {
+  private async redCheck(record: SessionRecord, head: Commit, candidate: Tree, feature: FeatureSpec): Promise<{ paths: string[]; detail: string; passing: string[] } | null> {
     const stub = this.specialization.stub;
     if (!stub) return null;
     const tests = changedPaths(diffTrees(head.tree, candidate)).filter((p) => p.endsWith(".test.ts") && candidate[p] !== undefined);
@@ -678,10 +774,10 @@ export class Orchestrator {
     const results = await this.deps.checks.run({ repo: record.fork, commitId: `${head.id}+red`, tree });
     const test = results.find((r) => r.name === "test");
     if (!test) return null;
-    if (!test.cases) return test.ok ? { paths: tests, detail: "The test suite passes without an implementation." } : null;
+    if (!test.cases) return test.ok ? { paths: tests, detail: "The test suite passes without an implementation.", passing: fresh } : null;
     const passing = test.cases.filter((c) => c.ok && fresh.includes(c.name)).map((c) => c.name);
     if (passing.length === 0) return null;
-    return { paths: tests, detail: `Passing without an implementation:\n${passing.map((n) => `- ${n}`).join("\n")}` };
+    return { paths: tests, detail: `Passing without an implementation:\n${passing.map((n) => `- ${n}`).join("\n")}`, passing };
   }
 
   private async commitTurn(record: SessionRecord, turn: { changes: FileChanges; role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; message: string }): Promise<void> {
@@ -770,6 +866,7 @@ export class Orchestrator {
   private async apply(record: SessionRecord, event: SessionEvent): Promise<void> {
     const from = record.machine.state;
     record.machine = transition(record.machine, event, this.budget, this.deps.clock.now());
+    if (RETRY_EVENTS.has(event.type) && record.machine.feedback) record.history = [...record.history, record.machine.feedback.slice(0, 400)].slice(-20);
     record.updatedAt = this.deps.clock.now();
     await this.emit({ type: "session.state", sessionId: record.id, featureId: record.featureId, from, to: record.machine.state, reason: record.machine.reason });
     if (record.machine.state === "stuck") await this.emit({ type: "session.stuck", sessionId: record.id, featureId: record.featureId, reason: record.machine.reason });
@@ -788,6 +885,8 @@ export class Orchestrator {
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+const RETRY_EVENTS: ReadonlySet<SessionEvent["type"]> = new Set(["review_rejected", "gate_failed", "turn_rejected", "reopened", "conflict"]);
 
 const CODER_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["test", "code", "fix", "refactor", "conflict"]);
 

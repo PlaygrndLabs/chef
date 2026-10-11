@@ -1,5 +1,5 @@
 export function emptyState() {
-  return { lastSeq: 0, sessions: {}, order: [], merges: [], reverts: [], routes: [], picks: [], rejections: [], log: [] };
+  return { lastSeq: 0, sessions: {}, order: [], merges: [], reverts: [], routes: [], picks: [], rejections: [], memory: [], recalls: [], corrections: [], rules: [], log: [] };
 }
 
 function session(state, event) {
@@ -17,6 +17,8 @@ function session(state, event) {
     gate: null,
     stuck: null,
     attempt: null,
+    parent: null,
+    recalled: [],
     rejections: [],
     coder: [],
   };
@@ -58,6 +60,7 @@ export function apply(state, entry) {
       s.fork = event.fork;
       s.reason = event.reason;
       s.attempt = event.attempt ?? null;
+      s.parent = event.parent ?? null;
       break;
     }
     case "session.state": {
@@ -93,6 +96,19 @@ export function apply(state, entry) {
       push(state.rejections, rejection, 200);
       break;
     }
+    case "memory.recorded":
+      push(state.memory, { featureId: event.featureId, path: event.path, kind: event.kind, at: event.at }, 200);
+      break;
+    case "memory.recalled":
+      session(state, event).recalled = [...event.paths];
+      push(state.recalls, { sessionId: event.sessionId, featureId: event.featureId, paths: event.paths, at: event.at }, 200);
+      break;
+    case "correction.recorded":
+      push(state.corrections, { sessionId: event.sessionId, featureId: event.featureId, role: event.role, signature: event.signature, at: event.at }, 200);
+      break;
+    case "lint.rule.added":
+      if (!state.rules.some((r) => r.id === event.ruleId)) push(state.rules, { id: event.ruleId, message: event.message, sessions: event.sessions, featureId: event.featureId, at: event.at }, 100);
+      break;
     case "attempt.picked":
       push(state.picks, { featureId: event.featureId, group: event.group, winner: event.winner, candidates: event.candidates, reasons: event.reasons, model: event.model, at: event.at }, 100);
       break;
@@ -140,6 +156,10 @@ export function metrics(state) {
     revertRate: state.merges.length ? state.reverts.length / state.merges.length : 0,
     rejections: byRule,
     picks: state.picks.length,
+    lessons: state.memory.filter((m) => m.kind === "lesson").length,
+    lessonRecalls: state.recalls.filter((r) => r.paths.some((p) => p.startsWith(`memory/lessons/${r.featureId}-`))).length,
+    corrections: state.corrections.length,
+    rules: state.rules.length,
     needsHuman: stuckCount,
     humanActionsPerMergedFeature: mergedFeatures.size ? stuckCount / mergedFeatures.size : 0,
   };
@@ -147,4 +167,11 @@ export function metrics(state) {
 
 export function stuck(state) {
   return state.order.map((id) => state.sessions[id]).filter((s) => s.state === "stuck");
+}
+
+export function memory(state) {
+  const lessons = new Map();
+  for (const m of state.memory) if (m.kind === "lesson") lessons.set(m.path, { ...m, recalls: 0 });
+  for (const r of state.recalls) for (const path of r.paths) if (lessons.has(path)) lessons.get(path).recalls++;
+  return { lessons: [...lessons.values()], rules: state.rules };
 }

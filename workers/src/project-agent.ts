@@ -4,6 +4,7 @@ import { JevClassifier } from "@kargah/adapters/jev";
 import { llmFromEnv } from "@kargah/adapters/anthropic";
 import { LlmPlanner } from "@kargah/adapters/llm-planner";
 import { LlmReviewer } from "@kargah/adapters/llm-reviewer";
+import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@kargah/adapters/vectorize";
 import { WorkersBuildsPreviewHost } from "@kargah/adapters/workers-previews";
 import { isTerminal, loadProfiles, Orchestrator, type PushedEvent, type Tree } from "@kargah/core";
 import { renderRegistry, renderStub, stubPath } from "@kargah/template/gen";
@@ -39,6 +40,7 @@ export class ProjectAgent extends Agent<Env> {
         clock: { now: () => Date.now() },
         ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
         store: new DurableStore(this.ctx.storage),
+        memory: new VectorizeIndex(env.MEMORY as unknown as VectorizeLike, env.AI as unknown as EmbedderLike, this.name),
       },
       {
         name: this.name,

@@ -9,6 +9,7 @@ import {
   FakeCheckRunner,
   FakeProofRunner,
   KeywordClassifier,
+  LexicalIndex,
   MemoryEventBus,
   MemoryPreviewHost,
   MemoryRepoHost,
@@ -113,6 +114,7 @@ export function world(options: { script: Script; presets?: Map<string, FeatureSp
     clock,
     ids: new SequentialIds(),
     store: new MemoryStore(),
+    memory: new LexicalIndex(),
     ...options.deps,
   };
   const orchestrator = new Orchestrator(deps, { name: "demo", author: { name: "kargah", email: "ma.karimi76@gmail.com" }, profiles: profiles(), generated, ...options.config });
