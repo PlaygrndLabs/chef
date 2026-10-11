@@ -47,7 +47,7 @@ export default tseslint.config(
   {
     files: ["apps/dashboard/public/**/*.js"],
     languageOptions: {
-      globals: { document: "readonly", location: "readonly", history: "readonly", Node: "readonly", setInterval: "readonly", clearInterval: "readonly", URLSearchParams: "readonly" },
+      globals: { document: "readonly", location: "readonly", history: "readonly", Node: "readonly", setInterval: "readonly", clearInterval: "readonly", URLSearchParams: "readonly", RTCPeerConnection: "readonly", Audio: "readonly", navigator: "readonly" },
     },
   },
   {

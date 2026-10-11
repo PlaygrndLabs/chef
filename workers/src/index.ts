@@ -4,7 +4,7 @@ export { ProjectAgent } from "./project-agent.ts";
 export { SandboxOutbound, SessionAgent } from "./session-agent.ts";
 export { UpstreamSync } from "./upstream-sync.ts";
 
-const PROJECT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/(bootstrap|prompts|sessions|events)$/;
+const PROJECT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/(bootstrap|prompts|sessions|events|voice)$/;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

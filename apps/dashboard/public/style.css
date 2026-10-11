@@ -59,3 +59,4 @@ a { color: var(--run); }
 code { font: 12px ui-monospace, monospace; }
 .columns { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 h3 { font-size: 14px; margin: 0 0 6px; }
+.voice { display: flex; gap: 10px; align-items: center; margin-top: 8px; }

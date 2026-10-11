@@ -5,8 +5,9 @@ import { llmFromEnv } from "@kargah/adapters/anthropic";
 import { LlmPlanner } from "@kargah/adapters/llm-planner";
 import { LlmReviewer } from "@kargah/adapters/llm-reviewer";
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@kargah/adapters/vectorize";
+import { GptLiveHost, type Connect, type SocketLike } from "@kargah/adapters/gpt-live";
 import { WorkersBuildsPreviewHost } from "@kargah/adapters/workers-previews";
-import { isTerminal, loadProfiles, Orchestrator, type PushedEvent, type Tree } from "@kargah/core";
+import { isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PushedEvent, type Tree, type VoiceCall } from "@kargah/core";
 import { renderRegistry, renderStub, stubPath } from "@kargah/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
@@ -18,6 +19,7 @@ import { SandboxCoder } from "./sandbox-coder.ts";
 const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
 
 export class ProjectAgent extends Agent<Env> {
+  private readonly calls = new Map<string, VoiceCall>();
   private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost } | null = null;
 
   private build() {
@@ -70,6 +72,32 @@ export class ProjectAgent extends Agent<Env> {
       if (result.sessionId) await this.schedule(1, "drive");
       return Response.json(result, { status: 202 });
     }
+    if (request.method === "POST" && action === "voice") {
+      if (!this.env.OPENAI_API_KEY) return Response.json({ error: "voice needs the OPENAI_API_KEY secret" }, { status: 503 });
+      const { sdp } = (await request.json()) as { sdp?: string };
+      if (!sdp) return Response.json({ error: "sdp is required" }, { status: 400 });
+      const host = new GptLiveHost({ apiKey: this.env.OPENAI_API_KEY, model: this.env.VOICE_MODEL, voice: this.env.VOICE, connect: workersConnect });
+      const target = {
+        submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
+          const result = await orchestrator.submitSpoken(prompt, call);
+          if (result.sessionId) await this.schedule(1, "drive");
+          return result;
+        },
+      };
+      const call = await startVoiceCall({
+        host,
+        target,
+        spec: readSpec((await orchestrator.mainTree()).tree),
+        sdp,
+        ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
+        settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
+        onEvent: (event) => {
+          if (event.type === "session.closed") this.calls.delete(call.sessionId);
+        },
+      });
+      this.calls.set(call.sessionId, call);
+      return Response.json({ sessionId: call.sessionId, sdp: call.sdp }, { status: 201 });
+    }
     if (request.method === "GET" && action === "sessions") return Response.json(await orchestrator.sessions());
     if (request.method === "GET" && action === "events") return Response.json(await bus.since(Number(url.searchParams.get("after") ?? 0)));
     return Response.json({ error: "not found" }, { status: 404 });
@@ -92,3 +120,11 @@ export class ProjectAgent extends Agent<Env> {
     await this.schedule(1, "drive");
   }
 }
+
+const workersConnect: Connect = async (url, headers) => {
+  const response = await fetch(url.replace(/^ws/, "http"), { headers: { ...headers, upgrade: "websocket" } });
+  const socket = response.webSocket;
+  if (!socket) throw new Error(`GPT-Live refused the WebSocket: ${response.status}`);
+  socket.accept();
+  return socket as unknown as SocketLike;
+};

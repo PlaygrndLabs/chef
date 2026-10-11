@@ -25,6 +25,7 @@ export type KargahEvent = Base &
     | { readonly type: "sync.conflict"; readonly sessionId: string; readonly featureId: string; readonly paths: readonly string[]; readonly mainCommit: string }
     | { readonly type: "session.stuck"; readonly sessionId: string; readonly featureId: string; readonly reason: string }
     | { readonly type: "turn.rejected"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly rule: RejectionRule; readonly paths: readonly string[] }
+    | { readonly type: "voice.request"; readonly voiceSessionId: string; readonly delegationId: string; readonly prompt: string; readonly intent: string; readonly sessionId: string | null; readonly featureId: string | null }
     | { readonly type: "memory.recorded"; readonly featureId: string; readonly path: string; readonly kind: "lesson" | "feature" }
     | { readonly type: "memory.recalled"; readonly sessionId: string; readonly featureId: string; readonly paths: readonly string[] }
     | { readonly type: "correction.recorded"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly signature: string; readonly correctionId: string }

@@ -10,6 +10,7 @@ import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
 import { cpaInit } from "./cpa/init.ts";
 import { report, runSpike, type SpikeDataset, type SpikeMode } from "./spike/jev.ts";
 import { BENCH_ITEMS } from "./bench/items.ts";
+import { runVoice, VOICE_PROMPT } from "./voice.ts";
 import { renderReport, runBench, runReplay, type BenchMode, type BenchResult } from "./bench/run.ts";
 
 function option(args: readonly string[], name: string): string | undefined {
@@ -150,6 +151,18 @@ async function bench(args: readonly string[]): Promise<number> {
   return 0;
 }
 
+async function voice(args: readonly string[]): Promise<number> {
+  const run = await runVoice({ say: option(args, "say") ?? VOICE_PROMPT, live: args.includes("--live"), real: !args.includes("--fake-checks"), log: (line) => process.stderr.write(`${line}\n`) });
+  const text = `${JSON.stringify(run, null, 2)}\n`;
+  const out = option(args, "out");
+  if (out) {
+    mkdirSync(dirname(resolve(out)), { recursive: true });
+    writeFileSync(resolve(out), text);
+  }
+  process.stdout.write(text);
+  return run.state === "merged" ? 0 : 1;
+}
+
 async function llmCheck(args: readonly string[]): Promise<number> {
   const prompt = positional(args)[2] ?? "Add an item to a todo list";
   const { llmFromEnv } = await import("@kargah/adapters/anthropic");
@@ -184,6 +197,7 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "spike" && sub === "jev") return spikeJev(args);
   if (command === "llm" && sub === "check") return llmCheck(args);
   if (command === "bench") return bench(args);
+  if (command === "voice") return voice(args);
   if (command === "cpa" && sub === "init") {
     const result = cpaInit(REPO_ROOT);
     process.stdout.write(`${result.created ? "created" : "kept"} the local CPA key\nconfig: ${result.config}\nworker vars: ${result.devVars}\n`);
