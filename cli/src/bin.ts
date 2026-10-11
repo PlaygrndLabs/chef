@@ -10,7 +10,7 @@ import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
 import { cpaInit } from "./cpa/init.ts";
 import { report, runSpike, type SpikeDataset, type SpikeMode } from "./spike/jev.ts";
 import { BENCH_ITEMS } from "./bench/items.ts";
-import { renderReport, runBench, type BenchMode, type BenchResult } from "./bench/run.ts";
+import { renderReport, runBench, runReplay, type BenchMode, type BenchResult } from "./bench/run.ts";
 
 function option(args: readonly string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
@@ -128,10 +128,16 @@ async function bench(args: readonly string[]): Promise<number> {
   const modes: BenchMode[] = mode === "both" ? ["phase2", "phase3"] : [mode as BenchMode];
   const only = option(args, "only")?.split(",");
   const items = only ? BENCH_ITEMS.filter((item) => only.includes(item.id)) : BENCH_ITEMS;
+  const concurrency = Number(option(args, "concurrency") ?? 3);
   const results: BenchResult[] = [];
-  for (const m of modes) {
-    process.stderr.write(`running ${items.length} features with ${m} settings\n`);
-    results.push(await runBench(m, items, { concurrency: Number(option(args, "concurrency") ?? 3) }));
+  if (mode === "replay") {
+    process.stderr.write(`learning on ${items.length} features, then replaying them in a new project seeded with the learned memory\n`);
+    results.push(...(await runReplay(items, { concurrency })));
+  } else {
+    for (const m of modes) {
+      process.stderr.write(`running ${items.length} features with ${m} settings\n`);
+      results.push(await runBench(m, items, { concurrency }));
+    }
   }
   const text = renderReport(results);
   const out = option(args, "out");

@@ -9,7 +9,8 @@
     "./llm-reviewer": "./src/llm-reviewer.ts",
     "./artifacts": "./src/artifacts.ts",
     "./workers-previews": "./src/workers-previews.ts",
-    "./anthropic": "./src/anthropic.ts"
+    "./anthropic": "./src/anthropic.ts",
+    "./vectorize": "./src/vectorize.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
