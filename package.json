@@ -12,7 +12,7 @@
     "test": "vitest run --project unit",
     "test:e2e": "vitest run --project e2e",
     "spec:lint": "node --import tsx cli/src/bin.ts spec lint spec",
-    "ci": "pnpm typecheck && pnpm lint && pnpm spec:lint && pnpm test && pnpm test:e2e"
+    "verify": "pnpm typecheck && pnpm lint && pnpm spec:lint && pnpm test && pnpm test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
