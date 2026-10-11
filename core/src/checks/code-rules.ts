@@ -1,8 +1,9 @@
 import ts from "typescript";
 import type { Tree } from "../git/tree.ts";
+import { projectRuleProblems } from "./project-rules.ts";
 
 export interface CodeProblem {
-  readonly rule: "no-comments" | "import-boundaries";
+  readonly rule: "no-comments" | "import-boundaries" | "project-rules";
   readonly path: string;
   readonly line: number;
   readonly message: string;
@@ -112,8 +113,9 @@ export function findBoundaryViolations(path: string, text: string): CodeProblem[
 
 export type CodeRule = CodeProblem["rule"];
 
-export function checkTree(tree: Tree, rules: readonly CodeRule[] = ["no-comments", "import-boundaries"], ignore: (path: string) => boolean = () => false): CodeProblem[] {
+export function checkTree(tree: Tree, rules: readonly CodeRule[] = ["no-comments", "import-boundaries", "project-rules"], ignore: (path: string) => boolean = () => false): CodeProblem[] {
   const problems: CodeProblem[] = [];
+  if (rules.includes("project-rules")) problems.push(...projectRuleProblems(tree, Object.keys(tree).filter((p) => !ignore(p))).map((p) => ({ rule: p.rule, path: p.path, line: p.line, message: p.message })));
   for (const [path, text] of Object.entries(tree)) {
     if (!CODE_FILE.test(path) || ignore(path) || path.endsWith(".d.ts")) continue;
     if (rules.includes("no-comments")) problems.push(...findComments(path, text));

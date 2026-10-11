@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import type { CheckResult, CheckRunner, KargahEvent, ProofRecord, ProofRunner, Tree } from "@kargah/core";
-import { parseTap } from "@kargah/core/checks";
+import { featureMapProblems, MEMORY_DIR, type CheckResult, type CheckRunner, type KargahEvent, type ProofRecord, type ProofRunner, type Tree } from "@kargah/core";
+import { parseTap, RULES_DIR } from "@kargah/core/checks";
 import { exec } from "../local/exec.ts";
 import { materialize } from "../local/materialize.ts";
 import { LocalCheckRunner, LocalProofRunner } from "../local/runners.ts";
@@ -8,7 +8,7 @@ import { localWorld, REPO_ROOT, stub, templateTree } from "../world.ts";
 import { benchScript, testStyle } from "./agent.ts";
 import { monitor, promptFor, specFor, tests, type BenchItem, type Fault } from "./items.ts";
 
-export type BenchMode = "phase2" | "phase3";
+export type BenchMode = "phase2" | "phase3" | "phase4" | "replay";
 
 export interface ItemResult {
   readonly id: string;
@@ -21,8 +21,18 @@ export interface ItemResult {
   readonly picked: string | null;
 }
 
+export interface MemoryStats {
+  readonly lessons: readonly string[];
+  readonly rulesAdded: readonly { readonly id: string; readonly message: string }[];
+  readonly rulesOnMain: readonly string[];
+  readonly lessonRecalls: number;
+  readonly featureMapFailures: number;
+  readonly mainCommits: number;
+}
+
 export interface BenchResult {
   readonly mode: BenchMode;
+  readonly memory: MemoryStats;
   readonly items: readonly ItemResult[];
   readonly merges: number;
   readonly reverts: number;
@@ -98,16 +108,38 @@ class LimitedProofs implements ProofRunner {
   }
 }
 
-export async function runBench(mode: BenchMode, items: readonly BenchItem[], options: { readonly concurrency?: number } = {}): Promise<BenchResult> {
+const SPECIALIZATION: Record<BenchMode, { attempts: number; lockTests: boolean; stub: typeof stub | null }> = {
+  phase2: { attempts: 1, lockTests: false, stub: null },
+  phase3: { attempts: 2, lockTests: true, stub },
+  phase4: { attempts: 1, lockTests: true, stub },
+  replay: { attempts: 1, lockTests: true, stub },
+};
+
+export interface BenchOptions {
+  readonly concurrency?: number;
+  readonly seed?: Tree;
+}
+
+export async function runBench(mode: BenchMode, items: readonly BenchItem[], options: BenchOptions = {}): Promise<BenchResult> {
+  return (await runOnce(mode, items, options)).result;
+}
+
+export async function runReplay(items: readonly BenchItem[], options: BenchOptions = {}): Promise<[BenchResult, BenchResult]> {
+  const learning = await runOnce("phase4", items, options);
+  const replay = await runOnce("replay", items, { ...options, seed: learning.learned });
+  return [learning.result, replay.result];
+}
+
+async function runOnce(mode: BenchMode, items: readonly BenchItem[], options: BenchOptions): Promise<{ result: BenchResult; learned: Tree }> {
   const started = Date.now();
   const nodeModules = join(REPO_ROOT, "template", "node_modules");
   const limiter = new Limiter(options.concurrency ?? 3);
   const checks = new MonitoredChecks(new LocalCheckRunner(nodeModules), "demo", items, nodeModules, limiter);
   const presets = new Map(items.map((item) => [promptFor(item), specFor(item)]));
-  const specialization = mode === "phase3" ? { attempts: 2, lockTests: true, stub } : { attempts: 1, lockTests: false, stub: null };
+  const specialization = SPECIALIZATION[mode];
   const proofs = new LimitedProofs(new LocalProofRunner(nodeModules, { now: () => Date.now() }), limiter);
   const w = localWorld({ script: benchScript(items), presets, real: true, config: { specialization }, deps: { checks, proofs } });
-  await w.orchestrator.bootstrap(templateTree());
+  await w.orchestrator.bootstrap({ ...templateTree(), ...(options.seed ?? {}) });
   for (const item of items) await w.orchestrator.submit(promptFor(item));
   const sessions = await w.orchestrator.drain(400);
   const log = w.bus.log;
@@ -130,8 +162,11 @@ export async function runBench(mode: BenchMode, items: readonly BenchItem[], opt
   });
   const merges = results.reduce((n, r) => n + r.merges, 0);
   const reverts = results.reduce((n, r) => n + r.reverts, 0);
-  return {
+  const main = await w.orchestrator.mainTree();
+  const learned = Object.fromEntries(Object.entries(main.tree).filter(([path]) => path.startsWith(MEMORY_DIR) || path.startsWith(RULES_DIR)));
+  const result: BenchResult = {
     mode,
+    memory: await memoryStats(w, log),
     items: results,
     merges,
     reverts,
@@ -142,6 +177,25 @@ export async function runBench(mode: BenchMode, items: readonly BenchItem[], opt
     events: log.length,
     checkRuns: checks.runs,
     seconds: Math.round((Date.now() - started) / 1000),
+  };
+  return { result, learned };
+}
+
+async function memoryStats(w: ReturnType<typeof localWorld>, log: readonly KargahEvent[]): Promise<MemoryStats> {
+  const history = await w.repos.log(w.orchestrator.canonical, "main", 1000);
+  let featureMapFailures = 0;
+  for (const commit of history) {
+    const tree = (await w.repos.readCommit(w.orchestrator.canonical, commit.id))?.tree ?? {};
+    if (featureMapProblems(tree).length > 0) featureMapFailures++;
+  }
+  const { tree } = await w.orchestrator.mainTree();
+  return {
+    lessons: log.flatMap((e) => (e.type === "memory.recorded" && e.kind === "lesson" ? [e.path] : [])),
+    rulesAdded: [...new Map(log.flatMap((e) => (e.type === "lint.rule.added" ? [[e.ruleId, { id: e.ruleId, message: e.message }] as const] : []))).values()],
+    rulesOnMain: Object.keys(tree).filter((path) => path.startsWith(RULES_DIR)),
+    lessonRecalls: log.filter((e) => e.type === "memory.recalled" && e.paths.some((p) => p.startsWith(`${MEMORY_DIR}lessons/${e.featureId}-`))).length,
+    featureMapFailures,
+    mainCommits: history.length,
   };
 }
 
@@ -168,6 +222,11 @@ export function renderReport(results: readonly BenchResult[]): string {
   lines.push("| Mode | Merged features | Merges | Reverts | Revert rate | Stuck | Test or scope violations on main | Check runs | Events | Seconds |");
   lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const r of results) lines.push(`| ${r.mode} | ${r.mergedFeatures}/${r.items.length} | ${r.merges} | ${r.reverts} | ${(r.revertRate * 100).toFixed(1)}% | ${r.stuck} | ${r.violationsOnMain.length} | ${r.checkRuns} | ${r.events} | ${r.seconds} |`);
+  if (results.some((r) => r.mode === "phase4" || r.mode === "replay")) {
+    lines.push("", "| Mode | Lessons written | Own-feature lesson recalls | Lint rules added | Lint rules on main | Main commits | Main commits where the feature map disagrees with the code |", "| --- | --- | --- | --- | --- | --- | --- |");
+    for (const r of results) lines.push(`| ${r.mode} | ${r.memory.lessons.length} | ${r.memory.lessonRecalls} | ${r.memory.rulesAdded.length} | ${r.memory.rulesOnMain.length} | ${r.memory.mainCommits} | ${r.memory.featureMapFailures} |`);
+  }
+  for (const r of results) for (const rule of r.memory.rulesAdded) lines.push("", `Rule added in ${r.mode}: \`${rule.id}\`: ${rule.message}`);
   for (const r of results) {
     lines.push("", `### ${r.mode}`, "", "| Feature | Injected mistake | Final state | Sessions | Merges | Reverts | Rejected turns | Pick |", "| --- | --- | --- | --- | --- | --- | --- | --- |");
     for (const item of r.items) {

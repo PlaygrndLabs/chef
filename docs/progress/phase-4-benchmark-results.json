@@ -1,0 +1,271 @@
+[
+ {
+  "mode": "phase4",
+  "memory": {
+   "lessons": [
+    "memory/lessons/reverse-f5aaae6beb6c.md",
+    "memory/lessons/initials-aeff6f06fa60.md",
+    "memory/lessons/vowels-719c7a32d85a.md"
+   ],
+   "rulesAdded": [
+    {
+     "id": "mined-3cb00b7ca3",
+     "message": "Lines like `assert.deepEqual(…, …);` were removed in 3 corrections (red-tests) across 3 sessions"
+    }
+   ],
+   "rulesOnMain": [
+    "lint/rules/mined-3cb00b7ca3.json"
+   ],
+   "lessonRecalls": 3,
+   "featureMapFailures": 0,
+   "mainCommits": 20
+  },
+  "items": [
+   {
+    "id": "shout",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {
+     "red-tests": 1
+    },
+    "picked": null
+   },
+   {
+    "id": "slug",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {
+     "red-tests": 1
+    },
+    "picked": null
+   },
+   {
+    "id": "word-count",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {
+     "red-tests": 1
+    },
+    "picked": null
+   },
+   {
+    "id": "reverse",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 2,
+    "reverts": 1,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "initials",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 2,
+    "reverts": 1,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "vowels",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 2,
+    "reverts": 1,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "title-case",
+    "fault": "gate-caught",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "digit-sum",
+    "fault": "gate-caught",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "truncate",
+    "fault": "none",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "palindrome",
+    "fault": "none",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   }
+  ],
+  "merges": 13,
+  "reverts": 3,
+  "revertRate": 0.23076923076923078,
+  "mergedFeatures": 10,
+  "stuck": 0,
+  "violationsOnMain": [],
+  "events": 547,
+  "checkRuns": 88,
+  "seconds": 97
+ },
+ {
+  "mode": "replay",
+  "memory": {
+   "lessons": [],
+   "rulesAdded": [],
+   "rulesOnMain": [
+    "lint/rules/mined-3cb00b7ca3.json"
+   ],
+   "lessonRecalls": 6,
+   "featureMapFailures": 0,
+   "mainCommits": 14
+  },
+  "items": [
+   {
+    "id": "shout",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {
+     "project-lint": 1
+    },
+    "picked": null
+   },
+   {
+    "id": "slug",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {
+     "project-lint": 1
+    },
+    "picked": null
+   },
+   {
+    "id": "word-count",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {
+     "project-lint": 1
+    },
+    "picked": null
+   },
+   {
+    "id": "reverse",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "initials",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "vowels",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "title-case",
+    "fault": "gate-caught",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "digit-sum",
+    "fault": "gate-caught",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "truncate",
+    "fault": "none",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "palindrome",
+    "fault": "none",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   }
+  ],
+  "merges": 10,
+  "reverts": 0,
+  "revertRate": 0,
+  "mergedFeatures": 10,
+  "stuck": 0,
+  "violationsOnMain": [],
+  "events": 464,
+  "checkRuns": 62,
+  "seconds": 72
+ }
+]

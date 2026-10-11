@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apply, emptyState, features, metrics, stuck } from "../../public/state.js";
+import { apply, emptyState, features, memory, metrics, stuck } from "../../public/state.js";
 
 const base = { project: "demo", at: 1 };
 
@@ -75,5 +75,25 @@ describe("coder stream", () => {
       { type: "coder.event", sessionId: "s1", featureId: "a", event: { type: "session.idle" } },
     ]);
     expect(state.sessions.s1?.coder.map((l: { text: string }) => l.text)).toEqual(["Adding route", "edit features/a/index.ts", "idle"]);
+  });
+  it("counts lessons, own-feature recalls, corrections and learned lint rules", () => {
+    const state = run([
+      { type: "session.created", sessionId: "s1", featureId: "reverse", fork: "f1", reason: "new", parent: null },
+      { type: "memory.recorded", featureId: "reverse", path: "memory/lessons/reverse-abc.md", kind: "lesson" },
+      { type: "memory.recorded", featureId: "reverse", path: "memory/features/reverse.md", kind: "feature" },
+      { type: "session.created", sessionId: "s2", featureId: "reverse", fork: "f2", reason: "change", parent: "s1" },
+      { type: "memory.recalled", sessionId: "s2", featureId: "reverse", paths: ["memory/lessons/reverse-abc.md", "memory/features/slug.md"] },
+      { type: "memory.recalled", sessionId: "s3", featureId: "slug", paths: ["memory/lessons/reverse-abc.md"] },
+      { type: "correction.recorded", sessionId: "s2", featureId: "reverse", role: "test", signature: "red-tests", correctionId: "c1" },
+      { type: "lint.rule.added", sessionId: "s2", featureId: "reverse", ruleId: "mined-1", message: "no self-equal asserts", sessions: ["s1", "s2", "s3"], evidence: ["c1"] },
+      { type: "lint.rule.added", sessionId: "s3", featureId: "slug", ruleId: "mined-1", message: "no self-equal asserts", sessions: ["s1", "s2", "s3"], evidence: ["c1"] },
+    ]);
+    const m = metrics(state);
+    expect([m.lessons, m.lessonRecalls, m.corrections, m.rules]).toEqual([1, 1, 1, 1]);
+    expect(state.sessions.s2?.parent).toBe("s1");
+    expect(state.sessions.s2?.recalled).toEqual(["memory/lessons/reverse-abc.md", "memory/features/slug.md"]);
+    const learned = memory(state);
+    expect(learned.lessons.map((l) => [l.path, l.recalls])).toEqual([["memory/lessons/reverse-abc.md", 2]]);
+    expect(learned.rules.map((r) => r.id)).toEqual(["mined-1"]);
   });
 });
