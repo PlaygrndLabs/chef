@@ -9,6 +9,7 @@ export const AgentProfile = z.strictObject({
   description: z.string().min(1),
   writeScope: z.array(z.string().min(1)),
   sharedAccess: z.boolean().default(false),
+  tools: z.array(z.string().min(1)).nullable().default(null),
   instructions: z.string(),
 });
 
@@ -40,4 +41,26 @@ export function scopeFor(profile: AgentProfile, feature: FeatureSpec): string[] 
 
 export function outOfScope(paths: readonly string[], scope: readonly string[]): string[] {
   return paths.filter((path) => !matchesScope(path, scope));
+}
+
+export interface CustomAgent {
+  readonly name: string;
+  readonly displayName: string;
+  readonly description: string;
+  readonly prompt: string;
+  readonly tools: readonly string[] | null;
+  readonly model: string;
+}
+
+export function customAgent(profile: AgentProfile, featureId: string, scope: readonly string[]): CustomAgent {
+  const instructions = profile.instructions.replaceAll("{feature}", featureId);
+  const rules = scope.length ? `You may only change files matching:\n${scope.join("\n")}` : "You may not change any file.";
+  return {
+    name: `kargah-${profile.role}`,
+    displayName: `kargah ${profile.role}`,
+    description: profile.description,
+    prompt: `${instructions}\n\n${rules}`,
+    tools: profile.tools,
+    model: profile.model,
+  };
 }
