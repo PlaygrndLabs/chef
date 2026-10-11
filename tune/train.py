@@ -110,6 +110,7 @@ def main():
     parser.add_argument("--max-tokens", type=int, default=1536)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--threads", type=int, default=0)
+    parser.add_argument("--skip-base", action="store_true")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -124,7 +125,8 @@ def main():
     model.config.use_cache = False
 
     results = {"base_model": BASE, "workers_ai_base": WORKERS_AI_BASE, "train_examples": len(train_rows), "heldout_examples": len(heldout_rows)}
-    results["base"] = evaluate(model, tokenizer, heldout_rows, "base")
+    if not args.skip_base:
+        results["base"] = evaluate(model, tokenizer, heldout_rows, "base")
 
     config = LoraConfig(r=args.rank, lora_alpha=2 * args.rank, lora_dropout=0.05, target_modules=["q_proj", "k_proj", "v_proj", "o_proj"], task_type="CAUSAL_LM")
     model = get_peft_model(model, config)
@@ -141,7 +143,7 @@ def main():
     results["tuned"] = evaluate(model, tokenizer, heldout_rows, "tuned")
     results["tuned_on_train"] = {"metrics": evaluate(model, tokenizer, train_rows, "tuned-train")["metrics"]}
     (out / "results.json").write_text(json.dumps(results, indent=1) + "\n")
-    print(json.dumps({k: results[k]["metrics"] for k in ("base", "tuned", "tuned_on_train")}, indent=1))
+    print(json.dumps({k: results[k]["metrics"] for k in ("base", "tuned", "tuned_on_train") if k in results}, indent=1))
 
 
 if __name__ == "__main__":
