@@ -1,0 +1,24 @@
+{
+  "name": "@kargah/adapters",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./jev": "./src/jev.ts",
+    "./llm-planner": "./src/llm-planner.ts",
+    "./llm-reviewer": "./src/llm-reviewer.ts",
+    "./artifacts": "./src/artifacts.ts",
+    "./workers-previews": "./src/workers-previews.ts",
+    "./anthropic": "./src/anthropic.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kargah/core": "workspace:*",
+    "@typesafe-ai/sdk": "0.6.0",
+    "isomorphic-git": "1.43.3",
+    "zod": "4.6.6",
+    "@anthropic-ai/sdk": "0.133.0"
+  }
+}

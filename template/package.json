@@ -1,0 +1,22 @@
+{
+  "name": "@kargah/template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./gen": "./app/gen.ts",
+    "./drive": "./app/drive.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"features/**/*.test.ts\" \"shared/**/*.test.ts\" \"app/**/*.test.ts\"",
+    "app": "node --experimental-strip-types app/cli.ts",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3",
+    "wrangler": "4.149.0"
+  }
+}

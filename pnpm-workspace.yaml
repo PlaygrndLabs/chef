@@ -1,0 +1,7 @@
+packages:
+  - core
+  - adapters
+  - cli
+  - workers
+  - apps/*
+  - template
