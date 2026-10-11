@@ -27,6 +27,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 | `Reviewer` | `RuleReviewer` | `LlmReviewer` (`adapters/src/llm-reviewer.ts`) |
 | `PreviewHost` | `MemoryPreviewHost` | `WorkersBuildsPreviewHost` (`adapters/src/workers-previews.ts`) |
 | `CheckRunner`, `ProofRunner` | `FakeCheckRunner`, `FakeProofRunner` | `LocalCheckRunner` and `LocalProofRunner` (`cli/src/local`), `SandboxCheckRunner` and `SandboxProofRunner` (`workers/src/sandbox-checks.ts`) |
+| `VoiceHost` | `ScriptedVoiceHost` | `GptLiveHost` (`adapters/src/gpt-live.ts`, GPT-Live `gpt-live-1`) |
 | `MemoryIndex` | `LexicalIndex` (TF-IDF) | `VectorizeIndex` (`adapters/src/vectorize.ts`, Vectorize plus Workers AI `@cf/baai/bge-base-en-v1.5`) |
 | `EventBus`, `KeyValueStore`, `Clock`, `IdSource` | memory versions | `DurableEventBus`, `DurableStore` in `workers/src` |
 
@@ -89,6 +90,17 @@ npx wrangler vectorize create-metadata-index kargah-memory --property-name=proje
 npx wrangler vectorize create-metadata-index kargah-memory --property-name=kind --type=string
 ```
 
+## Voice
+
+The voice front end hands spoken requests to the same router as typed prompts; GPT-Live only listens and speaks.
+
+1. The dashboard's Talk button opens a WebRTC connection with the microphone and an `oai-events` data channel, and posts its SDP offer to `POST /api/projects/:name/voice`.
+2. `ProjectAgent` creates the GPT-Live session with `POST https://api.openai.com/v1/live/sessions` (`gpt-live-1`, client delegation, instructions listing the project's features), returns the SDP answer to the browser, and attaches a sideband WebSocket to `/v1/live/sessions/{id}/attach`. The OpenAI key never leaves the Worker.
+3. GPT-Live decides when the user asked for something and sends `session.delegation.created`. `VoiceDelegate` (`core/src/voice/delegate.ts`) takes the user's transcript up to the delegation point, calls `Orchestrator.submitSpoken`, which routes it like a typed prompt and emits `voice.request`, and answers with `session.commentary.append`, which GPT-Live speaks in the user's language.
+4. From there the session runs as any other; the dashboard shows the transcript and the spoken requests.
+
+`kargah voice --say "<request>"` runs the same path locally: scripted transcripts by default, or with `--live` the request is synthesized with OpenAI text to speech and streamed to a server-side GPT-Live session over WebSocket.
+
 ## Template
 
 Projects kargah builds use Dune-style vertical slices:
@@ -112,6 +124,7 @@ Served by the kargah Worker (`workers/src/index.ts`):
 | Method and path | Effect |
 | --- | --- |
 | `POST /api/projects/:name/bootstrap` | Creates the canonical repo from the template if it does not exist |
+| `POST /api/projects/:name/voice` | Exchanges a WebRTC `{ sdp }` offer for a GPT-Live session that delegates spoken requests to the router; needs `OPENAI_API_KEY` |
 | `POST /api/projects/:name/prompts` | Routes `{ prompt }` and starts a session when there is work; a question returns `answer` with its sources |
 | `GET /api/projects/:name/sessions` | Session records |
 | `GET /api/projects/:name/events?after=<seq>` | Stored events after a sequence number |

@@ -4,18 +4,30 @@ import { slugify } from "../util/hash.ts";
 
 const STOP = new Set(["a", "an", "the", "to", "of", "for", "and", "with", "in", "on", "my", "our", "please", "can", "you", "i", "want", "we", "need"]);
 
+function normalize(prompt: string): string {
+  return prompt.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
 export class TemplatePlanner implements Planner {
   readonly model = "fake-template-planner";
   readonly triaged: TriageInput[] = [];
   readonly planned: PlanInput[] = [];
 
-  constructor(private readonly presets: ReadonlyMap<string, FeatureSpec> = new Map()) {}
+  private readonly normalized: ReadonlyMap<string, FeatureSpec>;
+
+  constructor(private readonly presets: ReadonlyMap<string, FeatureSpec> = new Map()) {
+    this.normalized = new Map([...presets].map(([prompt, spec]) => [normalize(prompt), spec]));
+  }
+
+  private preset(prompt: string): FeatureSpec | undefined {
+    return this.presets.get(prompt) ?? this.normalized.get(normalize(prompt));
+  }
 
   async triage(input: TriageInput): Promise<Triage> {
     this.triaged.push(input);
     const text = input.prompt.toLowerCase();
     if (/^(what|how|why|which|when|who)\b.*\?$/.test(text.trim())) return { intent: "question", featureId: null, changeKind: null, confidence: 0.9, reason: "phrased as a question" };
-    const preset = this.presets.get(input.prompt);
+    const preset = this.preset(input.prompt);
     if (preset) return { intent: input.spec.some((f) => f.id === preset.id) ? "change_feature" : "new_feature", featureId: preset.id, changeKind: null, confidence: 0.95, reason: "preset" };
     let best: { id: string; score: number } | null = null;
     const promptWords = new Set(text.split(/[^a-z0-9]+/).filter((w) => w && !STOP.has(w)));
@@ -34,7 +46,7 @@ export class TemplatePlanner implements Planner {
   async plan(input: PlanInput): Promise<Plan> {
     this.planned.push(input);
     const existing = input.featureId ? input.spec.find((f) => f.id === input.featureId) : undefined;
-    const preset = this.presets.get(input.prompt);
+    const preset = this.preset(input.prompt);
     let feature: FeatureSpec;
     let specChanged = true;
     if (preset) {

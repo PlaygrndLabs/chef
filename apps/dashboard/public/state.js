@@ -1,5 +1,5 @@
 export function emptyState() {
-  return { lastSeq: 0, sessions: {}, order: [], merges: [], reverts: [], routes: [], picks: [], rejections: [], memory: [], recalls: [], corrections: [], rules: [], log: [] };
+  return { lastSeq: 0, sessions: {}, order: [], merges: [], reverts: [], routes: [], picks: [], rejections: [], memory: [], recalls: [], corrections: [], rules: [], voice: [], log: [] };
 }
 
 function session(state, event) {
@@ -96,6 +96,9 @@ export function apply(state, entry) {
       push(state.rejections, rejection, 200);
       break;
     }
+    case "voice.request":
+      push(state.voice, { prompt: event.prompt, intent: event.intent, sessionId: event.sessionId, featureId: event.featureId, at: event.at }, 50);
+      break;
     case "memory.recorded":
       push(state.memory, { featureId: event.featureId, path: event.path, kind: event.kind, at: event.at }, 200);
       break;
@@ -160,6 +163,7 @@ export function metrics(state) {
     lessonRecalls: state.recalls.filter((r) => r.paths.some((p) => p.startsWith(`memory/lessons/${r.featureId}-`))).length,
     corrections: state.corrections.length,
     rules: state.rules.length,
+    voiceRequests: state.voice.length,
     needsHuman: stuckCount,
     humanActionsPerMergedFeature: mergedFeatures.size ? stuckCount / mergedFeatures.size : 0,
   };

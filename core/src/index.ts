@@ -14,3 +14,4 @@ export * from "./util/glob.ts";
 export * from "./util/hash.ts";
 export * from "./memory/memory.ts";
 export * from "./gardener/gardener.ts";
+export * from "./voice/delegate.ts";
