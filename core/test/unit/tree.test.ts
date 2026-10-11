@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyChanges, diffTrees, threeWayMerge } from "../../src/git/tree.ts";
+import { applyChanges, conflictMarkers, diffTrees, threeWayMerge } from "../../src/git/tree.ts";
 
 describe("trees", () => {
   it("applies and diffs changes", () => {
@@ -27,5 +27,20 @@ describe("trees", () => {
     const gen = ({ merged }: { merged: Record<string, string> }) => Object.keys(merged).filter((k) => k !== "gen").join(",");
     const result = threeWayMerge({ gen: "" }, { gen: "a", a: "1" }, { gen: "b", b: "1" }, { gen });
     expect(result).toEqual({ tree: { a: "1", b: "1", gen: "a,b" }, conflicts: [] });
+  });
+});
+
+describe("conflict markers", () => {
+  it("marks only the overlapping hunk and keeps clean hunks from both sides", () => {
+    const base = ["export const menu = [", '  "home",', "];", "", "export const title = \"app\";"].join("\n");
+    const ours = ["export const menu = [", '  "home",', '  "notes",', "];", "", "export const title = \"app\";"].join("\n");
+    const theirs = ["export const menu = [", '  "home",', '  "tags",', "];", "", "export const title = \"kargah\";"].join("\n");
+    expect(conflictMarkers(base, ours, theirs)).toBe(
+      ["export const menu = [", '  "home",', "<<<<<<< session", '  "notes",', "=======", '  "tags",', ">>>>>>> main", "];", "", "export const title = \"kargah\";"].join("\n"),
+    );
+  });
+
+  it("writes no markers when both sides made the same change", () => {
+    expect(conflictMarkers("a\nb", "a\nc", "a\nc")).toBe("a\nc");
   });
 });
