@@ -63,7 +63,7 @@ export class FakeProofRunner implements ProofRunner {
 
   constructor(private readonly clock: Clock) {}
 
-  async prove(input: { feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord> {
+  async prove(input: { repo: string; feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord> {
     const flowPath = `features/${input.flow}/flow.ts`;
     const flow = input.tree[flowPath];
     const steps = flow

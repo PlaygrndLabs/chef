@@ -21,5 +21,5 @@ export interface ProofRecord {
 }
 
 export interface ProofRunner {
-  prove(input: { feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord>;
+  prove(input: { repo: string; feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord>;
 }

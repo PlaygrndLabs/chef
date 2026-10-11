@@ -423,7 +423,7 @@ export class Orchestrator {
     const preview = record.preview;
     if (!preview) return { name: "proof", ok: false, log: "no preview deployment" };
     const flow = featureFlow(readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature);
-    const proof = await this.deps.proofs.prove({ feature: record.featureId, flow, url: preview.url, commitId: head.id, tree: head.tree });
+    const proof = await this.deps.proofs.prove({ repo: record.fork, feature: record.featureId, flow, url: preview.url, commitId: head.id, tree: head.tree });
     await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: PROOF_NAMESPACE, commitId: head.id, note: `${JSON.stringify(proof, null, 2)}\n` }));
     const stored = await this.deps.repos.readNote(record.fork, PROOF_NAMESPACE, head.id);
     const ok = proof.ok && stored !== null;
