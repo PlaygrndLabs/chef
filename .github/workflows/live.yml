@@ -1,0 +1,33 @@
+name: live
+
+on:
+  workflow_dispatch:
+    inputs:
+      say:
+        description: Request to speak to kargah
+        default: Add an item to a todo list
+
+permissions:
+  contents: read
+
+jobs:
+  voice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: git config --global user.email ci@kargah.invalid && git config --global user.name ci
+      - run: node --import tsx cli/src/bin.ts voice --live --say "$SAY" --out results/voice-live.json
+        env:
+          SAY: ${{ inputs.say }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-results
+          path: results/

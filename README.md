@@ -33,6 +33,7 @@ node --import tsx cli/src/bin.ts route "fix the add button"
 node --import tsx cli/src/bin.ts spike jev           # Jev routing spike; uses Jev when TYPESAFE_API_KEY is set
 node --import tsx cli/src/bin.ts bench               # 10-feature benchmark, Phase 2 versus Phase 3 settings, real checks
 node --import tsx cli/src/bin.ts bench --mode replay # learn on the benchmark, then replay it in a project seeded with that memory
+node --import tsx cli/src/bin.ts voice --say "Add an item to a todo list"   # spoken request end to end; --live uses GPT-Live with OPENAI_API_KEY
 node --import tsx cli/src/bin.ts llm check           # planner and reviewer through the local CPA, see dev/cpa/README.md
 ```
 
@@ -51,6 +52,7 @@ The planner and reviewer reach Claude through CPA (CLIProxyAPI) with a subscript
    npx wrangler secret put COPILOT_GITHUB_TOKEN    # a GitHub identity with Copilot access
    npx wrangler secret put CF_ACCOUNT_ID
    npx wrangler secret put CF_API_TOKEN            # can read Workers Builds for the account
+   npx wrangler secret put OPENAI_API_KEY          # optional: the voice front end (GPT-Live)
    ```
 
 3. Create the memory index and its metadata indexes, before the first deploy:

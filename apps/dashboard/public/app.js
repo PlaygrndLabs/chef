@@ -1,4 +1,5 @@
 import { apply, emptyState, features, memory, metrics, stuck } from "/state.js";
+import { startTalk, transcript } from "/voice.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,6 +30,8 @@ let state = emptyState();
 let project = "";
 let socket = null;
 let poller = null;
+let stopTalk = null;
+let heard = [];
 
 const percent = (value) => `${Math.round(value * 100)}%`;
 
@@ -77,6 +80,9 @@ function render() {
           ),
         )
       : [h("li", { class: "muted" }, "No parallel attempts yet.")]),
+  );
+  $("voice-requests").replaceChildren(
+    ...[...state.voice].reverse().slice(0, 10).map((v) => h("li", null, h("span", { class: "muted" }, "said "), `"${v.prompt}"`, " → ", v.sessionId ? h("code", null, v.featureId ?? short(v.sessionId)) : v.intent)),
   );
   const learned = memory(state);
   $("lessons").replaceChildren(
@@ -189,6 +195,36 @@ $("prompt-form").addEventListener("submit", async (event) => {
   const body = await response.json();
   $("prompt-result").textContent = body.error ?? (body.sessionId ? `Session ${short(body.sessionId)} started` : body.answer ? `${body.answer.text}${body.answer.sources.length ? ` (from ${body.answer.sources.join(", ")})` : ""}` : `Routed: ${body.decision?.intent ?? "done"}`);
   if (response.ok) $("prompt").value = "";
+});
+
+function showHeard() {
+  $("transcript").replaceChildren(...heard.map((line) => h("li", null, h("span", { class: "muted" }, `${line.speaker}: `), line.text)));
+}
+
+$("talk").addEventListener("click", async () => {
+  if (stopTalk) {
+    const stop = stopTalk;
+    stopTalk = null;
+    await stop();
+    $("talk").textContent = "Talk";
+    return;
+  }
+  heard = [];
+  showHeard();
+  $("talk").textContent = "Stop";
+  try {
+    stopTalk = await startTalk({
+      project,
+      onStatus: (status) => ($("voice-status").textContent = status),
+      onEvent: (event) => {
+        heard = transcript(heard, event);
+        showHeard();
+      },
+    });
+  } catch (error) {
+    $("talk").textContent = "Talk";
+    $("voice-status").textContent = error instanceof Error ? error.message : String(error);
+  }
 });
 
 open(new URLSearchParams(location.search).get("project") || "demo");

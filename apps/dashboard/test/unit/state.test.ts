@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { apply, emptyState, features, memory, metrics, stuck } from "../../public/state.js";
+import { transcript } from "../../public/voice.js";
 
 const base = { project: "demo", at: 1 };
 
@@ -95,5 +96,22 @@ describe("coder stream", () => {
     const learned = memory(state);
     expect(learned.lessons.map((l) => [l.path, l.recalls])).toEqual([["memory/lessons/reverse-abc.md", 2]]);
     expect(learned.rules.map((r) => r.id)).toEqual(["mined-1"]);
+  });
+  it("keeps spoken requests and joins transcript deltas per speaker", () => {
+    const state = run([{ type: "voice.request", voiceSessionId: "v1", delegationId: "d1", prompt: "Add an item to a to-do list.", intent: "new_feature", sessionId: "s1", featureId: "todo-add" }]);
+    expect(state.voice).toEqual([{ prompt: "Add an item to a to-do list.", intent: "new_feature", sessionId: "s1", featureId: "todo-add", at: 1 }]);
+    expect(metrics(state).voiceRequests).toBe(1);
+    let lines: { speaker: string; text: string }[] = [];
+    for (const event of [
+      { type: "session.input_transcript.delta", delta: "Add an " },
+      { type: "session.input_transcript.delta", delta: "item" },
+      { type: "session.output_transcript.delta", delta: "On it." },
+      { type: "session.output_audio.delta", delta: "AAAA" },
+    ])
+      lines = transcript(lines, event);
+    expect(lines).toEqual([
+      { speaker: "you", text: "Add an item" },
+      { speaker: "kargah", text: "On it." },
+    ]);
   });
 });
