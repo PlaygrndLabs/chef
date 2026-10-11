@@ -14,7 +14,7 @@ export class SandboxCoder implements Coder {
         role: input.role,
         model: input.model,
         prompt: input.prompt,
-        instructions: input.instructions,
+        agent: input.agent,
         writeScope: input.writeScope,
         remote: input.workspace.remote,
         ref: input.workspace.ref,

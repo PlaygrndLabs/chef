@@ -9,6 +9,8 @@ import { demoScript } from "./demo.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
 import { cpaInit } from "./cpa/init.ts";
 import { report, runSpike, type SpikeDataset, type SpikeMode } from "./spike/jev.ts";
+import { BENCH_ITEMS } from "./bench/items.ts";
+import { renderReport, runBench, type BenchMode, type BenchResult } from "./bench/run.ts";
 
 function option(args: readonly string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
@@ -121,6 +123,27 @@ async function spikeJev(args: readonly string[]): Promise<number> {
   return 0;
 }
 
+async function bench(args: readonly string[]): Promise<number> {
+  const mode = option(args, "mode") ?? "both";
+  const modes: BenchMode[] = mode === "both" ? ["phase2", "phase3"] : [mode as BenchMode];
+  const only = option(args, "only")?.split(",");
+  const items = only ? BENCH_ITEMS.filter((item) => only.includes(item.id)) : BENCH_ITEMS;
+  const results: BenchResult[] = [];
+  for (const m of modes) {
+    process.stderr.write(`running ${items.length} features with ${m} settings\n`);
+    results.push(await runBench(m, items, { concurrency: Number(option(args, "concurrency") ?? 3) }));
+  }
+  const text = renderReport(results);
+  const out = option(args, "out");
+  if (out) {
+    mkdirSync(dirname(resolve(out)), { recursive: true });
+    writeFileSync(resolve(out), text);
+    writeFileSync(resolve(out).replace(/\.md$/, ".json"), `${JSON.stringify(results, null, 1)}\n`);
+  }
+  process.stdout.write(text);
+  return 0;
+}
+
 async function llmCheck(args: readonly string[]): Promise<number> {
   const prompt = positional(args)[2] ?? "Add an item to a todo list";
   const { llmFromEnv } = await import("@kargah/adapters/anthropic");
@@ -154,12 +177,13 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "demo") return demo(args);
   if (command === "spike" && sub === "jev") return spikeJev(args);
   if (command === "llm" && sub === "check") return llmCheck(args);
+  if (command === "bench") return bench(args);
   if (command === "cpa" && sub === "init") {
     const result = cpaInit(REPO_ROOT);
     process.stdout.write(`${result.created ? "created" : "kept"} the local CPA key\nconfig: ${result.config}\nworker vars: ${result.devVars}\n`);
     return 0;
   }
-  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md] | kargah llm check [prompt] [--model id] | kargah cpa init\n");
+  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md] | kargah llm check [prompt] [--model id] | kargah cpa init | kargah bench [--mode phase2|phase3|both] [--only a,b] [--out file.md]\n");
   return 2;
 }
 

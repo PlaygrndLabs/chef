@@ -37,6 +37,7 @@
     "REVIEWER_MODEL": "claude-opus-5-5",
     "CODER_MODEL": "gpt-5",
     "JEV_MODEL": "jev-1.13.0",
-    "PREVIEW_WORKER": "kargah-project"
+    "PREVIEW_WORKER": "kargah-project",
+    "ATTEMPTS": "2"
   }
 }

@@ -1,6 +1,6 @@
 import { Agent } from "agents";
 import { WorkerEntrypoint } from "cloudflare:workers";
-import type { CoderEvent, CoderTurnResult, FileChanges } from "@kargah/core";
+import type { CoderEvent, CoderTurnResult, CustomAgent, FileChanges } from "@kargah/core";
 
 export interface SandboxJob {
   readonly sessionId: string;
@@ -8,7 +8,7 @@ export interface SandboxJob {
   readonly role: string;
   readonly model: string;
   readonly prompt: string;
-  readonly instructions: string;
+  readonly agent: CustomAgent;
   readonly writeScope: readonly string[];
   readonly remote: string;
   readonly ref: string;
@@ -50,6 +50,7 @@ export interface ChecksJob {
   readonly readToken: string;
   readonly commands: readonly { name: string; argv: readonly string[]; timeoutMs?: number }[];
   readonly allowHosts?: readonly string[];
+  readonly overlay?: FileChanges;
 }
 
 export interface CommandResult {

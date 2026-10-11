@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apply, emptyState, features, stuck } from "../../public/state.js";
+import { apply, emptyState, features, metrics, stuck } from "../../public/state.js";
 
 const base = { project: "demo", at: 1 };
 
@@ -41,6 +41,28 @@ describe("dashboard state", () => {
       { type: "session.stuck", sessionId: "s1", featureId: "a", reason: "attempt budget exhausted" },
     ]);
     expect(stuck(state).map((s: { stuck: string }) => s.stuck)).toEqual(["attempt budget exhausted"]);
+  });
+});
+
+describe("phase 3 views", () => {
+  it("shows attempts, dropped losers, rejections and the revert rate", () => {
+    const attempt = (index: number) => ({ group: "s1", index, of: 2 });
+    const state = run([
+      { type: "session.created", sessionId: "s1", featureId: "a", fork: "demo--a--s1", reason: "new", attempt: attempt(1) },
+      { type: "session.created", sessionId: "s2", featureId: "a", fork: "demo--a--s2", reason: "new", attempt: attempt(2) },
+      { type: "turn.rejected", sessionId: "s1", featureId: "a", role: "test", rule: "red-tests", paths: ["features/a/a.test.ts"] },
+      { type: "attempt.picked", featureId: "a", group: "s1", winner: "s2", candidates: [{ sessionId: "s1", passed: 3, total: 6 }, { sessionId: "s2", passed: 6, total: 6 }], reasons: ["s2 passes every attempt's tests"], model: "reviewer" },
+      { type: "session.state", sessionId: "s1", featureId: "a", from: "gating", to: "dropped", reason: "attempt s2 was picked" },
+      { type: "main.merged", sessionId: "s2", featureId: "a", commitId: "m1" },
+      { type: "main.reverted", featureId: "a", revertedCommit: "m1", commitId: "r1", log: "red" },
+      { type: "main.merged", sessionId: "s2", featureId: "a", commitId: "m2" },
+      { type: "session.state", sessionId: "s2", featureId: "a", from: "gating", to: "merged", reason: "gate_passed" },
+    ]);
+    const [feature] = features(state);
+    expect(feature).toMatchObject({ state: "merged", merges: 2, reverts: 1, dropped: 1 });
+    expect(state.sessions.s1?.rejections).toHaveLength(1);
+    expect(state.picks[0]?.winner).toBe("s2");
+    expect(metrics(state)).toMatchObject({ mergedFeatures: 1, merges: 2, reverts: 1, revertRate: 0.5, rejections: { "red-tests": 1 }, picks: 1, needsHuman: 0, humanActionsPerMergedFeature: 0 });
   });
 });
 
