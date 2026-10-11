@@ -1,0 +1,974 @@
+{
+ "features": [
+  {
+   "id": "home",
+   "title": "Home page"
+  },
+  {
+   "id": "todo-add",
+   "title": "Add a todo item"
+  },
+  {
+   "id": "todo-list",
+   "title": "List todo items"
+  },
+  {
+   "id": "todo-done",
+   "title": "Mark a todo as done"
+  },
+  {
+   "id": "todo-delete",
+   "title": "Delete a todo item"
+  },
+  {
+   "id": "auth-login",
+   "title": "Sign in with email"
+  },
+  {
+   "id": "share-list",
+   "title": "Share a list with another person"
+  },
+  {
+   "id": "due-dates",
+   "title": "Due dates and reminders"
+  }
+ ],
+ "items": [
+  {
+   "id": "en-01",
+   "lang": "en",
+   "prompt": "Let users attach files to a todo",
+   "english": "Let users attach files to a todo",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-01",
+   "lang": "fa",
+   "prompt": "بذار کاربرها به هر کار یه فایل پیوست کنن",
+   "english": "Let users attach files to a todo",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-02",
+   "lang": "en",
+   "prompt": "Add dark mode to the app",
+   "english": "Add dark mode to the app",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-02",
+   "lang": "fa",
+   "prompt": "حالت تاریک به برنامه اضافه کن",
+   "english": "Add dark mode to the app",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-03",
+   "lang": "en",
+   "prompt": "I want to export my todos as CSV",
+   "english": "I want to export my todos as CSV",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-03",
+   "lang": "fa",
+   "prompt": "می‌خوام کارهام رو به صورت CSV خروجی بگیرم",
+   "english": "I want to export my todos as CSV",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-04",
+   "lang": "en",
+   "prompt": "Users should be able to sign up with Google",
+   "english": "Users should be able to sign up with Google",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-04",
+   "lang": "fa",
+   "prompt": "کاربرها باید بتونن با گوگل ثبت‌نام کنن",
+   "english": "Users should be able to sign up with Google",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-05",
+   "lang": "en",
+   "prompt": "Build a calendar view of tasks",
+   "english": "Build a calendar view of tasks",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-05",
+   "lang": "fa",
+   "prompt": "یه نمای تقویمی برای کارها بساز",
+   "english": "Build a calendar view of tasks",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-06",
+   "lang": "en",
+   "prompt": "Add tags so todos can be grouped by label",
+   "english": "Add tags so todos can be grouped by label",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-06",
+   "lang": "fa",
+   "prompt": "برچسب اضافه کن که بشه کارها رو گروه‌بندی کرد",
+   "english": "Add tags so todos can be grouped by label",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-07",
+   "lang": "en",
+   "prompt": "We need a search box to find todos by text",
+   "english": "We need a search box to find todos by text",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-07",
+   "lang": "fa",
+   "prompt": "یه جعبه جستجو لازم داریم که کارها رو با متن پیدا کنه",
+   "english": "We need a search box to find todos by text",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-08",
+   "lang": "en",
+   "prompt": "Create an admin page that lists all users",
+   "english": "Create an admin page that lists all users",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-08",
+   "lang": "fa",
+   "prompt": "یه صفحه مدیریت بساز که همه کاربرها رو نشون بده",
+   "english": "Create an admin page that lists all users",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-09",
+   "lang": "en",
+   "prompt": "Add push notifications on mobile",
+   "english": "Add push notifications on mobile",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-09",
+   "lang": "fa",
+   "prompt": "اعلان‌های پوش روی موبایل اضافه کن",
+   "english": "Add push notifications on mobile",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-10",
+   "lang": "en",
+   "prompt": "Let people comment on a shared todo",
+   "english": "Let people comment on a shared todo",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-10",
+   "lang": "fa",
+   "prompt": "بذار آدم‌ها روی یه کار اشتراکی نظر بذارن",
+   "english": "Let people comment on a shared todo",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-11",
+   "lang": "en",
+   "prompt": "Add recurring tasks that repeat weekly",
+   "english": "Add recurring tasks that repeat weekly",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-11",
+   "lang": "fa",
+   "prompt": "کارهای تکراری اضافه کن که هر هفته تکرار بشن",
+   "english": "Add recurring tasks that repeat weekly",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-12",
+   "lang": "en",
+   "prompt": "Make a public API with API keys for third parties",
+   "english": "Make a public API with API keys for third parties",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-12",
+   "lang": "fa",
+   "prompt": "یه API عمومی با کلید API برای سرویس‌های دیگه بساز",
+   "english": "Make a public API with API keys for third parties",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-13",
+   "lang": "en",
+   "prompt": "Show a weekly productivity chart",
+   "english": "Show a weekly productivity chart",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-13",
+   "lang": "fa",
+   "prompt": "یه نمودار بهره‌وری هفتگی نشون بده",
+   "english": "Show a weekly productivity chart",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-14",
+   "lang": "en",
+   "prompt": "Support multiple lists, each with its own name",
+   "english": "Support multiple lists, each with its own name",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-14",
+   "lang": "fa",
+   "prompt": "از چند لیست پشتیبانی کن، هر کدوم با اسم خودش",
+   "english": "Support multiple lists, each with its own name",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-15",
+   "lang": "en",
+   "prompt": "Put a pomodoro timer next to each task",
+   "english": "Put a pomodoro timer next to each task",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-15",
+   "lang": "fa",
+   "prompt": "کنار هر کار یه تایمر پومودورو بذار",
+   "english": "Put a pomodoro timer next to each task",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-16",
+   "lang": "en",
+   "prompt": "Import tasks from Trello",
+   "english": "Import tasks from Trello",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-16",
+   "lang": "fa",
+   "prompt": "کارها رو از ترلو وارد کن",
+   "english": "Import tasks from Trello",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-17",
+   "lang": "en",
+   "prompt": "Translate the whole UI into Persian",
+   "english": "Translate the whole UI into Persian",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-17",
+   "lang": "fa",
+   "prompt": "کل رابط کاربری رو به فارسی ترجمه کن",
+   "english": "Translate the whole UI into Persian",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-18",
+   "lang": "en",
+   "prompt": "Add an offline mode that syncs when back online",
+   "english": "Add an offline mode that syncs when back online",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-18",
+   "lang": "fa",
+   "prompt": "یه حالت آفلاین اضافه کن که وقتی آنلاین شد همگام‌سازی کنه",
+   "english": "Add an offline mode that syncs when back online",
+   "intent": "new_feature",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-19",
+   "lang": "en",
+   "prompt": "The add button does nothing when the title has an emoji",
+   "english": "The add button does nothing when the title has an emoji",
+   "intent": "change_feature",
+   "feature": "todo-add",
+   "change": "bug"
+  },
+  {
+   "id": "fa-19",
+   "lang": "fa",
+   "prompt": "وقتی عنوان ایموجی داره دکمه افزودن هیچ کاری نمی‌کنه",
+   "english": "The add button does nothing when the title has an emoji",
+   "intent": "change_feature",
+   "feature": "todo-add",
+   "change": "bug"
+  },
+  {
+   "id": "en-20",
+   "lang": "en",
+   "prompt": "Adding a todo with an empty title should show an error instead of saving it",
+   "english": "Adding a todo with an empty title should show an error instead of saving it",
+   "intent": "change_feature",
+   "feature": "todo-add",
+   "change": "bug"
+  },
+  {
+   "id": "fa-20",
+   "lang": "fa",
+   "prompt": "اضافه کردن کار با عنوان خالی باید خطا بده نه اینکه ذخیره‌اش کنه",
+   "english": "Adding a todo with an empty title should show an error instead of saving it",
+   "intent": "change_feature",
+   "feature": "todo-add",
+   "change": "bug"
+  },
+  {
+   "id": "en-21",
+   "lang": "en",
+   "prompt": "Let users set a priority when they add a todo",
+   "english": "Let users set a priority when they add a todo",
+   "intent": "change_feature",
+   "feature": "todo-add",
+   "change": "extend"
+  },
+  {
+   "id": "fa-21",
+   "lang": "fa",
+   "prompt": "بذار موقع اضافه کردن کار اولویتش رو هم تعیین کنن",
+   "english": "Let users set a priority when they add a todo",
+   "intent": "change_feature",
+   "feature": "todo-add",
+   "change": "extend"
+  },
+  {
+   "id": "en-22",
+   "lang": "en",
+   "prompt": "The list shows items in random order, sort them by creation time",
+   "english": "The list shows items in random order, sort them by creation time",
+   "intent": "change_feature",
+   "feature": "todo-list",
+   "change": "bug"
+  },
+  {
+   "id": "fa-22",
+   "lang": "fa",
+   "prompt": "لیست کارها رو بی‌ترتیب نشون میده، بر اساس زمان ساخت مرتبشون کن",
+   "english": "The list shows items in random order, sort them by creation time",
+   "intent": "change_feature",
+   "feature": "todo-list",
+   "change": "bug"
+  },
+  {
+   "id": "en-23",
+   "lang": "en",
+   "prompt": "Paginate the todo list after 50 items",
+   "english": "Paginate the todo list after 50 items",
+   "intent": "change_feature",
+   "feature": "todo-list",
+   "change": "extend"
+  },
+  {
+   "id": "fa-23",
+   "lang": "fa",
+   "prompt": "بعد از ۵۰ مورد لیست کارها رو صفحه‌بندی کن",
+   "english": "Paginate the todo list after 50 items",
+   "intent": "change_feature",
+   "feature": "todo-list",
+   "change": "extend"
+  },
+  {
+   "id": "en-24",
+   "lang": "en",
+   "prompt": "Show the number of open items above the list",
+   "english": "Show the number of open items above the list",
+   "intent": "change_feature",
+   "feature": "todo-list",
+   "change": "extend"
+  },
+  {
+   "id": "fa-24",
+   "lang": "fa",
+   "prompt": "تعداد کارهای باز رو بالای لیست نشون بده",
+   "english": "Show the number of open items above the list",
+   "intent": "change_feature",
+   "feature": "todo-list",
+   "change": "extend"
+  },
+  {
+   "id": "en-25",
+   "lang": "en",
+   "prompt": "Marking a todo as done doesn't persist after reload",
+   "english": "Marking a todo as done doesn't persist after reload",
+   "intent": "change_feature",
+   "feature": "todo-done",
+   "change": "bug"
+  },
+  {
+   "id": "fa-25",
+   "lang": "fa",
+   "prompt": "وقتی کاری رو انجام‌شده علامت می‌زنم بعد از رفرش برمی‌گرده",
+   "english": "Marking a todo as done doesn't persist after reload",
+   "intent": "change_feature",
+   "feature": "todo-done",
+   "change": "bug"
+  },
+  {
+   "id": "en-26",
+   "lang": "en",
+   "prompt": "Allow undoing a completed task",
+   "english": "Allow undoing a completed task",
+   "intent": "change_feature",
+   "feature": "todo-done",
+   "change": "extend"
+  },
+  {
+   "id": "fa-26",
+   "lang": "fa",
+   "prompt": "بذار علامت انجام‌شدن یه کار رو برگردونن",
+   "english": "Allow undoing a completed task",
+   "intent": "change_feature",
+   "feature": "todo-done",
+   "change": "extend"
+  },
+  {
+   "id": "en-27",
+   "lang": "en",
+   "prompt": "Completed items should be greyed out and struck through",
+   "english": "Completed items should be greyed out and struck through",
+   "intent": "change_feature",
+   "feature": "todo-done",
+   "change": "extend"
+  },
+  {
+   "id": "fa-27",
+   "lang": "fa",
+   "prompt": "کارهای انجام‌شده باید کم‌رنگ و خط‌خورده نشون داده بشن",
+   "english": "Completed items should be greyed out and struck through",
+   "intent": "change_feature",
+   "feature": "todo-done",
+   "change": "extend"
+  },
+  {
+   "id": "en-28",
+   "lang": "en",
+   "prompt": "Deleting one todo removes all of them",
+   "english": "Deleting one todo removes all of them",
+   "intent": "change_feature",
+   "feature": "todo-delete",
+   "change": "bug"
+  },
+  {
+   "id": "fa-28",
+   "lang": "fa",
+   "prompt": "حذف یه کار همه کارها رو پاک می‌کنه",
+   "english": "Deleting one todo removes all of them",
+   "intent": "change_feature",
+   "feature": "todo-delete",
+   "change": "bug"
+  },
+  {
+   "id": "en-29",
+   "lang": "en",
+   "prompt": "Ask for confirmation before deleting a task",
+   "english": "Ask for confirmation before deleting a task",
+   "intent": "change_feature",
+   "feature": "todo-delete",
+   "change": "extend"
+  },
+  {
+   "id": "fa-29",
+   "lang": "fa",
+   "prompt": "قبل از حذف کار تأیید بگیر",
+   "english": "Ask for confirmation before deleting a task",
+   "intent": "change_feature",
+   "feature": "todo-delete",
+   "change": "extend"
+  },
+  {
+   "id": "en-30",
+   "lang": "en",
+   "prompt": "Login fails for emails with uppercase letters",
+   "english": "Login fails for emails with uppercase letters",
+   "intent": "change_feature",
+   "feature": "auth-login",
+   "change": "bug"
+  },
+  {
+   "id": "fa-30",
+   "lang": "fa",
+   "prompt": "ورود برای ایمیل‌هایی که حرف بزرگ دارن خطا میده",
+   "english": "Login fails for emails with uppercase letters",
+   "intent": "change_feature",
+   "feature": "auth-login",
+   "change": "bug"
+  },
+  {
+   "id": "en-31",
+   "lang": "en",
+   "prompt": "Keep users signed in for 30 days",
+   "english": "Keep users signed in for 30 days",
+   "intent": "change_feature",
+   "feature": "auth-login",
+   "change": "extend"
+  },
+  {
+   "id": "fa-31",
+   "lang": "fa",
+   "prompt": "کاربرها رو ۳۰ روز وارد نگه دار",
+   "english": "Keep users signed in for 30 days",
+   "intent": "change_feature",
+   "feature": "auth-login",
+   "change": "extend"
+  },
+  {
+   "id": "en-32",
+   "lang": "en",
+   "prompt": "Clean up the login handler, it is one giant function",
+   "english": "Clean up the login handler, it is one giant function",
+   "intent": "change_feature",
+   "feature": "auth-login",
+   "change": "refactor"
+  },
+  {
+   "id": "fa-32",
+   "lang": "fa",
+   "prompt": "کد ورود رو مرتب کن، یه تابع غول‌پیکره",
+   "english": "Clean up the login handler, it is one giant function",
+   "intent": "change_feature",
+   "feature": "auth-login",
+   "change": "refactor"
+  },
+  {
+   "id": "en-33",
+   "lang": "en",
+   "prompt": "The share link opens a 404 page",
+   "english": "The share link opens a 404 page",
+   "intent": "change_feature",
+   "feature": "share-list",
+   "change": "bug"
+  },
+  {
+   "id": "fa-33",
+   "lang": "fa",
+   "prompt": "لینک اشتراک‌گذاری صفحه ۴۰۴ باز می‌کنه",
+   "english": "The share link opens a 404 page",
+   "intent": "change_feature",
+   "feature": "share-list",
+   "change": "bug"
+  },
+  {
+   "id": "en-34",
+   "lang": "en",
+   "prompt": "Let the owner revoke access to a shared list",
+   "english": "Let the owner revoke access to a shared list",
+   "intent": "change_feature",
+   "feature": "share-list",
+   "change": "extend"
+  },
+  {
+   "id": "fa-34",
+   "lang": "fa",
+   "prompt": "بذار صاحب لیست دسترسی اشتراکی رو لغو کنه",
+   "english": "Let the owner revoke access to a shared list",
+   "intent": "change_feature",
+   "feature": "share-list",
+   "change": "extend"
+  },
+  {
+   "id": "en-35",
+   "lang": "en",
+   "prompt": "Reminders fire an hour late after daylight saving time",
+   "english": "Reminders fire an hour late after daylight saving time",
+   "intent": "change_feature",
+   "feature": "due-dates",
+   "change": "bug"
+  },
+  {
+   "id": "fa-35",
+   "lang": "fa",
+   "prompt": "یادآورها بعد از تغییر ساعت تابستانی یه ساعت دیر میان",
+   "english": "Reminders fire an hour late after daylight saving time",
+   "intent": "change_feature",
+   "feature": "due-dates",
+   "change": "bug"
+  },
+  {
+   "id": "en-36",
+   "lang": "en",
+   "prompt": "Let people pick a time, not just a date, for the due date",
+   "english": "Let people pick a time, not just a date, for the due date",
+   "intent": "change_feature",
+   "feature": "due-dates",
+   "change": "extend"
+  },
+  {
+   "id": "fa-36",
+   "lang": "fa",
+   "prompt": "بذار برای موعد انجام، ساعت هم انتخاب کنن نه فقط تاریخ",
+   "english": "Let people pick a time, not just a date, for the due date",
+   "intent": "change_feature",
+   "feature": "due-dates",
+   "change": "extend"
+  },
+  {
+   "id": "en-37",
+   "lang": "en",
+   "prompt": "Split the due date code into smaller modules without changing behavior",
+   "english": "Split the due date code into smaller modules without changing behavior",
+   "intent": "change_feature",
+   "feature": "due-dates",
+   "change": "refactor"
+  },
+  {
+   "id": "fa-37",
+   "lang": "fa",
+   "prompt": "کد موعدها رو بدون تغییر رفتار به ماژول‌های کوچیک‌تر بشکن",
+   "english": "Split the due date code into smaller modules without changing behavior",
+   "intent": "change_feature",
+   "feature": "due-dates",
+   "change": "refactor"
+  },
+  {
+   "id": "en-38",
+   "lang": "en",
+   "prompt": "The home page title is misspelled",
+   "english": "The home page title is misspelled",
+   "intent": "change_feature",
+   "feature": "home",
+   "change": "bug"
+  },
+  {
+   "id": "fa-38",
+   "lang": "fa",
+   "prompt": "عنوان صفحه اصلی غلط املایی داره",
+   "english": "The home page title is misspelled",
+   "intent": "change_feature",
+   "feature": "home",
+   "change": "bug"
+  },
+  {
+   "id": "en-39",
+   "lang": "en",
+   "prompt": "Put a link to the todo list on the home page",
+   "english": "Put a link to the todo list on the home page",
+   "intent": "change_feature",
+   "feature": "home",
+   "change": "extend"
+  },
+  {
+   "id": "fa-39",
+   "lang": "fa",
+   "prompt": "تو صفحه اصلی یه لینک به لیست کارها بذار",
+   "english": "Put a link to the todo list on the home page",
+   "intent": "change_feature",
+   "feature": "home",
+   "change": "extend"
+  },
+  {
+   "id": "en-40",
+   "lang": "en",
+   "prompt": "Rename the internal todo list helpers to clearer names",
+   "english": "Rename the internal todo list helpers to clearer names",
+   "intent": "change_feature",
+   "feature": "todo-list",
+   "change": "refactor"
+  },
+  {
+   "id": "fa-40",
+   "lang": "fa",
+   "prompt": "اسم توابع کمکی داخلی لیست کارها رو واضح‌تر کن",
+   "english": "Rename the internal todo list helpers to clearer names",
+   "intent": "change_feature",
+   "feature": "todo-list",
+   "change": "refactor"
+  },
+  {
+   "id": "en-41",
+   "lang": "en",
+   "prompt": "Refactor the delete endpoint to reuse the shared storage helpers",
+   "english": "Refactor the delete endpoint to reuse the shared storage helpers",
+   "intent": "change_feature",
+   "feature": "todo-delete",
+   "change": "refactor"
+  },
+  {
+   "id": "fa-41",
+   "lang": "fa",
+   "prompt": "مسیر حذف رو بازنویسی کن که از توابع ذخیره‌سازی مشترک استفاده کنه",
+   "english": "Refactor the delete endpoint to reuse the shared storage helpers",
+   "intent": "change_feature",
+   "feature": "todo-delete",
+   "change": "refactor"
+  },
+  {
+   "id": "en-42",
+   "lang": "en",
+   "prompt": "Sharing a list with someone who has no account crashes the server",
+   "english": "Sharing a list with someone who has no account crashes the server",
+   "intent": "change_feature",
+   "feature": "share-list",
+   "change": "bug"
+  },
+  {
+   "id": "fa-42",
+   "lang": "fa",
+   "prompt": "اشتراک لیست با کسی که حساب نداره سرور رو از کار میندازه",
+   "english": "Sharing a list with someone who has no account crashes the server",
+   "intent": "change_feature",
+   "feature": "share-list",
+   "change": "bug"
+  },
+  {
+   "id": "en-43",
+   "lang": "en",
+   "prompt": "What happens to shared lists when the owner deletes their account?",
+   "english": "What happens to shared lists when the owner deletes their account?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-43",
+   "lang": "fa",
+   "prompt": "وقتی صاحب لیست حسابش رو پاک کنه چه اتفاقی برای لیست‌های اشتراکی میفته؟",
+   "english": "What happens to shared lists when the owner deletes their account?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-44",
+   "lang": "en",
+   "prompt": "How is a todo stored right now",
+   "english": "How is a todo stored right now",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-44",
+   "lang": "fa",
+   "prompt": "الان یه کار چطوری ذخیره میشه",
+   "english": "How is a todo stored right now",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-45",
+   "lang": "en",
+   "prompt": "Which features are still in progress?",
+   "english": "Which features are still in progress?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-45",
+   "lang": "fa",
+   "prompt": "کدوم قابلیت‌ها هنوز در حال ساختن؟",
+   "english": "Which features are still in progress?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-46",
+   "lang": "en",
+   "prompt": "Why did the last change to due dates get reverted?",
+   "english": "Why did the last change to due dates get reverted?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-46",
+   "lang": "fa",
+   "prompt": "چرا آخرین تغییر موعدها برگشت خورد؟",
+   "english": "Why did the last change to due dates get reverted?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-47",
+   "lang": "en",
+   "prompt": "Is the login flow covered by tests?",
+   "english": "Is the login flow covered by tests?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-47",
+   "lang": "fa",
+   "prompt": "آیا روند ورود تست داره؟",
+   "english": "Is the login flow covered by tests?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-48",
+   "lang": "en",
+   "prompt": "Explain how previews work for each feature",
+   "english": "Explain how previews work for each feature",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-48",
+   "lang": "fa",
+   "prompt": "توضیح بده پیش‌نمایش هر قابلیت چطوری کار می‌کنه",
+   "english": "Explain how previews work for each feature",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-49",
+   "lang": "en",
+   "prompt": "Can you tell me what the share feature does",
+   "english": "Can you tell me what the share feature does",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-49",
+   "lang": "fa",
+   "prompt": "میشه بگی قابلیت اشتراک‌گذاری چیکار می‌کنه",
+   "english": "Can you tell me what the share feature does",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-50",
+   "lang": "en",
+   "prompt": "Where are reminders scheduled",
+   "english": "Where are reminders scheduled",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-50",
+   "lang": "fa",
+   "prompt": "یادآورها کجا زمان‌بندی میشن",
+   "english": "Where are reminders scheduled",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-51",
+   "lang": "en",
+   "prompt": "Do we have any feature for notifications yet?",
+   "english": "Do we have any feature for notifications yet?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-51",
+   "lang": "fa",
+   "prompt": "قابلیتی برای اعلان‌ها داریم یا نه؟",
+   "english": "Do we have any feature for notifications yet?",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "en-52",
+   "lang": "en",
+   "prompt": "Summarize what changed on main today",
+   "english": "Summarize what changed on main today",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  },
+  {
+   "id": "fa-52",
+   "lang": "fa",
+   "prompt": "خلاصه بگو امروز چی روی main عوض شد",
+   "english": "Summarize what changed on main today",
+   "intent": "question",
+   "feature": null,
+   "change": null
+  }
+ ]
+}
