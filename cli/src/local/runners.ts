@@ -46,7 +46,7 @@ export class LocalProofRunner implements ProofRunner {
     private readonly reachable: (url: string) => boolean = (url) => !/\.example(?:\/|$)/.test(new URL(url).hostname + "/"),
   ) {}
 
-  async prove(input: { feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord> {
+  async prove(input: { repo: string; feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord> {
     const work = await materialize(input.tree, this.nodeModules);
     try {
       const args = [...NODE_TS, "app/cli.ts", "proof", input.feature, "--commit", input.commitId];

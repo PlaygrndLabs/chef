@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kargah",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": { "directory": "../apps/dashboard/public", "binding": "ASSETS", "run_worker_first": ["/api/*", "/agents/*"] },
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "kargah" }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "PROJECT", "class_name": "ProjectAgent" },
+      { "name": "SESSION", "class_name": "SessionAgent" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectAgent", "SessionAgent"] }],
+  "containers": [
+    {
+      "class_name": "SessionAgent",
+      "scheduling_policy": "durable_object",
+      "images": { "coder": { "dockerfile": "./sandbox/Dockerfile" } }
+    }
+  ],
+  "workflows": [{ "name": "upstream-sync", "binding": "UPSTREAM_SYNC", "class_name": "UpstreamSync" }],
+  "triggers": {
+    "events": [
+      {
+        "type": "cf.artifacts.repo.pushed",
+        "filter": { "namespace": "kargah" },
+        "targets": [{ "type": "workflow", "workflow_name": "upstream-sync" }]
+      }
+    ]
+  },
+  "secrets": { "required": ["ANTHROPIC_API_KEY", "TYPESAFE_API_KEY", "COPILOT_GITHUB_TOKEN", "CF_API_TOKEN", "CF_ACCOUNT_ID"] },
+  "vars": {
+    "PLANNER_MODEL": "claude-opus-5-5",
+    "REVIEWER_MODEL": "claude-opus-5-5",
+    "CODER_MODEL": "gpt-5",
+    "JEV_MODEL": "jev-1.13.0",
+    "PREVIEW_WORKER": "kargah-project"
+  }
+}
