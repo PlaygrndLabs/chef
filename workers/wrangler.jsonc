@@ -31,7 +31,7 @@
       }
     ]
   },
-  "secrets": { "required": ["ANTHROPIC_API_KEY", "TYPESAFE_API_KEY", "COPILOT_GITHUB_TOKEN", "CF_API_TOKEN", "CF_ACCOUNT_ID"] },
+  "secrets": { "required": ["CPA_BASE_URL", "CPA_API_KEY", "TYPESAFE_API_KEY", "COPILOT_GITHUB_TOKEN", "CF_API_TOKEN", "CF_ACCOUNT_ID"] },
   "vars": {
     "PLANNER_MODEL": "claude-opus-5-5",
     "REVIEWER_MODEL": "claude-opus-5-5",

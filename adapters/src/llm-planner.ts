@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { FeatureFrontmatter, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@kargah/core";
-import { DEFAULT_MODEL, structured, type MessagesClient } from "./anthropic.ts";
+import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
 const TriageSchema = z.object({
   intent: z.enum(["new_feature", "change_feature", "question"]),
@@ -30,13 +30,13 @@ Work items run in order. Write a "test" item first whenever behavior changes, th
 
 export class LlmPlanner implements Planner {
   constructor(
-    private readonly client: MessagesClient,
+    private readonly llm: LlmEndpoint,
     readonly model: string = DEFAULT_MODEL,
   ) {}
 
   async triage(input: TriageInput): Promise<Triage> {
     const features = input.spec.map((f) => ({ id: f.id, title: f.title, entrypoint: f.entrypoint }));
-    const result = await structured(this.client, {
+    const result = await structured(this.llm, {
       model: this.model,
       system: SYSTEM,
       effort: "low",
@@ -49,7 +49,7 @@ export class LlmPlanner implements Planner {
 
   async plan(input: PlanInput): Promise<Plan> {
     const existing = input.featureId ? input.spec.find((f) => f.id === input.featureId) : undefined;
-    const result = await structured(this.client, {
+    const result = await structured(this.llm, {
       model: this.model,
       system: SYSTEM,
       schema: PlanSchema,

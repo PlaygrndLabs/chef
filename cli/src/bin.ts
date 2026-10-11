@@ -7,6 +7,7 @@ import { KeywordClassifier, TemplatePlanner } from "@kargah/core/fakes";
 import { readTree } from "./fs.ts";
 import { demoScript } from "./demo.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
+import { cpaInit } from "./cpa/init.ts";
 import { report, runSpike, type SpikeDataset, type SpikeMode } from "./spike/jev.ts";
 
 function option(args: readonly string[], name: string): string | undefined {
@@ -120,6 +121,28 @@ async function spikeJev(args: readonly string[]): Promise<number> {
   return 0;
 }
 
+async function llmCheck(args: readonly string[]): Promise<number> {
+  const prompt = positional(args)[2] ?? "Add an item to a todo list";
+  const { llmFromEnv } = await import("@kargah/adapters/anthropic");
+  const { LlmPlanner } = await import("@kargah/adapters/llm-planner");
+  const { LlmReviewer } = await import("@kargah/adapters/llm-reviewer");
+  const llm = llmFromEnv(process.env);
+  const model = option(args, "model") ?? process.env["PLANNER_MODEL"] ?? "claude-opus-5-5";
+  const planner = new LlmPlanner(llm, model);
+  const started = Date.now();
+  const triage = await planner.triage({ prompt, spec: [] });
+  process.stdout.write(`triage via ${llm.via} ${model}: ${triage.intent} (${triage.confidence.toFixed(2)}) ${triage.reason}\n`);
+  const plan = await planner.plan({ prompt, spec: [], intent: "new_feature", featureId: null, changeKind: null });
+  process.stdout.write(`plan: ${plan.feature.id} with ${plan.feature.acceptance.length} acceptance criteria and ${plan.items.length} work items\n`);
+  const fixture = readTree(join(REPO_ROOT, "core", "test", "fixtures", "todo"));
+  const spec = parseFeature(readFileSync(join(REPO_ROOT, "core", "test", "fixtures", "todo-add.md"), "utf8"));
+  if (!spec.ok) throw new Error(spec.errors.join("\n"));
+  const verdict = await new LlmReviewer(llm, option(args, "model") ?? process.env["REVIEWER_MODEL"] ?? model).review({ feature: spec.spec, diff: fixture, checksLog: "" });
+  process.stdout.write(`review of the todo fixture: ${verdict.approve ? "approved" : `rejected: ${verdict.reasons.join("; ")}`}\n`);
+  process.stdout.write(`done in ${((Date.now() - started) / 1000).toFixed(1)}s\n`);
+  return 0;
+}
+
 async function main(args: readonly string[]): Promise<number> {
   const [command, sub] = args;
   if (command === "spec" && sub === "lint") return specLint(positional(args)[2] ?? "spec");
@@ -130,7 +153,13 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "route" && sub) return route(positional(args)[1] as string, option(args, "spec"));
   if (command === "demo") return demo(args);
   if (command === "spike" && sub === "jev") return spikeJev(args);
-  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md]\n");
+  if (command === "llm" && sub === "check") return llmCheck(args);
+  if (command === "cpa" && sub === "init") {
+    const result = cpaInit(REPO_ROOT);
+    process.stdout.write(`${result.created ? "created" : "kept"} the local CPA key\nconfig: ${result.config}\nworker vars: ${result.devVars}\n`);
+    return 0;
+  }
+  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md] | kargah llm check [prompt] [--model id] | kargah cpa init\n");
   return 2;
 }
 

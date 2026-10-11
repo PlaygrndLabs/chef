@@ -31,7 +31,10 @@ pnpm run verify                                      # typecheck, lint, spec lin
 node --import tsx cli/src/bin.ts demo                # one feature through every state with real tsc, tests and proof
 node --import tsx cli/src/bin.ts route "fix the add button"
 node --import tsx cli/src/bin.ts spike jev           # Jev routing spike; uses Jev when TYPESAFE_API_KEY is set
+node --import tsx cli/src/bin.ts llm check           # planner and reviewer through the local CPA, see dev/cpa/README.md
 ```
+
+The planner and reviewer reach Claude through CPA (CLIProxyAPI) with a subscription login, set by `CPA_BASE_URL` and `CPA_API_KEY`. `ANTHROPIC_API_KEY` is used only when `CPA_BASE_URL` is not set.
 
 ## Deploy to a fresh Cloudflare account
 
@@ -40,7 +43,8 @@ node --import tsx cli/src/bin.ts spike jev           # Jev routing spike; uses J
 
    ```
    cd workers
-   npx wrangler secret put ANTHROPIC_API_KEY
+   npx wrangler secret put CPA_BASE_URL            # CPA reachable from Cloudflare, see dev/cpa/README.md
+   npx wrangler secret put CPA_API_KEY
    npx wrangler secret put TYPESAFE_API_KEY
    npx wrangler secret put COPILOT_GITHUB_TOKEN    # a GitHub identity with Copilot access
    npx wrangler secret put CF_ACCOUNT_ID
