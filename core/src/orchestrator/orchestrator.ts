@@ -56,6 +56,7 @@ export interface GateOutcome {
   readonly ok: boolean;
   readonly checks: readonly CheckResult[];
   readonly requeue?: boolean;
+  readonly reverted?: { readonly commitId: string; readonly revertId: string; readonly log: string };
 }
 
 export class Orchestrator {
@@ -69,6 +70,7 @@ export class Orchestrator {
   private readonly resolvers: Readonly<Record<string, Resolver>>;
   private readonly unsubscribe: () => void;
   private readonly running = new Set<string>();
+  private readonly syncAfterRun = new Set<string>();
 
   constructor(
     private readonly deps: Deps,
@@ -135,6 +137,7 @@ export class Orchestrator {
       verdict: null,
       lastCodeItem: null,
       syncPending: false,
+      merge: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -281,7 +284,8 @@ export class Orchestrator {
     if (record.machine.state !== "gating") return;
     if (outcome.ok) {
       await this.apply(record, { type: "gate_passed" });
-      await this.emit({ type: "main.merged", sessionId: record.id, featureId: record.featureId, commitId: record.baseMain as string });
+      await this.emit({ type: "main.merged", sessionId: record.id, featureId: record.featureId, commitId: outcome.reverted?.commitId ?? (record.baseMain as string) });
+      if (outcome.reverted) await this.reopen(record, outcome.reverted.revertId, outcome.reverted.log);
     } else {
       await this.apply(record, { type: "gate_failed", log: formatChecks(outcome.checks.filter((c) => !c.ok)) });
     }
@@ -298,7 +302,7 @@ export class Orchestrator {
     if (checks.some((c) => !c.ok)) return { ok: false, checks };
     return this.mergeQueue.run(async () => {
       const mainHead = await this.deps.repos.resolveRef(this.canonical, "main");
-      if (mainHead !== record.baseMain) {
+      if (!mainHead || mainHead !== record.baseMain) {
         record.syncPending = true;
         return { ok: false, checks, requeue: true };
       }
@@ -309,31 +313,50 @@ export class Orchestrator {
         return { ok: false, checks, requeue: true };
       }
       record.baseMain = outcome.commitId;
-      return { ok: true, checks };
+      record.merge = { commitId: outcome.commitId, mainBefore: mainHead };
+      const verified = await this.verifyMain(outcome.commitId);
+      if (verified.ok) return { ok: true, checks };
+      const revertId = await this.revertLocked(record.featureId, outcome.commitId, mainHead, verified.log);
+      return { ok: true, checks, reverted: { commitId: outcome.commitId, revertId, log: verified.log } };
     });
   }
 
+  private async verifyMain(commitId: string): Promise<{ ok: boolean; log: string }> {
+    const commit = await this.commitOf(this.canonical, commitId);
+    const results = await this.deps.checks.run({ repo: this.canonical, commitId, tree: commit.tree });
+    const failed = results.filter((c) => !c.ok);
+    return { ok: failed.length === 0, log: failed.length ? `main went red after merging ${commitId.slice(0, 12)}\n\n${formatChecks(failed)}` : "main green" };
+  }
+
+  private async revertLocked(featureId: string, mergedCommit: string, mainBefore: string, log: string): Promise<string> {
+    const head = await this.deps.repos.resolveRef(this.canonical, "main");
+    if (!head) throw new Error("main has no head to revert");
+    const revertId = await this.main.revert({ to: mainBefore, expectedHead: head, message: `Revert ${featureId}: main went red`, author: this.config.author });
+    await this.emit({ type: "main.reverted", featureId, revertedCommit: mergedCommit, commitId: revertId, log });
+    return revertId;
+  }
+
+  private async reopen(record: SessionRecord, revertId: string, log: string): Promise<void> {
+    record.baseMain = revertId;
+    record.merge = null;
+    record.syncPending = false;
+    await this.apply(record, { type: "reopened", log });
+    await this.reforkAfterRevert(record, revertId);
+  }
+
   async revertMerge(mergedCommit: string, log: string): Promise<string | null> {
-    return this.mergeQueue.run(async () => {
-      const head = await this.deps.repos.resolveRef(this.canonical, "main");
-      const commit = head ? await this.deps.repos.readCommit(this.canonical, mergedCommit) : null;
-      if (!head || !commit) return null;
-      const before = await this.mainParentBefore(mergedCommit);
+    const owner = (await this.sessions()).find((s) => s.merge?.commitId === mergedCommit) ?? null;
+    const revertId = await this.mergeQueue.run(async () => {
+      const before = owner?.merge?.mainBefore ?? (await this.mainParentBefore(mergedCommit));
       if (!before) return null;
       const note = parseNote(await this.deps.repos.readNote(this.canonical, NOTES_NAMESPACE, mergedCommit));
-      const revertId = await this.main.revert({ to: before, expectedHead: head, message: `Revert ${note?.feature ?? mergedCommit}: main went red`, author: this.config.author });
-      await this.emit({ type: "main.reverted", featureId: note?.feature ?? "unknown", revertedCommit: mergedCommit, commitId: revertId, log });
-      const sessions = await this.sessions();
-      const owner = sessions.find((s) => s.head === mergedCommit || s.commits.includes(mergedCommit));
-      if (owner) {
-        owner.baseMain = revertId;
-        owner.syncPending = false;
-        await this.apply(owner, { type: "reopened", log });
-        await this.reforkAfterRevert(owner, revertId);
-        await this.save(owner);
-      }
-      return revertId;
+      return this.revertLocked(owner?.featureId ?? note?.feature ?? "unknown", mergedCommit, before, log);
     });
+    if (revertId && owner) {
+      await this.reopen(owner, revertId, log);
+      await this.save(owner);
+    }
+    return revertId;
   }
 
   private async reforkAfterRevert(record: SessionRecord, revertId: string): Promise<void> {
@@ -346,8 +369,13 @@ export class Orchestrator {
       const restore = diffTrees(merged.tree, (await this.commitOf(record.fork, record.head)).tree);
       record.head = outcome.commitId;
       if (Object.keys(restore).length > 0 || revertCommit.id === outcome.commitId) {
-        const commit = await this.deps.repos.commit(token, { ref: "main", parent: record.head, changes: restore, message: `Restore ${record.featureId} work after revert`, author: this.config.author });
+        const path = specPath(record.featureId);
+        const restoredSpec = restore[path] ? readSpec({ [path]: restore[path] as string }).find((f) => f.id === record.featureId) : undefined;
+        const changes = restoredSpec?.status === "merged" ? { ...restore, [path]: renderFeature({ ...restoredSpec, status: "building" }) } : restore;
+        const commit = await this.deps.repos.commit(token, { ref: "main", parent: record.head, changes, message: `Restore ${record.featureId} work after revert`, author: this.config.author });
+        await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: commit.id, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Restore ${record.featureId} after revert ${revertId}`, runId: this.deps.ids.next("run"), model: "kargah-sync", paths: changedPaths(changes) })) });
         record.head = commit.id;
+        record.commits.push(commit.id);
       }
     } finally {
       await this.deps.repos.revokeToken(token);
@@ -434,46 +462,25 @@ export class Orchestrator {
     const mainHead = await this.deps.repos.resolveRef(this.canonical, "main");
     if (!mainHead || mainHead === record.baseMain) return "up-to-date";
     const outcome = await this.withToken(record.fork, (token) =>
-      this.deps.repos.merge(token, { into: "main", from: { repo: this.canonical, ref: "main" }, message: `Merge main into ${record.fork}`, author: this.config.author, resolvers: this.resolvers }),
+      this.deps.repos.merge(token, { into: "main", from: { repo: this.canonical, ref: "main" }, message: `Merge main into ${record.fork}`, author: this.config.author, resolvers: this.resolvers, onConflict: "commit-markers" }),
     );
-    if (outcome.status === "conflict") {
-      await this.emit({ type: "sync.conflict", sessionId: record.id, featureId: record.featureId, paths: outcome.paths, mainCommit: mainHead });
-      if (record.machine.state === "coding" || record.machine.state === "testing" || record.machine.state === "planning" || record.machine.state === "reviewing" || record.machine.state === "gating") {
-        record.baseMain = mainHead;
-        await this.forceMainIntoFork(record, mainHead, outcome.paths);
-        await this.apply(record, { type: "conflict", paths: outcome.paths });
-      }
-      return "conflict";
-    }
+    if (outcome.status === "conflict") throw new Error(`merge of main into ${record.fork} failed on ${outcome.paths.join(", ")}`);
     record.baseMain = mainHead;
     if (outcome.status === "up-to-date") return "up-to-date";
     record.head = outcome.commitId;
-    if (outcome.status === "merged") {
+    if (outcome.status === "merged" || outcome.status === "conflicted") {
+      const paths = outcome.status === "conflicted" ? outcome.paths : [];
       record.commits.push(outcome.commitId);
-      await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Merge main ${mainHead}`, runId: this.deps.ids.next("run"), model: "kargah-sync", paths: [] })) }));
+      await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Merge main ${mainHead}`, runId: this.deps.ids.next("run"), model: "kargah-sync", paths })) }));
+    }
+    if (outcome.status === "conflicted") {
+      await this.emit({ type: "sync.conflict", sessionId: record.id, featureId: record.featureId, paths: outcome.paths, mainCommit: mainHead });
+      await this.apply(record, { type: "conflict", paths: outcome.paths });
+      return "conflict";
     }
     await this.emit({ type: "sync.merged", sessionId: record.id, featureId: record.featureId, commitId: outcome.commitId, mainCommit: mainHead });
     await this.publishPreview(record);
     return "synced";
-  }
-
-  private async forceMainIntoFork(record: SessionRecord, mainHead: string, conflicts: readonly string[]): Promise<void> {
-    const main = await this.commitOf(this.canonical, mainHead);
-    const ours = await this.commitOf(record.fork, record.head);
-    const merged: Record<string, string | null> = {};
-    for (const path of conflicts) merged[path] = mergeMarkers(ours.tree[path], main.tree[path]);
-    const forkHead = await this.deps.repos.resolveRef(record.fork, "main");
-    const token = await this.deps.repos.createToken(record.fork, "write", this.ttl);
-    try {
-      const tree = applyChanges(main.tree, Object.fromEntries(Object.entries(diffTrees(main.tree, ours.tree)).filter(([path]) => !conflicts.includes(path))));
-      const changes = { ...diffTrees(ours.tree, tree), ...merged };
-      const commit = await this.deps.repos.commit(token, { ref: "main", parent: forkHead, changes, message: `Merge main into ${record.fork} with conflicts in ${conflicts.join(", ")}`, author: this.config.author });
-      await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: commit.id, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Merge main ${mainHead}`, runId: this.deps.ids.next("run"), model: "kargah-sync", paths: changedPaths(changes) })) });
-      record.head = commit.id;
-      record.commits.push(commit.id);
-    } finally {
-      await this.deps.repos.revokeToken(token);
-    }
   }
 
   private async coderTurn(record: SessionRecord, item: WorkItem, feedback: string | null): Promise<"committed" | "empty" | "rejected"> {
@@ -562,7 +569,11 @@ export class Orchestrator {
 
   private async markSyncPending(mainHead: string): Promise<void> {
     for (const record of await this.sessions()) {
-      if (isTerminal(record.machine.state) || record.machine.state === "queued" || record.baseMain === mainHead || this.running.has(record.id)) continue;
+      if (isTerminal(record.machine.state) || record.machine.state === "queued" || record.baseMain === mainHead) continue;
+      if (this.running.has(record.id)) {
+        this.syncAfterRun.add(record.id);
+        continue;
+      }
       const fresh = await this.session(record.id);
       fresh.syncPending = true;
       await this.save(fresh);
@@ -606,6 +617,7 @@ export class Orchestrator {
   private async save(record: SessionRecord): Promise<void> {
     const stored = await this.deps.store.get<SessionRecord>(`session/${record.id}`);
     if (stored?.syncPending && !this.running.has(record.id)) record.syncPending = true;
+    if (this.syncAfterRun.delete(record.id)) record.syncPending = true;
     await this.deps.store.put(`session/${record.id}`, record);
   }
 
@@ -622,10 +634,6 @@ function formatChecks(checks: readonly CheckResult[]): string {
 
 function firstLine(text: string): string {
   return (text.split("\n")[0] ?? "").slice(0, 72);
-}
-
-function mergeMarkers(ours: string | undefined, theirs: string | undefined): string {
-  return `<<<<<<< session\n${ours ?? ""}\n=======\n${theirs ?? ""}\n>>>>>>> main\n`;
 }
 
 export function specProblems(tree: Tree): string[] {

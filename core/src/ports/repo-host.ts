@@ -28,7 +28,8 @@ export type MergeOutcome =
   | { readonly status: "merged"; readonly commitId: string }
   | { readonly status: "up-to-date"; readonly commitId: string }
   | { readonly status: "fast-forward"; readonly commitId: string }
-  | { readonly status: "conflict"; readonly paths: readonly string[] };
+  | { readonly status: "conflict"; readonly paths: readonly string[] }
+  | { readonly status: "conflicted"; readonly commitId: string; readonly paths: readonly string[] };
 
 export interface MergeInput {
   readonly into: string;
@@ -36,6 +37,7 @@ export interface MergeInput {
   readonly message: string;
   readonly author: Author;
   readonly resolvers?: Readonly<Record<string, Resolver>>;
+  readonly onConflict?: "fail" | "commit-markers";
 }
 
 export interface PushedEvent {
