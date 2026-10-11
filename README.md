@@ -34,6 +34,7 @@ node --import tsx cli/src/bin.ts spike jev           # Jev routing spike; uses J
 node --import tsx cli/src/bin.ts bench               # 10-feature benchmark, Phase 2 versus Phase 3 settings, real checks
 node --import tsx cli/src/bin.ts bench --mode replay # learn on the benchmark, then replay it in a project seeded with that memory
 node --import tsx cli/src/bin.ts voice --say "Add an item to a todo list"   # spoken request end to end; --live uses GPT-Live with OPENAI_API_KEY
+node --import tsx cli/src/bin.ts tune data         # export reviewer examples from real benchmark runs into tune/data
 node --import tsx cli/src/bin.ts llm check           # planner and reviewer through the local CPA, see dev/cpa/README.md
 ```
 
@@ -68,4 +69,6 @@ The planner and reviewer reach Claude through CPA (CLIProxyAPI) with a subscript
 6. One-time: in the dashboard, connect the `demo` Artifacts repo to Workers Builds as the Worker `kargah-project` and turn on builds for preview branches.
 7. Open `https://<kargah-worker>/?project=demo` and send a prompt such as "Add an item to a todo list".
 
-Models are set in `workers/wrangler.jsonc` (`PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `JEV_MODEL`).
+Models are set in `workers/wrangler.jsonc` (`PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `JEV_MODEL`, `VOICE_MODEL`).
+
+Optional tuned reviewer: train it with `python tune/train.py` (see `tune/README.md`), upload it with `npx wrangler ai finetune create @cf/google/gemma-2b-it-lora kargah-reviewer tune/out/adapter`, and set the var `REVIEWER_LORA` to `kargah-reviewer`.

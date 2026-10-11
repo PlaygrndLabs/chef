@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { featureMapProblems, MEMORY_DIR, type CheckResult, type CheckRunner, type KargahEvent, type ProofRecord, type ProofRunner, type Tree } from "@kargah/core";
+import { exportOutcomes, featureMapProblems, MEMORY_DIR, type CheckResult, type CheckRunner, type KargahEvent, type ProofRecord, type ProofRunner, type ReviewExample, type Tree, type TurnExample } from "@kargah/core";
 import { parseTap, RULES_DIR } from "@kargah/core/checks";
 import { exec } from "../local/exec.ts";
 import { materialize } from "../local/materialize.ts";
@@ -19,6 +19,7 @@ export interface ItemResult {
   readonly sessions: number;
   readonly rejected: Readonly<Record<string, number>>;
   readonly picked: string | null;
+  readonly stuckReason: string | null;
 }
 
 export interface MemoryStats {
@@ -130,7 +131,13 @@ export async function runReplay(items: readonly BenchItem[], options: BenchOptio
   return [learning.result, replay.result];
 }
 
-async function runOnce(mode: BenchMode, items: readonly BenchItem[], options: BenchOptions): Promise<{ result: BenchResult; learned: Tree }> {
+export async function runForOutcomes(items: readonly BenchItem[], options: BenchOptions = {}): Promise<{ result: BenchResult; reviews: ReviewExample[]; turns: TurnExample[] }> {
+  const run = await runOnce("phase4", items, options);
+  const outcomes = await exportOutcomes({ log: run.world.bus.log, repos: run.world.repos, canonical: run.world.orchestrator.canonical, sessions: await run.world.orchestrator.sessions() });
+  return { result: run.result, ...outcomes };
+}
+
+async function runOnce(mode: BenchMode, items: readonly BenchItem[], options: BenchOptions): Promise<{ result: BenchResult; learned: Tree; world: ReturnType<typeof localWorld> }> {
   const started = Date.now();
   const nodeModules = join(REPO_ROOT, "template", "node_modules");
   const limiter = new Limiter(options.concurrency ?? 3);
@@ -138,7 +145,7 @@ async function runOnce(mode: BenchMode, items: readonly BenchItem[], options: Be
   const presets = new Map(items.map((item) => [promptFor(item), specFor(item)]));
   const specialization = SPECIALIZATION[mode];
   const proofs = new LimitedProofs(new LocalProofRunner(nodeModules, { now: () => Date.now() }), limiter);
-  const w = localWorld({ script: benchScript(items), presets, real: true, config: { specialization }, deps: { checks, proofs } });
+  const w = localWorld({ script: benchScript(items), presets, real: true, config: { specialization }, deps: { checks, proofs, clock: { now: () => Date.now() } } });
   await w.orchestrator.bootstrap({ ...templateTree(), ...(options.seed ?? {}) });
   for (const item of items) await w.orchestrator.submit(promptFor(item));
   const sessions = await w.orchestrator.drain(400);
@@ -149,6 +156,7 @@ async function runOnce(mode: BenchMode, items: readonly BenchItem[], options: Be
     for (const e of log) if (e.type === "turn.rejected" && e.featureId === item.id) rejected[e.rule] = (rejected[e.rule] ?? 0) + 1;
     const picked = log.find((e) => e.type === "attempt.picked" && e.featureId === item.id);
     const live = own.find((s) => s.machine.state !== "dropped") ?? own[0];
+    const stuck = log.findLast((e) => e.type === "session.stuck" && e.featureId === item.id);
     return {
       id: item.id,
       fault: item.fault,
@@ -158,6 +166,7 @@ async function runOnce(mode: BenchMode, items: readonly BenchItem[], options: Be
       sessions: own.length,
       rejected,
       picked: picked?.type === "attempt.picked" ? `attempt ${own.find((s) => s.id === picked.winner)?.attempt.index ?? "?"}` : null,
+      stuckReason: stuck?.type === "session.stuck" ? stuck.reason : null,
     };
   });
   const merges = results.reduce((n, r) => n + r.merges, 0);
@@ -178,7 +187,7 @@ async function runOnce(mode: BenchMode, items: readonly BenchItem[], options: Be
     checkRuns: checks.runs,
     seconds: Math.round((Date.now() - started) / 1000),
   };
-  return { result, learned };
+  return { result, learned, world: w };
 }
 
 async function memoryStats(w: ReturnType<typeof localWorld>, log: readonly KargahEvent[]): Promise<MemoryStats> {

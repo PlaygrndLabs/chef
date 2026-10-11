@@ -1,0 +1,32 @@
+{
+ "train": {
+  "items": 20,
+  "reviews": 35,
+  "approve": 20,
+  "reject": 15,
+  "outcomes": {
+   "reverted": 7,
+   "gate-failed": 8,
+   "merged": 20
+  },
+  "turns": 55,
+  "merges": 27,
+  "reverts": 7,
+  "seconds": 377
+ },
+ "heldout": {
+  "items": 10,
+  "reviews": 18,
+  "approve": 10,
+  "reject": 8,
+  "outcomes": {
+   "reverted": 6,
+   "gate-failed": 2,
+   "merged": 10
+  },
+  "turns": 28,
+  "merges": 16,
+  "reverts": 6,
+  "seconds": 110
+ }
+}
