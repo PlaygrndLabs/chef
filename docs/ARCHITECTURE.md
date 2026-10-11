@@ -29,7 +29,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 | `CheckRunner`, `ProofRunner` | `FakeCheckRunner`, `FakeProofRunner` | `LocalCheckRunner` and `LocalProofRunner` (`cli/src/local`), `SandboxCheckRunner` and `SandboxProofRunner` (`workers/src/sandbox-checks.ts`) |
 | `EventBus`, `KeyValueStore`, `Clock`, `IdSource` | memory versions | `DurableEventBus`, `DurableStore` in `workers/src` |
 
-The planner and reviewer call Claude through `adapters/src/anthropic.ts` with structured output validated by zod. Requests opt into server-side model fallbacks (`fallbacks: "default"`), so an overloaded model is retried on a fallback model by the API.
+The planner and reviewer call Claude through `adapters/src/anthropic.ts` with structured output validated by zod. `llmFromEnv` picks the endpoint: CPA (CLIProxyAPI with a Claude subscription login, `CPA_BASE_URL` and `CPA_API_KEY`) when it is configured, otherwise the Anthropic API with `ANTHROPIC_API_KEY`. Only the direct API path opts into server-side model fallbacks; CPA does not pass beta headers. The local CPA setup is in `dev/cpa`.
 
 ## Flow of one prompt
 

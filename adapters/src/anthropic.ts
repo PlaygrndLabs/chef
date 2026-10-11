@@ -1,28 +1,67 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
 
-export type MessagesClient = Pick<Anthropic, "beta">;
+export type MessagesClient = Pick<Anthropic, "messages" | "beta">;
 
-export function anthropicFromEnv(apiKey?: string): Anthropic {
-  return new Anthropic(apiKey ? { apiKey } : {});
+export interface LlmEndpoint {
+  readonly client: MessagesClient;
+  readonly via: "anthropic" | "cpa";
+  readonly serverFallbacks: boolean;
+}
+
+export interface LlmEnv {
+  readonly CPA_BASE_URL?: string | undefined;
+  readonly CPA_API_KEY?: string | undefined;
+  readonly ANTHROPIC_API_KEY?: string | undefined;
+}
+
+export function llmFromEnv(env: LlmEnv, fetchImpl?: typeof fetch): LlmEndpoint {
+  const options = fetchImpl ? { fetch: fetchImpl } : {};
+  if (env.CPA_BASE_URL) {
+    if (!env.CPA_API_KEY) throw new Error("CPA_BASE_URL is set but CPA_API_KEY is missing");
+    return { client: new Anthropic({ ...options, baseURL: env.CPA_BASE_URL.replace(/\/+$/, ""), apiKey: env.CPA_API_KEY }), via: "cpa", serverFallbacks: false };
+  }
+  if (!env.ANTHROPIC_API_KEY) throw new Error("set CPA_BASE_URL and CPA_API_KEY, or ANTHROPIC_API_KEY");
+  return { client: new Anthropic({ ...options, apiKey: env.ANTHROPIC_API_KEY }), via: "anthropic", serverFallbacks: true };
 }
 
 export class RefusedError extends Error {}
 
-export async function structured<S extends z.ZodType>(client: MessagesClient, input: { model: string; system: string; prompt: string; schema: S; effort?: "low" | "medium" | "high" | "xhigh" | "max" }): Promise<z.infer<S>> {
-  const response = await client.beta.messages.parse({
-    model: input.model,
-    max_tokens: 16000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    system: input.system,
-    output_config: { effort: input.effort ?? "high", format: betaZodOutputFormat(input.schema) },
-    messages: [{ role: "user", content: input.prompt }],
-  });
+export interface StructuredInput<S extends z.ZodType> {
+  readonly model: string;
+  readonly system: string;
+  readonly prompt: string;
+  readonly schema: S;
+  readonly effort?: "low" | "medium" | "high" | "xhigh" | "max";
+}
+
+interface ParsedLike {
+  readonly stop_reason: string | null;
+  readonly stop_details?: { readonly explanation?: string | null } | null;
+  readonly parsed_output?: unknown;
+}
+
+function unwrap<S extends z.ZodType>(response: ParsedLike): z.infer<S> {
   if (response.stop_reason === "refusal") throw new RefusedError(`model declined: ${response.stop_details?.explanation ?? "no explanation"}`);
   if (response.parsed_output === null || response.parsed_output === undefined) throw new Error(`model returned no parsable output (stop_reason ${response.stop_reason})`);
   return response.parsed_output as z.infer<S>;
+}
+
+export async function structured<S extends z.ZodType>(endpoint: LlmEndpoint, input: StructuredInput<S>): Promise<z.infer<S>> {
+  const common = { model: input.model, max_tokens: 16000, system: input.system, messages: [{ role: "user" as const, content: input.prompt }] };
+  if (endpoint.serverFallbacks) {
+    const response = await endpoint.client.beta.messages.parse({
+      ...common,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      output_config: { effort: input.effort ?? "high", format: betaZodOutputFormat(input.schema) },
+    });
+    return unwrap<S>(response as ParsedLike);
+  }
+  const response = await endpoint.client.messages.parse({ ...common, output_config: { effort: input.effort ?? "high", format: zodOutputFormat(input.schema) } });
+  return unwrap<S>(response as ParsedLike);
 }

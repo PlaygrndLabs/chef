@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ReviewInput, ReviewVerdict, Reviewer } from "@kargah/core";
-import { DEFAULT_MODEL, structured, type MessagesClient } from "./anthropic.ts";
+import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
 const VerdictSchema = z.object({ approve: z.boolean(), reasons: z.array(z.string()) });
 
@@ -8,7 +8,7 @@ const SYSTEM = `You review one feature's diff against its spec for kargah. Appro
 
 export class LlmReviewer implements Reviewer {
   constructor(
-    private readonly client: MessagesClient,
+    private readonly llm: LlmEndpoint,
     readonly model: string = DEFAULT_MODEL,
     private readonly maxDiffChars = 200_000,
   ) {}
@@ -19,7 +19,7 @@ export class LlmReviewer implements Reviewer {
       .join("\n\n");
     if (diff.length > this.maxDiffChars) return { approve: false, reasons: [`diff is ${diff.length} characters; split the feature so a review fits in ${this.maxDiffChars}`], model: this.model };
     diff = diff.trim();
-    const result = await structured(this.client, {
+    const result = await structured(this.llm, {
       model: this.model,
       system: SYSTEM,
       schema: VerdictSchema,

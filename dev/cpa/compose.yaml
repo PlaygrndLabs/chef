@@ -1,0 +1,29 @@
+name: kargah-cpa
+
+services:
+  cpa:
+    build: .
+    image: kargah-cpa:c76dfd4e
+    restart: unless-stopped
+    init: true
+    command: [./CLIProxyAPI, -config, /state/config.yaml]
+    ports:
+      - "127.0.0.1:8317:8317"
+    volumes:
+      - ./state/config.yaml:/state/config.yaml:ro
+      - ./state/auth:/auth
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --output, /dev/null, http://127.0.0.1:8317/healthz]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  login:
+    profiles: [login]
+    image: kargah-cpa:c76dfd4e
+    command: [./CLIProxyAPI, -config, /state/config.yaml, -claude-login, -no-browser]
+    ports:
+      - "127.0.0.1:54545:54545"
+    volumes:
+      - ./state/config.yaml:/state/config.yaml:ro
+      - ./state/auth:/auth
