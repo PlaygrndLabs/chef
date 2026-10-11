@@ -1,0 +1,6 @@
+packages:
+  - core
+  - cli
+  - workers
+  - apps/*
+  - template

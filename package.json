@@ -1,0 +1,26 @@
+{
+  "name": "kargah",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --no-bail typecheck",
+    "lint": "eslint . && node --import tsx cli/src/bin.ts check --root . --rules no-comments",
+    "test": "vitest run --project unit",
+    "test:e2e": "vitest run --project e2e",
+    "spec:lint": "node --import tsx cli/src/bin.ts spec lint spec",
+    "ci": "pnpm typecheck && pnpm lint && pnpm spec:lint && pnpm test && pnpm test:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.5",
+    "eslint": "10.12.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "vitest": "5.0.3"
+  }
+}
