@@ -4,6 +4,7 @@ import { JevClassifier } from "@kargah/adapters/jev";
 import { llmFromEnv } from "@kargah/adapters/anthropic";
 import { LlmPlanner } from "@kargah/adapters/llm-planner";
 import { LlmReviewer } from "@kargah/adapters/llm-reviewer";
+import { WorkersAiReviewer, type TextGenerator } from "@kargah/adapters/workers-ai-reviewer";
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@kargah/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@kargah/adapters/gpt-live";
 import { WorkersBuildsPreviewHost } from "@kargah/adapters/workers-previews";
@@ -28,13 +29,14 @@ export class ProjectAgent extends Agent<Env> {
     const repos = new ArtifactsRepoHost(bindingControl(env.ARTIFACTS as unknown as ArtifactsBindingLike));
     const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message));
     const llm = llmFromEnv(env);
+    const llmReviewer = new LlmReviewer(llm, env.REVIEWER_MODEL);
     const orchestrator = new Orchestrator(
       {
         repos,
         coder: new SandboxCoder(env.SESSION),
         classifier: new JevClassifier(new TypeSafeClient({ apiKey: env.TYPESAFE_API_KEY, defaultModel: env.JEV_MODEL }), env.JEV_MODEL),
         planner: new LlmPlanner(llm, env.PLANNER_MODEL),
-        reviewer: new LlmReviewer(llm, env.REVIEWER_MODEL),
+        reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
         previews: new WorkersBuildsPreviewHost({ accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN, workerName: `${env.PREVIEW_WORKER}` }),
         checks: new SandboxCheckRunner(env.SESSION, repos),
         proofs: new SandboxProofRunner(env.SESSION, repos),

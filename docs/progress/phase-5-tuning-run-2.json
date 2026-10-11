@@ -1,0 +1,356 @@
+{
+  "base_model": "unsloth/gemma-2b-it",
+  "workers_ai_base": "@cf/google/gemma-2b-it-lora",
+  "train_examples": 35,
+  "heldout_examples": 18,
+  "training": {
+    "epochs": 4,
+    "lr": 0.0005,
+    "rank": 8,
+    "accumulate": 1,
+    "seed": 7,
+    "history": [
+      {
+        "epoch": 1,
+        "loss": 3.6339
+      },
+      {
+        "epoch": 2,
+        "loss": 0.4192
+      },
+      {
+        "epoch": 3,
+        "loss": 0.2618
+      },
+      {
+        "epoch": 4,
+        "loss": 0.1913
+      }
+    ],
+    "seconds": 1153
+  },
+  "tuned": {
+    "metrics": {
+      "examples": 18,
+      "accuracy": 0.556,
+      "bad_changes_caught": "0/8",
+      "good_changes_approved": "10/10",
+      "bad_changes_approved": 8,
+      "good_changes_rejected": 0
+    },
+    "seconds": 127,
+    "predictions": [
+      {
+        "id": "s1-2b368ad41062",
+        "featureId": "sentence-case",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\nreject: the implementation does not pass its"
+      },
+      {
+        "id": "s2-e6e7d0b54ccb",
+        "featureId": "count-a",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\n```\napprove\n\nreject"
+      },
+      {
+        "id": "s3-dc9dd79a0510",
+        "featureId": "trim-dots",
+        "outcome": "gate-failed",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\nreject: the implementation does not pass its"
+      },
+      {
+        "id": "s4-93d112bb061f",
+        "featureId": "first-char",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve\nreject: the implementation does not pass its tests\n\napprove\nreject: the implementation does"
+      },
+      {
+        "id": "s5-2f2ecca8bbf6",
+        "featureId": "even-length",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\nreject: the implementation does not pass its tests\n\napprove\nreject: the implementation does"
+      },
+      {
+        "id": "s6-908df8c77775",
+        "featureId": "dashes-to-spaces",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\nreject: the implementation does not pass its"
+      },
+      {
+        "id": "s7-8e0aa56ece03",
+        "featureId": "middle-char",
+        "outcome": "gate-failed",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve\n\napprove\n\nreject: the implementation does not pass its tests\nreject: the"
+      },
+      {
+        "id": "s8-fee1d600da16",
+        "featureId": "sum-numbers",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\nreject: the implementation does not pass its"
+      },
+      {
+        "id": "s9-9e220a34a63a",
+        "featureId": "has-digit",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\nreject: the implementation does not pass its tests\n\napprove\nreject: the implementation does"
+      },
+      {
+        "id": "s10-a96c4c6250bc",
+        "featureId": "collapse-spaces",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\nreject: the implementation does not pass its"
+      },
+      {
+        "id": "s2-0761823c5100",
+        "featureId": "count-a",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\n\napprove\nreject: the"
+      },
+      {
+        "id": "s3-1ad54610ed39",
+        "featureId": "trim-dots",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\nreject: the implementation does not pass its"
+      },
+      {
+        "id": "s7-cb751ec91fec",
+        "featureId": "middle-char",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\nreject: the implementation does not pass its"
+      },
+      {
+        "id": "s1-9575ecc42da9",
+        "featureId": "sentence-case",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\nreject: the implementation does not pass its"
+      },
+      {
+        "id": "s4-f5b932a35095",
+        "featureId": "first-char",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\nreject: the implementation does not pass its tests\n\napprove\nreject: the implementation does"
+      },
+      {
+        "id": "s6-1d3d71fe982d",
+        "featureId": "dashes-to-spaces",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\n```\napprove\n\nreject"
+      },
+      {
+        "id": "s8-19266ce09e18",
+        "featureId": "sum-numbers",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: a case the acceptance criteria imply is not handled or not tested\nreject: a"
+      },
+      {
+        "id": "s10-7d0a7938afbc",
+        "featureId": "collapse-spaces",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve\n\nreject: the implementation does not pass its tests\nreject: the implementation does not pass its"
+      }
+    ]
+  },
+  "tuned_on_train": {
+    "metrics": {
+      "examples": 35,
+      "accuracy": 0.571,
+      "bad_changes_caught": "0/15",
+      "good_changes_approved": "20/20",
+      "bad_changes_approved": 15,
+      "good_changes_rejected": 0
+    }
+  },
+  "base": {
+    "metrics": {
+      "examples": 18,
+      "accuracy": 0.556,
+      "bad_changes_caught": "0/8",
+      "good_changes_approved": "10/10",
+      "bad_changes_approved": 8,
+      "good_changes_rejected": 0
+    },
+    "seconds": 152,
+    "predictions": [
+      {
+        "id": "s1-2b368ad41062",
+        "featureId": "sentence-case",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The code correctly capitalizes the first letter"
+      },
+      {
+        "id": "s2-e6e7d0b54ccb",
+        "featureId": "count-a",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly returns the number of occurrences"
+      },
+      {
+        "id": "s3-dc9dd79a0510",
+        "featureId": "trim-dots",
+        "outcome": "gate-failed",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The code removes the dot at the end"
+      },
+      {
+        "id": "s4-93d112bb061f",
+        "featureId": "first-char",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The function returns the first character of the"
+      },
+      {
+        "id": "s5-2f2ecca8bbf6",
+        "featureId": "even-length",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code covers all the acceptance criteria, including the cases each criterion implies, and the tests would fail on"
+      },
+      {
+        "id": "s6-908df8c77775",
+        "featureId": "dashes-to-spaces",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve. The code meets all the acceptance criteria, including the cases each criterion implies. The tests would fail on code that"
+      },
+      {
+        "id": "s7-8e0aa56ece03",
+        "featureId": "middle-char",
+        "outcome": "gate-failed",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The function correctly returns the middle character for"
+      },
+      {
+        "id": "s8-fee1d600da16",
+        "featureId": "sum-numbers",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly computes the sum of numbers"
+      },
+      {
+        "id": "s9-9e220a34a63a",
+        "featureId": "has-digit",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code covers all the acceptance criteria, including the cases each criterion implies, and the tests would fail on"
+      },
+      {
+        "id": "s10-a96c4c6250bc",
+        "featureId": "collapse-spaces",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The function correctly handles a POST request with"
+      },
+      {
+        "id": "s2-0761823c5100",
+        "featureId": "count-a",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly returns the number of occurrences"
+      },
+      {
+        "id": "s3-1ad54610ed39",
+        "featureId": "trim-dots",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The code removes the dot at the end"
+      },
+      {
+        "id": "s7-cb751ec91fec",
+        "featureId": "middle-char",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly returns the middle character for"
+      },
+      {
+        "id": "s1-9575ecc42da9",
+        "featureId": "sentence-case",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The code correctly capitalizes the first letter"
+      },
+      {
+        "id": "s4-f5b932a35095",
+        "featureId": "first-char",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The function returns the first character of the"
+      },
+      {
+        "id": "s6-1d3d71fe982d",
+        "featureId": "dashes-to-spaces",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: It correctly replaces a dash with a space"
+      },
+      {
+        "id": "s8-19266ce09e18",
+        "featureId": "sum-numbers",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly computes the sum of numbers"
+      },
+      {
+        "id": "s10-7d0a7938afbc",
+        "featureId": "collapse-spaces",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The test successfully verifies that POST /collapse"
+      }
+    ]
+  }
+}

@@ -309,7 +309,7 @@ export class Orchestrator {
     const base = await this.commitOf(this.canonical, record.baseMain);
     const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "" });
     record.verdict = { ...verdict, commitId: head.id };
-    await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons });
+    await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons, model: verdict.model, head: head.id, base: base.id });
     if (verdict.approve) await this.apply(record, { type: "review_approved" });
     else await this.apply(record, { type: "review_rejected", reasons: verdict.reasons });
   }

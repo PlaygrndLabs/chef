@@ -1,0 +1,352 @@
+{
+  "base_model": "unsloth/gemma-2b-it",
+  "workers_ai_base": "@cf/google/gemma-2b-it-lora",
+  "train_examples": 35,
+  "heldout_examples": 18,
+  "base": {
+    "metrics": {
+      "examples": 18,
+      "accuracy": 0.556,
+      "bad_changes_caught": "0/8",
+      "good_changes_approved": "10/10",
+      "bad_changes_approved": 8,
+      "good_changes_rejected": 0
+    },
+    "seconds": 152,
+    "predictions": [
+      {
+        "id": "s1-2b368ad41062",
+        "featureId": "sentence-case",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The code correctly capitalizes the first letter"
+      },
+      {
+        "id": "s2-e6e7d0b54ccb",
+        "featureId": "count-a",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly returns the number of occurrences"
+      },
+      {
+        "id": "s3-dc9dd79a0510",
+        "featureId": "trim-dots",
+        "outcome": "gate-failed",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The code removes the dot at the end"
+      },
+      {
+        "id": "s4-93d112bb061f",
+        "featureId": "first-char",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The function returns the first character of the"
+      },
+      {
+        "id": "s5-2f2ecca8bbf6",
+        "featureId": "even-length",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code covers all the acceptance criteria, including the cases each criterion implies, and the tests would fail on"
+      },
+      {
+        "id": "s6-908df8c77775",
+        "featureId": "dashes-to-spaces",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve. The code meets all the acceptance criteria, including the cases each criterion implies. The tests would fail on code that"
+      },
+      {
+        "id": "s7-8e0aa56ece03",
+        "featureId": "middle-char",
+        "outcome": "gate-failed",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The function correctly returns the middle character for"
+      },
+      {
+        "id": "s8-fee1d600da16",
+        "featureId": "sum-numbers",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly computes the sum of numbers"
+      },
+      {
+        "id": "s9-9e220a34a63a",
+        "featureId": "has-digit",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code covers all the acceptance criteria, including the cases each criterion implies, and the tests would fail on"
+      },
+      {
+        "id": "s10-a96c4c6250bc",
+        "featureId": "collapse-spaces",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The function correctly handles a POST request with"
+      },
+      {
+        "id": "s2-0761823c5100",
+        "featureId": "count-a",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly returns the number of occurrences"
+      },
+      {
+        "id": "s3-1ad54610ed39",
+        "featureId": "trim-dots",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The code removes the dot at the end"
+      },
+      {
+        "id": "s7-cb751ec91fec",
+        "featureId": "middle-char",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly returns the middle character for"
+      },
+      {
+        "id": "s1-9575ecc42da9",
+        "featureId": "sentence-case",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The code correctly capitalizes the first letter"
+      },
+      {
+        "id": "s4-f5b932a35095",
+        "featureId": "first-char",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The function returns the first character of the"
+      },
+      {
+        "id": "s6-1d3d71fe982d",
+        "featureId": "dashes-to-spaces",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: It correctly replaces a dash with a space"
+      },
+      {
+        "id": "s8-19266ce09e18",
+        "featureId": "sum-numbers",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n* AC1: The function correctly computes the sum of numbers"
+      },
+      {
+        "id": "s10-7d0a7938afbc",
+        "featureId": "collapse-spaces",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "Approve.\n\nThe code meets all the acceptance criteria:\n\n- AC1: The test successfully verifies that POST /collapse"
+      }
+    ]
+  },
+  "training": {
+    "epochs": 3,
+    "lr": 0.0002,
+    "rank": 8,
+    "accumulate": 4,
+    "seed": 7,
+    "history": [
+      {
+        "epoch": 1,
+        "loss": 9.1996
+      },
+      {
+        "epoch": 2,
+        "loss": 4.4844
+      },
+      {
+        "epoch": 3,
+        "loss": 3.0425
+      }
+    ],
+    "seconds": 1038
+  },
+  "tuned": {
+    "metrics": {
+      "examples": 18,
+      "accuracy": 0.5,
+      "bad_changes_caught": "6/8",
+      "good_changes_approved": "3/10",
+      "bad_changes_approved": 2,
+      "good_changes_rejected": 7
+    },
+    "seconds": 128,
+    "predictions": [
+      {
+        "id": "s1-2b368ad41062",
+        "featureId": "sentence-case",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve casó\nreject: the implementation does not pass the cases where the input is not a string."
+      },
+      {
+        "id": "s2-e6e7d0b54ccb",
+        "featureId": "count-a",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "reject",
+        "answer": "approveCaracteristiciCounta: async () => {\n  const { status, result } = await call(\"banana\");"
+      },
+      {
+        "id": "s3-dc9dd79a0510",
+        "featureId": "trim-dots",
+        "outcome": "gate-failed",
+        "label": "reject",
+        "predicted": "reject",
+        "answer": "approveCaracteristiciTrimDots:\n  - AC1: POST /trim-dots removes the dot at the end of the"
+      },
+      {
+        "id": "s4-93d112bb061f",
+        "featureId": "first-char",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "approve",
+        "answer": "approve casó\nreject: AssertionError({ expected: \"value must be a string\", actual: \"value\" });"
+      },
+      {
+        "id": "s5-2f2ecca8bbf6",
+        "featureId": "even-length",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve casó\n```typescript\nexport function compute(value: string): boolean {\n  return value.length %"
+      },
+      {
+        "id": "s6-908df8c77775",
+        "featureId": "dashes-to-spaces",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "reject",
+        "answer": "approveCaracteristici({\n  id: \"dashes-to-spaces\",\n  title: \"Replace dashes with spaces"
+      },
+      {
+        "id": "s7-8e0aa56ece03",
+        "featureId": "middle-char",
+        "outcome": "gate-failed",
+        "label": "reject",
+        "predicted": "reject",
+        "answer": "approveCaracteristici(feature.routes[0].handle)\n```typescript\nasync function call(value: unknown): Promise"
+      },
+      {
+        "id": "s8-fee1d600da16",
+        "featureId": "sum-numbers",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "reject",
+        "answer": "approveCaracteristici(feature.routes[0].handle)\n```typescript\nimport { test } from \"node:test"
+      },
+      {
+        "id": "s9-9e220a34a63a",
+        "featureId": "has-digit",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve casó\n```typescript\nimport { test } from \"node:test\";\nimport { createApp } from \"../../"
+      },
+      {
+        "id": "s10-a96c4c6250bc",
+        "featureId": "collapse-spaces",
+        "outcome": "reverted",
+        "label": "reject",
+        "predicted": "reject",
+        "answer": "approveCaracteristici({\n  id: \"collapse-spaces\",\n  title: \"Collapse runs of spaces\","
+      },
+      {
+        "id": "s2-0761823c5100",
+        "featureId": "count-a",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "reject",
+        "answer": "approveCaracteristici(async () => {\n  const app = createApp([feature], new MemoryStore());\n  await"
+      },
+      {
+        "id": "s3-1ad54610ed39",
+        "featureId": "trim-dots",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "reject",
+        "answer": "approveCaracteristici(feature.routes[0].handle)\n```typescript\nasync function call(value: unknown): Promise"
+      },
+      {
+        "id": "s7-cb751ec91fec",
+        "featureId": "middle-char",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "reject",
+        "answer": "approveCaracteristici({\n  id: \"middle-char\",\n  title: \"Get the middle character\","
+      },
+      {
+        "id": "s1-9575ecc42da9",
+        "featureId": "sentence-case",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "approve",
+        "answer": "approve casó\nreject: the implementation does not pass the cases that imply the acceptance criterion\nreject: the implementation does not"
+      },
+      {
+        "id": "s4-f5b932a35095",
+        "featureId": "first-char",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "reject",
+        "answer": "approveCaracteristici(async () => {\n  const app = createApp([feature], new MemoryStore());\n  await"
+      },
+      {
+        "id": "s6-1d3d71fe982d",
+        "featureId": "dashes-to-spaces",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "reject",
+        "answer": "approveCaracteristici({\n  id: \"dashes-to-spaces\",\n  title: \"Replace dashes with spaces"
+      },
+      {
+        "id": "s8-19266ce09e18",
+        "featureId": "sum-numbers",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "reject",
+        "answer": "approveCaracteristici(feature.routes[0].handle)\n```typescript\nasync function call(value: unknown): Promise"
+      },
+      {
+        "id": "s10-7d0a7938afbc",
+        "featureId": "collapse-spaces",
+        "outcome": "merged",
+        "label": "approve",
+        "predicted": "reject",
+        "answer": "approveCaracteristici({\n  id: \"collapse-spaces\",\n  title: \"Collapse runs of spaces\","
+      }
+    ]
+  },
+  "tuned_on_train": {
+    "metrics": {
+      "examples": 35,
+      "accuracy": 0.457,
+      "bad_changes_caught": "11/15",
+      "good_changes_approved": "5/20",
+      "bad_changes_approved": 4,
+      "good_changes_rejected": 15
+    }
+  }
+}

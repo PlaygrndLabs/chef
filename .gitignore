@@ -8,3 +8,4 @@ dist/
 coverage/
 .kargah/
 dev/cpa/state/
+tune/out/
