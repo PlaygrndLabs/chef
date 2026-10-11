@@ -1,7 +1,7 @@
-import type { ReviewInput, ReviewVerdict, Reviewer } from "../ports/reviewer.ts";
+import type { PickCandidate, PickInput, PickVerdict, ReviewInput, ReviewVerdict, Reviewer } from "../ports/reviewer.ts";
 
 export class RuleReviewer implements Reviewer {
-  readonly model = "fake-rule-reviewer";
+  readonly model: string = "fake-rule-reviewer";
   readonly reviews: ReviewInput[] = [];
 
   async review(input: ReviewInput): Promise<ReviewVerdict> {
@@ -17,4 +17,20 @@ export class RuleReviewer implements Reviewer {
     for (const [path, content] of Object.entries(input.diff)) if (content?.includes("<<<<<<<")) reasons.push(`unresolved conflict markers in ${path}`);
     return { approve: reasons.length === 0, reasons, model: this.model };
   }
+
+  async pick(input: PickInput): Promise<PickVerdict> {
+    const ranked = [...input.candidates].sort((a, b) => score(b) - score(a) || b.crossTests.passed - a.crossTests.passed || size(a) - size(b));
+    const winner = ranked[0];
+    if (!winner) throw new Error("no candidates to pick from");
+    const reasons = ranked.map((c) => `${c.sessionId}: ${c.crossTests.passed}/${c.crossTests.total} tests from every attempt pass, ${size(c)} changed lines`);
+    return { sessionId: winner.sessionId, reasons, model: this.model };
+  }
+}
+
+function score(candidate: PickCandidate): number {
+  return candidate.crossTests.total === 0 ? 0 : candidate.crossTests.passed / candidate.crossTests.total;
+}
+
+function size(candidate: PickCandidate): number {
+  return Object.values(candidate.diff).reduce((sum, content) => sum + (content?.split("\n").length ?? 1), 0);
 }

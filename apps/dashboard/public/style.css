@@ -42,7 +42,12 @@ a { color: var(--run); }
 .muted { color: var(--muted); }
 .pill { white-space: nowrap; display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; font-size: 12px; }
 .state-merged { color: var(--ok); }
-.state-stuck { color: var(--bad); }
+.state-stuck, .state-reverted { color: var(--bad); }
+.state-dropped { color: var(--muted); text-decoration: line-through; }
+.stats { display: flex; flex-wrap: wrap; gap: 12px; }
+.stat { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 120px; }
+.stat-value { font-size: 1.4em; font-weight: 600; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
 .state-queued { color: var(--muted); }
 .state-planning, .state-testing, .state-coding, .state-reviewing, .state-gating { color: var(--run); }
 .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }

@@ -6,7 +6,8 @@ import { ManualClock } from "@kargah/core/fakes";
 import { readTree } from "../../src/fs.ts";
 import { demoScript } from "../../src/demo.ts";
 import { LocalCheckRunner, LocalProofRunner } from "../../src/local/index.ts";
-import { generated, localWorld, REPO_ROOT, templateTree } from "../../src/world.ts";
+import { generated, localWorld, REPO_ROOT, stub, templateTree } from "../../src/world.ts";
+import type { Script } from "@kargah/core/fakes";
 
 const nodeModules = join(REPO_ROOT, "template", "node_modules");
 const fixture = readTree(join(REPO_ROOT, "core", "test", "fixtures", "todo"));
@@ -55,5 +56,29 @@ describe("local runners", () => {
     expect(sessionId).not.toBeNull();
     const record = await w.orchestrator.run(sessionId as string);
     expect(record.machine.state).toBe("merged");
+  });
+
+  it("rejects tests that pass before the feature exists, then merges real ones", async () => {
+    const prompt = "Add an item to a todo list";
+    const spec = parseFeature(readFileSync(join(REPO_ROOT, "core", "test", "fixtures", "todo-add.md"), "utf8"));
+    if (!spec.ok) throw new Error(spec.errors.join("\n"));
+    const real = demoScript(fixture);
+    const vacuous = ['import assert from "node:assert/strict";', 'import { test } from "node:test";', "", 'test("AC1: POST /todos adds an item and returns it", () => {', "  assert.equal(1, 1);", "});", ""].join("\n");
+    const script: Script = async (input, attempt) => {
+      const out = await real(input, attempt);
+      if (input.role === "test" && attempt === 1) return { ...out, changes: { ...out.changes, "features/todo-add/todo-add.test.ts": vacuous } };
+      return out;
+    };
+    const w = localWorld({ script, presets: new Map([[prompt, spec.spec]]), real: true, config: { specialization: { stub } } });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    const record = await w.orchestrator.run(sessionId as string);
+
+    expect(record.machine.state).toBe("merged");
+    const rejected = w.bus.log.filter((e) => e.type === "turn.rejected");
+    expect(rejected.map((e) => e.type === "turn.rejected" && [e.role, e.rule])).toEqual([["test", "red-tests"]]);
+    const retry = w.coder.turns.filter((t) => t.role === "test");
+    expect(retry).toHaveLength(2);
+    expect(retry[1]?.prompt).toContain("- AC1: POST /todos adds an item and returns it");
   });
 });

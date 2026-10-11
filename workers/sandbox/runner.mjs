@@ -20,7 +20,8 @@ const session = await client.createSession({
   model: job.model,
   workingDirectory: dir,
   onPermissionRequest: approveAll,
-  systemMessage: { mode: "append", content: `${job.instructions}\n\nYou may only change files matching:\n${job.writeScope.join("\n")}` },
+  customAgents: [{ ...job.agent, tools: job.agent.tools ?? undefined }],
+  agent: job.agent.name,
 });
 
 let summary = "";

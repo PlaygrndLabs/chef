@@ -8,12 +8,12 @@ import type { EventBus } from "../ports/event-bus.ts";
 import type { Planner, WorkItem } from "../ports/planner.ts";
 import type { PreviewHost } from "../ports/preview-host.ts";
 import type { PushedEvent, RepoHost, RepoToken } from "../ports/repo-host.ts";
-import type { Reviewer } from "../ports/reviewer.ts";
+import type { PickCandidate, Reviewer } from "../ports/reviewer.ts";
 import type { Clock, IdSource, KeyValueStore } from "../ports/runtime.ts";
-import { outOfScope, scopeFor, type Profiles } from "../profiles/profile.ts";
+import { customAgent, outOfScope, scopeFor, type Profiles } from "../profiles/profile.ts";
 import type { RouteDecision } from "../router/decision.ts";
 import { DEFAULT_ROUTER_CONFIG, Router, type RouterConfig } from "../router/router.ts";
-import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type SessionEvent } from "../session/machine.ts";
+import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type RejectionRule, type SessionEvent } from "../session/machine.ts";
 import type { SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
@@ -37,11 +37,20 @@ export interface Deps {
 
 export type Generators = Readonly<Record<string, (tree: Tree) => string>>;
 
+export interface Specialization {
+  readonly lockTests: boolean;
+  readonly attempts: number;
+  readonly stub: ((feature: FeatureSpec) => FileChanges) | null;
+}
+
+export const DEFAULT_SPECIALIZATION: Specialization = { lockTests: true, attempts: 1, stub: null };
+
 export interface ProjectConfig {
   readonly name: string;
   readonly author: Author;
   readonly profiles: Profiles;
   readonly generated: Generators;
+  readonly specialization?: Partial<Specialization>;
   readonly budget?: Budget;
   readonly router?: RouterConfig;
   readonly tokenTtlSeconds?: number;
@@ -50,6 +59,7 @@ export interface ProjectConfig {
 export interface SubmitResult {
   readonly decision: RouteDecision;
   readonly sessionId: string | null;
+  readonly sessionIds: readonly string[];
 }
 
 export interface GateOutcome {
@@ -65,6 +75,8 @@ export class Orchestrator {
   private readonly previews: PreviewPublisher;
   private readonly main: MainWriter;
   private readonly mergeQueue = new Mutex();
+  private readonly pickQueue = new Mutex();
+  private readonly specialization: Specialization;
   private readonly budget: Budget;
   private readonly ttl: number;
   private readonly resolvers: Readonly<Record<string, Resolver>>;
@@ -82,6 +94,7 @@ export class Orchestrator {
     this.previews = new PreviewPublisher(deps.repos, this.canonical, this.ttl);
     this.main = new MainWriter(deps.repos, this.canonical, this.ttl);
     this.budget = config.budget ?? DEFAULT_BUDGET;
+    this.specialization = { ...DEFAULT_SPECIALIZATION, ...config.specialization };
     const resolvers: Record<string, Resolver> = {};
     for (const [path, generate] of Object.entries(config.generated)) resolvers[path] = ({ merged }) => generate(merged);
     this.resolvers = resolvers;
@@ -110,40 +123,46 @@ export class Orchestrator {
     return { commitId, tree: commit?.tree ?? {} };
   }
 
-  async submit(prompt: string): Promise<SubmitResult> {
+  async submit(prompt: string, options: { readonly attempts?: number } = {}): Promise<SubmitResult> {
     const { tree } = await this.mainTree();
     const spec = readSpec(tree);
     const decision = await this.router.route(prompt, spec);
     await this.emit({ type: "route.decided", prompt, decision });
-    if (decision.intent === "question") return { decision, sessionId: null };
+    if (decision.intent === "question") return { decision, sessionId: null, sessionIds: [] };
     const plan = await this.deps.planner.plan({ prompt, intent: decision.intent, changeKind: decision.changeKind, featureId: decision.featureId, spec });
-    const sessionId = this.deps.ids.next("s");
-    const now = this.deps.clock.now();
-    const record: SessionRecord = {
-      id: sessionId,
-      project: this.config.name,
-      featureId: plan.feature.id,
-      fork: `${this.config.name}--${plan.feature.id}--${sessionId}`,
-      rootPrompt: prompt,
-      decision,
-      plan,
-      cursor: 0,
-      machine: initialMachine(now),
-      head: null,
-      baseMain: null,
-      commits: [],
-      preview: null,
-      firstPreviewCommit: null,
-      verdict: null,
-      lastCodeItem: null,
-      syncPending: false,
-      merge: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await this.save(record);
-    await this.emit({ type: "session.created", sessionId, featureId: record.featureId, fork: record.fork, reason: decision.reason });
-    return { decision, sessionId };
+    const attempts = Math.max(1, Math.floor(options.attempts ?? this.specialization.attempts));
+    const ids = Array.from({ length: attempts }, () => this.deps.ids.next("s"));
+    const group = ids[0] as string;
+    for (const [index, sessionId] of ids.entries()) {
+      const now = this.deps.clock.now();
+      const record: SessionRecord = {
+        id: sessionId,
+        project: this.config.name,
+        featureId: plan.feature.id,
+        fork: `${this.config.name}--${plan.feature.id}--${sessionId}`,
+        rootPrompt: prompt,
+        decision,
+        plan,
+        cursor: 0,
+        machine: initialMachine(now),
+        head: null,
+        baseMain: null,
+        commits: [],
+        preview: null,
+        firstPreviewCommit: null,
+        verdict: null,
+        lastCodeItem: null,
+        syncPending: false,
+        merge: null,
+        attempt: { group, index: index + 1, of: attempts },
+        previewKey: attempts > 1 ? `${plan.feature.id}--${sessionId}` : plan.feature.id,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await this.save(record);
+      await this.emit({ type: "session.created", sessionId, featureId: record.featureId, fork: record.fork, reason: decision.reason, attempt: record.attempt });
+    }
+    return { decision, sessionId: group, sessionIds: ids };
   }
 
   async session(id: string): Promise<SessionRecord> {
@@ -278,6 +297,13 @@ export class Orchestrator {
   }
 
   private async gating(record: SessionRecord): Promise<void> {
+    if (record.attempt.of > 1) {
+      const winner = await this.pickAttempt(record);
+      if (winner !== record.id) {
+        if (winner !== null) await this.apply(record, { type: "dropped", reason: `attempt ${winner} was picked` });
+        return;
+      }
+    }
     const outcome = await this.gate(record);
     if (outcome.requeue) return;
     await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: outcome.ok, checks: outcome.checks });
@@ -297,7 +323,8 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     const checks: CheckResult[] = [...(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }))];
     checks.push(await this.scopeCheck(record));
-    checks.push(this.verdictCheck(record));
+    if (this.specialization.lockTests) checks.push(await this.lockedCheck(record));
+    checks.push(await this.verdictCheck(record));
     checks.push(await this.proofCheck(record, head));
     if (checks.some((c) => !c.ok)) return { ok: false, checks };
     return this.mergeQueue.run(async () => {
@@ -316,7 +343,7 @@ export class Orchestrator {
       record.merge = { commitId: outcome.commitId, mainBefore: mainHead };
       const verified = await this.verifyMain(outcome.commitId);
       if (verified.ok) return { ok: true, checks };
-      const revertId = await this.revertLocked(record.featureId, outcome.commitId, mainHead, verified.log);
+      const { revertId } = await this.revertLocked(record.featureId, outcome.commitId, mainHead, verified.log);
       return { ok: true, checks, reverted: { commitId: outcome.commitId, revertId, log: verified.log } };
     });
   }
@@ -328,35 +355,57 @@ export class Orchestrator {
     return { ok: failed.length === 0, log: failed.length ? `main went red after merging ${commitId.slice(0, 12)}\n\n${formatChecks(failed)}` : "main green" };
   }
 
-  private async revertLocked(featureId: string, mergedCommit: string, mainBefore: string, log: string): Promise<string> {
+  private async revertLocked(featureId: string, mergedCommit: string, mainBefore: string, log: string): Promise<{ revertId: string; undone: string[] }> {
     const head = await this.deps.repos.resolveRef(this.canonical, "main");
     if (!head) throw new Error("main has no head to revert");
-    const revertId = await this.main.revert({ to: mainBefore, expectedHead: head, message: `Revert ${featureId}: main went red`, author: this.config.author });
-    await this.emit({ type: "main.reverted", featureId, revertedCommit: mergedCommit, commitId: revertId, log });
-    return revertId;
+    const before = await this.ancestors(mainBefore, new Set());
+    const later = [...(await this.ancestors(head, before))].filter((id) => id !== mergedCommit);
+    const reverted = await this.main.revert({ to: mainBefore, merged: mergedCommit, expectedHead: head, message: `Revert ${featureId}: main went red`, author: this.config.author, resolvers: this.resolvers });
+    await this.emit({ type: "main.reverted", featureId, revertedCommit: mergedCommit, commitId: reverted.commitId, log });
+    return { revertId: reverted.commitId, undone: reverted.cascaded ? later : [] };
   }
 
-  private async reopen(record: SessionRecord, revertId: string, log: string): Promise<void> {
+  private async ancestors(from: string, stop: ReadonlySet<string>, limit = 5000): Promise<Set<string>> {
+    const seen = new Set<string>();
+    const queue = [from];
+    while (queue.length > 0 && seen.size < limit) {
+      const id = queue.pop() as string;
+      if (seen.has(id) || stop.has(id)) continue;
+      seen.add(id);
+      const commit = await this.deps.repos.readCommit(this.canonical, id);
+      if (commit) queue.push(...commit.parents);
+    }
+    return seen;
+  }
+
+  private async reopen(record: SessionRecord, revertId: string, log: string, charged = true): Promise<void> {
     record.baseMain = revertId;
     record.merge = null;
     record.syncPending = false;
-    await this.apply(record, { type: "reopened", log });
+    await this.apply(record, { type: "reopened", log, charged });
     await this.reforkAfterRevert(record, revertId);
   }
 
   async revertMerge(mergedCommit: string, log: string): Promise<string | null> {
     const owner = (await this.sessions()).find((s) => s.merge?.commitId === mergedCommit) ?? null;
-    const revertId = await this.mergeQueue.run(async () => {
+    const outcome = await this.mergeQueue.run(async () => {
       const before = owner?.merge?.mainBefore ?? (await this.mainParentBefore(mergedCommit));
       if (!before) return null;
       const note = parseNote(await this.deps.repos.readNote(this.canonical, NOTES_NAMESPACE, mergedCommit));
       return this.revertLocked(owner?.featureId ?? note?.feature ?? "unknown", mergedCommit, before, log);
     });
-    if (revertId && owner) {
-      await this.reopen(owner, revertId, log);
+    if (!outcome) return null;
+    if (owner) {
+      await this.reopen(owner, outcome.revertId, log);
       await this.save(owner);
     }
-    return revertId;
+    const undone = new Set(outcome.undone);
+    for (const other of await this.sessions()) {
+      if (!other.merge || !undone.has(other.merge.commitId) || this.running.has(other.id)) continue;
+      await this.reopen(other, outcome.revertId, `Main was returned to before ${mergedCommit.slice(0, 12)} because reverting it alone conflicted with this feature's merge. Merge this feature again.\n\n${log}`, false);
+      await this.save(other);
+    }
+    return outcome.revertId;
   }
 
   private async reforkAfterRevert(record: SessionRecord, revertId: string): Promise<void> {
@@ -437,13 +486,89 @@ export class Orchestrator {
     return { name: "write-scope", ok: problems.length === 0, log: problems.join("\n") || `${record.commits.length} commits inside their roles' scopes` };
   }
 
-  private verdictCheck(record: SessionRecord): CheckResult {
+  private async lockedCheck(record: SessionRecord): Promise<CheckResult> {
+    const problems: string[] = [];
+    const locked = new Set<string>();
+    for (const commitId of record.commits) {
+      const commit = await this.commitOf(record.fork, commitId);
+      if (commit.parents.length !== 1) continue;
+      const note = parseNote(await this.deps.repos.readNote(record.fork, NOTES_NAMESPACE, commitId));
+      if (!note || note.kind === "sync" || note.kind === "merge") continue;
+      if (note.role === "test") {
+        for (const path of note.paths) locked.add(path);
+        continue;
+      }
+      const parent = await this.commitOf(record.fork, commit.parents[0] as string);
+      const touched = changedPaths(diffTrees(parent.tree, commit.tree)).filter((p) => locked.has(p) && !hasMarkers(parent.tree[p]));
+      if (touched.length > 0) problems.push(`${commitId.slice(0, 12)} (${note.role}) changed locked tests: ${touched.join(", ")}`);
+    }
+    return { name: "locked-tests", ok: problems.length === 0, log: problems.join("\n") || `${locked.size} locked test files untouched by coders` };
+  }
+
+  private async lockedPaths(record: SessionRecord): Promise<Set<string>> {
+    const locked = new Set<string>();
+    for (const commitId of record.commits) {
+      const note = parseNote(await this.deps.repos.readNote(record.fork, NOTES_NAMESPACE, commitId));
+      if (note?.role === "test") for (const path of note.paths) locked.add(path);
+    }
+    return locked;
+  }
+
+  private async verdictCheck(record: SessionRecord): Promise<CheckResult> {
     const verdict = record.verdict;
     if (!verdict) return { name: "review", ok: false, log: "no reviewer verdict" };
     if (!verdict.approve) return { name: "review", ok: false, log: verdict.reasons.join("\n") };
     const index = record.commits.indexOf(verdict.commitId);
     if (index < 0) return { name: "review", ok: false, log: "verdict is for a commit outside this session" };
-    return { name: "review", ok: true, log: `approved by ${verdict.model}` };
+    const coders = new Set<string>();
+    for (const commitId of record.commits) {
+      const note = parseNote(await this.deps.repos.readNote(record.fork, NOTES_NAMESPACE, commitId));
+      if (note && CODER_KINDS.has(note.kind)) coders.add(note.model);
+    }
+    if (coders.has(verdict.model)) return { name: "review", ok: false, log: `reviewer ran on ${verdict.model}, the same model that wrote the code; configure a different reviewer model` };
+    return { name: "review", ok: true, log: `approved by ${verdict.model}; code written by ${[...coders].join(", ") || "no coder"}` };
+  }
+
+  private async pickAttempt(record: SessionRecord): Promise<string | null> {
+    const winner = await this.pickQueue.run(async () => {
+      const key = `attempts/${record.attempt.group}`;
+      const decided = await this.deps.store.get<{ winner: string }>(key);
+      if (decided) return decided.winner;
+      const siblings = (await this.sessions()).filter((s) => s.attempt.group === record.attempt.group).map((s) => (s.id === record.id ? record : s));
+      const live = siblings.filter((s) => !isTerminal(s.machine.state));
+      if (live.some((s) => s.machine.state !== "gating")) return null;
+      const candidates = await this.crossTests(live);
+      const verdict = candidates.length === 1 ? { sessionId: record.id, reasons: ["only attempt still running"], model: "kargah" } : await this.deps.reviewer.pick({ feature: record.plan.feature, candidates });
+      await this.deps.store.put(key, { winner: verdict.sessionId });
+      await this.emit({ type: "attempt.picked", featureId: record.featureId, group: record.attempt.group, winner: verdict.sessionId, candidates: candidates.map((c) => ({ sessionId: c.sessionId, passed: c.crossTests.passed, total: c.crossTests.total })), reasons: verdict.reasons, model: verdict.model });
+      return verdict.sessionId;
+    });
+    if (winner === record.id && record.previewKey !== record.featureId) {
+      record.previewKey = record.featureId;
+      await this.publishPreview(record);
+    }
+    return winner;
+  }
+
+  private async crossTests(candidates: readonly SessionRecord[]): Promise<PickCandidate[]> {
+    const prefix = (record: SessionRecord) => `features/${record.featureId}/`;
+    const heads = await Promise.all(candidates.map(async (c) => ({ record: c, head: await this.commitOf(c.fork, c.head), base: await this.commitOf(this.canonical, c.baseMain) })));
+    const testsOf = (entry: (typeof heads)[number]) => Object.entries(entry.head.tree).filter(([path]) => path.startsWith(prefix(entry.record)) && path.endsWith(".test.ts"));
+    return Promise.all(
+      heads.map(async (entry) => {
+        const extra: Record<string, string> = {};
+        for (const other of heads) {
+          if (other === entry) continue;
+          for (const [path, content] of testsOf(other)) extra[path.replace(/\.test\.ts$/, `.attempt${other.record.attempt.index}.test.ts`)] = content;
+        }
+        const tree = this.regenerate(applyChanges(entry.head.tree, extra));
+        const names = Object.entries(tree).filter(([path]) => path.startsWith(prefix(entry.record)) && path.endsWith(".test.ts")).flatMap(([, content]) => testNames(content));
+        const results = await this.deps.checks.run({ repo: entry.record.fork, commitId: `${entry.head.id}+cross`, tree });
+        const test = results.find((r) => r.name === "test");
+        const score = scoreCases(test, names);
+        return { sessionId: entry.record.id, diff: diffTrees(entry.base.tree, entry.head.tree), crossTests: { sessionId: entry.record.id, ...score, log: test?.log ?? "no test check" } };
+      }),
+    );
   }
 
   private async proofCheck(record: SessionRecord, head: Commit): Promise<CheckResult> {
@@ -489,6 +614,7 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
     const scope = scopeFor(profile, feature);
+    const agent = customAgent(profile, record.featureId, scope);
     const readToken = await this.deps.repos.createToken(record.fork, "read", this.ttl);
     const info = await this.deps.repos.info(record.fork);
     const prompt = feedback ? `${item.prompt}\n\n${feedback}` : item.prompt;
@@ -502,6 +628,8 @@ export class Orchestrator {
         prompt,
         instructions: profile.instructions.replaceAll("{feature}", record.featureId),
         writeScope: scope,
+        agent,
+        attempt: { index: record.attempt.index, of: record.attempt.of },
         workspace: { repo: record.fork, remote: info?.remote ?? "", ref: "main", commitId: head.id, readToken: readToken.secret, tree: head.tree },
         onEvent: (event) => void this.emit({ type: "coder.event", sessionId: record.id, featureId: record.featureId, event }),
       });
@@ -512,15 +640,48 @@ export class Orchestrator {
     const generated = new Set(Object.keys(this.config.generated));
     const paths = changedPaths(result.changes).filter((p) => !generated.has(p));
     const outside = outOfScope(paths, scope);
-    if (outside.length > 0) {
-      await this.apply(record, { type: "turn_rejected", paths: outside, scope });
-      return "rejected";
+    if (outside.length > 0) return this.reject(record, item.role, "write-scope", outside, scope);
+    if (this.specialization.lockTests && item.role !== "test") {
+      const locked = await this.lockedPaths(record);
+      const touched = paths.filter((p) => locked.has(p) && !hasMarkers(head.tree[p]));
+      if (touched.length > 0) return this.reject(record, item.role, "locked-tests", touched, scope);
     }
     const tree = applyChanges(head.tree, result.changes);
+    if (item.kind === "test") {
+      const red = await this.redCheck(record, head, tree, feature);
+      if (red) return this.reject(record, item.role, "red-tests", red.paths, scope, red.detail);
+    }
     const changes = diffTrees(head.tree, this.regenerate(tree));
     if (Object.keys(changes).length === 0) return "empty";
     await this.commitTurn(record, { changes, role: item.role, kind: item.kind, workItem: item.id, prompt, model: result.model, runId: result.runId, message: `${item.kind}(${record.featureId}): ${firstLine(result.summary || item.prompt)}` });
     return "committed";
+  }
+
+  private async reject(record: SessionRecord, role: string, rule: RejectionRule, paths: readonly string[], scope: readonly string[], detail?: string): Promise<"rejected"> {
+    await this.emit({ type: "turn.rejected", sessionId: record.id, featureId: record.featureId, role, rule, paths });
+    await this.apply(record, { type: "turn_rejected", rule, paths, scope, ...(detail ? { detail } : {}) });
+    return "rejected";
+  }
+
+  private async redCheck(record: SessionRecord, head: Commit, candidate: Tree, feature: FeatureSpec): Promise<{ paths: string[]; detail: string } | null> {
+    const stub = this.specialization.stub;
+    if (!stub) return null;
+    const tests = changedPaths(diffTrees(head.tree, candidate)).filter((p) => p.endsWith(".test.ts") && candidate[p] !== undefined);
+    if (tests.length === 0) return null;
+    const fresh = tests.flatMap((p) => {
+      const before = new Set(testNames(head.tree[p] ?? ""));
+      return testNames(candidate[p] ?? "").filter((n) => !before.has(n));
+    });
+    if (fresh.length === 0) return null;
+    const missing = Object.fromEntries(Object.entries(stub(feature)).filter(([path]) => candidate[path] === undefined));
+    const tree = this.regenerate(applyChanges(candidate, missing));
+    const results = await this.deps.checks.run({ repo: record.fork, commitId: `${head.id}+red`, tree });
+    const test = results.find((r) => r.name === "test");
+    if (!test) return null;
+    if (!test.cases) return test.ok ? { paths: tests, detail: "The test suite passes without an implementation." } : null;
+    const passing = test.cases.filter((c) => c.ok && fresh.includes(c.name)).map((c) => c.name);
+    if (passing.length === 0) return null;
+    return { paths: tests, detail: `Passing without an implementation:\n${passing.map((n) => `- ${n}`).join("\n")}` };
   }
 
   private async commitTurn(record: SessionRecord, turn: { changes: FileChanges; role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; message: string }): Promise<void> {
@@ -555,7 +716,7 @@ export class Orchestrator {
 
   private async publishPreview(record: SessionRecord): Promise<void> {
     if (!record.head) return;
-    const branch = await this.previews.publish(record.featureId, record.head, record.fork);
+    const branch = await this.previews.publish(record.previewKey, record.head, record.fork);
     const deployment = await this.deps.previews.deploy({ repo: this.canonical, branch, commitId: record.head });
     record.preview = { url: deployment.url, commitId: record.head };
     record.firstPreviewCommit ??= record.head;
@@ -627,6 +788,24 @@ export class Orchestrator {
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+const CODER_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["test", "code", "fix", "refactor", "conflict"]);
+
+function hasMarkers(content: string | undefined): boolean {
+  return content?.includes("<<<<<<<") ?? false;
+}
+
+export function testNames(source: string): string[] {
+  return [...source.matchAll(/\b(?:test|it)\(\s*(["'`])((?:(?!\1).)*)\1/g)].map((m) => m[2] as string);
+}
+
+function scoreCases(test: CheckResult | undefined, names: readonly string[]): { passed: number; total: number } {
+  if (!test) return { passed: 0, total: 0 };
+  if (!test.cases) return { passed: test.ok ? 1 : 0, total: 1 };
+  const expected = new Set(names);
+  const passed = test.cases.filter((c) => c.ok && expected.has(c.name)).length;
+  return { passed: Math.min(passed, names.length), total: names.length };
+}
 
 function formatChecks(checks: readonly CheckResult[]): string {
   return checks.map((c) => `## ${c.name}: ${c.ok ? "ok" : "FAILED"}\n${c.log}`).join("\n\n");

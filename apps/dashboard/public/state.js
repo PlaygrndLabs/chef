@@ -1,5 +1,5 @@
 export function emptyState() {
-  return { lastSeq: 0, sessions: {}, order: [], merges: [], reverts: [], routes: [], log: [] };
+  return { lastSeq: 0, sessions: {}, order: [], merges: [], reverts: [], routes: [], picks: [], rejections: [], log: [] };
 }
 
 function session(state, event) {
@@ -16,6 +16,8 @@ function session(state, event) {
     verdict: null,
     gate: null,
     stuck: null,
+    attempt: null,
+    rejections: [],
     coder: [],
   };
   state.sessions[event.sessionId] = created;
@@ -55,6 +57,7 @@ export function apply(state, entry) {
       const s = session(state, event);
       s.fork = event.fork;
       s.reason = event.reason;
+      s.attempt = event.attempt ?? null;
       break;
     }
     case "session.state": {
@@ -76,13 +79,22 @@ export function apply(state, entry) {
       session(state, event).verdict = { approve: event.approve, reasons: event.reasons };
       break;
     case "gate.result":
-      session(state, event).gate = { ok: event.ok, failed: event.checks.filter((c) => !c.ok).map((c) => c.name) };
+      session(state, event).gate = { ok: event.ok, checks: event.checks.map((c) => ({ name: c.name, ok: c.ok })), failed: event.checks.filter((c) => !c.ok).map((c) => c.name) };
       break;
     case "main.merged":
       push(state.merges, { featureId: event.featureId, sessionId: event.sessionId, commitId: event.commitId, at: event.at }, 100);
       break;
     case "main.reverted":
       push(state.reverts, { featureId: event.featureId, revertedCommit: event.revertedCommit, commitId: event.commitId, at: event.at }, 100);
+      break;
+    case "turn.rejected": {
+      const rejection = { sessionId: event.sessionId, featureId: event.featureId, role: event.role, rule: event.rule, paths: event.paths, at: event.at };
+      push(session(state, event).rejections, rejection, 20);
+      push(state.rejections, rejection, 200);
+      break;
+    }
+    case "attempt.picked":
+      push(state.picks, { featureId: event.featureId, group: event.group, winner: event.winner, candidates: event.candidates, reasons: event.reasons, model: event.model, at: event.at }, 100);
       break;
     case "session.stuck": {
       const s = session(state, event);
@@ -105,11 +117,32 @@ export function features(state) {
     byFeature.set(s.featureId, list);
   }
   return [...byFeature].map(([id, sessions]) => {
-    const latest = sessions[sessions.length - 1];
-    const preview = [...sessions].reverse().find((s) => s.preview)?.preview ?? null;
-    const merged = state.merges.some((m) => m.featureId === id);
-    return { id, sessions, state: latest.state, preview, merged, stuck: sessions.filter((s) => s.state === "stuck") };
+    const live = sessions.filter((s) => s.state !== "dropped");
+    const latest = live[live.length - 1] ?? sessions[sessions.length - 1];
+    const preview = [...live].reverse().find((s) => s.preview)?.preview ?? null;
+    const merges = state.merges.filter((m) => m.featureId === id).length;
+    const reverts = state.reverts.filter((r) => r.featureId === id).length;
+    return { id, sessions, state: latest.state, preview, merged: merges > 0, merges, reverts, dropped: sessions.filter((s) => s.state === "dropped").length, stuck: sessions.filter((s) => s.state === "stuck") };
   });
+}
+
+export function metrics(state) {
+  const all = state.order.map((id) => state.sessions[id]);
+  const mergedFeatures = new Set(all.filter((s) => s.state === "merged").map((s) => s.featureId));
+  const byRule = {};
+  for (const r of state.rejections) byRule[r.rule] = (byRule[r.rule] ?? 0) + 1;
+  const stuckCount = all.filter((s) => s.state === "stuck").length;
+  return {
+    sessions: all.length,
+    mergedFeatures: mergedFeatures.size,
+    merges: state.merges.length,
+    reverts: state.reverts.length,
+    revertRate: state.merges.length ? state.reverts.length / state.merges.length : 0,
+    rejections: byRule,
+    picks: state.picks.length,
+    needsHuman: stuckCount,
+    humanActionsPerMergedFeature: mergedFeatures.size ? stuckCount / mergedFeatures.size : 0,
+  };
 }
 
 export function stuck(state) {

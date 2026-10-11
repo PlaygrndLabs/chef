@@ -1,13 +1,15 @@
 import { join } from "node:path";
 import { loadProfiles, Orchestrator, type Deps, type FeatureSpec, type ProjectConfig, type Tree } from "@kargah/core";
 import { FakeCheckRunner, FakeProofRunner, KeywordClassifier, MemoryEventBus, MemoryPreviewHost, MemoryRepoHost, MemoryStore, RuleReviewer, ScriptedCoder, SequentialIds, TemplatePlanner, TickingClock, type Script } from "@kargah/core/fakes";
-import { renderRegistry } from "@kargah/template/gen";
+import { renderRegistry, renderStub, stubPath } from "@kargah/template/gen";
 import { readTree } from "./fs.ts";
 import { LocalCheckRunner, LocalProofRunner } from "./local/runners.ts";
 
 export const REPO_ROOT = join(import.meta.dirname, "..", "..");
 
 export const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
+
+export const stub = (feature: FeatureSpec) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) });
 
 export function templateTree(): Tree {
   return readTree(join(REPO_ROOT, "template"));

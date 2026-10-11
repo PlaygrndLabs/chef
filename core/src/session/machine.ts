@@ -1,4 +1,4 @@
-export const SESSION_STATES = ["queued", "planning", "testing", "coding", "reviewing", "gating", "merged", "stuck"] as const;
+export const SESSION_STATES = ["queued", "planning", "testing", "coding", "reviewing", "gating", "merged", "stuck", "dropped"] as const;
 
 export type SessionState = (typeof SESSION_STATES)[number];
 
@@ -12,9 +12,12 @@ export type SessionEvent =
   | { readonly type: "gate_passed" }
   | { readonly type: "gate_failed"; readonly log: string }
   | { readonly type: "conflict"; readonly paths: readonly string[] }
-  | { readonly type: "turn_rejected"; readonly paths: readonly string[]; readonly scope: readonly string[] }
-  | { readonly type: "reopened"; readonly log: string }
+  | { readonly type: "turn_rejected"; readonly rule: RejectionRule; readonly paths: readonly string[]; readonly scope: readonly string[]; readonly detail?: string }
+  | { readonly type: "reopened"; readonly log: string; readonly charged?: boolean }
+  | { readonly type: "dropped"; readonly reason: string }
   | { readonly type: "fail"; readonly reason: string };
+
+export type RejectionRule = "write-scope" | "locked-tests" | "red-tests";
 
 export interface Budget {
   readonly maxAttempts: number;
@@ -49,6 +52,7 @@ const NEXT: Readonly<Record<SessionEvent["type"], Partial<Record<SessionState, S
   conflict: { planning: "coding", testing: "coding", coding: "coding", reviewing: "coding", gating: "coding" },
   turn_rejected: { testing: "testing", coding: "coding" },
   reopened: { merged: "coding", stuck: "coding" },
+  dropped: { planning: "dropped", testing: "dropped", coding: "dropped", reviewing: "dropped", gating: "dropped" },
   fail: { queued: "stuck", planning: "stuck", testing: "stuck", coding: "stuck", reviewing: "stuck", gating: "stuck" },
 };
 
@@ -62,7 +66,7 @@ export class InvalidTransition extends Error {
 }
 
 export function isTerminal(state: SessionState): boolean {
-  return state === "merged" || state === "stuck";
+  return state === "merged" || state === "stuck" || state === "dropped";
 }
 
 export function exceeded(usage: Usage, budget: Budget, now: number): string | null {
@@ -76,10 +80,10 @@ export function transition(current: MachineState, event: SessionEvent, budget: B
   let to = NEXT[event.type][current.state];
   if (event.type === "planned" && current.state === "planning" && event.withTests) to = "testing";
   if (!to) throw new InvalidTransition(current.state, event.type);
-  const retry = event.type === "review_rejected" || event.type === "gate_failed" || event.type === "conflict" || event.type === "reopened" || event.type === "turn_rejected";
+  const retry = event.type === "review_rejected" || event.type === "gate_failed" || event.type === "turn_rejected" || (event.type === "reopened" && event.charged !== false);
   const usage: Usage = retry ? { ...current.usage, attempts: current.usage.attempts + 1 } : current.usage;
   const feedback = feedbackOf(event) ?? (to === "coding" || to === "testing" ? current.feedback : null);
-  const reason = event.type === "fail" ? event.reason : event.type;
+  const reason = event.type === "fail" || event.type === "dropped" ? event.reason : event.type;
   if (to === "coding" || event.type === "turn_rejected") {
     const over = exceeded(usage, budget, now);
     if (over) return { state: "stuck", usage, feedback, reason: over };
@@ -96,7 +100,7 @@ function feedbackOf(event: SessionEvent): string | null {
     case "conflict":
       return `Merging main produced conflicts in:\n${event.paths.map((p) => `- ${p}`).join("\n")}`;
     case "turn_rejected":
-      return `Your last turn wrote outside your write scope and was discarded.\nRejected paths:\n${event.paths.map((p) => `- ${p}`).join("\n")}\nAllowed scope:\n${event.scope.map((p) => `- ${p}`).join("\n")}`;
+      return rejectionFeedback(event);
     case "reopened":
       return `Main went red after this feature merged and the merge was reverted:\n${event.log}`;
     default:
@@ -110,4 +114,16 @@ export function initialMachine(now: number): MachineState {
 
 export function addTokens(machine: MachineState, tokens: number): MachineState {
   return { ...machine, usage: { ...machine.usage, tokens: machine.usage.tokens + tokens } };
+}
+
+function rejectionFeedback(event: Extract<SessionEvent, { type: "turn_rejected" }>): string {
+  const paths = event.paths.map((p) => `- ${p}`).join("\n");
+  switch (event.rule) {
+    case "write-scope":
+      return `Your last turn wrote outside your write scope and was discarded.\nRejected paths:\n${paths}\nAllowed scope:\n${event.scope.map((p) => `- ${p}`).join("\n")}`;
+    case "locked-tests":
+      return `Your last turn changed tests the test agent wrote. They are locked, so the turn was discarded. Make the code pass them instead.\nLocked paths:\n${paths}`;
+    case "red-tests":
+      return `Your tests were discarded because some of them pass before the feature is implemented, so they do not test it. Make every new test exercise the feature through its entrypoint.\n${event.detail ?? ""}\nFiles:\n${paths}`.trim();
+  }
 }
