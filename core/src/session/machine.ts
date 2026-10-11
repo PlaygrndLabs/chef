@@ -82,7 +82,8 @@ export function transition(current: MachineState, event: SessionEvent, budget: B
   if (!to) throw new InvalidTransition(current.state, event.type);
   const retry = event.type === "review_rejected" || event.type === "gate_failed" || event.type === "turn_rejected" || (event.type === "reopened" && event.charged !== false);
   const usage: Usage = retry ? { ...current.usage, attempts: current.usage.attempts + 1 } : current.usage;
-  const feedback = feedbackOf(event) ?? (to === "coding" || to === "testing" ? current.feedback : null);
+  const carried = (to === "coding" || to === "testing") && event.type !== "tests_committed" && event.type !== "planned";
+  const feedback = feedbackOf(event) ?? (carried ? current.feedback : null);
   const reason = event.type === "fail" || event.type === "dropped" ? event.reason : event.type;
   if (to === "coding" || event.type === "turn_rejected") {
     const over = exceeded(usage, budget, now);

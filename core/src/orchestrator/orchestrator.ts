@@ -561,7 +561,7 @@ export class Orchestrator {
           if (other === entry) continue;
           for (const [path, content] of testsOf(other)) extra[path.replace(/\.test\.ts$/, `.attempt${other.record.attempt.index}.test.ts`)] = content;
         }
-        const tree = this.regenerate(applyChanges(entry.head.tree, extra));
+        const tree = focusTests(this.regenerate(applyChanges(entry.head.tree, extra)), entry.record.featureId);
         const names = Object.entries(tree).filter(([path]) => path.startsWith(prefix(entry.record)) && path.endsWith(".test.ts")).flatMap(([, content]) => testNames(content));
         const results = await this.deps.checks.run({ repo: entry.record.fork, commitId: `${entry.head.id}+cross`, tree });
         const test = results.find((r) => r.name === "test");
@@ -674,7 +674,7 @@ export class Orchestrator {
     });
     if (fresh.length === 0) return null;
     const missing = Object.fromEntries(Object.entries(stub(feature)).filter(([path]) => candidate[path] === undefined));
-    const tree = this.regenerate(applyChanges(candidate, missing));
+    const tree = focusTests(this.regenerate(applyChanges(candidate, missing)), record.featureId);
     const results = await this.deps.checks.run({ repo: record.fork, commitId: `${head.id}+red`, tree });
     const test = results.find((r) => r.name === "test");
     if (!test) return null;
@@ -797,6 +797,11 @@ function hasMarkers(content: string | undefined): boolean {
 
 export function testNames(source: string): string[] {
   return [...source.matchAll(/\b(?:test|it)\(\s*(["'`])((?:(?!\1).)*)\1/g)].map((m) => m[2] as string);
+}
+
+function focusTests(tree: Tree, featureId: string): Tree {
+  const own = `features/${featureId}/`;
+  return Object.fromEntries(Object.entries(tree).filter(([path]) => !path.endsWith(".test.ts") || path.startsWith(own)));
 }
 
 function scoreCases(test: CheckResult | undefined, names: readonly string[]): { passed: number; total: number } {
