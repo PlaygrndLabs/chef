@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { checkTree, formatProblems } from "@kargah/core/checks";
+import { checkTree, formatProblems, parseTap } from "@kargah/core/checks";
 import { lintSpecFiles, type CheckResult, type CheckRunner, type Clock, type ProofRecord, type ProofRunner, type Tree } from "@kargah/core";
 import { exec } from "./exec.ts";
 import { materialize } from "./materialize.ts";
@@ -8,6 +8,15 @@ const NODE_TS = ["--experimental-strip-types", "--no-warnings"];
 
 function tail(text: string, lines = 40): string {
   return text.trim().split("\n").slice(-lines).join("\n");
+}
+
+function failures(tap: string): string {
+  const lines = tap.split("\n");
+  const out: string[] = [];
+  lines.forEach((line, i) => {
+    if (/^\s*not ok \d+ - /.test(line)) out.push(line.trim(), ...lines.slice(i + 1, i + 12).filter((l) => /error:|expected|actual|message/i.test(l)).map((l) => l.trim()));
+  });
+  return out.join("\n");
 }
 
 export class LocalCheckRunner implements CheckRunner {
@@ -19,7 +28,7 @@ export class LocalCheckRunner implements CheckRunner {
       const tsc = join(this.nodeModules, "typescript", "bin", "tsc");
       const [typecheck, tests, generated] = await Promise.all([
         exec(process.execPath, [tsc, "-p", "tsconfig.json"], { cwd: work.dir }),
-        exec(process.execPath, ["--test", ...NODE_TS, "features/**/*.test.ts", "shared/**/*.test.ts", "app/**/*.test.ts"], { cwd: work.dir }),
+        exec(process.execPath, ["--test", "--test-reporter=tap", ...NODE_TS, "features/**/*.test.ts", "shared/**/*.test.ts", "app/**/*.test.ts"], { cwd: work.dir }),
         exec(process.execPath, [...NODE_TS, "app/cli.ts", "gen", "--check"], { cwd: work.dir }),
       ]);
       const code = checkTree(input.tree);
@@ -31,7 +40,7 @@ export class LocalCheckRunner implements CheckRunner {
         { name: "lint", ok: code.length === 0, log: formatProblems(code) || "no problems" },
         { name: "spec-lint", ok: spec.length === 0, log: spec.map((p) => `${p.path}: ${p.message}`).join("\n") || "spec ok" },
         { name: "generated", ok: generated.code === 0, log: tail(generated.stderr) || "generated files up to date" },
-        { name: "test", ok: tests.code === 0, log: tail(tests.stdout + tests.stderr) },
+        { name: "test", ok: tests.code === 0, log: tail(failures(tests.stdout) || tests.stdout + tests.stderr), cases: parseTap(tests.stdout) },
       ];
     } finally {
       await work.dispose();

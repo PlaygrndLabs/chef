@@ -6,7 +6,7 @@ import { LlmPlanner } from "@kargah/adapters/llm-planner";
 import { LlmReviewer } from "@kargah/adapters/llm-reviewer";
 import { WorkersBuildsPreviewHost } from "@kargah/adapters/workers-previews";
 import { isTerminal, loadProfiles, Orchestrator, type PushedEvent, type Tree } from "@kargah/core";
-import { renderRegistry } from "@kargah/template/gen";
+import { renderRegistry, renderStub, stubPath } from "@kargah/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
@@ -40,7 +40,13 @@ export class ProjectAgent extends Agent<Env> {
         ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
         store: new DurableStore(this.ctx.storage),
       },
-      { name: this.name, author: { name: "kargah", email: "ma.karimi76@gmail.com" }, profiles: loadProfiles(agentFiles), generated },
+      {
+        name: this.name,
+        author: { name: "kargah", email: "ma.karimi76@gmail.com" },
+        profiles: loadProfiles(agentFiles),
+        generated,
+        specialization: { attempts: Number(env.ATTEMPTS), stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
+      },
     );
     this.built = { orchestrator, bus, repos };
     return this.built;

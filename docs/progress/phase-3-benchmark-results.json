@@ -1,0 +1,236 @@
+[
+ {
+  "mode": "phase2",
+  "items": [
+   {
+    "id": "shout",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 2,
+    "reverts": 1,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "slug",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 2,
+    "reverts": 1,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "word-count",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 2,
+    "reverts": 1,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "reverse",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 2,
+    "reverts": 1,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "initials",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 2,
+    "reverts": 1,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "vowels",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 2,
+    "reverts": 1,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "title-case",
+    "fault": "gate-caught",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "digit-sum",
+    "fault": "gate-caught",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "truncate",
+    "fault": "none",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   },
+   {
+    "id": "palindrome",
+    "fault": "none",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 1,
+    "rejected": {},
+    "picked": null
+   }
+  ],
+  "merges": 16,
+  "reverts": 6,
+  "revertRate": 0.375,
+  "mergedFeatures": 10,
+  "stuck": 0,
+  "violationsOnMain": [],
+  "events": 554,
+  "checkRuns": 108,
+  "seconds": 114
+ },
+ {
+  "mode": "phase3",
+  "items": [
+   {
+    "id": "shout",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {
+     "red-tests": 2
+    },
+    "picked": "attempt 2"
+   },
+   {
+    "id": "slug",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {
+     "red-tests": 2
+    },
+    "picked": "attempt 2"
+   },
+   {
+    "id": "word-count",
+    "fault": "vacuous-test",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {
+     "red-tests": 2
+    },
+    "picked": "attempt 2"
+   },
+   {
+    "id": "reverse",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {},
+    "picked": "attempt 2"
+   },
+   {
+    "id": "initials",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {},
+    "picked": "attempt 2"
+   },
+   {
+    "id": "vowels",
+    "fault": "missed-edge",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {},
+    "picked": "attempt 2"
+   },
+   {
+    "id": "title-case",
+    "fault": "gate-caught",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {},
+    "picked": "attempt 1"
+   },
+   {
+    "id": "digit-sum",
+    "fault": "gate-caught",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {},
+    "picked": "attempt 1"
+   },
+   {
+    "id": "truncate",
+    "fault": "none",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {},
+    "picked": "attempt 1"
+   },
+   {
+    "id": "palindrome",
+    "fault": "none",
+    "state": "merged",
+    "merges": 1,
+    "reverts": 0,
+    "sessions": 2,
+    "rejected": {},
+    "picked": "attempt 1"
+   }
+  ],
+  "merges": 10,
+  "reverts": 0,
+  "revertRate": 0,
+  "mergedFeatures": 10,
+  "stuck": 0,
+  "violationsOnMain": [],
+  "events": 648,
+  "checkRuns": 81,
+  "seconds": 77
+ }
+]

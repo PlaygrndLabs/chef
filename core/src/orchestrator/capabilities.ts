@@ -1,4 +1,4 @@
-import type { Author, Resolver } from "../git/tree.ts";
+import { diffTrees, threeWayMerge, type Author, type Resolver } from "../git/tree.ts";
 import type { MergeOutcome, RepoHost } from "../ports/repo-host.ts";
 
 export class PreviewPublisher {
@@ -36,20 +36,21 @@ export class MainWriter {
     }
   }
 
-  async revert(input: { to: string; message: string; author: Author; expectedHead: string }): Promise<string> {
+  async revert(input: { to: string; merged: string; message: string; author: Author; expectedHead: string; resolvers?: Readonly<Record<string, Resolver>> }): Promise<{ commitId: string; cascaded: boolean }> {
     const token = await this.repos.createToken(this.canonical, "write", this.ttlSeconds);
     try {
       const head = await this.repos.resolveRef(this.canonical, "main");
       if (head !== input.expectedHead) throw new Error(`main moved from ${input.expectedHead} to ${head}`);
-      const target = await this.repos.readCommit(this.canonical, input.to);
+      const before = await this.repos.readCommit(this.canonical, input.to);
+      const merged = await this.repos.readCommit(this.canonical, input.merged);
       const current = head ? await this.repos.readCommit(this.canonical, head) : null;
-      if (!target || !current) throw new Error("cannot revert: commit missing");
-      const changes: Record<string, string | null> = {};
-      for (const path of new Set([...Object.keys(current.tree), ...Object.keys(target.tree)])) {
-        if (current.tree[path] !== target.tree[path]) changes[path] = target.tree[path] ?? null;
-      }
-      const commit = await this.repos.commit(token, { ref: "main", parent: head, changes, message: input.message, author: input.author });
-      return commit.id;
+      if (!before || !merged || !current) throw new Error("cannot revert: commit missing");
+      const inverse = threeWayMerge(merged.tree, current.tree, before.tree, input.resolvers ?? {});
+      const cascaded = inverse.conflicts.length > 0;
+      const target = cascaded ? before.tree : inverse.tree;
+      const message = cascaded ? `${input.message}\n\nReverting only ${input.merged} conflicted in ${inverse.conflicts.join(", ")}, so main returns to ${input.to}.` : input.message;
+      const commit = await this.repos.commit(token, { ref: "main", parent: head, changes: diffTrees(current.tree, target), message, author: input.author });
+      return { commitId: commit.id, cascaded };
     } finally {
       await this.repos.revokeToken(token);
     }

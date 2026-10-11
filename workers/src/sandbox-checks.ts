@@ -1,5 +1,5 @@
-import { checkTree, formatProblems } from "@kargah/core/checks";
-import { lintSpecFiles, type CheckResult, type CheckRunner, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@kargah/core";
+import { checkTree, formatProblems, parseTap } from "@kargah/core/checks";
+import { diffTrees, lintSpecFiles, type CheckResult, type CheckRunner, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@kargah/core";
 import type { ChecksJob, CommandResult } from "./session-agent.ts";
 
 type ChecksStub = { runChecks(job: ChecksJob): Promise<CommandResult[]> };
@@ -27,9 +27,12 @@ export class SandboxCheckRunner implements CheckRunner {
 
   async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
     const sessionId = sessionOf(input.repo);
-    const prepared = await job(this.repos, input.repo, input.commitId, [
+    const base = input.commitId.split("+")[0] as string;
+    const baseCommit = base === input.commitId ? null : await this.repos.readCommit(input.repo, base);
+    if (base !== input.commitId && !baseCommit) throw new Error(`unknown base commit ${base} in ${input.repo}`);
+    const prepared = await job(this.repos, input.repo, base, [
       { name: "typecheck", argv: ["npx", "tsc", "-p", "tsconfig.json"] },
-      { name: "test", argv: ["npm", "test", "--silent"] },
+      { name: "test", argv: ["node", "--test", "--test-reporter=tap", "--experimental-strip-types", "features/**/*.test.ts", "shared/**/*.test.ts", "app/**/*.test.ts"] },
       { name: "generated", argv: ["npm", "run", "--silent", "app", "--", "gen", "--check"] },
     ]);
     const stub = this.sessions.get(this.sessions.idFromName(sessionId)) as unknown as ChecksStub;
@@ -37,7 +40,7 @@ export class SandboxCheckRunner implements CheckRunner {
     try {
       const { token, ...rest } = prepared;
       void token;
-      results = await stub.runChecks({ ...rest, sessionId });
+      results = await stub.runChecks({ ...rest, sessionId, ...(baseCommit ? { overlay: diffTrees(baseCommit.tree, input.tree) } : {}) });
     } finally {
       await prepared.token();
     }
@@ -46,7 +49,7 @@ export class SandboxCheckRunner implements CheckRunner {
     for (const [path, content] of Object.entries(input.tree)) if (path.startsWith("spec/")) specFiles[path] = content;
     const spec = lintSpecFiles(specFiles).problems;
     return [
-      ...results.map((r) => ({ name: r.name, ok: r.code === 0, log: tail(`${r.stdout}\n${r.stderr}`) || `${r.name} ok` })),
+      ...results.map((r) => ({ name: r.name, ok: r.code === 0, log: tail(`${r.stdout}\n${r.stderr}`) || `${r.name} ok`, ...(r.name === "test" ? { cases: parseTap(r.stdout) } : {}) })),
       { name: "lint", ok: code.length === 0, log: formatProblems(code) || "no problems" },
       { name: "spec-lint", ok: spec.length === 0, log: spec.map((p) => `${p.path}: ${p.message}`).join("\n") || "spec ok" },
     ];

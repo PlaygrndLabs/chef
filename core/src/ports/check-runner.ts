@@ -1,9 +1,15 @@
 import type { Tree } from "../git/tree.ts";
 
+export interface TestCase {
+  readonly name: string;
+  readonly ok: boolean;
+}
+
 export interface CheckResult {
   readonly name: string;
   readonly ok: boolean;
   readonly log: string;
+  readonly cases?: readonly TestCase[];
 }
 
 export interface CheckRunner {

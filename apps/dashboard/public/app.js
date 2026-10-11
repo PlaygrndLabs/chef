@@ -1,4 +1,4 @@
-import { apply, emptyState, features, stuck } from "/state.js";
+import { apply, emptyState, features, metrics, stuck } from "/state.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -30,11 +30,51 @@ let project = "";
 let socket = null;
 let poller = null;
 
+const percent = (value) => `${Math.round(value * 100)}%`;
+
+function stat(label, value) {
+  return h("div", { class: "stat" }, h("div", { class: "stat-value" }, String(value)), h("div", { class: "muted" }, label));
+}
+
 function render() {
+  const m = metrics(state);
+  $("metrics").replaceChildren(
+    stat("merged features", m.mergedFeatures),
+    stat("merges", m.merges),
+    stat("reverts", m.reverts),
+    stat("revert rate", percent(m.revertRate)),
+    stat("human actions per merged feature", m.humanActionsPerMergedFeature.toFixed(2)),
+    stat("attempt picks", m.picks),
+    stat("rejected turns", Object.entries(m.rejections).map(([rule, count]) => `${rule} ${count}`).join(", ") || "0"),
+  );
   $("features").replaceChildren(
     ...features(state).map((f) =>
-      h("tr", null, h("td", null, h("code", null, f.id)), h("td", null, badge(f.state)), h("td", null, String(f.sessions.length)), h("td", null, link(f.preview?.url))),
+      h(
+        "tr",
+        null,
+        h("td", null, h("code", null, f.id)),
+        h("td", null, badge(f.state)),
+        h("td", null, String(f.sessions.length), f.dropped ? h("span", { class: "muted" }, ` (${f.dropped} dropped)`) : null),
+        h("td", null, `${f.merges} / ${f.reverts}`),
+        h("td", null, link(f.preview?.url)),
+      ),
     ),
+  );
+  $("picks").replaceChildren(
+    ...(state.picks.length
+      ? [...state.picks].reverse().map((p) =>
+          h(
+            "li",
+            null,
+            h("code", null, p.featureId),
+            " picked ",
+            h("code", null, short(p.winner)),
+            h("span", { class: "muted" }, ` by ${p.model}`),
+            h("div", null, p.candidates.map((c) => `${short(c.sessionId)} ${c.passed}/${c.total}`).join(", ")),
+            h("div", { class: "muted" }, p.reasons.join("; ")),
+          ),
+        )
+      : [h("li", { class: "muted" }, "No parallel attempts yet.")]),
   );
   const stuckSessions = stuck(state);
   $("stuck").replaceChildren(
@@ -49,12 +89,13 @@ function render() {
         "div",
         { class: "card" },
         h("div", null, h("code", null, s.featureId), " ", badge(s.state)),
-        h("div", { class: "muted" }, s.fork || short(s.id)),
+        h("div", { class: "muted" }, s.fork || short(s.id), s.attempt && s.attempt.of > 1 ? ` attempt ${s.attempt.index} of ${s.attempt.of}` : ""),
         h("div", null, s.reason),
         h("div", null, s.commits.length === 1 ? "1 commit" : `${s.commits.length} commits`, s.commits.length ? h("span", { class: "muted" }, ` last ${short(s.commits[s.commits.length - 1].id)}`) : null),
         h("div", null, "preview ", link(s.preview?.url)),
         s.verdict ? h("div", null, s.verdict.approve ? "review approved" : `review rejected: ${s.verdict.reasons.join("; ")}`) : null,
-        s.gate && !s.gate.ok ? h("div", { class: "state-stuck" }, `gate failed: ${s.gate.failed.join(", ")}`) : null,
+        s.gate ? h("div", { class: "checks" }, ...(s.gate.checks ?? []).map((c) => h("span", { class: `pill ${c.ok ? "state-merged" : "state-stuck"}` }, c.name))) : null,
+        s.rejections.length ? h("ul", { class: "list" }, ...s.rejections.map((r) => h("li", { class: "state-stuck" }, `${r.role} turn rejected (${r.rule}): ${r.paths.join(", ")}`))) : null,
         s.coder.length ? h("pre", null, s.coder.map((l) => `${l.kind === "text" ? "" : `[${l.kind}] `}${l.text}`).join("\n")) : null,
       );
     }),
@@ -62,7 +103,7 @@ function render() {
   $("merges").replaceChildren(
     ...[...state.merges.map((m) => ({ ...m, kind: "merged" })), ...state.reverts.map((r) => ({ ...r, kind: "reverted" }))]
       .sort((a, b) => b.at - a.at)
-      .map((m) => h("li", null, m.kind === "merged" ? badge("merged") : badge("stuck"), " ", h("code", null, m.featureId), " ", h("span", { class: "muted" }, short(m.commitId)), " ", new Date(m.at).toLocaleString())),
+      .map((m) => h("li", null, m.kind === "merged" ? badge("merged") : badge("reverted"), " ", h("code", null, m.featureId), " ", h("span", { class: "muted" }, short(m.commitId)), " ", new Date(m.at).toLocaleString())),
   );
   $("log").replaceChildren(...[...state.log].reverse().slice(0, 150).map((e) => h("li", null, `${new Date(e.at).toLocaleTimeString()} ${e.type} ${e.featureId}`)));
 }

@@ -1,4 +1,5 @@
 import type { FileChanges, Tree } from "../git/tree.ts";
+import type { CustomAgent } from "../profiles/profile.ts";
 
 export type CoderEvent =
   | { readonly type: "assistant.message_delta"; readonly delta: string }
@@ -23,6 +24,8 @@ export interface CoderTurnInput {
   readonly prompt: string;
   readonly instructions: string;
   readonly writeScope: readonly string[];
+  readonly agent: CustomAgent;
+  readonly attempt: { readonly index: number; readonly of: number };
   readonly workspace: CoderWorkspace;
   readonly signal?: AbortSignal;
   readonly onEvent: (event: CoderEvent) => void;

@@ -13,6 +13,30 @@ export interface ReviewVerdict {
   readonly model: string;
 }
 
+export interface AttemptScore {
+  readonly sessionId: string;
+  readonly passed: number;
+  readonly total: number;
+}
+
+export interface PickCandidate {
+  readonly sessionId: string;
+  readonly diff: FileChanges;
+  readonly crossTests: AttemptScore & { readonly log: string };
+}
+
+export interface PickInput {
+  readonly feature: FeatureSpec;
+  readonly candidates: readonly PickCandidate[];
+}
+
+export interface PickVerdict {
+  readonly sessionId: string;
+  readonly reasons: readonly string[];
+  readonly model: string;
+}
+
 export interface Reviewer {
   review(input: ReviewInput): Promise<ReviewVerdict>;
+  pick(input: PickInput): Promise<PickVerdict>;
 }

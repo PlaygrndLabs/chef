@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, symlinkSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const job = JSON.parse(Buffer.from(process.env.KARGAH_JOB ?? "", "base64").toString("utf8"));
 const dir = join("/workspace", `${job.sessionId}-checks`, "repo");
@@ -8,6 +8,14 @@ const dir = join("/workspace", `${job.sessionId}-checks`, "repo");
 execFileSync("rm", ["-rf", dir]);
 execFileSync("git", ["clone", "--quiet", "--no-tags", "--branch", job.ref, job.remote, dir]);
 execFileSync("git", ["checkout", "--quiet", job.commitId], { cwd: dir });
+for (const [path, content] of Object.entries(job.overlay ?? {})) {
+  const target = join(dir, path);
+  if (content === null) rmSync(target, { force: true });
+  else {
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, content);
+  }
+}
 if (!existsSync(join(dir, "node_modules"))) symlinkSync("/opt/kargah/template/node_modules", join(dir, "node_modules"), "dir");
 
 const results = [];
