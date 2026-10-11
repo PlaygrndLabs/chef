@@ -21,6 +21,7 @@ export interface SessionRecord {
   verdict: (ReviewVerdict & { commitId: string }) | null;
   lastCodeItem: string | null;
   syncPending: boolean;
+  merge: { commitId: string; mainBefore: string } | null;
   createdAt: number;
   updatedAt: number;
 }

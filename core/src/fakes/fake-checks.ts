@@ -24,15 +24,15 @@ export const testsExistOracle: TestOracle = (tree) => {
 
 export class FakeCheckRunner implements CheckRunner {
   readonly runs: { repo: string; commitId: string }[] = [];
-  private readonly injected: { name: string; log: string; times: number }[] = [];
+  private readonly injected: { name: string; log: string; times: number; repo: string | null }[] = [];
 
   constructor(
     private readonly oracle: TestOracle = testsExistOracle,
     private readonly generated: Readonly<Record<string, (tree: Tree) => string>> = {},
   ) {}
 
-  failNext(name: string, log: string, times = 1): void {
-    this.injected.push({ name, log, times });
+  failNext(name: string, log: string, times = 1, repo: string | null = null): void {
+    this.injected.push({ name, log, times, repo });
   }
 
   async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
@@ -50,7 +50,7 @@ export class FakeCheckRunner implements CheckRunner {
       { name: "test", ok: tests.ok, log: tests.log },
     ];
     return results.map((result) => {
-      const injected = this.injected.find((i) => i.name === result.name && i.times > 0);
+      const injected = this.injected.find((i) => i.name === result.name && i.times > 0 && (i.repo === null || i.repo === input.repo));
       if (!injected) return result;
       injected.times--;
       return { name: result.name, ok: false, log: injected.log };
