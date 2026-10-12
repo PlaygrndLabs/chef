@@ -3,5 +3,6 @@ packages:
   - adapters
   - cli
   - workers
+  - workers/sandbox
   - apps/*
   - template

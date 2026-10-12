@@ -34,11 +34,11 @@
       }
     ]
   },
-  "secrets": { "required": ["CPA_BASE_URL", "CPA_API_KEY", "TYPESAFE_API_KEY", "COPILOT_GITHUB_TOKEN", "CF_API_TOKEN", "CF_ACCOUNT_ID"] },
+  "secrets": { "required": ["CPA_BASE_URL", "CPA_API_KEY", "TYPESAFE_API_KEY", "CF_API_TOKEN", "CF_ACCOUNT_ID"] },
   "vars": {
     "PLANNER_MODEL": "claude-opus-5-5",
     "REVIEWER_MODEL": "claude-opus-5-5",
-    "CODER_MODEL": "gpt-5",
+    "CODER_MODEL": "claude-sonnet-5-5",
     "JEV_MODEL": "jev-1.13.0",
     "PREVIEW_WORKER": "kargah-project",
     "ATTEMPTS": "2",

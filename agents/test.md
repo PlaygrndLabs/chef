@@ -1,6 +1,6 @@
 ---
 role: test
-model: copilot-default
+model: coder-default
 description: Writes failing tests and the drive flow for a feature before any implementation exists.
 writeScope:
   - features/{feature}/**/*.test.ts

@@ -17,7 +17,7 @@ function projectLink(stub: DurableObjectStub, project: string): KargahLink {
   };
 }
 
-export async function copilotHandler(request: Request, env: Env, project: string): Promise<Response> {
+export async function copilotKitHandler(request: Request, env: Env, project: string): Promise<Response> {
   const link = projectLink(env.PROJECT.get(env.PROJECT.idFromName(project)), project);
   const runtime = new CopilotRuntime({ agents: () => ({ default: new KargahAgent({ link, pollMs: 1000 }) }) });
   return createCopilotRuntimeHandler({ runtime, basePath: `/api/projects/${project}/copilotkit` })(request);
