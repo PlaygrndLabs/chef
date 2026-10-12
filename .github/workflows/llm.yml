@@ -19,8 +19,9 @@ jobs:
   run:
     runs-on: ubuntu-latest
     env:
-      CPA_BASE_URL: ${{ secrets.CPA_BASE_URL || 'https://llm-gateway.playgrndlabs.workers.dev' }}
-      CPA_API_KEY: ${{ secrets.CPA_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || secrets.CPA_BASE_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY || secrets.CPA_API_KEY }}
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
       PROMPT: ${{ inputs.prompt }}
     steps:

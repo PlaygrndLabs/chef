@@ -4,6 +4,7 @@ import { extname, join, normalize } from "node:path";
 import { ControlError, DEFAULT_BUDGET, isTerminal, parseFeature, readSpec, type FeatureSpec } from "@chef/core";
 import type { Script } from "@chef/core/fakes";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
+import { applyUpdate, describeSettings, NO_SETTINGS, type ProviderEnv, type ProviderSettings } from "@chef/adapters/providers";
 import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { createNodeFetchHandler } from "@copilotkit/runtime/v2/node";
 import { benchScript } from "./bench/agent.ts";
@@ -41,7 +42,7 @@ export interface LocalServer {
   close(): Promise<void>;
 }
 
-export async function serve(options: { readonly port: number; readonly project: string; readonly real: boolean; readonly assets?: string; readonly log?: (line: string) => void }): Promise<LocalServer> {
+export async function serve(options: { readonly port: number; readonly project: string; readonly real: boolean; readonly assets?: string; readonly providers?: ProviderEnv; readonly log?: (line: string) => void }): Promise<LocalServer> {
   const log = options.log ?? (() => {});
   const w = localWorld({ script: script(), presets: presets(), real: options.real });
   await w.orchestrator.bootstrap(templateTree());
@@ -98,8 +99,18 @@ export async function serve(options: { readonly port: number; readonly project: 
     return Response.json({ error: "not found" }, { status: 404 });
   };
 
+  let saved: ProviderSettings = NO_SETTINGS;
+  const settings = async (request: Request, env: ProviderEnv): Promise<Response> => {
+    if (request.method === "GET") return Response.json(describeSettings(saved, env));
+    const result = applyUpdate(saved, await request.json().catch(() => null));
+    if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+    saved = result.settings;
+    return Response.json(describeSettings(saved, env));
+  };
+
   const api = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
+    if (url.pathname === "/api/settings" && options.providers) return settings(request, options.providers);
     if (url.pathname.startsWith(`${base}/copilotkit`)) return copilot(request);
     if (url.pathname.startsWith("/api/")) {
       const action = url.pathname.startsWith(`${base}/`) ? url.pathname.slice(base.length + 1) : null;

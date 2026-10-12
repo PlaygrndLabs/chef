@@ -5,7 +5,7 @@ status: building
 entrypoint: SessionAgent.runTurn
 acceptance:
   - id: AC1
-    text: A Claude Agent SDK session runs inside a Cloudflare Sandbox on a clone of the session fork and reaches Claude only through the CPA gateway
+    text: A Claude Agent SDK session runs inside a Cloudflare Sandbox on a clone of the session fork and reaches Claude only through the configured model provider
   - id: AC2
     text: Session events stream to the dashboard while the turn runs
   - id: AC3

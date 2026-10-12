@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { llmFromEnv } from "../../src/anthropic.ts";
+import { llmFromProvider } from "../../src/anthropic.ts";
 import { LlmPlanner } from "../../src/llm-planner.ts";
 import { EMBEDDING_MODEL, VectorizeIndex, type EmbedderLike, type VectorizeLike } from "../../src/vectorize.ts";
 
@@ -68,7 +68,7 @@ describe("memory adapters", () => {
       const message = { id: "m", type: "message", role: "assistant", model: "m", content: [{ type: "text", text: JSON.stringify({ answer: "Reverse splits by code point (memory/lessons/reverse-1.md)." }) }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
       return new Response(JSON.stringify(message), { status: 200, headers: { "content-type": "application/json" } });
     }) as typeof fetch;
-    const planner = new LlmPlanner(llmFromEnv({ CPA_BASE_URL: "http://127.0.0.1:8317", CPA_API_KEY: "k" }, fetchImpl), "planner-model");
+    const planner = new LlmPlanner(llmFromProvider({ kind: "custom", baseUrl: "http://127.0.0.1:8317", apiKey: "k" }, fetchImpl), "planner-model");
     const answer = await planner.answer({ question: "Why does reverse use code points?", context: [{ score: 1, doc: { path: "memory/lessons/reverse-1.md", kind: "lesson", feature: "reverse", text: "emoji broke reverse" } }] });
     expect(answer).toContain("memory/lessons/reverse-1.md");
     expect(prompt).toContain("### memory/lessons/reverse-1.md\nemoji broke reverse");
