@@ -8,14 +8,13 @@ import { WorkersAiReviewer, type TextGenerator } from "@kargah/adapters/workers-
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@kargah/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@kargah/adapters/gpt-live";
 import { RealtimeHost } from "@kargah/adapters/realtime";
-import { WorkersBuildsPreviewHost } from "@kargah/adapters/workers-previews";
 import { isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PushedEvent, type Tree, type VoiceCall } from "@kargah/core";
 import { renderRegistry, renderStub, stubPath } from "@kargah/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
-import { SandboxCheckRunner, SandboxProofRunner } from "./sandbox-checks.ts";
+import { SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder } from "./sandbox-coder.ts";
 
 const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
@@ -38,7 +37,7 @@ export class ProjectAgent extends Agent<Env> {
         classifier: new JevClassifier(new TypeSafeClient({ apiKey: env.TYPESAFE_API_KEY, defaultModel: env.JEV_MODEL }), env.JEV_MODEL),
         planner: new LlmPlanner(llm, env.PLANNER_MODEL),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
-        previews: new WorkersBuildsPreviewHost({ accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_API_TOKEN, workerName: `${env.PREVIEW_WORKER}` }),
+        previews: new SandboxPreviewHost(env.SESSION, repos, { accountId: env.CF_ACCOUNT_ID, worker: `${env.PREVIEW_WORKER}-${this.name}` }),
         checks: new SandboxCheckRunner(env.SESSION, repos),
         proofs: new SandboxProofRunner(env.SESSION, repos),
         bus,

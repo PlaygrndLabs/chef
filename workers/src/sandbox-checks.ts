@@ -1,5 +1,6 @@
 import { parseTap } from "@kargah/core/tap";
-import { diffTrees, lintSpecFiles, type CheckResult, type CheckRunner, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@kargah/core";
+import { diffTrees, lintSpecFiles, type CheckResult, type CheckRunner, type PreviewDeployment, type PreviewHost, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@kargah/core";
+import { PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
 import type { ChecksJob, CommandResult } from "./session-agent.ts";
 
 type ChecksStub = { runChecks(job: ChecksJob): Promise<CommandResult[]> };
@@ -8,11 +9,11 @@ function tail(text: string, lines = 40): string {
   return text.trim().split("\n").slice(-lines).join("\n");
 }
 
-async function job(repos: RepoHost, repo: string, commitId: string, commands: ChecksJob["commands"], allowHosts: readonly string[] = []): Promise<Omit<ChecksJob, "sessionId"> & { token: () => Promise<void> }> {
+async function job(repos: RepoHost, repo: string, commitId: string, commands: ChecksJob["commands"], allowHosts: readonly string[] = [], ref?: string): Promise<Omit<ChecksJob, "sessionId"> & { token: () => Promise<void> }> {
   const info = await repos.info(repo);
   if (!info) throw new Error(`unknown repo ${repo}`);
   const token = await repos.createToken(repo, "read", 900);
-  return { remote: info.remote, ref: info.defaultBranch, commitId, readToken: token.secret, commands, allowHosts, token: () => repos.revokeToken(token) };
+  return { remote: info.remote, ref: ref ?? info.defaultBranch, commitId, readToken: token.secret, commands, allowHosts, token: () => repos.revokeToken(token) };
 }
 
 function sessionOf(repo: string): string {
@@ -80,5 +81,60 @@ export class SandboxProofRunner implements ProofRunner {
       parsed = { ok: false, steps: [{ name: "run proof", ok: false, detail: tail(`${result?.stdout ?? ""}\n${result?.stderr ?? ""}`, 10) }] };
     }
     return { feature: input.feature, flow: input.flow, url: input.url, commitId: input.commitId, ok: result?.code === 0 && parsed.ok === true, steps: parsed.steps ?? [], at: Date.now() };
+  }
+}
+
+interface PreviewOutput {
+  readonly preview?: { readonly urls?: readonly string[] };
+  readonly deployment?: { readonly id?: string; readonly urls?: readonly string[] };
+}
+
+export function previewName(branch: string): string {
+  return branch.replace(/^preview\//, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/, "") || "preview";
+}
+
+export function parsePreview(stdout: string, commitId: string): PreviewDeployment {
+  const start = stdout.indexOf("{");
+  let output: PreviewOutput;
+  try {
+    output = JSON.parse(start === -1 ? "" : stdout.slice(start)) as PreviewOutput;
+  } catch {
+    throw new Error(`wrangler preview printed no JSON: ${tail(stdout, 10)}`);
+  }
+  const url = output.preview?.urls?.[0] ?? output.deployment?.urls?.[0];
+  if (!url || !output.deployment?.id) throw new Error(`wrangler preview returned no URL: ${tail(stdout, 10)}`);
+  return { url, versionId: output.deployment.id, commitId };
+}
+
+export class SandboxPreviewHost implements PreviewHost {
+  private readonly latest = new Map<string, PreviewDeployment>();
+
+  constructor(
+    private readonly sessions: DurableObjectNamespace,
+    private readonly repos: RepoHost,
+    private readonly grant: CloudflareGrant,
+  ) {}
+
+  async deploy(input: { repo: string; branch: string; commitId: string }): Promise<PreviewDeployment> {
+    const name = previewName(input.branch);
+    const env = { CLOUDFLARE_API_TOKEN: PLACEHOLDER, CLOUDFLARE_ACCOUNT_ID: this.grant.accountId, WRANGLER_SEND_METRICS: "false", CI: "true" };
+    const prepared = await job(this.repos, input.repo, input.commitId, [{ name: "preview", argv: ["npx", "wrangler", "preview", "--name", name, "--worker-name", this.grant.worker, "--json"], timeoutMs: 300_000, env }], [], input.branch);
+    const stub = this.sessions.get(this.sessions.idFromName(`preview-${name}`)) as unknown as ChecksStub;
+    let result: CommandResult | undefined;
+    try {
+      const { token, ...rest } = prepared;
+      void token;
+      result = (await stub.runChecks({ ...rest, sessionId: `preview-${name}`, cloudflare: this.grant }))[0];
+    } finally {
+      await prepared.token();
+    }
+    if (!result || result.code !== 0) throw new Error(`wrangler preview failed: ${tail(`${result?.stdout ?? ""}\n${result?.stderr ?? ""}`, 20)}`);
+    const deployment = parsePreview(result.stdout, input.commitId);
+    this.latest.set(input.branch, deployment);
+    return deployment;
+  }
+
+  async current(input: { repo: string; branch: string }): Promise<PreviewDeployment | null> {
+    return this.latest.get(input.branch) ?? null;
   }
 }
