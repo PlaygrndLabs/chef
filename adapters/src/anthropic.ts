@@ -9,6 +9,8 @@ export type MessagesClient = Pick<Anthropic, "messages" | "beta">;
 
 export const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 
+export const CUSTOM_RETRIES = 8;
+
 export type LlmProvider = { readonly kind: "anthropic"; readonly apiKey: string } | { readonly kind: "custom"; readonly baseUrl: string; readonly apiKey: string };
 
 export interface LlmEndpoint {
@@ -37,7 +39,7 @@ export function providerBaseUrl(provider: LlmProvider): string {
 
 export function llmFromProvider(provider: LlmProvider, fetchImpl?: typeof fetch): LlmEndpoint {
   const options = fetchImpl ? { fetch: fetchImpl } : {};
-  if (provider.kind === "custom") return { client: new Anthropic({ ...options, baseURL: providerBaseUrl(provider), apiKey: provider.apiKey }), via: "custom", serverFallbacks: false };
+  if (provider.kind === "custom") return { client: new Anthropic({ ...options, baseURL: providerBaseUrl(provider), apiKey: provider.apiKey, maxRetries: CUSTOM_RETRIES }), via: "custom", serverFallbacks: false };
   return { client: new Anthropic({ ...options, apiKey: provider.apiKey }), via: "anthropic", serverFallbacks: true };
 }
 
