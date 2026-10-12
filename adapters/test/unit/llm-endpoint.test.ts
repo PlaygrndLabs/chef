@@ -43,6 +43,20 @@ describe("llm endpoint", () => {
     expect((request?.body["output_config"] as { format: { type: string } }).format.type).toBe("json_schema");
   });
 
+  it("waits out a custom provider that is still starting", async () => {
+    const { seen, fetchImpl } = custom({ approve: true, reasons: [] });
+    let calls = 0;
+    const waking = (async (url: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      if (calls <= 3) return new Response(JSON.stringify({ error: { type: "api_error", message: "The gateway is starting" } }), { status: 503, headers: { "content-type": "application/json", "retry-after-ms": "1" } });
+      return fetchImpl(url, init);
+    }) as typeof fetch;
+    const llm = llmFromProvider({ kind: "custom", baseUrl: "https://gateway.example", apiKey: "k" }, waking);
+    expect(await structured(llm, { model: "m", system: "s", prompt: "p", schema: z.object({ approve: z.boolean(), reasons: z.array(z.string()) }) })).toEqual({ approve: true, reasons: [] });
+    expect(calls).toBe(4);
+    expect(seen).toHaveLength(1);
+  });
+
   it("drives the reviewer through a custom provider", async () => {
     const { fetchImpl } = custom({ approve: false, reasons: ["AC2 has no test"], retest: true });
     const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "http://127.0.0.1:8317", apiKey: "k" }, fetchImpl));
