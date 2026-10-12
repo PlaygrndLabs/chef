@@ -37,7 +37,9 @@ function sse(res: ServerResponse, model: string, blocks: readonly Block[], stop:
 
 const HELLO = "export const hello = () => \"hello\";\n";
 
-function fakeClaude(call: { readonly name: string; readonly input: object }) {
+type Call = { readonly name: string; readonly input: object };
+
+function fakeClaude(call: Call | ((conversation: string) => Call | null)) {
   const seen: Seen[] = [];
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     let raw = "";
@@ -50,8 +52,9 @@ function fakeClaude(call: { readonly name: string; readonly input: object }) {
       if (path.endsWith("/count_tokens")) return void res.end(JSON.stringify({ input_tokens: 12 }));
       if (!path.endsWith("/v1/messages")) return void res.writeHead(404).end();
       const model = body.model ?? "claude";
-      const answered = JSON.stringify(body.messages ?? []).includes("tool_result");
-      if (tools.includes("Write") && !answered) return sse(res, model, [{ type: "text", text: "Writing the feature.\n" }, { type: "tool_use", id: "toolu_01", ...call }], "tool_use");
+      const conversation = JSON.stringify(body.messages ?? []);
+      const next = typeof call === "function" ? call(conversation) : conversation.includes("tool_result") ? null : call;
+      if (tools.includes("Write") && next) return sse(res, model, [{ type: "text", text: "Writing the feature.\n" }, { type: "tool_use", id: `toolu_${conversation.length}`, ...next }], "tool_use");
       const text = tools.includes("Write") ? "Added features/hello/index.ts." : "ok";
       if (body.stream) return sse(res, model, [{ type: "text", text }], "end_turn");
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", model, content: [{ type: "text", text }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 12, output_tokens: 3 } }));
@@ -149,6 +152,40 @@ describe("coder runner on the Claude Agent SDK", () => {
       expect(events).toContain("tool.execution_start");
       expect(seen.filter((s) => s.tools.includes("Write")).every((s) => s.model === "claude-sonnet-5-5")).toBe(true);
       expect(seen.filter((s) => s.path.startsWith("/v1/") && s.key !== "local-key").map((s) => s.path)).toEqual([]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("hands lint problems in its own changes back to the agent before it returns", async () => {
+    const write = (content: string): Call => ({ name: "Bash", input: { command: `mkdir -p features/hello && printf '%s' '${content}' > features/hello/index.ts`, description: "Write the feature" } });
+    const { server } = fakeClaude((conversation) => {
+      const results = conversation.split("tool_result").length - 1;
+      if (results === 0) return write("export const hello = () => \"hello\"; // greet\n");
+      if (results === 1 && conversation.includes("project lint rejects")) return write(HELLO);
+      return null;
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const coder = new RunnerCoder({ runner: join(REPO_ROOT, "workers", "sandbox", "runner.mjs"), lint: join(REPO_ROOT, "workers", "sandbox", "lint.mjs"), baseUrl: `http://127.0.0.1:${port}`, apiKey: "local-key", model: "claude-sonnet-5-5" });
+    const events: { type: string }[] = [];
+    try {
+      const result = await coder.runTurn({
+        sessionId: "s2",
+        featureId: "hello",
+        role: "backend",
+        model: "coder-default",
+        prompt: "Add features/hello/index.ts exporting hello().",
+        instructions: "",
+        writeScope: ["features/hello/**"],
+        agent: { name: "kargah-backend", displayName: "kargah backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
+        attempt: { index: 1, of: 1 },
+        workspace: { repo: "demo", remote: "", ref: "main", commitId: "", readToken: "", tree: { "README.md": "# demo\n" } },
+        onEvent: (event) => events.push(event),
+      });
+      expect(events.filter((e) => e.type === "kargah.lint")).toHaveLength(1);
+      expect(result.changes).toEqual({ "features/hello/index.ts": HELLO });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
