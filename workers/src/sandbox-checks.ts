@@ -106,6 +106,10 @@ export function parsePreview(stdout: string, commitId: string): PreviewDeploymen
   return { url, versionId: output.deployment.id, commitId };
 }
 
+export function lostCreateRace(output: string): boolean {
+  return /\[code: 10040\]/.test(output);
+}
+
 export class SandboxPreviewHost implements PreviewHost {
   private readonly latest = new Map<string, PreviewDeployment>();
 
@@ -118,15 +122,20 @@ export class SandboxPreviewHost implements PreviewHost {
   async deploy(input: { repo: string; branch: string; commitId: string }): Promise<PreviewDeployment> {
     const name = previewName(input.branch);
     const env = { CLOUDFLARE_API_TOKEN: PLACEHOLDER, CLOUDFLARE_ACCOUNT_ID: this.grant.accountId, WRANGLER_SEND_METRICS: "false", CI: "true" };
-    const prepared = await job(this.repos, input.repo, input.commitId, [{ name: "preview", argv: ["npx", "wrangler", "preview", "--name", name, "--worker-name", this.grant.worker, "--json"], timeoutMs: 300_000, env }], [], input.branch);
-    const stub = this.sessions.get(this.sessions.idFromName(`preview-${name}`)) as unknown as ChecksStub;
+    const command = { name: "preview", argv: ["npx", "wrangler", "preview", "--name", name, "--worker-name", this.grant.worker, "--json"], timeoutMs: 300_000, env };
     let result: CommandResult | undefined;
-    try {
-      const { token, ...rest } = prepared;
-      void token;
-      result = (await stub.runChecks({ ...rest, sessionId: `preview-${name}`, cloudflare: this.grant }))[0];
-    } finally {
-      await prepared.token();
+    for (let attempt = 1; ; attempt++) {
+      const prepared = await job(this.repos, input.repo, input.commitId, [command], [], input.branch);
+      const stub = this.sessions.get(this.sessions.idFromName(`preview-${name}`)) as unknown as ChecksStub;
+      try {
+        const { token, ...rest } = prepared;
+        void token;
+        result = (await stub.runChecks({ ...rest, sessionId: `preview-${name}`, cloudflare: this.grant }))[0];
+      } finally {
+        await prepared.token();
+      }
+      if (attempt === 1 && result && result.code !== 0 && lostCreateRace(`${result.stdout}\n${result.stderr}`)) continue;
+      break;
     }
     if (!result || result.code !== 0) throw new Error(`wrangler preview failed: ${tail(`${result?.stdout ?? ""}\n${result?.stderr ?? ""}`, 20)}`);
     const deployment = parsePreview(result.stdout, input.commitId);
