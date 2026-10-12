@@ -24,6 +24,7 @@ interface OutboundProps {
   readonly allowHosts: readonly string[];
   readonly llmHost: string | null;
   readonly llmKey: string | null;
+  readonly cloudflareToken: string | null;
   readonly cloudflare: CloudflareGrant | null;
 }
 
@@ -35,9 +36,9 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
     if (url.hostname === this.ctx.props.artifactsHost) {
       if (url.pathname.endsWith("/git-receive-pack") || url.searchParams.get("service") === "git-receive-pack") return new Response("the coder sandbox cannot push", { status: 403 });
       headers.set("authorization", `Bearer ${this.ctx.props.readToken}`);
-    } else if (this.ctx.props.cloudflare && cloudflareAllowed(url, this.ctx.props.cloudflare)) {
+    } else if (this.ctx.props.cloudflare && this.ctx.props.cloudflareToken && cloudflareAllowed(url, this.ctx.props.cloudflare)) {
       const current = headers.get("authorization");
-      if (current?.includes(PLACEHOLDER)) headers.set("authorization", current.replace(PLACEHOLDER, this.env.CF_API_TOKEN));
+      if (current?.includes(PLACEHOLDER)) headers.set("authorization", current.replace(PLACEHOLDER, this.ctx.props.cloudflareToken));
     } else if (url.hostname === this.ctx.props.llmHost && this.ctx.props.llmKey) {
       const llmKey = this.ctx.props.llmKey;
       for (const name of ["x-api-key", "authorization"]) {
@@ -98,7 +99,7 @@ export class SessionAgent extends Agent<Env> {
         if (event["type"] === "chef.result") result = event as unknown as typeof result;
         else onEvent(event as unknown as CoderEvent);
       },
-      llmKey,
+      { llmKey },
     );
     const final = result as TurnOutput | null;
     if (code !== 0 || !final) {
@@ -108,16 +109,21 @@ export class SessionAgent extends Agent<Env> {
     return { changes: final.changes, summary: final.summary, model: final.model, runId: `${job.sessionId}-${Date.now()}`, usage: final.usage ?? { inputTokens: 0, outputTokens: 0 } };
   }
 
-  async runChecks(job: ChecksJob): Promise<CommandResult[]> {
+  async runChecks(job: ChecksJob, cloudflareToken: string | null = null): Promise<CommandResult[]> {
     let results: CommandResult[] | null = null;
-    const { code, tail } = await this.runScript("checks.mjs", job, (event) => {
-      if (event["type"] === "chef.checks") results = event["results"] as CommandResult[];
-    });
+    const { code, tail } = await this.runScript(
+      "checks.mjs",
+      job,
+      (event) => {
+        if (event["type"] === "chef.checks") results = event["results"] as CommandResult[];
+      },
+      { cloudflareToken },
+    );
     if (!results) throw new Error(`checks runner failed with exit code ${code}: ${tail.slice(-500)}`);
     return results;
   }
 
-  private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant }, onEvent: (event: Record<string, unknown>) => void, llmKey: string | null = null): Promise<{ code: number; tail: string }> {
+  private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null } = {}): Promise<{ code: number; tail: string }> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     if (!container.running) {
@@ -132,7 +138,7 @@ export class SessionAgent extends Agent<Env> {
     }
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");
-    await container.interceptOutboundHttps("*", outbound({ props: { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, llmKey, cloudflare: job.cloudflare ?? null } }));
+    await container.interceptOutboundHttps("*", outbound({ props: { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, llmKey: secrets.llmKey ?? null, cloudflareToken: secrets.cloudflareToken ?? null, cloudflare: job.cloudflare ?? null } }));
     const { readToken, ...visible } = job;
     void readToken;
     const process = await container.exec(["node", `/opt/chef/${script}`], { env: { ...SANDBOX_ENV, CHEF_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" }).catch((error: unknown) => {

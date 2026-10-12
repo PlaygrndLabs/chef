@@ -31,7 +31,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 | `MemoryIndex` | `LexicalIndex` (TF-IDF) | `VectorizeIndex` (`adapters/src/vectorize.ts`, Vectorize plus Workers AI `@cf/baai/bge-base-en-v1.5`) |
 | `EventBus`, `KeyValueStore`, `Clock`, `IdSource` | memory versions | `DurableEventBus`, `DurableStore` in `workers/src` |
 
-The planner and reviewer call Claude through `adapters/src/anthropic.ts` with structured output validated by zod. The model provider is the user's choice, like in any other app: an Anthropic API key, or a custom Anthropic-compatible provider with its base URL and key. `adapters/src/providers.ts` resolves it: settings saved in the dashboard (`/api/settings`, kept in the `Settings` Durable Object) win over the Worker's secrets (`ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`). Only the direct Anthropic API path opts into server-side model fallbacks; a custom provider gets plain requests without beta headers.
+The planner and reviewer call Claude through `adapters/src/anthropic.ts` with structured output validated by zod. The model provider is the user's choice, like in any other app: an Anthropic API key, or a custom Anthropic-compatible provider with its base URL and key. `adapters/src/settings.ts` resolves it with the rest of the app's settings (Cloudflare account for previews, TypeSafe key, model ids, attempts, voice): settings saved in the dashboard (`/api/settings`, kept in the `Settings` Durable Object) win over the Worker's secrets. Without a TypeSafe key the router skips Jev (`NO_CLASSIFIER`) and the planner triages every request that rules do not settle. Only the direct Anthropic API path opts into server-side model fallbacks; a custom provider gets plain requests without beta headers.
 
 ## Flow of one prompt
 
@@ -144,8 +144,8 @@ Served by the chef Worker (`workers/src/index.ts`):
 
 | Method and path | Effect |
 | --- | --- |
-| `GET /api/settings` | The model and voice providers in use, with only the last four characters of each key and whether it comes from the dashboard or the deployment |
-| `PUT /api/settings` | Saves `{ llm, voice }`: `{ kind: "anthropic", apiKey }` or `{ kind: "custom", baseUrl, apiKey }` for Claude, `{ kind: "openai", apiKey }` or `{ kind: "custom", baseUrl, apiKey }` for voice; `null` falls back to the deployment |
+| `GET /api/settings` | The settings in use (Claude and voice providers, Cloudflare account, TypeSafe key, models, attempts, password source), with only the last four characters of each key and whether each comes from the dashboard or the deployment |
+| `PUT /api/settings` | Saves any of `llm` (`{ kind: "anthropic", apiKey }` or `{ kind: "custom", baseUrl, apiKey }`), `voice` (`{ kind: "openai", apiKey }` or `{ kind: "custom", baseUrl, apiKey }`), `cloudflare` (`{ accountId, apiToken }`), `jev` (`{ apiKey }`), `models` (`{ planner, reviewer, coder }`) and `attempts`; `null` falls back to the deployment. `{ password }` alone changes the password and returns a new session cookie |
 | `POST /api/projects/:name/bootstrap` | Creates the canonical repo from the template if it does not exist |
 | `POST /api/projects/:name/voice` | Exchanges a WebRTC `{ sdp }` offer for a voice session that delegates spoken requests to the router: GPT-Live with an OpenAI API key, or a custom provider that serves the OpenAI Realtime API, where a `chef_request` tool call stands in for client delegation |
 | `POST /api/projects/:name/prompts` | Routes `{ prompt }` and starts a session when there is work; a question returns `answer` with its sources |

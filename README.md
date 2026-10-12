@@ -40,33 +40,26 @@ node --import tsx cli/src/bin.ts llm check           # planner and reviewer thro
 node --import tsx cli/src/bin.ts demo --live         # one feature with the real planner, Claude coder and reviewer
 ```
 
-## Model provider
+## Settings
 
-The planner, the reviewer and the coder use Claude. Bring your own provider, like in any other app:
+A self-hosted chef is set up from its own dashboard, like any other app. On the first visit it asks for a password, then Settings opens on whatever is still missing:
 
-- An Anthropic API key: `ANTHROPIC_API_KEY`.
-- A custom provider: any Anthropic-compatible endpoint, set by `LLM_BASE_URL` and `LLM_API_KEY`. It wins over `ANTHROPIC_API_KEY` when both are set.
+| Tab | What it holds | Needed | Same thing as a Worker secret |
+| --- | --- | --- | --- |
+| Model | Claude through your Anthropic API key, or any Anthropic-compatible provider (base URL and key); the planner, reviewer and coder model ids; parallel attempts per feature | Yes | `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`; `PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `ATTEMPTS` |
+| Previews | Cloudflare account id and an API token that can edit Workers, for each feature's live preview | Yes | `CF_ACCOUNT_ID`, `CF_API_TOKEN` |
+| Voice | An OpenAI key (GPT-Live), or a provider that serves the OpenAI Realtime API (base URL with `/v1`, and key) | No | `OPENAI_API_KEY`, or `VOICE_BASE_URL` and `VOICE_API_KEY` |
+| Routing | A TypeSafe key, so Jev routes requests in about 100ms; without it Claude routes them | No | `TYPESAFE_API_KEY` |
+| Password | The dashboard password, also accepted as a Bearer token by scripts | Yes | `CHEF_PASSWORD` |
 
-Voice is optional: an OpenAI API key (`OPENAI_API_KEY`, used with GPT-Live), or a custom provider that serves the OpenAI Realtime API (`VOICE_BASE_URL`, including `/v1`, and `VOICE_API_KEY`).
+What is saved in the dashboard wins over the Worker's secrets, so the secrets are only defaults for a scripted deploy. Saved settings live in the `Settings` Durable Object; the password is stored as a salted PBKDF2 hash. Keys never go back to the browser; the dashboard shows only their last four characters. The coder sandbox gets only placeholders; the Worker's outbound handler swaps in the real keys on the provider's and Cloudflare's hosts.
 
-On Cloudflare the same choices are in the dashboard under Settings, Model provider. What is saved there wins over the Worker's secrets, and the dashboard asks for a provider when none is set. Keys are never sent back to the browser; the dashboard shows only their last four characters. The coder sandbox gets only a placeholder key; the Worker's outbound handler swaps in the real one on the provider's host.
-
-The `llm` workflow (Actions, run by hand) runs `llm check` (mode `check`) or `demo --live` (mode `demo`) with the repository secrets `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`. `TYPESAFE_API_KEY`, when set, makes the demo route with Jev.
+The local CLI reads the same environment variables. The `llm` workflow (Actions, run by hand) runs `llm check` (mode `check`) or `demo --live` (mode `demo`) with the repository secrets `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`. `TYPESAFE_API_KEY`, when set, makes the demo route with Jev.
 
 ## Deploy to a fresh Cloudflare account
 
 1. Use an account on Workers Paid with Artifacts and Containers enabled. Docker must be running where you deploy, to build the sandbox image.
-2. Set the secrets for the chef Worker:
-
-   ```
-   cd workers
-   npx wrangler secret put CHEF_PASSWORD           # the dashboard and API refuse everyone until it is set
-   npx wrangler secret put TYPESAFE_API_KEY
-   npx wrangler secret put CF_ACCOUNT_ID
-   npx wrangler secret put CF_API_TOKEN            # can edit Workers; previews of project demo go to the Worker chef-project-demo
-   ```
-
-   The model provider can be set here too (`ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`; for voice `OPENAI_API_KEY`, or `VOICE_BASE_URL` and `VOICE_API_KEY`), or later in the dashboard.
+2. Optional: set any of the secrets from [Settings](#settings) with `npx wrangler secret put <NAME>` in `workers/`. Everything can also be set in the dashboard after the deploy.
 
 3. Create the memory index and its metadata indexes, before the first deploy:
 
@@ -76,12 +69,12 @@ The `llm` workflow (Actions, run by hand) runs `llm check` (mode `check`) or `de
    npx wrangler vectorize create-metadata-index chef-memory --property-name=kind --type=string
    ```
 
-4. Deploy: `pnpm --filter @chef/workers run deploy`. The `deploy` workflow (Actions, run by hand) does steps 2 to 4 from the repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TYPESAFE_API_KEY`, `CHEF_PASSWORD` and, if set, the model provider secrets above. Scripts can call the API with `Authorization: Bearer <CHEF_PASSWORD>`.
-5. Create a project: `curl -X POST https://<chef-worker>/api/projects/demo/bootstrap`. This creates the canonical repo `demo` in the `chef` Artifacts namespace from `template/`.
+4. Deploy: `pnpm --filter @chef/workers run deploy`. The `deploy` workflow (Actions, run by hand) does steps 2 to 4 from the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, plus whichever secrets from [Settings](#settings) the repository has. Scripts can call the API with `Authorization: Bearer <password>`.
+5. Open `https://<chef-worker>/`, pick a password and fill in Settings. Create a project from the dashboard, or with `curl -X POST -H "Authorization: Bearer <password>" https://<chef-worker>/api/projects/demo/bootstrap`. This creates the canonical repo `demo` in the `chef` Artifacts namespace from `template/`.
 6. Open `https://<chef-worker>/?project=demo` and send a prompt such as "Add an item to a todo list".
 
 The `cloud` workflow (Actions, run by hand) does steps 5 and 6 from CI: it bootstraps a project, sends a prompt, follows its sessions until they end and prints the Worker's logs from `wrangler tail`.
 
-Models are set in `workers/wrangler.jsonc` (`PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `JEV_MODEL`, `VOICE_MODEL`).
+Default models are in `workers/wrangler.jsonc` (`PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `JEV_MODEL`, `VOICE_MODEL`); Settings overrides the first three.
 
 Optional tuned reviewer: train it with `python tune/train.py` (see `tune/README.md`), upload it with `npx wrangler ai finetune create @cf/google/gemma-2b-it-lora chef-reviewer tune/out/adapter`, and set the var `REVIEWER_LORA` to `chef-reviewer`.

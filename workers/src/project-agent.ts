@@ -2,14 +2,14 @@ import { Agent, type Connection } from "agents";
 import { ArtifactsRepoHost, bindingControl, type ArtifactsBindingLike } from "@chef/adapters/artifacts";
 import { JevClassifier } from "@chef/adapters/jev";
 import { llmFromProvider, providerBaseUrl, type LlmEndpoint, type MessagesClient } from "@chef/adapters/anthropic";
-import { NO_LLM, type ProviderSettings } from "@chef/adapters/providers";
+import { NO_CLOUDFLARE, NO_LLM, type Resolved } from "@chef/adapters/settings";
 import { LlmPlanner } from "@chef/adapters/llm-planner";
 import { LlmReviewer } from "@chef/adapters/llm-reviewer";
 import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai-reviewer";
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { ControlError, DEFAULT_BUDGET, isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
@@ -26,7 +26,7 @@ const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object
 
 export class ProjectAgent extends Agent<Env> {
   private readonly calls = new Map<string, VoiceCall>();
-  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; settings: ProviderSettings; fingerprint: string } | null = null;
+  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; settings: Resolved; fingerprint: string } | null = null;
 
   private async build() {
     const settings = await currentSettings(this.env);
@@ -36,15 +36,15 @@ export class ProjectAgent extends Agent<Env> {
     const repos = new ArtifactsRepoHost(bindingControl(env.ARTIFACTS as unknown as ArtifactsBindingLike));
     const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message));
     const llm = settings.llm ? llmFromProvider(settings.llm) : missingLlm;
-    const llmReviewer = new LlmReviewer(llm, env.REVIEWER_MODEL);
+    const llmReviewer = new LlmReviewer(llm, settings.models.reviewer);
     const orchestrator = new Orchestrator(
       {
         repos,
-        coder: new SandboxCoder(env.SESSION, { model: env.CODER_MODEL, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
-        classifier: new JevClassifier(new TypeSafeClient({ apiKey: env.TYPESAFE_API_KEY, defaultModel: env.JEV_MODEL }), env.JEV_MODEL),
-        planner: new LlmPlanner(llm, env.PLANNER_MODEL),
+        coder: new SandboxCoder(env.SESSION, { model: settings.models.coder, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
+        classifier: settings.jev ? new JevClassifier(new TypeSafeClient({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL }), env.JEV_MODEL) : NO_CLASSIFIER,
+        planner: new LlmPlanner(llm, settings.models.planner),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
-        previews: new SandboxPreviewHost(env.SESSION, repos, { accountId: env.CF_ACCOUNT_ID, worker: `${env.PREVIEW_WORKER}-${this.name}` }),
+        previews: settings.cloudflare ? new SandboxPreviewHost(env.SESSION, repos, { accountId: settings.cloudflare.accountId, worker: `${env.PREVIEW_WORKER}-${this.name}` }, settings.cloudflare.apiToken) : noPreviews,
         checks: new SandboxCheckRunner(env.SESSION, repos),
         proofs: new SandboxProofRunner(env.SESSION, repos),
         bus,
@@ -58,7 +58,7 @@ export class ProjectAgent extends Agent<Env> {
         author: { name: "chef", email: "ma.karimi76@gmail.com" },
         profiles: loadProfiles(agentFiles),
         generated,
-        specialization: { attempts: Number(env.ATTEMPTS), stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
+        specialization: { attempts: settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
       },
     );
     this.built = { orchestrator, bus, repos, settings, fingerprint };
@@ -84,6 +84,7 @@ export class ProjectAgent extends Agent<Env> {
       const { prompt } = (await request.json()) as { prompt?: string };
       if (!prompt?.trim()) return Response.json({ error: "prompt is required" }, { status: 400 });
       if (!settings.llm) return Response.json({ error: NO_LLM }, { status: 409 });
+      if (!settings.cloudflare) return Response.json({ error: NO_CLOUDFLARE }, { status: 409 });
       const result = await orchestrator.submit(prompt.trim());
       if (result.sessionId) await this.schedule(1, "drive");
       return Response.json(result, { status: 202 });
@@ -186,6 +187,13 @@ const missingLlm: LlmEndpoint = {
   }),
   via: "anthropic",
   serverFallbacks: false,
+};
+
+const noPreviews: PreviewHost = {
+  deploy: async () => {
+    throw new Error(NO_CLOUDFLARE);
+  },
+  current: async () => null,
 };
 
 const workersConnect: Connect = async (url, headers) => {
