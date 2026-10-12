@@ -45,6 +45,23 @@ describe("ArtifactsRepoHost over real git smart HTTP", () => {
     expect((await w.orchestrator.mainTree()).commitId).toBe(commitId);
   });
 
+  it("keeps every note when several writers add notes at once", async () => {
+    const control = server.control();
+    const setup = new ArtifactsRepoHost(control);
+    await setup.createRepo("notes-race", { defaultBranch: "main" });
+    const write = await setup.createToken("notes-race", "write", 600);
+    const first = await setup.commit(write, { ref: "main", parent: null, changes: { "a.txt": "a\n" }, message: "init", author: { name: "t", email: "ma.karimi76@gmail.com" } });
+    const ids = [first.id];
+    for (let i = 0; i < 4; i++) ids.push((await setup.commit(write, { ref: "main", parent: ids.at(-1) as string, changes: { "a.txt": `${i}\n` }, message: `c${i}`, author: { name: "t", email: "ma.karimi76@gmail.com" } })).id);
+    await Promise.all(ids.map(async (id, i) => {
+      const host = new ArtifactsRepoHost(control);
+      const token = await host.createToken("notes-race", "write", 600);
+      await host.addNote(token, { namespace: NOTES_NAMESPACE, commitId: id, note: `note ${i}` });
+    }));
+    const reader = new ArtifactsRepoHost(control);
+    expect(await Promise.all(ids.map((id) => reader.readNote("notes-race", NOTES_NAMESPACE, id)))).toEqual(ids.map((_, i) => `note ${i}`));
+  });
+
   it("runs the phase 1 loop end to end on real git repos", async () => {
     const host = new ArtifactsRepoHost(server.control());
     const PROMPT = "Add an item to a todo list";
