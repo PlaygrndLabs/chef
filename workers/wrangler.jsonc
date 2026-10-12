@@ -11,10 +11,14 @@
   "durable_objects": {
     "bindings": [
       { "name": "PROJECT", "class_name": "ProjectAgent" },
-      { "name": "SESSION", "class_name": "SessionAgent" }
+      { "name": "SESSION", "class_name": "SessionAgent" },
+      { "name": "SETTINGS", "class_name": "Settings" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectAgent", "SessionAgent"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ProjectAgent", "SessionAgent"] },
+    { "tag": "v2", "new_sqlite_classes": ["Settings"] }
+  ],
   "containers": [
     {
       "class_name": "SessionAgent",
@@ -34,7 +38,7 @@
       }
     ]
   },
-  "secrets": { "required": ["CPA_BASE_URL", "CPA_API_KEY", "TYPESAFE_API_KEY", "CF_API_TOKEN", "CF_ACCOUNT_ID"] },
+  "secrets": { "required": ["TYPESAFE_API_KEY", "CF_API_TOKEN", "CF_ACCOUNT_ID"] },
   "vars": {
     "PLANNER_MODEL": "claude-opus-5-5",
     "REVIEWER_MODEL": "claude-opus-5-5",

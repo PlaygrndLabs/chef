@@ -25,6 +25,25 @@ export interface SandboxStatus {
   readonly exit: string | null;
 }
 
+export interface ProviderView {
+  readonly kind: string;
+  readonly baseUrl: string | null;
+  readonly keyHint: string;
+  readonly source: "app" | "deployment";
+}
+
+export interface SettingsView {
+  readonly llm: ProviderView | null;
+  readonly voice: ProviderView | null;
+}
+
+export type ProviderInput = { readonly kind: string; readonly apiKey: string; readonly baseUrl?: string } | null;
+
+export const settingsApi = {
+  get: () => call<SettingsView>("/api/settings"),
+  save: (update: { llm?: ProviderInput; voice?: ProviderInput }) => call<SettingsView>("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
+};
+
 export function projectApi(project: string) {
   const base = `/api/projects/${project}`;
   return {

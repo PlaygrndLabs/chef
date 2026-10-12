@@ -16,7 +16,7 @@ Build chef, a human-free, spec-driven software builder on Cloudflare, until a pe
 - Every push to canonical `main` is merged into every active fork (continuous upstream sync). A conflict becomes a task for the same session.
 - Only the merge gate writes to `main`. Nothing ever waits on a human click.
 - Routing: rules first, then Jev (TypeSafe AI's System One model, `@typesafe-ai/sdk`) answers typed `choice` questions with calibrated confidence, then a planner LLM with structured output writes spec and work items when confidence is low or the feature is new. Jev never writes text.
-- The coder is the Claude Agent SDK running inside a Cloudflare Sandbox on the fork's checkout. It reaches Claude through the CPA gateway (`CPA_BASE_URL`, `CPA_API_KEY`), the same endpoint the planner and reviewer use.
+- The coder is the Claude Agent SDK running inside a Cloudflare Sandbox on the fork's checkout. It reaches Claude through the user's model provider (an Anthropic API key or a custom Anthropic-compatible provider), the same endpoint the planner and reviewer use.
 - Sessions are streamed to the app with CopilotKit: the chef Worker hosts the CopilotKit runtime, each prompt runs as an AG-UI agent that streams the session's coder text, tool calls, state steps, preview, review, gate and merge, and the dashboard's CopilotKit chat renders it live.
 
 ## Non-negotiables
@@ -109,5 +109,5 @@ Done when:
 
 - Build the thinnest end-to-end slice on fakes first, then replace one fake at a time with a real adapter.
 - Keep `docs/ARCHITECTURE.md` current with the code.
-- When a credential is missing (Cloudflare API token and account id, TypeSafe API key, the CPA gateway URL and key for Claude, an OpenAI key for Phase 5), keep going on fakes and list exactly what is needed in the current progress file.
+- When a credential is missing (Cloudflare API token and account id, TypeSafe API key, a model provider for Claude, an OpenAI key for Phase 5), keep going on fakes and list exactly what is needed in the current progress file.
 - When a phase's criteria are met, write its progress file before starting the next phase.

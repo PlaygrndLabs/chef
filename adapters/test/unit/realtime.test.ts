@@ -33,7 +33,7 @@ class FakeSocket implements SocketLike {
   }
 }
 
-describe("Realtime adapter for the CPA gateway", () => {
+describe("Realtime adapter for a custom provider", () => {
   it("opens a WebRTC call with the request tool and turns its tool call into a client delegation", async () => {
     const requests: { url: string; body: Record<string, unknown>; auth: string | null }[] = [];
     const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {

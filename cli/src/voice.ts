@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parseFeature, readSpec, startVoiceCall, voiceInstructions, VoiceDelegate, type LiveCommand, type LiveConnection, type LiveEvent, type SubmitResult } from "@chef/core";
 import { ScriptedVoiceHost, SequentialIds } from "@chef/core/fakes";
 import type { Connect, SocketLike } from "@chef/adapters/gpt-live";
+import { voiceFromEnv } from "@chef/adapters/providers";
 import { readTree } from "./fs.ts";
 import { demoScript } from "./demo.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
@@ -69,10 +70,8 @@ export async function runVoice(options: { readonly say: string; readonly live: b
     reply = host.spoken()[0] ?? null;
     chefSaid = reply ?? "";
   } else {
-    const apiKey = process.env["OPENAI_API_KEY"];
-    const gatewayUrl = process.env["CPA_BASE_URL"];
-    const gatewayKey = process.env["CPA_API_KEY"];
-    if (!apiKey && !(gatewayUrl && gatewayKey)) throw new Error("--live needs OPENAI_API_KEY, or CPA_BASE_URL and CPA_API_KEY");
+    const provider = voiceFromEnv(process.env);
+    if (!provider) throw new Error("--live needs OPENAI_API_KEY, or VOICE_BASE_URL and VOICE_API_KEY for a custom Realtime provider");
     let send: (command: LiveCommand) => void = () => {};
     const replies: string[] = [];
     let delegate: VoiceDelegate | null = null;
@@ -86,7 +85,8 @@ export async function runVoice(options: { readonly say: string; readonly live: b
       else pending.push(event);
     };
     let session: { readonly sessionId: string; readonly connection: LiveConnection; feed(): void };
-    if (apiKey) {
+    if (provider.kind === "openai") {
+      const apiKey = provider.apiKey;
       const { speak, startServerSession } = await import("@chef/adapters/gpt-live");
       log(`synthesizing "${options.say}"`);
       const pcm = await speak({ apiKey, text: options.say });
@@ -95,8 +95,8 @@ export async function runVoice(options: { readonly say: string; readonly live: b
       session = { sessionId: live.sessionId, connection: live.connection, feed: () => (live.sendAudio(pcm), live.sendAudio(new Uint8Array(24000 * 2 * 2))) };
     } else {
       const { startRealtimeSession } = await import("@chef/adapters/realtime");
-      const live = await startRealtimeSession({ baseUrl: `${String(gatewayUrl).replace(/\/$/, "")}/v1`, apiKey: String(gatewayKey), instructions: voiceInstructions(spec), onEvent, connect: nodeConnect });
-      log("Realtime session through the gateway; the request is sent as text");
+      const live = await startRealtimeSession({ baseUrl: provider.baseUrl, apiKey: provider.apiKey, instructions: voiceInstructions(spec), onEvent, connect: nodeConnect });
+      log(`Realtime session through ${provider.baseUrl}; the request is sent as text`);
       session = { sessionId: `realtime-${Date.now()}`, connection: live.connection, feed: () => live.say(options.say) };
     }
     voiceSessionId = session.sessionId;

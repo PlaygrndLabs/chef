@@ -1,6 +1,6 @@
 # Spike: coder in a Sandbox
 
-Status: the runner works headless against a Claude-compatible endpoint (`cli/test/e2e/coder-runner.test.ts`); not yet run inside a Cloudflare Sandbox. Needs a Cloudflare account with Containers and the CPA gateway.
+Status: the runner works headless against a Claude-compatible endpoint (`cli/test/e2e/coder-runner.test.ts`); not yet run inside a Cloudflare Sandbox. Needs a Cloudflare account with Containers and a model provider.
 
 ## Question
 
@@ -8,7 +8,7 @@ Can a coding agent inside a Cloudflare Sandbox edit a clone of the session fork,
 
 ## History
 
-The first version ran the GitHub Copilot SDK. That came from reading "copilot" in the concept as GitHub Copilot; it meant CopilotKit, the layer that streams sessions to the app. The coder is now the Claude Agent SDK, so it reaches Claude through the same CPA gateway as the planner and reviewer and needs no GitHub token.
+The first version ran the GitHub Copilot SDK. That came from reading "copilot" in the concept as GitHub Copilot; it meant CopilotKit, the layer that streams sessions to the app. The coder is now the Claude Agent SDK, so it reaches Claude through the same model provider as the planner and reviewer and needs no GitHub token.
 
 ## What the docs say
 
@@ -19,7 +19,7 @@ The first version ran the GitHub Copilot SDK. That came from reading "copilot" i
 
 - `workers/sandbox/Dockerfile`: Node 24 with git, the sandbox shim, the Agent SDK with its native binary, and the template's dependencies preinstalled. Runs as a non-root user.
 - `workers/sandbox/runner.mjs`: clones the fork, runs one query under the profile's subagent `chef-<role>`, maps text deltas to `assistant.message_delta` and tool starts to `tool.execution_start`, and on success prints `session.idle` and the changed files as `chef.result` with token usage. It never commits or pushes.
-- `workers/src/session-agent.ts`: `SessionAgent` starts the container and streams its stdout lines back as coder events. `SandboxOutbound` is the only network path: it blocks `git-receive-pack`, adds the read token for the Artifacts host, swaps the placeholder API key for `CPA_API_KEY` on the CPA gateway's host, and refuses every other host.
+- `workers/src/session-agent.ts`: `SessionAgent` starts the container and streams its stdout lines back as coder events. `SandboxOutbound` is the only network path: it blocks `git-receive-pack`, adds the read token for the Artifacts host, swaps the placeholder API key for the provider's key on the provider's host, and refuses every other host.
 - `workers/src/sandbox-coder.ts`: `SandboxCoder` implements the `Coder` port and resolves the profile model `coder-default` to `CODER_MODEL`.
 
 ## Evidence

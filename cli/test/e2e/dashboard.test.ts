@@ -41,4 +41,28 @@ describe("dashboard in a browser", () => {
       await local.close();
     }
   });
+
+  it("asks for a model provider when none is set and saves an API key", async () => {
+    const local = await serve({ port: 0, project: "demo", real: false, assets: DIST, providers: {} });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.goto(`${local.url}/?project=demo`);
+      const dialog = page.locator('[data-dialog="providers"]');
+      await dialog.waitFor({ timeout: 10_000 });
+      const claude = dialog.locator("#provider-llm");
+      expect(await claude.locator("[data-current]").getAttribute("data-current")).toBe("none");
+      await claude.getByRole("radio", { name: "Custom provider" }).click();
+      await claude.getByLabel("Base URL").fill("https://llm.example/");
+      await claude.getByLabel("API key").fill("sk-test-12345678");
+      await claude.getByRole("button", { name: "Save" }).click();
+      await expect.poll(() => claude.locator("[data-current]").getAttribute("data-current"), { timeout: 10_000 }).toBe("custom");
+      expect(await claude.locator("[data-current]").innerText()).toContain("https://llm.example, key …5678");
+      const response = await page.request.get(`${local.url}/api/settings`);
+      expect(await response.json()).toEqual({ llm: { kind: "custom", baseUrl: "https://llm.example", keyHint: "…5678", source: "app" }, voice: null });
+    } finally {
+      await browser.close();
+      await local.close();
+    }
+  });
 });

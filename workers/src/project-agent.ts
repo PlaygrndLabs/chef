@@ -1,7 +1,8 @@
 import { Agent, type Connection } from "agents";
 import { ArtifactsRepoHost, bindingControl, type ArtifactsBindingLike } from "@chef/adapters/artifacts";
 import { JevClassifier } from "@chef/adapters/jev";
-import { llmFromEnv } from "@chef/adapters/anthropic";
+import { llmFromProvider, providerBaseUrl, type LlmEndpoint, type MessagesClient } from "@chef/adapters/anthropic";
+import { NO_LLM, type ProviderSettings } from "@chef/adapters/providers";
 import { LlmPlanner } from "@chef/adapters/llm-planner";
 import { LlmReviewer } from "@chef/adapters/llm-reviewer";
 import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai-reviewer";
@@ -16,6 +17,7 @@ import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder } from "./sandbox-coder.ts";
+import { currentSettings } from "./settings.ts";
 import type { SandboxStatus } from "./session-agent.ts";
 
 const SESSION_ROUTE = /^\/api\/projects\/[a-z][a-z0-9-]{1,30}\/sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/;
@@ -24,19 +26,21 @@ const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object
 
 export class ProjectAgent extends Agent<Env> {
   private readonly calls = new Map<string, VoiceCall>();
-  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost } | null = null;
+  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; settings: ProviderSettings; fingerprint: string } | null = null;
 
-  private build() {
-    if (this.built) return this.built;
+  private async build() {
+    const settings = await currentSettings(this.env);
+    const fingerprint = JSON.stringify(settings);
+    if (this.built?.fingerprint === fingerprint) return this.built;
     const env = this.env;
     const repos = new ArtifactsRepoHost(bindingControl(env.ARTIFACTS as unknown as ArtifactsBindingLike));
     const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message));
-    const llm = llmFromEnv(env);
+    const llm = settings.llm ? llmFromProvider(settings.llm) : missingLlm;
     const llmReviewer = new LlmReviewer(llm, env.REVIEWER_MODEL);
     const orchestrator = new Orchestrator(
       {
         repos,
-        coder: new SandboxCoder(env.SESSION, { model: env.CODER_MODEL, llmBaseUrl: env.CPA_BASE_URL }),
+        coder: new SandboxCoder(env.SESSION, { model: env.CODER_MODEL, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
         classifier: new JevClassifier(new TypeSafeClient({ apiKey: env.TYPESAFE_API_KEY, defaultModel: env.JEV_MODEL }), env.JEV_MODEL),
         planner: new LlmPlanner(llm, env.PLANNER_MODEL),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
@@ -57,14 +61,14 @@ export class ProjectAgent extends Agent<Env> {
         specialization: { attempts: Number(env.ATTEMPTS), stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
       },
     );
-    this.built = { orchestrator, bus, repos };
+    this.built = { orchestrator, bus, repos, settings, fingerprint };
     return this.built;
   }
 
   override async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const action = url.pathname.split("/").filter(Boolean).at(-1);
-    const { orchestrator, bus } = this.build();
+    const { orchestrator, bus, settings } = await this.build();
     const session = SESSION_ROUTE.exec(url.pathname);
     if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
     if (request.method === "GET" && action === "spec") {
@@ -79,6 +83,7 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "POST" && action === "prompts") {
       const { prompt } = (await request.json()) as { prompt?: string };
       if (!prompt?.trim()) return Response.json({ error: "prompt is required" }, { status: 400 });
+      if (!settings.llm) return Response.json({ error: NO_LLM }, { status: 409 });
       const result = await orchestrator.submit(prompt.trim());
       if (result.sessionId) await this.schedule(1, "drive");
       return Response.json(result, { status: 202 });
@@ -86,9 +91,13 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "POST" && action === "voice") {
       const { sdp } = (await request.json()) as { sdp?: string };
       if (!sdp) return Response.json({ error: "sdp is required" }, { status: 400 });
-      const host = this.env.OPENAI_API_KEY
-        ? new GptLiveHost({ apiKey: this.env.OPENAI_API_KEY, model: this.env.VOICE_MODEL, voice: this.env.VOICE, connect: workersConnect })
-        : new RealtimeHost({ baseUrl: `${this.env.CPA_BASE_URL.replace(/\/$/, "")}/v1`, apiKey: this.env.CPA_API_KEY, model: this.env.REALTIME_MODEL, voice: this.env.VOICE, connect: workersConnect });
+      if (!settings.llm) return Response.json({ error: NO_LLM }, { status: 409 });
+      const voice = settings.voice;
+      if (!voice) return Response.json({ error: "voice needs an OpenAI API key or a custom Realtime provider in Settings" }, { status: 409 });
+      const host =
+        voice.kind === "openai"
+          ? new GptLiveHost({ apiKey: voice.apiKey, model: this.env.VOICE_MODEL, voice: this.env.VOICE, connect: workersConnect })
+          : new RealtimeHost({ baseUrl: voice.baseUrl, apiKey: voice.apiKey, model: this.env.REALTIME_MODEL, voice: this.env.VOICE, connect: workersConnect });
       const target = {
         submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
           const result = await orchestrator.submitSpoken(prompt, call);
@@ -117,7 +126,7 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   private async sessionRequest(request: Request, id: string, action: string | null): Promise<Response> {
-    const { orchestrator } = this.build();
+    const { orchestrator } = await this.build();
     try {
       if (request.method === "GET" && action === null) return Response.json({ record: await orchestrator.session(id), budget: DEFAULT_BUDGET });
       if (request.method === "GET" && action === "turns") return Response.json(await orchestrator.turns(id));
@@ -152,22 +161,32 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   override async onConnect(connection: Connection): Promise<void> {
-    const { bus } = this.build();
+    const { bus } = await this.build();
     for (const entry of await bus.since(0)) connection.send(JSON.stringify(entry));
   }
 
   async drive(): Promise<void> {
-    const { orchestrator } = this.build();
+    const { orchestrator } = await this.build();
     const sessions = await orchestrator.drain(1);
     if (sessions.some((s) => !isTerminal(s.machine.state))) await this.schedule(1, "drive");
   }
 
   async onMainPushed(event: PushedEvent): Promise<void> {
-    const { repos } = this.build();
+    const { repos } = await this.build();
     repos.emitPush(event);
     await this.schedule(1, "drive");
   }
 }
+
+const missingLlm: LlmEndpoint = {
+  client: new Proxy({} as MessagesClient, {
+    get() {
+      throw new Error(NO_LLM);
+    },
+  }),
+  via: "anthropic",
+  serverFallbacks: false,
+};
 
 const workersConnect: Connect = async (url, headers) => {
   const response = await fetch(url.replace(/^ws/, "http"), { headers: { ...headers, upgrade: "websocket" } });

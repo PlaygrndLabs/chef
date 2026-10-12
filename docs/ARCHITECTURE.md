@@ -31,7 +31,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 | `MemoryIndex` | `LexicalIndex` (TF-IDF) | `VectorizeIndex` (`adapters/src/vectorize.ts`, Vectorize plus Workers AI `@cf/baai/bge-base-en-v1.5`) |
 | `EventBus`, `KeyValueStore`, `Clock`, `IdSource` | memory versions | `DurableEventBus`, `DurableStore` in `workers/src` |
 
-The planner and reviewer call Claude through `adapters/src/anthropic.ts` with structured output validated by zod. `llmFromEnv` picks the endpoint: CPA (CLIProxyAPI with a Claude subscription login, `CPA_BASE_URL` and `CPA_API_KEY`) when it is configured, otherwise the Anthropic API with `ANTHROPIC_API_KEY`. Only the direct API path opts into server-side model fallbacks; CPA does not pass beta headers. The local CPA setup is in `dev/cpa`.
+The planner and reviewer call Claude through `adapters/src/anthropic.ts` with structured output validated by zod. The model provider is the user's choice, like in any other app: an Anthropic API key, or a custom Anthropic-compatible provider with its base URL and key. `adapters/src/providers.ts` resolves it: settings saved in the dashboard (`/api/settings`, kept in the `Settings` Durable Object) win over the Worker's secrets (`ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`). Only the direct Anthropic API path opts into server-side model fallbacks; a custom provider gets plain requests without beta headers.
 
 ## Flow of one prompt
 
@@ -53,7 +53,7 @@ A failed gate or rejected review sends the session back to coding with the failu
 ## Isolation
 
 - Artifacts tokens are per repo, so each session has its own fork. The orchestrator holds the fork's write token; the coder receives a read token only.
-- The coder runs in a Cloudflare Sandbox whose only network path is `SandboxOutbound`: it adds the read token for Artifacts, swaps a placeholder for `CPA_API_KEY` on the CPA gateway's host, blocks `git-receive-pack`, and refuses other hosts. The sandbox returns changed files as data; it never commits or pushes.
+- The coder runs in a Cloudflare Sandbox whose only network path is `SandboxOutbound`: it adds the read token for Artifacts, swaps a placeholder for the provider's API key on the provider's host, blocks `git-receive-pack`, and refuses other hosts. The sandbox returns changed files as data; it never commits or pushes.
 - Capabilities are separate objects (`core/src/orchestrator/capabilities.ts`): `PreviewPublisher` can only push `preview/*`, `MainWriter` can only merge or revert `main`.
 
 ## Merging and sync
@@ -144,8 +144,10 @@ Served by the chef Worker (`workers/src/index.ts`):
 
 | Method and path | Effect |
 | --- | --- |
+| `GET /api/settings` | The model and voice providers in use, with only the last four characters of each key and whether it comes from the dashboard or the deployment |
+| `PUT /api/settings` | Saves `{ llm, voice }`: `{ kind: "anthropic", apiKey }` or `{ kind: "custom", baseUrl, apiKey }` for Claude, `{ kind: "openai", apiKey }` or `{ kind: "custom", baseUrl, apiKey }` for voice; `null` falls back to the deployment |
 | `POST /api/projects/:name/bootstrap` | Creates the canonical repo from the template if it does not exist |
-| `POST /api/projects/:name/voice` | Exchanges a WebRTC `{ sdp }` offer for a voice session that delegates spoken requests to the router: GPT-Live with `OPENAI_API_KEY`, otherwise the Realtime API through the CPA gateway, where a `chef_request` tool call stands in for client delegation |
+| `POST /api/projects/:name/voice` | Exchanges a WebRTC `{ sdp }` offer for a voice session that delegates spoken requests to the router: GPT-Live with an OpenAI API key, or a custom provider that serves the OpenAI Realtime API, where a `chef_request` tool call stands in for client delegation |
 | `POST /api/projects/:name/prompts` | Routes `{ prompt }` and starts a session when there is work; a question returns `answer` with its sources |
 | `GET /api/projects/:name/sessions` | Session records |
 | `GET /api/projects/:name/events?after=<seq>` | Stored events after a sequence number |
