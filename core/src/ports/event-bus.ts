@@ -1,6 +1,6 @@
-import type { KargahEvent } from "../events/events.ts";
+import type { ChefEvent } from "../events/events.ts";
 
 export interface EventBus {
-  publish(event: KargahEvent): Promise<void>;
-  subscribe(listener: (event: KargahEvent) => void): () => void;
+  publish(event: ChefEvent): Promise<void>;
+  subscribe(listener: (event: ChefEvent) => void): () => void;
 }

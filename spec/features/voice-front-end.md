@@ -14,4 +14,4 @@ acceptance:
     text: A request heard as empty is answered with a request to repeat it, and starts no session
 ---
 
-`kargah voice` runs the same path from the CLI, scripted or live.
+`chef voice` runs the same path from the CLI, scripted or live.

@@ -1,5 +1,5 @@
 {
-  "name": "@kargah/workers",
+  "name": "@chef/workers",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,9 +13,9 @@
   "dependencies": {
     "@cloudflare/sandbox": "1.0.0",
     "@copilotkit/runtime": "1.78.0",
-    "@kargah/adapters": "workspace:*",
-    "@kargah/core": "workspace:*",
-    "@kargah/template": "workspace:*",
+    "@chef/adapters": "workspace:*",
+    "@chef/core": "workspace:*",
+    "@chef/template": "workspace:*",
     "@typesafe-ai/sdk": "0.6.0",
     "agents": "0.28.0"
   },

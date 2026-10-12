@@ -13,7 +13,7 @@ export function CommandPalette({ open, onOpenChange }: { readonly open: boolean;
     action();
   };
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange} title="Search kargah" description="Jump to a feature or run an action">
+    <CommandDialog open={open} onOpenChange={onOpenChange} title="Search chef" description="Jump to a feature or run an action">
       <CommandInput placeholder="Search features and actions" />
       <CommandList>
         <CommandEmpty>Nothing found.</CommandEmpty>

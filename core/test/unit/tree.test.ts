@@ -34,9 +34,9 @@ describe("conflict markers", () => {
   it("marks only the overlapping hunk and keeps clean hunks from both sides", () => {
     const base = ["export const menu = [", '  "home",', "];", "", "export const title = \"app\";"].join("\n");
     const ours = ["export const menu = [", '  "home",', '  "notes",', "];", "", "export const title = \"app\";"].join("\n");
-    const theirs = ["export const menu = [", '  "home",', '  "tags",', "];", "", "export const title = \"kargah\";"].join("\n");
+    const theirs = ["export const menu = [", '  "home",', '  "tags",', "];", "", "export const title = \"chef\";"].join("\n");
     expect(conflictMarkers(base, ours, theirs)).toBe(
-      ["export const menu = [", '  "home",', "<<<<<<< session", '  "notes",', "=======", '  "tags",', ">>>>>>> main", "];", "", "export const title = \"kargah\";"].join("\n"),
+      ["export const menu = [", '  "home",', "<<<<<<< session", '  "notes",', "=======", '  "tags",', ">>>>>>> main", "];", "", "export const title = \"chef\";"].join("\n"),
     );
   });
 

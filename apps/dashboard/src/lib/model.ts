@@ -1,4 +1,4 @@
-import type { FeatureSpec, SessionRecord, SessionState } from "@kargah/core";
+import type { FeatureSpec, SessionRecord, SessionState } from "@chef/core";
 import { isActive, type ProjectLive, type SessionLive } from "./events";
 
 export type FeatureStatus = "building" | "stuck" | "merged" | "proposed" | "dropped";

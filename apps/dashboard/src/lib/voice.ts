@@ -1,5 +1,5 @@
 export interface Heard {
-  readonly speaker: "you" | "kargah";
+  readonly speaker: "you" | "chef";
   text: string;
 }
 
@@ -11,7 +11,7 @@ interface VoiceEvent {
 export function transcript(lines: Heard[], event: VoiceEvent): Heard[] {
   const said = event.type === "session.input_transcript.delta" || event.type === "conversation.item.input_audio_transcription.delta";
   const spoken = event.type === "session.output_transcript.delta" || event.type === "response.output_audio_transcript.delta";
-  const speaker = said ? "you" : spoken ? "kargah" : null;
+  const speaker = said ? "you" : spoken ? "chef" : null;
   if (!speaker || typeof event.delta !== "string") return lines;
   const next = [...lines];
   const last = next[next.length - 1];

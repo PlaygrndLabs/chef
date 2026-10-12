@@ -1,4 +1,4 @@
-import type { KargahEvent } from "../events/events.ts";
+import type { ChefEvent } from "../events/events.ts";
 import { applyChanges, changedPaths, diffTrees, type Author, type Commit, type FileChanges, type Resolver, type Tree } from "../git/tree.ts";
 import { NOTES_NAMESPACE, PROOF_NAMESPACE, parseNote, renderNote, type TurnNote } from "../notes/notes.ts";
 import type { CheckResult, CheckRunner, ProofRunner } from "../ports/check-runner.ts";
@@ -138,7 +138,7 @@ export class Orchestrator {
     const token = await this.deps.repos.createToken(this.canonical, "write", this.ttl);
     try {
       const tree = this.regenerate(template);
-      const commit = await this.deps.repos.commit(token, { ref: "main", parent: null, changes: tree, message: "Create project from kargah template", author: this.config.author });
+      const commit = await this.deps.repos.commit(token, { ref: "main", parent: null, changes: tree, message: "Create project from chef template", author: this.config.author });
       await this.syncMemory();
       return commit.id;
     } finally {
@@ -530,7 +530,7 @@ export class Orchestrator {
         const restoredSpec = restore[path] ? readSpec({ [path]: restore[path] as string }).find((f) => f.id === record.featureId) : undefined;
         const changes = restoredSpec?.status === "merged" ? { ...restore, [path]: renderFeature({ ...restoredSpec, status: "building" }) } : restore;
         const commit = await this.deps.repos.commit(token, { ref: "main", parent: record.head, changes, message: `Restore ${record.featureId} work after revert`, author: this.config.author });
-        await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: commit.id, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Restore ${record.featureId} after revert ${revertId}`, runId: this.deps.ids.next("run"), model: "kargah-sync", paths: changedPaths(changes) })) });
+        await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: commit.id, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Restore ${record.featureId} after revert ${revertId}`, runId: this.deps.ids.next("run"), model: "chef-sync", paths: changedPaths(changes) })) });
         record.head = commit.id;
         record.commits.push(commit.id);
       }
@@ -575,7 +575,7 @@ export class Orchestrator {
       kind: "spec_change",
       workItem: null,
       prompt: `Mark ${record.featureId} merged and garden the feature map, memory and lint rules`,
-      model: "kargah-gardener",
+      model: "chef-gardener",
       runId: this.deps.ids.next("run"),
       message: `spec: mark ${record.featureId} merged`,
     });
@@ -716,7 +716,7 @@ export class Orchestrator {
       const live = siblings.filter((s) => !isTerminal(s.machine.state));
       if (live.some((s) => s.machine.state !== "gating")) return null;
       const candidates = await this.crossTests(live);
-      const verdict = candidates.length === 1 ? { sessionId: record.id, reasons: ["only attempt still running"], model: "kargah" } : await this.deps.reviewer.pick({ feature: record.plan.feature, candidates });
+      const verdict = candidates.length === 1 ? { sessionId: record.id, reasons: ["only attempt still running"], model: "chef" } : await this.deps.reviewer.pick({ feature: record.plan.feature, candidates });
       await this.deps.store.put(key, { winner: verdict.sessionId });
       await this.emit({ type: "attempt.picked", featureId: record.featureId, group: record.attempt.group, winner: verdict.sessionId, candidates: candidates.map((c) => ({ sessionId: c.sessionId, passed: c.crossTests.passed, total: c.crossTests.total })), reasons: verdict.reasons, model: verdict.model });
       return verdict.sessionId;
@@ -774,7 +774,7 @@ export class Orchestrator {
     if (outcome.status === "merged" || outcome.status === "conflicted") {
       const paths = outcome.status === "conflicted" ? outcome.paths : [];
       record.commits.push(outcome.commitId);
-      await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Merge main ${mainHead}`, runId: this.deps.ids.next("run"), model: "kargah-sync", paths })) }));
+      await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Merge main ${mainHead}`, runId: this.deps.ids.next("run"), model: "chef-sync", paths })) }));
     }
     if (outcome.status === "conflicted") {
       await this.emit({ type: "sync.conflict", sessionId: record.id, featureId: record.featureId, paths: outcome.paths, mainCommit: mainHead });
@@ -885,7 +885,7 @@ export class Orchestrator {
 
   private note(record: SessionRecord, turn: { role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; paths: readonly string[] }): TurnNote {
     return {
-      kargah: 1,
+      chef: 1,
       project: record.project,
       feature: record.featureId,
       session: record.id,
@@ -970,8 +970,8 @@ export class Orchestrator {
     await this.deps.store.put(`session/${record.id}`, record);
   }
 
-  private async emit(event: DistributiveOmit<KargahEvent, "project" | "at">): Promise<void> {
-    await this.deps.bus.publish({ ...event, project: this.config.name, at: this.deps.clock.now() } as KargahEvent);
+  private async emit(event: DistributiveOmit<ChefEvent, "project" | "at">): Promise<void> {
+    await this.deps.bus.publish({ ...event, project: this.config.name, at: this.deps.clock.now() } as ChefEvent);
   }
 }
 

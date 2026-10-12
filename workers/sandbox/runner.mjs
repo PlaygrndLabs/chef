@@ -3,8 +3,8 @@ import { appendFileSync, existsSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
-const job = JSON.parse(Buffer.from(process.env.KARGAH_JOB ?? "", "base64").toString("utf8"));
-const dir = join(process.env.KARGAH_WORKSPACE ?? "/workspace", job.sessionId, "repo");
+const job = JSON.parse(Buffer.from(process.env.CHEF_JOB ?? "", "base64").toString("utf8"));
+const dir = join(process.env.CHEF_WORKSPACE ?? "/workspace", job.sessionId, "repo");
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
 const git = (...args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 
@@ -12,8 +12,8 @@ execFileSync("rm", ["-rf", dir]);
 execFileSync("git", ["clone", "--quiet", "--no-tags", "--branch", job.ref, job.remote, dir]);
 git("checkout", "--quiet", job.commitId);
 git("config", "user.email", "ma.karimi76@gmail.com");
-git("config", "user.name", "kargah");
-const modules = process.env.KARGAH_NODE_MODULES ?? "/opt/kargah/template/node_modules";
+git("config", "user.name", "chef");
+const modules = process.env.CHEF_NODE_MODULES ?? "/opt/chef/template/node_modules";
 if (existsSync(modules) && !existsSync(join(dir, "node_modules"))) {
   symlinkSync(modules, join(dir, "node_modules"), "dir");
   appendFileSync(join(dir, ".git", "info", "exclude"), "\nnode_modules\n");
@@ -23,14 +23,14 @@ const env = {
   PATH: process.env.PATH ?? "",
   HOME: process.env.HOME ?? "/tmp",
   ANTHROPIC_BASE_URL: job.llm.baseUrl,
-  ANTHROPIC_API_KEY: process.env.KARGAH_LLM_KEY ?? "kargah-placeholder",
+  ANTHROPIC_API_KEY: process.env.CHEF_LLM_KEY ?? "chef-placeholder",
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
   DISABLE_TELEMETRY: "1",
   DISABLE_AUTOUPDATER: "1",
 };
 for (const name of ["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"]) if (process.env[name]) env[name] = process.env[name];
 
-const lint = process.env.KARGAH_LINT ?? "/opt/kargah/template/lint.mjs";
+const lint = process.env.CHEF_LINT ?? "/opt/chef/template/lint.mjs";
 const options = (resume) => ({
   cwd: dir,
   model: job.model,
@@ -80,7 +80,7 @@ const usage = { ...result.usage };
 for (let round = 0; round < 2; round++) {
   const problems = lintProblems();
   if (!problems) break;
-  emit({ type: "kargah.lint", problems });
+  emit({ type: "chef.lint", problems });
   result = await turn(`The project lint rejects your changes. Fix every problem below in the files you changed, without adding comments, then stop.\n\n${problems}`, result.session_id);
   for (const key of ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"]) usage[key] = (usage[key] ?? 0) + (result.usage[key] ?? 0);
 }
@@ -92,4 +92,4 @@ for (const line of git("diff", "--cached", "--name-status", "--no-renames", job.
   const [status, path] = line.split("\t");
   changes[path] = status === "D" ? null : readFileSync(join(dir, path), "utf8");
 }
-emit({ type: "kargah.result", changes, summary: result.result, model: job.model, usage: { inputTokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0), outputTokens: usage.output_tokens } });
+emit({ type: "chef.result", changes, summary: result.result, model: job.model, usage: { inputTokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0), outputTokens: usage.output_tokens } });

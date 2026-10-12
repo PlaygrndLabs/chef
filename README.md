@@ -1,4 +1,4 @@
-# kargah
+# chef
 
 A human-free, spec-driven software builder on Cloudflare. Each feature has one spec entry and one live preview, and every piece of work on it runs as a session in its own Artifacts fork. Only the merge gate writes `main`.
 
@@ -10,14 +10,14 @@ A human-free, spec-driven software builder on Cloudflare. Each feature has one s
 ## Layout
 
 ```
-spec/        kargah's own feature map
+spec/        chef's own feature map
 core/        spec, router, state machine, orchestrator, merge, ports and fakes
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, the CopilotKit agent
-workers/     the kargah Worker: project and session Durable Objects, coder sandbox, sync workflow
+workers/     the chef Worker: project and session Durable Objects, coder sandbox, sync workflow
 apps/        dashboard: chat-first CopilotKit UI with a feature list, feature progress, controls and a preview panel
 agents/      specialist profiles with write scopes
-template/    the template every project kargah builds starts from
-cli/         kargah CLI and local runners
+template/    the template every project chef builds starts from
+cli/         chef CLI and local runners
 docs/        architecture, spikes, progress
 ```
 
@@ -27,7 +27,7 @@ Requires Node 22.18 or later, pnpm 10 and git.
 
 ```
 pnpm install
-pnpm run verify                                      # typecheck, lint, spec lint, dashboard build, unit and e2e tests (the browser test needs Chromium: pnpm --filter @kargah/cli exec playwright install chromium)
+pnpm run verify                                      # typecheck, lint, spec lint, dashboard build, unit and e2e tests (the browser test needs Chromium: pnpm --filter @chef/cli exec playwright install chromium)
 node --import tsx cli/src/bin.ts serve               # dashboard and CopilotKit chat at http://127.0.0.1:8787, after pnpm build
 node --import tsx cli/src/bin.ts demo                # one feature through every state with real tsc, tests and proof
 node --import tsx cli/src/bin.ts route "fix the add button"
@@ -47,33 +47,33 @@ The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) w
 ## Deploy to a fresh Cloudflare account
 
 1. Use an account on Workers Paid with Artifacts and Containers enabled. Docker must be running where you deploy, to build the sandbox image.
-2. Set the secrets for the kargah Worker:
+2. Set the secrets for the chef Worker:
 
    ```
    cd workers
    npx wrangler secret put CPA_BASE_URL            # the CPA gateway's public HTTPS URL
-   npx wrangler secret put KARGAH_PASSWORD         # the dashboard and API refuse everyone until it is set
+   npx wrangler secret put CHEF_PASSWORD         # the dashboard and API refuse everyone until it is set
    npx wrangler secret put CPA_API_KEY
    npx wrangler secret put TYPESAFE_API_KEY
    npx wrangler secret put CF_ACCOUNT_ID
-   npx wrangler secret put CF_API_TOKEN            # can edit Workers; previews of project demo go to the Worker kargah-project-demo
+   npx wrangler secret put CF_API_TOKEN            # can edit Workers; previews of project demo go to the Worker chef-project-demo
    npx wrangler secret put OPENAI_API_KEY          # optional: voice through GPT-Live; without it voice uses the Realtime API through the CPA gateway (a ChatGPT login in its dashboard)
    ```
 
 3. Create the memory index and its metadata indexes, before the first deploy:
 
    ```
-   npx wrangler vectorize create kargah-memory --dimensions=768 --metric=cosine
-   npx wrangler vectorize create-metadata-index kargah-memory --property-name=project --type=string
-   npx wrangler vectorize create-metadata-index kargah-memory --property-name=kind --type=string
+   npx wrangler vectorize create chef-memory --dimensions=768 --metric=cosine
+   npx wrangler vectorize create-metadata-index chef-memory --property-name=project --type=string
+   npx wrangler vectorize create-metadata-index chef-memory --property-name=kind --type=string
    ```
 
-4. Deploy: `pnpm --filter @kargah/workers run deploy`. The `deploy` workflow (Actions, run by hand) does steps 2 to 4 from the repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CPA_BASE_URL`, `CPA_API_KEY`, `TYPESAFE_API_KEY`, `KARGAH_PASSWORD` and, if set, `OPENAI_API_KEY`. Scripts can call the API with `Authorization: Bearer <KARGAH_PASSWORD>`.
-5. Create a project: `curl -X POST https://<kargah-worker>/api/projects/demo/bootstrap`. This creates the canonical repo `demo` in the `kargah` Artifacts namespace from `template/`.
-6. Open `https://<kargah-worker>/?project=demo` and send a prompt such as "Add an item to a todo list".
+4. Deploy: `pnpm --filter @chef/workers run deploy`. The `deploy` workflow (Actions, run by hand) does steps 2 to 4 from the repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CPA_BASE_URL`, `CPA_API_KEY`, `TYPESAFE_API_KEY`, `CHEF_PASSWORD` and, if set, `OPENAI_API_KEY`. Scripts can call the API with `Authorization: Bearer <CHEF_PASSWORD>`.
+5. Create a project: `curl -X POST https://<chef-worker>/api/projects/demo/bootstrap`. This creates the canonical repo `demo` in the `chef` Artifacts namespace from `template/`.
+6. Open `https://<chef-worker>/?project=demo` and send a prompt such as "Add an item to a todo list".
 
 The `cloud` workflow (Actions, run by hand) does steps 5 and 6 from CI: it bootstraps a project, sends a prompt, follows its sessions until they end and prints the Worker's logs from `wrangler tail`.
 
 Models are set in `workers/wrangler.jsonc` (`PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `JEV_MODEL`, `VOICE_MODEL`).
 
-Optional tuned reviewer: train it with `python tune/train.py` (see `tune/README.md`), upload it with `npx wrangler ai finetune create @cf/google/gemma-2b-it-lora kargah-reviewer tune/out/adapter`, and set the var `REVIEWER_LORA` to `kargah-reviewer`.
+Optional tuned reviewer: train it with `python tune/train.py` (see `tune/README.md`), upload it with `npx wrangler ai finetune create @cf/google/gemma-2b-it-lora chef-reviewer tune/out/adapter`, and set the var `REVIEWER_LORA` to `chef-reviewer`.

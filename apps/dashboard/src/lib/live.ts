@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { FeatureSpec, KargahEvent, SessionRecord } from "@kargah/core";
+import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { projectApi } from "./api";
 import { apply, emptyProject, type LogEntry, type ProjectLive } from "./events";
 
 export type Connection = "connecting" | "live" | "polling" | "offline";
 
-const REFRESH_RECORDS: ReadonlySet<KargahEvent["type"]> = new Set(["session.created", "session.state", "session.stuck", "main.merged", "main.reverted", "commit.created", "sync.merged", "attempt.picked"]);
-const REFRESH_SPEC: ReadonlySet<KargahEvent["type"]> = new Set(["main.merged", "main.reverted"]);
+const REFRESH_RECORDS: ReadonlySet<ChefEvent["type"]> = new Set(["session.created", "session.state", "session.stuck", "main.merged", "main.reverted", "commit.created", "sync.merged", "attempt.picked"]);
+const REFRESH_SPEC: ReadonlySet<ChefEvent["type"]> = new Set(["main.merged", "main.reverted"]);
 
 class Store {
   state: ProjectLive = emptyProject();
@@ -21,8 +21,8 @@ class Store {
 
   snapshot = () => this.version;
 
-  receive(entries: readonly LogEntry[]): KargahEvent[] {
-    const applied: KargahEvent[] = [];
+  receive(entries: readonly LogEntry[]): ChefEvent[] {
+    const applied: ChefEvent[] = [];
     for (const entry of entries) if (apply(this.state, entry)) applied.push(entry.event);
     if (applied.length) this.notify();
     return applied;
@@ -79,7 +79,7 @@ export function useProject(project: string): ProjectData {
       window.clearTimeout(timers.current[key]);
       timers.current[key] = window.setTimeout(run, 600);
     };
-    const onEvents = (events: readonly KargahEvent[]) => {
+    const onEvents = (events: readonly ChefEvent[]) => {
       if (events.some((e) => REFRESH_RECORDS.has(e.type))) debounced("records", loadRecords);
       if (events.some((e) => REFRESH_SPEC.has(e.type))) debounced("spec", loadSpec);
     };

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseFeature, readSpec, startVoiceCall, voiceInstructions, VoiceDelegate, type LiveCommand, type LiveConnection, type LiveEvent, type SubmitResult } from "@kargah/core";
-import { ScriptedVoiceHost, SequentialIds } from "@kargah/core/fakes";
-import type { Connect, SocketLike } from "@kargah/adapters/gpt-live";
+import { parseFeature, readSpec, startVoiceCall, voiceInstructions, VoiceDelegate, type LiveCommand, type LiveConnection, type LiveEvent, type SubmitResult } from "@chef/core";
+import { ScriptedVoiceHost, SequentialIds } from "@chef/core/fakes";
+import type { Connect, SocketLike } from "@chef/adapters/gpt-live";
 import { readTree } from "./fs.ts";
 import { demoScript } from "./demo.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
@@ -16,7 +16,7 @@ export interface VoiceRun {
   readonly intent: string | null;
   readonly featureId: string | null;
   readonly reply: string | null;
-  readonly kargahSaid: string;
+  readonly chefSaid: string;
   readonly state: string;
   readonly mergedCommit: string | null;
   readonly humanActions: number;
@@ -51,7 +51,7 @@ export async function runVoice(options: { readonly say: string; readonly live: b
   const w = world(options.real);
   await w.orchestrator.bootstrap(templateTree());
   const spec = readSpec((await w.orchestrator.mainTree()).tree);
-  let kargahSaid = "";
+  let chefSaid = "";
   let result: SubmitResult | null;
   let heard: string | null;
   let reply: string | null;
@@ -67,7 +67,7 @@ export async function runVoice(options: { readonly say: string; readonly live: b
     heard = request?.prompt ?? null;
     result = request?.result ?? null;
     reply = host.spoken()[0] ?? null;
-    kargahSaid = reply ?? "";
+    chefSaid = reply ?? "";
   } else {
     const apiKey = process.env["OPENAI_API_KEY"];
     const gatewayUrl = process.env["CPA_BASE_URL"];
@@ -78,23 +78,23 @@ export async function runVoice(options: { readonly say: string; readonly live: b
     let delegate: VoiceDelegate | null = null;
     const pending: LiveEvent[] = [];
     const onEvent = (event: LiveEvent) => {
-      if (event.type === "session.output_transcript.delta" && typeof event["delta"] === "string") kargahSaid += event["delta"];
+      if (event.type === "session.output_transcript.delta" && typeof event["delta"] === "string") chefSaid += event["delta"];
       if (event.type === "session.input_transcript.delta" && typeof event["delta"] === "string") log(`heard: ${event["delta"]}`);
-      if (event.type === "session.delegation.created") log("delegated to kargah");
+      if (event.type === "session.delegation.created") log("delegated to chef");
       if (event.type === "error") log(`error: ${JSON.stringify(event["error"] ?? event)}`);
       if (delegate) void delegate.handle(event);
       else pending.push(event);
     };
     let session: { readonly sessionId: string; readonly connection: LiveConnection; feed(): void };
     if (apiKey) {
-      const { speak, startServerSession } = await import("@kargah/adapters/gpt-live");
+      const { speak, startServerSession } = await import("@chef/adapters/gpt-live");
       log(`synthesizing "${options.say}"`);
       const pcm = await speak({ apiKey, text: options.say });
       const live = await startServerSession({ apiKey, instructions: voiceInstructions(spec), onEvent, connect: nodeConnect });
       log(`GPT-Live session ${live.sessionId}`);
       session = { sessionId: live.sessionId, connection: live.connection, feed: () => (live.sendAudio(pcm), live.sendAudio(new Uint8Array(24000 * 2 * 2))) };
     } else {
-      const { startRealtimeSession } = await import("@kargah/adapters/realtime");
+      const { startRealtimeSession } = await import("@chef/adapters/realtime");
       const live = await startRealtimeSession({ baseUrl: `${String(gatewayUrl).replace(/\/$/, "")}/v1`, apiKey: String(gatewayKey), instructions: voiceInstructions(spec), onEvent, connect: nodeConnect });
       log("Realtime session through the gateway; the request is sent as text");
       session = { sessionId: `realtime-${Date.now()}`, connection: live.connection, feed: () => live.say(options.say) };
@@ -110,7 +110,7 @@ export async function runVoice(options: { readonly say: string; readonly live: b
     const active = delegate;
     if (!(await until(() => active.requests.length > 0, 60_000))) log("the voice model never delegated the request");
     await active.idle();
-    await until(() => kargahSaid.length > 0, 15_000);
+    await until(() => chefSaid.length > 0, 15_000);
     await new Promise((resolve) => setTimeout(resolve, 4000));
     await session.connection.close();
     const request = active.requests[0];
@@ -133,7 +133,7 @@ export async function runVoice(options: { readonly say: string; readonly live: b
     intent: result?.decision.intent ?? null,
     featureId: result?.featureId ?? result?.decision.featureId ?? null,
     reply,
-    kargahSaid: kargahSaid.trim(),
+    chefSaid: chefSaid.trim(),
     state,
     mergedCommit,
     humanActions: (await w.orchestrator.sessions()).filter((s) => s.machine.state === "stuck").length,

@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { exportOutcomes, featureMapProblems, MEMORY_DIR, type CheckResult, type CheckRunner, type KargahEvent, type ProofRecord, type ProofRunner, type ReviewExample, type Tree, type TurnExample } from "@kargah/core";
-import { parseTap, RULES_DIR } from "@kargah/core/checks";
+import { exportOutcomes, featureMapProblems, MEMORY_DIR, type CheckResult, type CheckRunner, type ChefEvent, type ProofRecord, type ProofRunner, type ReviewExample, type Tree, type TurnExample } from "@chef/core";
+import { parseTap, RULES_DIR } from "@chef/core/checks";
 import { exec } from "../local/exec.ts";
 import { materialize } from "../local/materialize.ts";
 import { LocalCheckRunner, LocalProofRunner } from "../local/runners.ts";
@@ -190,7 +190,7 @@ async function runOnce(mode: BenchMode, items: readonly BenchItem[], options: Be
   return { result, learned, world: w };
 }
 
-async function memoryStats(w: ReturnType<typeof localWorld>, log: readonly KargahEvent[]): Promise<MemoryStats> {
+async function memoryStats(w: ReturnType<typeof localWorld>, log: readonly ChefEvent[]): Promise<MemoryStats> {
   const history = await w.repos.log(w.orchestrator.canonical, "main", 1000);
   let featureMapFailures = 0;
   for (const commit of history) {
@@ -208,7 +208,7 @@ async function memoryStats(w: ReturnType<typeof localWorld>, log: readonly Karga
   };
 }
 
-function count(log: readonly KargahEvent[], type: "main.merged" | "main.reverted", featureId: string): number {
+function count(log: readonly ChefEvent[], type: "main.merged" | "main.reverted", featureId: string): number {
   return log.filter((e) => e.type === type && e.featureId === featureId).length;
 }
 

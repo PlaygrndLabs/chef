@@ -2,7 +2,7 @@
 id: spec-format
 title: Spec format and spec lint
 status: merged
-entrypoint: kargah spec lint [dir]
+entrypoint: chef spec lint [dir]
 acceptance:
   - id: AC1
     text: Each feature file has typed frontmatter (id, title, status, entrypoint, acceptance) validated by a schema

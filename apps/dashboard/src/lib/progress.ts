@@ -1,4 +1,4 @@
-import type { SessionState } from "@kargah/core";
+import type { SessionState } from "@chef/core";
 import { isActive, type TimelineItem } from "./events";
 import { short } from "./format";
 
@@ -14,7 +14,7 @@ const NOW: Readonly<Record<SessionState, string>> = {
   reviewing: "A reviewer is reading the change.",
   gating: "Running the final checks.",
   merged: "Live. Ask for a change below whenever you want.",
-  stuck: "kargah stopped and is waiting for you.",
+  stuck: "chef stopped and is waiting for you.",
   dropped: "Stopped. Use Start over in the menu to try again.",
 };
 
@@ -48,7 +48,7 @@ export type UpdateTone = "ok" | "run" | "bad" | "idle";
 export type Update =
   | { readonly kind: "you"; readonly key: string; readonly at: number; readonly text: string; readonly note: boolean }
   | {
-      readonly kind: "kargah";
+      readonly kind: "chef";
       readonly key: string;
       readonly at: number;
       icon: UpdateIcon;
@@ -59,7 +59,7 @@ export type Update =
       readonly mark: { readonly review?: "approved" | "rejected"; readonly gate?: "passed" | "failed" };
     };
 
-type Step = Extract<Update, { kind: "kargah" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "retry" | "reopen" | null };
+type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "retry" | "reopen" | null };
 
 const PHASES: ReadonlySet<SessionState> = new Set(["planning", "testing", "coding", "reviewing", "gating"]);
 const AFTER: Readonly<Record<string, Step["after"]>> = { review_rejected: "review", gate_failed: "gate", retried: "retry", reopened: "reopen" };
@@ -104,11 +104,11 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
       case "state": {
         if (PHASES.has(item.to)) {
           const after = AFTER[item.reason] ?? null;
-          step = { kind: "kargah", key, at: item.at, icon: ICON[item.to] ?? "code", tone: "ok", text: "", detail: "", tech: [], mark: {}, phase: item.to, said: "", last: "", after };
+          step = { kind: "chef", key, at: item.at, icon: ICON[item.to] ?? "code", tone: "ok", text: "", detail: "", tech: [], mark: {}, phase: item.to, said: "", last: "", after };
           steps.push(step);
           list.push(step);
         } else if (item.to === "dropped") {
-          list.push({ kind: "kargah", key, at: item.at, icon: "stop", tone: "idle", text: item.reason ? `Stopped: ${item.reason}` : "Stopped", detail: "", tech: [], mark: {} });
+          list.push({ kind: "chef", key, at: item.at, icon: "stop", tone: "idle", text: item.reason ? `Stopped: ${item.reason}` : "Stopped", detail: "", tech: [], mark: {} });
           step = null;
         } else step = null;
         return;
@@ -136,12 +136,12 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         tech(`recalled ${item.paths.join(", ")}`);
         return;
       case "sync":
-        if (item.conflict) list.push({ kind: "kargah", key, at: item.at, icon: "sync", tone: "bad", text: `The latest app changed the same files: ${item.paths.join(", ")}`, detail: "", tech: [`main ${short(item.mainCommit)}`], mark: {} });
+        if (item.conflict) list.push({ kind: "chef", key, at: item.at, icon: "sync", tone: "bad", text: `The latest app changed the same files: ${item.paths.join(", ")}`, detail: "", tech: [`main ${short(item.mainCommit)}`], mark: {} });
         else tech(`pulled main ${short(item.mainCommit)}`);
         return;
       case "review":
         list.push({
-          kind: "kargah",
+          kind: "chef",
           key,
           at: item.at,
           icon: "review",
@@ -155,7 +155,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
       case "gate": {
         const failed = item.checks.filter((c) => !c.ok);
         list.push({
-          kind: "kargah",
+          kind: "chef",
           key,
           at: item.at,
           icon: "check",
@@ -168,11 +168,11 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         return;
       }
       case "merged":
-        list.push({ kind: "kargah", key, at: item.at, icon: "live", tone: "ok", text: "Went live", detail: "", tech: [`merged into main as ${short(item.commitId)}`], mark: {} });
+        list.push({ kind: "chef", key, at: item.at, icon: "live", tone: "ok", text: "Went live", detail: "", tech: [`merged into main as ${short(item.commitId)}`], mark: {} });
         step = null;
         return;
       case "stuck":
-        list.push({ kind: "kargah", key, at: item.at, icon: "alert", tone: "bad", text: `Stopped: ${item.reason}`, detail: "", tech: [], mark: {} });
+        list.push({ kind: "chef", key, at: item.at, icon: "alert", tone: "bad", text: `Stopped: ${item.reason}`, detail: "", tech: [], mark: {} });
         step = null;
         return;
       case "steered":
@@ -180,7 +180,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         return;
       case "picked":
         list.push({
-          kind: "kargah",
+          kind: "chef",
           key,
           at: item.at,
           icon: "pick",
@@ -211,7 +211,7 @@ export function activity(state: SessionState, timeline: readonly TimelineItem[],
   if (state === "merged") return "Passed every check and went live";
   if (state === "stuck") return stuck ?? "Needs your help";
   if (state === "dropped") return "Stopped";
-  const last = [...updates(timeline, state)].reverse().find((u) => u.kind === "kargah");
-  if (!last || last.kind !== "kargah") return NOW[state];
+  const last = [...updates(timeline, state)].reverse().find((u) => u.kind === "chef");
+  if (!last || last.kind !== "chef") return NOW[state];
   return last.detail ? `${last.text}: ${last.detail}` : last.text;
 }

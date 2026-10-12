@@ -26,8 +26,8 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      KARGAH_PASSWORD: ${{ secrets.KARGAH_PASSWORD }}
-      KARGAH_URL: https://kargah.playgrndlabs.workers.dev
+      CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD || secrets.KARGAH_PASSWORD }}
+      CHEF_URL: https://chef.playgrndlabs.workers.dev
       PROJECT: ${{ inputs.project }}
       PROMPT: ${{ inputs.prompt }}
       MINUTES: ${{ inputs.minutes }}
@@ -42,7 +42,7 @@ jobs:
       - name: Send the prompt and follow its sessions while tailing the Worker
         working-directory: workers
         run: |
-          npx wrangler tail kargah --format json > "$RUNNER_TEMP/tail.jsonl" 2> "$RUNNER_TEMP/tail.err" &
+          npx wrangler tail chef --format json > "$RUNNER_TEMP/tail.jsonl" 2> "$RUNNER_TEMP/tail.err" &
           sleep 15
           bash ../.github/scripts/follow.sh
       - name: Worker logs

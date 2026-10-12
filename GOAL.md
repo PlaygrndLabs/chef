@@ -1,23 +1,23 @@
-# Goal: build kargah end to end
+# Goal: build chef end to end
 
-Paste this whole file as the goal for a long-running coding agent working in this repository. The concept behind it is the kargah concept doc: https://claude.ai/code/artifact/21197d74-c9ea-42da-b7ba-c34d4b201e77
+Paste this whole file as the goal for a long-running coding agent working in this repository. The concept behind it is the chef concept doc: https://claude.ai/code/artifact/21197d74-c9ea-42da-b7ba-c34d4b201e77
 
 ## One-line goal
 
-Build kargah, a human-free, spec-driven software builder on Cloudflare, until a person can write a feature into the spec or send one prompt, and that feature reaches `main` of the project's canonical Artifacts repo with tests, review and proof of a real run, with zero human actions, across several features built in parallel.
+Build chef, a human-free, spec-driven software builder on Cloudflare, until a person can write a feature into the spec or send one prompt, and that feature reaches `main` of the project's canonical Artifacts repo with tests, review and proof of a real run, with zero human actions, across several features built in parallel.
 
-## What kargah is
+## What chef is
 
 - The spec is the memory, git is the state, chat is just input.
 - A feature is one spec entry with one live preview. Each piece of work on a feature (first build, bug fix, refactor, competing attempts) is a session.
 - A session is a Durable Object plus its own Artifacts fork named `<project>--<feature>--<session>`. Its agent holds a short-lived write token for that fork only.
-- Every finished agent turn (`session.idle` with changed files) is one commit. The prompt, run id, model, agent role and spec revision go into git notes under `refs/notes/kargah`.
+- Every finished agent turn (`session.idle` with changed files) is one commit. The prompt, run id, model, agent role and spec revision go into git notes under `refs/notes/chef`.
 - After each commit the orchestrator pushes the session head to `preview/<feature>` in the canonical repo, and Workers Builds turns that branch into a Worker Preview with its own URL.
 - Every push to canonical `main` is merged into every active fork (continuous upstream sync). A conflict becomes a task for the same session.
 - Only the merge gate writes to `main`. Nothing ever waits on a human click.
 - Routing: rules first, then Jev (TypeSafe AI's System One model, `@typesafe-ai/sdk`) answers typed `choice` questions with calibrated confidence, then a planner LLM with structured output writes spec and work items when confidence is low or the feature is new. Jev never writes text.
 - The coder is the Claude Agent SDK running inside a Cloudflare Sandbox on the fork's checkout. It reaches Claude through the CPA gateway (`CPA_BASE_URL`, `CPA_API_KEY`), the same endpoint the planner and reviewer use.
-- Sessions are streamed to the app with CopilotKit: the kargah Worker hosts the CopilotKit runtime, each prompt runs as an AG-UI agent that streams the session's coder text, tool calls, state steps, preview, review, gate and merge, and the dashboard's CopilotKit chat renders it live.
+- Sessions are streamed to the app with CopilotKit: the chef Worker hosts the CopilotKit runtime, each prompt runs as an AG-UI agent that streams the session's coder text, tool calls, state steps, preview, review, gate and merge, and the dashboard's CopilotKit chat renders it live.
 
 ## Non-negotiables
 
@@ -41,8 +41,8 @@ spec/        feature map: spec/features/<id>.md with typed frontmatter (id, titl
 workers/     router, session Durable Object, orchestrator, upstream sync workflow, merge gate
 agents/      specialist profiles (planner, frontend, backend, test, reviewer, conflict-resolver, gardener)
 apps/        dashboard: CopilotKit chat streaming sessions, features, commits, preview URLs, stuck items
-template/    agent-friendly template for projects kargah builds (Dune-style vertical slices)
-cli/         kargah CLI and the project CLI (app drive <flow>, app proof <feature>)
+template/    agent-friendly template for projects chef builds (Dune-style vertical slices)
+cli/         chef CLI and the project CLI (app drive <flow>, app proof <feature>)
 ```
 
 ## Phase 0: spikes for the open questions
@@ -58,7 +58,7 @@ Each spike ends with a short note in `docs/spikes/<name>.md` that states the res
 
 ## Phase 1: core loop
 
-Build: spec format and `kargah spec lint`; router (rules, Jev, planner); session Durable Object with the state machine `queued → planning → testing → coding → reviewing → gating → merged | stuck`; fork per session with scoped tokens; Claude Agent SDK coder in Sandbox; auto-commit on `session.idle` with git notes; preview push; the project template with import-boundary lint and a no-comment lint; the project CLI that drives the preview and stores proof next to the commit; a merge gate (typecheck, lint, tests, reviewer verdict, proof present); a minimal dashboard with the live event stream, streamed through CopilotKit; per-session budgets on tokens, time and attempts.
+Build: spec format and `chef spec lint`; router (rules, Jev, planner); session Durable Object with the state machine `queued → planning → testing → coding → reviewing → gating → merged | stuck`; fork per session with scoped tokens; Claude Agent SDK coder in Sandbox; auto-commit on `session.idle` with git notes; preview push; the project template with import-boundary lint and a no-comment lint; the project CLI that drives the preview and stores proof next to the commit; a merge gate (typecheck, lint, tests, reviewer verdict, proof present); a minimal dashboard with the live event stream, streamed through CopilotKit; per-session budgets on tokens, time and attempts.
 
 Done when:
 - `pnpm test` and the fake end-to-end suite pass in CI.
@@ -102,7 +102,7 @@ Done when:
 ## Whole-project definition of done
 
 - All phase criteria above are met, with evidence in `docs/progress/phase-<n>.md` (commands run, logs, preview URLs, commit ids).
-- `README.md` lets someone deploy kargah to a fresh Cloudflare account from zero, and doing so on a clean account works.
+- `README.md` lets someone deploy chef to a fresh Cloudflare account from zero, and doing so on a clean account works.
 - Human actions per merged feature, measured by the dashboard, is zero.
 
 ## How to work

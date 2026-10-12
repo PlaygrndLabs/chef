@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { NOTES_NAMESPACE, parseNote } from "@kargah/core";
+import { NOTES_NAMESPACE, parseNote } from "@chef/core";
 import { ArtifactsRepoHost } from "../../src/artifacts.ts";
 import { fixture, scriptFromFixture, templateTree, todoSpec, world } from "../../../core/test/harness.ts";
 import { LocalGitServer } from "../git-server.ts";

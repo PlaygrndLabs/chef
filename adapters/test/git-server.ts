@@ -14,7 +14,7 @@ interface TokenRecord {
 }
 
 export class LocalGitServer {
-  readonly root = mkdtempSync(join(tmpdir(), "kargah-git-"));
+  readonly root = mkdtempSync(join(tmpdir(), "chef-git-"));
   readonly tokens = new Map<string, TokenRecord>();
   readonly pushes: { repo: string; token: string }[] = [];
   private server: Server | null = null;

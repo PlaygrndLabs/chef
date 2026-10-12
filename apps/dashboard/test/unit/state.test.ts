@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeatureSpec, KargahEvent, SessionRecord } from "@kargah/core";
+import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
 import { featureNodes, sortFeatures } from "../../src/lib/model.ts";
 import { activity, progress, updates } from "../../src/lib/progress.ts";
@@ -9,7 +9,7 @@ const base = { project: "demo", at: 1 };
 
 function run(events: object[]) {
   const state = emptyProject();
-  events.forEach((event, index) => apply(state, { seq: index + 1, event: { ...base, ...event } as KargahEvent }));
+  events.forEach((event, index) => apply(state, { seq: index + 1, event: { ...base, ...event } as ChefEvent }));
   return state;
 }
 
@@ -115,7 +115,7 @@ describe("plain progress", () => {
       { type: "main.merged", sessionId: "s1", featureId: "a", commitId: "m1" },
       to("gating", "merged", "gate_passed"),
     ]);
-    const texts = updates(items, "merged").map((u) => u.kind === "kargah" ? u.text : u.text);
+    const texts = updates(items, "merged").map((u) => u.kind === "chef" ? u.text : u.text);
     expect(texts).toEqual(["Wrote the code", "A reviewer asked for changes: missing test", "Fixed what the reviewer asked for", "A reviewer approved the change", "Passed all 2 checks", "Went live"]);
     expect(progress("merged", items)).toMatchObject({ stage: 4, done: true });
   });
@@ -139,7 +139,7 @@ describe("voice transcript", () => {
       lines = transcript(lines, event);
     expect(lines).toEqual([
       { speaker: "you", text: "Add an item" },
-      { speaker: "kargah", text: "On it." },
+      { speaker: "chef", text: "On it." },
     ]);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { KargahEvent } from "../../src/events/events.ts";
+import type { ChefEvent } from "../../src/events/events.ts";
 import { reviewPoints, toJsonl } from "../../src/learning/export.ts";
 import { gemmaPrompt, parseReviewAnswer, reviewMessages, reviewTarget } from "../../src/learning/review-prompt.ts";
 import type { FeatureSpec } from "../../src/spec/schema.ts";
@@ -20,7 +20,7 @@ const feature: FeatureSpec = {
 
 const at = { project: "demo", at: 0 };
 
-function verdict(sessionId: string, head: string, approve = true): KargahEvent {
+function verdict(sessionId: string, head: string, approve = true): ChefEvent {
   return { ...at, type: "review.verdict", sessionId, featureId: "shout", approve, reasons: [], model: "fake", head, base: "b0" };
 }
 
@@ -51,7 +51,7 @@ describe("reviewer examples", () => {
   });
 
   it("labels each approved review by what happened to the change afterwards", () => {
-    const log: KargahEvent[] = [
+    const log: ChefEvent[] = [
       verdict("s1", "h1"),
       { ...at, type: "gate.result", sessionId: "s1", featureId: "shout", ok: false, checks: [] },
       verdict("s1", "h2"),

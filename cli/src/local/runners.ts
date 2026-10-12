@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { checkTree, formatProblems, parseTap } from "@kargah/core/checks";
-import { lintSpecFiles, type CheckResult, type CheckRunner, type Clock, type ProofRecord, type ProofRunner, type Tree } from "@kargah/core";
+import { checkTree, formatProblems, parseTap } from "@chef/core/checks";
+import { lintSpecFiles, type CheckResult, type CheckRunner, type Clock, type ProofRecord, type ProofRunner, type Tree } from "@chef/core";
 import { exec } from "./exec.ts";
 import { materialize } from "./materialize.ts";
 

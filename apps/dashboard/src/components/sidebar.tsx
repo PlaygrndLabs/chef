@@ -12,7 +12,7 @@ import { isProjectName } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
-const RECENT = "kargah:projects";
+const RECENT = "chef:projects";
 
 function recentProjects(current: string): string[] {
   try {
@@ -128,7 +128,7 @@ export function Sidebar() {
     <div className="flex h-full flex-col gap-4 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex items-center gap-1 px-1.5">
         <span className="grid size-6 shrink-0 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">k</span>
-        <span className="pl-1 text-sm font-semibold">kargah</span>
+        <span className="pl-1 text-sm font-semibold">chef</span>
         <span className="text-muted-foreground">/</span>
         <ProjectSwitcher />
       </div>
@@ -163,7 +163,7 @@ export function Sidebar() {
               </button>
             );
           })}
-          {list.length === 0 ? <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Your features show up here as kargah builds them.</p> : null}
+          {list.length === 0 ? <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Your features show up here as chef builds them.</p> : null}
         </nav>
       </div>
       <div className="flex items-center gap-1 border-t pt-2.5">

@@ -18,8 +18,8 @@ describe("specialization building blocks", () => {
   it("turns a profile into a coder subagent with its write scope", () => {
     const agent = customAgent(profile, "todo-add", ["features/todo-add/**"]);
     expect(agent).toEqual({
-      name: "kargah-backend",
-      displayName: "kargah backend",
+      name: "chef-backend",
+      displayName: "chef backend",
       description: "Implements a feature.",
       prompt: "Implement todo-add so its locked tests pass.\n\nYou may only change files matching:\nfeatures/todo-add/**",
       tools: ["view", "edit"],

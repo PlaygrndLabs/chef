@@ -4,7 +4,7 @@ Date: 2026-10-11. Branch `claude/kargah-build-t66ame`.
 
 ## Built
 
-- Spec format with typed frontmatter and `kargah spec lint`; kargah's own feature map in `spec/features`.
+- Spec format with typed frontmatter and `chef spec lint`; chef's own feature map in `spec/features`.
 - Router with rules, Jev and planner tiers.
 - Session state machine with budgets on attempts, tokens and time.
 - Fork per session with scoped tokens; the coder never gets a write token.
@@ -23,11 +23,11 @@ Date: 2026-10-11. Branch `claude/kargah-build-t66ame`.
 | Done criterion | State |
 | --- | --- |
 | `pnpm test` and the fake end-to-end suite pass in CI | Pass locally; CI runs on the PR |
-| A fresh project plus one spec entry reaches `main` with proof, zero human actions, three runs in a row | On fakes: `core/test/e2e/core-loop.test.ts` "three consecutive runs". On real git: `adapters/test/e2e/artifacts-git.test.ts`. With real typecheck, tests and proof: `cli/test/e2e/local-runners.test.ts` and `kargah demo`. Not yet on a Cloudflare account. |
-| Every commit on the feature has notes tracing it to the prompt | Asserted on fakes and on real git with `git notes --ref=kargah` |
+| A fresh project plus one spec entry reaches `main` with proof, zero human actions, three runs in a row | On fakes: `core/test/e2e/core-loop.test.ts` "three consecutive runs". On real git: `adapters/test/e2e/artifacts-git.test.ts`. With real typecheck, tests and proof: `cli/test/e2e/local-runners.test.ts` and `chef demo`. Not yet on a Cloudflare account. |
+| Every commit on the feature has notes tracing it to the prompt | Asserted on fakes and on real git with `git notes --ref=chef` |
 | Reachable preview URL from the first commit | Asserted on fakes; real previews need Workers Builds |
 
-`kargah demo` runs the todo feature through every state with real `tsc`, `node --test` and the proof flow in about three seconds.
+`chef demo` runs the todo feature through every state with real `tsc`, `node --test` and the proof flow in about three seconds.
 
 ## Needed to finish Phase 1 on a real account
 

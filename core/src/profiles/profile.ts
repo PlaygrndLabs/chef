@@ -56,8 +56,8 @@ export function customAgent(profile: AgentProfile, featureId: string, scope: rea
   const instructions = profile.instructions.replaceAll("{feature}", featureId);
   const rules = scope.length ? `You may only change files matching:\n${scope.join("\n")}` : "You may not change any file.";
   return {
-    name: `kargah-${profile.role}`,
-    displayName: `kargah ${profile.role}`,
+    name: `chef-${profile.role}`,
+    displayName: `chef ${profile.role}`,
     description: profile.description,
     prompt: `${instructions}\n\n${rules}`,
     tools: profile.tools,

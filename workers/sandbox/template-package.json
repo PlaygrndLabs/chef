@@ -1,5 +1,5 @@
 {
-  "name": "kargah-template-deps",
+  "name": "chef-template-deps",
   "private": true,
   "devDependencies": {
     "@types/node": "22.20.5",

@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { toJsonl, type ReviewExample, type TurnExample } from "@kargah/core";
+import { toJsonl, type ReviewExample, type TurnExample } from "@chef/core";
 import { HELDOUT_ITEMS, TRAIN_ITEMS, type BenchItem } from "../bench/items.ts";
 import { renderReport, runForOutcomes } from "../bench/run.ts";
 

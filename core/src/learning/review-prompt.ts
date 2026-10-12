@@ -8,7 +8,7 @@ export interface ChatMessage {
 
 export type ReviewOutcome = "merged" | "reverted" | "gate-failed";
 
-const INSTRUCTIONS = "You review one feature's change for kargah before it merges. Approve only when the code does what every acceptance criterion says, including the cases each criterion implies, and the tests would fail on code that gets one of those cases wrong.";
+const INSTRUCTIONS = "You review one feature's change for chef before it merges. Approve only when the code does what every acceptance criterion says, including the cases each criterion implies, and the tests would fail on code that gets one of those cases wrong.";
 
 const TARGETS: Readonly<Record<ReviewOutcome, string>> = {
   merged: "approve",

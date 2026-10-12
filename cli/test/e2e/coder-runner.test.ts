@@ -69,13 +69,13 @@ function origin(dir: string): string {
   const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8" }).trim();
   git("init", "--quiet", "--initial-branch=main");
   git("add", "-A");
-  git("-c", "user.email=ma.karimi76@gmail.com", "-c", "user.name=kargah", "commit", "--quiet", "-m", "init");
+  git("-c", "user.email=ma.karimi76@gmail.com", "-c", "user.name=chef", "commit", "--quiet", "-m", "init");
   return git("rev-parse", "HEAD");
 }
 
 describe("coder runner on the Claude Agent SDK", () => {
   it("runs one turn through the base URL it is given, streams its events and returns the changed files", async () => {
-    const root = mkdtempSync(join(tmpdir(), "kargah-runner-"));
+    const root = mkdtempSync(join(tmpdir(), "chef-runner-"));
     const remote = join(root, "origin");
     mkdirSync(remote);
     const commitId = origin(remote);
@@ -90,7 +90,7 @@ describe("coder runner on the Claude Agent SDK", () => {
       role: "backend",
       model: "claude-sonnet-5-5",
       prompt: "Add features/hello/index.ts exporting hello().",
-      agent: { name: "kargah-backend", displayName: "kargah backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
+      agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
       writeScope: ["features/hello/**"],
       remote,
       ref: "main",
@@ -99,7 +99,7 @@ describe("coder runner on the Claude Agent SDK", () => {
     };
     try {
       const child = spawn("node", [join(REPO_ROOT, "workers", "sandbox", "runner.mjs")], {
-        env: { PATH: process.env["PATH"] ?? "", HOME: root, KARGAH_WORKSPACE: workspace, KARGAH_JOB: Buffer.from(JSON.stringify(job)).toString("base64") },
+        env: { PATH: process.env["PATH"] ?? "", HOME: root, CHEF_WORKSPACE: workspace, CHEF_JOB: Buffer.from(JSON.stringify(job)).toString("base64") },
       });
       let out = "";
       let err = "";
@@ -111,15 +111,15 @@ describe("coder runner on the Claude Agent SDK", () => {
       const types = events.map((e) => e.type);
       expect(types).toContain("assistant.message_delta");
       expect(events.find((e) => e.type === "tool.execution_start")?.["tool"]).toBe("Write");
-      expect(types.indexOf("session.idle")).toBeLessThan(types.indexOf("kargah.result"));
+      expect(types.indexOf("session.idle")).toBeLessThan(types.indexOf("chef.result"));
       const result = events.at(-1) as { type: string; changes: Record<string, string | null>; summary: string; model: string };
-      expect(result.type).toBe("kargah.result");
+      expect(result.type).toBe("chef.result");
       expect(result.changes).toEqual({ "features/hello/index.ts": "export const hello = () => \"hello\";\n" });
       expect(result.summary).toBe("Added features/hello/index.ts.");
       const turns = seen.filter((s) => s.tools.includes("Write"));
       expect(turns.length).toBe(2);
       expect(turns.every((s) => s.model === "claude-sonnet-5-5")).toBe(true);
-      expect(seen.filter((s) => s.path.startsWith("/v1/") && s.key !== "kargah-placeholder").map((s) => s.path)).toEqual([]);
+      expect(seen.filter((s) => s.path.startsWith("/v1/") && s.key !== "chef-placeholder").map((s) => s.path)).toEqual([]);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -141,7 +141,7 @@ describe("coder runner on the Claude Agent SDK", () => {
         prompt: "Add features/hello/index.ts exporting hello().",
         instructions: "",
         writeScope: ["features/hello/**"],
-        agent: { name: "kargah-backend", displayName: "kargah backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
+        agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
         attempt: { index: 1, of: 1 },
         workspace: { repo: "demo", remote: "", ref: "main", commitId: "", readToken: "", tree: { "README.md": "# demo\n" } },
         onEvent: (event) => events.push(event.type),
@@ -179,12 +179,12 @@ describe("coder runner on the Claude Agent SDK", () => {
         prompt: "Add features/hello/index.ts exporting hello().",
         instructions: "",
         writeScope: ["features/hello/**"],
-        agent: { name: "kargah-backend", displayName: "kargah backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
+        agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
         attempt: { index: 1, of: 1 },
         workspace: { repo: "demo", remote: "", ref: "main", commitId: "", readToken: "", tree: { "README.md": "# demo\n" } },
         onEvent: (event) => events.push(event),
       });
-      expect(events.filter((e) => e.type === "kargah.lint")).toHaveLength(1);
+      expect(events.filter((e) => e.type === "chef.lint")).toHaveLength(1);
       expect(result.changes).toEqual({ "features/hello/index.ts": HELLO });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
