@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "build": { "command": "pnpm --dir .. build" },
-  "assets": { "directory": "../apps/dashboard/dist", "binding": "ASSETS", "run_worker_first": ["/api/*", "/agents/*"] },
+  "assets": { "directory": "../apps/dashboard/dist", "binding": "ASSETS", "run_worker_first": true },
   "artifacts": [{ "binding": "ARTIFACTS", "namespace": "kargah" }],
   "durable_objects": {
     "bindings": [
