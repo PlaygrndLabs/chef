@@ -8,7 +8,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@kargah/adapters/workers-
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@kargah/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@kargah/adapters/gpt-live";
 import { RealtimeHost } from "@kargah/adapters/realtime";
-import { isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PushedEvent, type Tree, type VoiceCall } from "@kargah/core";
+import { ControlError, DEFAULT_BUDGET, isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PushedEvent, type Tree, type VoiceCall } from "@kargah/core";
 import { renderRegistry, renderStub, stubPath } from "@kargah/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
@@ -16,6 +16,9 @@ import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder } from "./sandbox-coder.ts";
+import type { SandboxStatus } from "./session-agent.ts";
+
+const SESSION_ROUTE = /^\/api\/projects\/[a-z][a-z0-9-]{1,30}\/sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/;
 
 const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
 
@@ -62,6 +65,12 @@ export class ProjectAgent extends Agent<Env> {
     const url = new URL(request.url);
     const action = url.pathname.split("/").filter(Boolean).at(-1);
     const { orchestrator, bus } = this.build();
+    const session = SESSION_ROUTE.exec(url.pathname);
+    if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
+    if (request.method === "GET" && action === "spec") {
+      const main = await orchestrator.mainTree();
+      return Response.json({ commitId: main.commitId, features: readSpec(main.tree) });
+    }
     if (request.method === "POST" && action === "bootstrap") {
       const existing = (await orchestrator.mainTree()).commitId;
       if (existing) return Response.json({ commitId: existing, created: false });
@@ -104,6 +113,41 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "GET" && action === "sessions") return Response.json(await orchestrator.sessions());
     if (request.method === "GET" && action === "cursor") return Response.json({ seq: await bus.cursor() });
     if (request.method === "GET" && action === "events") return Response.json(await bus.since(Number(url.searchParams.get("after") ?? 0)));
+    return Response.json({ error: "not found" }, { status: 404 });
+  }
+
+  private async sessionRequest(request: Request, id: string, action: string | null): Promise<Response> {
+    const { orchestrator } = this.build();
+    try {
+      if (request.method === "GET" && action === null) return Response.json({ record: await orchestrator.session(id), budget: DEFAULT_BUDGET });
+      if (request.method === "GET" && action === "turns") return Response.json(await orchestrator.turns(id));
+      if (request.method === "GET" && action === "changes") return Response.json(await orchestrator.changes(id));
+      if (request.method === "GET" && action === "sandbox") {
+        const stub = this.env.SESSION.get(this.env.SESSION.idFromName(id)) as unknown as { status(): Promise<SandboxStatus> };
+        return Response.json(await stub.status());
+      }
+      if (request.method === "POST" && action === "drop") {
+        const { reason } = (await request.json().catch(() => ({}))) as { reason?: string };
+        const record = await orchestrator.drop(id, reason?.trim() || undefined);
+        return Response.json({ state: record.machine.state }, { status: 202 });
+      }
+      if (request.method === "POST" && action === "retry") {
+        const { guidance } = (await request.json().catch(() => ({}))) as { guidance?: string };
+        const record = await orchestrator.retry(id, guidance ?? "");
+        await this.schedule(1, "drive");
+        return Response.json({ state: record.machine.state }, { status: 202 });
+      }
+      if (request.method === "POST" && action === "steer") {
+        const { message } = (await request.json().catch(() => ({}))) as { message?: string };
+        if (!message?.trim()) return Response.json({ error: "message is required" }, { status: 400 });
+        await orchestrator.steer(id, message.trim());
+        return Response.json({ ok: true }, { status: 202 });
+      }
+    } catch (error) {
+      if (error instanceof ControlError) return Response.json({ error: error.message }, { status: 409 });
+      if (error instanceof Error && error.message.startsWith("unknown session")) return Response.json({ error: error.message }, { status: 404 });
+      throw error;
+    }
     return Response.json({ error: "not found" }, { status: 404 });
   }
 

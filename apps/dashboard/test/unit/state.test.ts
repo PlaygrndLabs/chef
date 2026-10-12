@@ -1,107 +1,99 @@
 import { describe, expect, it } from "vitest";
-import { apply, emptyState, features, memory, metrics, stuck } from "../../public/state.js";
-import { transcript } from "../../public/voice.js";
+import type { FeatureSpec, KargahEvent, SessionRecord } from "@kargah/core";
+import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
+import { featureNodes, groupFeatures, matches } from "../../src/lib/model.ts";
+import { transcript, type Heard } from "../../src/lib/voice.ts";
 
 const base = { project: "demo", at: 1 };
 
 function run(events: object[]) {
-  const state = emptyState();
-  events.forEach((event, index) => apply(state, { seq: index + 1, event: { ...base, ...event } }));
+  const state = emptyProject();
+  events.forEach((event, index) => apply(state, { seq: index + 1, event: { ...base, ...event } as KargahEvent }));
   return state;
 }
 
-describe("dashboard state", () => {
-  it("tracks a feature from session to merge", () => {
+const attempt = (index = 1, of = 1) => ({ group: "s1", index, of });
+
+describe("project event state", () => {
+  it("builds a session timeline from creation to merge", () => {
     const state = run([
-      { type: "session.created", sessionId: "s1", featureId: "todo-add", fork: "demo--todo-add--s1", reason: "new" },
-      { type: "session.state", sessionId: "s1", featureId: "todo-add", from: "queued", to: "coding", reason: "plan ready" },
+      { type: "session.created", sessionId: "s1", featureId: "todo-add", fork: "demo--todo-add--s1", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s1", featureId: "todo-add", from: "queued", to: "coding", reason: "planned" },
+      { type: "coder.event", sessionId: "s1", featureId: "todo-add", event: { type: "assistant.message_delta", delta: "Add" } },
+      { type: "coder.event", sessionId: "s1", featureId: "todo-add", event: { type: "assistant.message_delta", delta: "ing route" } },
+      { type: "coder.event", sessionId: "s1", featureId: "todo-add", event: { type: "tool.execution_start", tool: "Edit", detail: "features/todo-add/index.ts" } },
       { type: "commit.created", sessionId: "s1", featureId: "todo-add", repo: "demo--todo-add--s1", commitId: "c1", role: "backend", message: "m" },
       { type: "preview.updated", sessionId: "s1", featureId: "todo-add", url: "https://p.example", commitId: "c1" },
+      { type: "review.verdict", sessionId: "s1", featureId: "todo-add", approve: true, reasons: ["ok"], model: "m", head: "c1", base: "b" },
+      { type: "gate.result", sessionId: "s1", featureId: "todo-add", ok: true, checks: [{ name: "lint", ok: true, log: "" }] },
       { type: "main.merged", sessionId: "s1", featureId: "todo-add", commitId: "m1" },
-      { type: "session.state", sessionId: "s1", featureId: "todo-add", from: "gating", to: "merged", reason: "gate passed" },
+      { type: "session.state", sessionId: "s1", featureId: "todo-add", from: "gating", to: "merged", reason: "gate_passed" },
     ]);
-    const [feature] = features(state);
-    expect(feature?.id).toBe("todo-add");
-    expect(feature?.state).toBe("merged");
-    expect(feature?.merged).toBe(true);
-    expect(feature?.preview?.url).toBe("https://p.example");
-    expect(state.sessions.s1?.commits).toHaveLength(1);
+    const s = state.sessions["s1"];
+    expect(s?.state).toBe("merged");
+    expect(s?.merged).toBe("m1");
+    expect(s?.timeline.map((t) => t.kind)).toEqual(["created", "state", "text", "tool", "commit", "preview", "review", "gate", "merged", "state"]);
+    expect(s?.timeline.find((t) => t.kind === "text")).toMatchObject({ text: "Adding route", phase: "coding" });
+    expect(state.previews["todo-add"]?.url).toBe("https://p.example");
+    expect(state.log.some((e) => e.type === "coder.event" && e.summary === "text")).toBe(false);
+    expect(metrics(state)).toMatchObject({ mergedFeatures: 1, merges: 1, running: 0, stuck: 0 });
   });
 
   it("ignores replayed and malformed entries", () => {
-    const state = run([{ type: "session.created", sessionId: "s1", featureId: "a", fork: "f", reason: "r" }]);
-    apply(state, { seq: 1, event: { ...base, type: "session.created", sessionId: "s2", featureId: "b", fork: "f", reason: "r" } });
-    apply(state, { type: "cf_agent_state" });
+    const state = run([{ type: "session.created", sessionId: "s1", featureId: "a", fork: "f", reason: "r", attempt: attempt(), parent: null }]);
+    expect(apply(state, { seq: 1, event: { ...base, type: "session.created", sessionId: "s2", featureId: "b", fork: "f", reason: "r", attempt: attempt(), parent: null } })).toBe(false);
+    expect(apply(state, { type: "cf_agent_state" } as never)).toBe(false);
     expect(state.order).toEqual(["s1"]);
     expect(state.lastSeq).toBe(1);
   });
 
-  it("lists stuck sessions with their reason", () => {
+  it("records stuck sessions, steering notes, picks and lessons", () => {
     const state = run([
-      { type: "session.created", sessionId: "s1", featureId: "a", fork: "f", reason: "r" },
-      { type: "session.stuck", sessionId: "s1", featureId: "a", reason: "attempt budget exhausted" },
+      { type: "session.created", sessionId: "s1", featureId: "a", fork: "f1", reason: "new", attempt: attempt(1, 2), parent: null },
+      { type: "session.created", sessionId: "s2", featureId: "a", fork: "f2", reason: "new", attempt: attempt(2, 2), parent: null },
+      { type: "session.steered", sessionId: "s1", featureId: "a", message: "use the shared store" },
+      { type: "attempt.picked", featureId: "a", group: "s1", winner: "s2", candidates: [{ sessionId: "s1", passed: 3, total: 6 }, { sessionId: "s2", passed: 6, total: 6 }], reasons: ["s2 passes"], model: "reviewer" },
+      { type: "session.stuck", sessionId: "s1", featureId: "a", reason: "attempt budget exhausted (4/4)" },
+      { type: "memory.recorded", featureId: "a", path: "memory/lessons/a-1.md", kind: "lesson" },
+      { type: "memory.recalled", sessionId: "s2", featureId: "a", paths: ["memory/lessons/a-1.md"] },
     ]);
-    expect(stuck(state).map((s: { stuck: string }) => s.stuck)).toEqual(["attempt budget exhausted"]);
+    expect(state.sessions["s1"]?.state).toBe("stuck");
+    expect(state.sessions["s1"]?.stuck).toMatch(/budget/);
+    expect(state.sessions["s1"]?.timeline.find((t) => t.kind === "steered")).toMatchObject({ message: "use the shared store" });
+    expect(state.sessions["s2"]?.timeline.find((t) => t.kind === "picked")).toMatchObject({ won: true });
+    expect(state.sessions["s1"]?.timeline.find((t) => t.kind === "picked")).toMatchObject({ won: false });
+    expect(lessonsWithRecalls(state)).toEqual([{ featureId: "a", path: "memory/lessons/a-1.md", at: 1, recalls: 1 }]);
+    expect(metrics(state)).toMatchObject({ stuck: 1, running: 1, lessonRecalls: 1 });
   });
 });
 
-describe("phase 3 views", () => {
-  it("shows attempts, dropped losers, rejections and the revert rate", () => {
-    const attempt = (index: number) => ({ group: "s1", index, of: 2 });
+describe("feature map", () => {
+  const spec = (id: string, flow?: string): FeatureSpec => ({ id, title: `Feature ${id}`, status: "merged", entrypoint: "GET /", revision: 1, shared: [], acceptance: [{ id: "AC1", text: "works" }], body: "", ...(flow ? { flow } : {}) });
+
+  it("joins main's spec with live sessions and groups shared flows", () => {
     const state = run([
-      { type: "session.created", sessionId: "s1", featureId: "a", fork: "demo--a--s1", reason: "new", attempt: attempt(1) },
-      { type: "session.created", sessionId: "s2", featureId: "a", fork: "demo--a--s2", reason: "new", attempt: attempt(2) },
-      { type: "turn.rejected", sessionId: "s1", featureId: "a", role: "test", rule: "red-tests", paths: ["features/a/a.test.ts"] },
-      { type: "attempt.picked", featureId: "a", group: "s1", winner: "s2", candidates: [{ sessionId: "s1", passed: 3, total: 6 }, { sessionId: "s2", passed: 6, total: 6 }], reasons: ["s2 passes every attempt's tests"], model: "reviewer" },
-      { type: "session.state", sessionId: "s1", featureId: "a", from: "gating", to: "dropped", reason: "attempt s2 was picked" },
-      { type: "main.merged", sessionId: "s2", featureId: "a", commitId: "m1" },
-      { type: "main.reverted", featureId: "a", revertedCommit: "m1", commitId: "r1", log: "red" },
-      { type: "main.merged", sessionId: "s2", featureId: "a", commitId: "m2" },
-      { type: "session.state", sessionId: "s2", featureId: "a", from: "gating", to: "merged", reason: "gate_passed" },
+      { type: "session.created", sessionId: "s1", featureId: "todo-done", fork: "f1", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s1", featureId: "todo-done", from: "queued", to: "coding", reason: "planned" },
+      { type: "session.created", sessionId: "s2", featureId: "todo-add", fork: "f2", reason: "change", attempt: attempt(), parent: null },
+      { type: "session.stuck", sessionId: "s2", featureId: "todo-add", reason: "gate failed" },
     ]);
-    const [feature] = features(state);
-    expect(feature).toMatchObject({ state: "merged", merges: 2, reverts: 1, dropped: 1 });
-    expect(state.sessions.s1?.rejections).toHaveLength(1);
-    expect(state.picks[0]?.winner).toBe("s2");
-    expect(metrics(state)).toMatchObject({ mergedFeatures: 1, merges: 2, reverts: 1, revertRate: 0.5, rejections: { "red-tests": 1 }, picks: 1, needsHuman: 0, humanActionsPerMergedFeature: 0 });
+    const records = [{ id: "s1", featureId: "todo-done", createdAt: 1, updatedAt: 1, attempt: attempt(), machine: { state: "coding" }, plan: { feature: { ...spec("todo-done", "todo"), title: "Mark done" } } }] as unknown as SessionRecord[];
+    const nodes = featureNodes(state, records, [spec("home"), spec("todo-add", "todo")]);
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+    expect(byId["home"]?.status).toBe("merged");
+    expect(byId["todo-add"]?.status).toBe("stuck");
+    expect(byId["todo-done"]).toMatchObject({ status: "building", title: "Mark done", onMain: false });
+    const groups = groupFeatures(nodes);
+    expect(groups.map((g) => g.name)).toEqual(["todo", "Other features"]);
+    expect(groups[0]?.features.map((f) => f.id)).toEqual(["todo-add", "todo-done"]);
+    expect(nodes.filter((n) => matches(n, "stuck", "")).map((n) => n.id)).toEqual(["todo-add"]);
+    expect(nodes.filter((n) => matches(n, "all", "s1")).map((n) => n.id)).toEqual(["todo-done"]);
   });
 });
 
-describe("coder stream", () => {
-  it("joins message deltas into one line and keeps tools apart", () => {
-    const state = run([
-      { type: "coder.event", sessionId: "s1", featureId: "a", event: { type: "assistant.message_delta", delta: "Add" } },
-      { type: "coder.event", sessionId: "s1", featureId: "a", event: { type: "assistant.message_delta", delta: "ing route" } },
-      { type: "coder.event", sessionId: "s1", featureId: "a", event: { type: "tool.execution_start", tool: "edit", detail: "features/a/index.ts" } },
-      { type: "coder.event", sessionId: "s1", featureId: "a", event: { type: "session.idle" } },
-    ]);
-    expect(state.sessions.s1?.coder.map((l: { text: string }) => l.text)).toEqual(["Adding route", "edit features/a/index.ts", "idle"]);
-  });
-  it("counts lessons, own-feature recalls, corrections and learned lint rules", () => {
-    const state = run([
-      { type: "session.created", sessionId: "s1", featureId: "reverse", fork: "f1", reason: "new", parent: null },
-      { type: "memory.recorded", featureId: "reverse", path: "memory/lessons/reverse-abc.md", kind: "lesson" },
-      { type: "memory.recorded", featureId: "reverse", path: "memory/features/reverse.md", kind: "feature" },
-      { type: "session.created", sessionId: "s2", featureId: "reverse", fork: "f2", reason: "change", parent: "s1" },
-      { type: "memory.recalled", sessionId: "s2", featureId: "reverse", paths: ["memory/lessons/reverse-abc.md", "memory/features/slug.md"] },
-      { type: "memory.recalled", sessionId: "s3", featureId: "slug", paths: ["memory/lessons/reverse-abc.md"] },
-      { type: "correction.recorded", sessionId: "s2", featureId: "reverse", role: "test", signature: "red-tests", correctionId: "c1" },
-      { type: "lint.rule.added", sessionId: "s2", featureId: "reverse", ruleId: "mined-1", message: "no self-equal asserts", sessions: ["s1", "s2", "s3"], evidence: ["c1"] },
-      { type: "lint.rule.added", sessionId: "s3", featureId: "slug", ruleId: "mined-1", message: "no self-equal asserts", sessions: ["s1", "s2", "s3"], evidence: ["c1"] },
-    ]);
-    const m = metrics(state);
-    expect([m.lessons, m.lessonRecalls, m.corrections, m.rules]).toEqual([1, 1, 1, 1]);
-    expect(state.sessions.s2?.parent).toBe("s1");
-    expect(state.sessions.s2?.recalled).toEqual(["memory/lessons/reverse-abc.md", "memory/features/slug.md"]);
-    const learned = memory(state);
-    expect(learned.lessons.map((l) => [l.path, l.recalls])).toEqual([["memory/lessons/reverse-abc.md", 2]]);
-    expect(learned.rules.map((r) => r.id)).toEqual(["mined-1"]);
-  });
-  it("keeps spoken requests and joins transcript deltas per speaker", () => {
-    const state = run([{ type: "voice.request", voiceSessionId: "v1", delegationId: "d1", prompt: "Add an item to a to-do list.", intent: "new_feature", sessionId: "s1", featureId: "todo-add" }]);
-    expect(state.voice).toEqual([{ prompt: "Add an item to a to-do list.", intent: "new_feature", sessionId: "s1", featureId: "todo-add", at: 1 }]);
-    expect(metrics(state).voiceRequests).toBe(1);
-    let lines: { speaker: string; text: string }[] = [];
+describe("voice transcript", () => {
+  it("joins transcript deltas per speaker", () => {
+    let lines: Heard[] = [];
     for (const event of [
       { type: "session.input_transcript.delta", delta: "Add an " },
       { type: "session.input_transcript.delta", delta: "item" },

@@ -3,70 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>kargah</title>
-<link rel="stylesheet" href="/style.css">
-<script type="module" src="/app.js"></script>
-<script type="module" src="/src/chat.tsx"></script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23c2410c'/%3E%3Ctext x='16' y='22' font-family='system-ui' font-size='18' font-weight='600' text-anchor='middle' fill='white'%3Ek%3C/text%3E%3C/svg%3E">
+<script type="module" src="/src/main.tsx"></script>
 </head>
 <body>
-<header>
-  <h1>kargah</h1>
-  <form id="project-form">
-    <label>Project <input id="project" name="project" pattern="[a-z][a-z0-9-]{1,30}" required></label>
-    <button type="submit">Open</button>
-    <button type="button" id="bootstrap">Bootstrap</button>
-  </form>
-  <span id="connection" class="pill">offline</span>
-</header>
-<main>
-  <section class="prompt">
-    <div id="chat"></div>
-    <p id="prompt-result" class="muted"></p>
-    <div class="voice">
-      <button type="button" id="talk">Talk</button>
-      <span id="voice-status" class="muted">off</span>
-    </div>
-    <ul id="transcript" class="list"></ul>
-    <ul id="voice-requests" class="list"></ul>
-  </section>
-  <section>
-    <h2>Health</h2>
-    <div id="metrics" class="stats"></div>
-  </section>
-  <section>
-    <h2>Features</h2>
-    <table>
-      <thead><tr><th>Feature</th><th>State</th><th>Sessions</th><th>Merges / reverts</th><th>Preview</th></tr></thead>
-      <tbody id="features"></tbody>
-    </table>
-  </section>
-  <section>
-    <h2>Stuck</h2>
-    <ul id="stuck" class="list"></ul>
-  </section>
-  <section>
-    <h2>Attempts</h2>
-    <ul id="picks" class="list"></ul>
-  </section>
-  <section>
-    <h2>Memory</h2>
-    <div class="columns">
-      <div><h3>Lessons</h3><ul id="lessons" class="list"></ul></div>
-      <div><h3>Learned lint rules</h3><ul id="rules" class="list"></ul></div>
-    </div>
-  </section>
-  <section>
-    <h2>Sessions</h2>
-    <div id="sessions" class="cards"></div>
-  </section>
-  <section>
-    <h2>Main</h2>
-    <ul id="merges" class="list"></ul>
-  </section>
-  <section>
-    <h2>Events</h2>
-    <ul id="log" class="log"></ul>
-  </section>
-</main>
+<div id="root"></div>
 </body>
 </html>

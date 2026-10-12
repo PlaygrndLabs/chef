@@ -14,7 +14,7 @@ spec/        kargah's own feature map
 core/        spec, router, state machine, orchestrator, merge, ports and fakes
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, the CopilotKit agent
 workers/     the kargah Worker: project and session Durable Objects, coder sandbox, sync workflow
-apps/        dashboard with a CopilotKit chat that streams sessions
+apps/        dashboard: feature map, CopilotKit chat, session timelines and controls, inspector
 agents/      specialist profiles with write scopes
 template/    the template every project kargah builds starts from
 cli/         kargah CLI and local runners

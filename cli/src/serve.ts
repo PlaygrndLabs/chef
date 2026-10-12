@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { isTerminal, parseFeature, type FeatureSpec } from "@kargah/core";
+import { ControlError, DEFAULT_BUDGET, isTerminal, parseFeature, readSpec, type FeatureSpec } from "@kargah/core";
 import type { Script } from "@kargah/core/fakes";
 import { KargahAgent, type KargahLink } from "@kargah/adapters/agui";
 import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
@@ -71,6 +71,33 @@ export async function serve(options: { readonly port: number; readonly project: 
   const assets = options.assets ?? join(REPO_ROOT, "apps", "dashboard", "dist");
   if (!existsSync(join(assets, "index.html"))) log(`no dashboard build in ${assets}; run pnpm build`);
 
+  const sessionRequest = async (request: Request, id: string, sub: string | null): Promise<Response> => {
+    const body = async () => (request.method === "POST" ? ((await request.json().catch(() => ({}))) as Record<string, string | undefined>) : {});
+    try {
+      if (request.method === "GET" && sub === null) return Response.json({ record: await w.orchestrator.session(id), budget: DEFAULT_BUDGET });
+      if (request.method === "GET" && sub === "turns") return Response.json(await w.orchestrator.turns(id));
+      if (request.method === "GET" && sub === "changes") return Response.json(await w.orchestrator.changes(id));
+      if (request.method === "GET" && sub === "sandbox") return Response.json({ running: false, exit: "local runs have no sandbox container" });
+      if (request.method === "POST" && sub === "drop") return Response.json({ state: (await w.orchestrator.drop(id, (await body())["reason"]?.trim() || undefined)).machine.state }, { status: 202 });
+      if (request.method === "POST" && sub === "retry") {
+        const record = await w.orchestrator.retry(id, (await body())["guidance"] ?? "");
+        drive();
+        return Response.json({ state: record.machine.state }, { status: 202 });
+      }
+      if (request.method === "POST" && sub === "steer") {
+        const message = (await body())["message"]?.trim();
+        if (!message) return Response.json({ error: "message is required" }, { status: 400 });
+        await w.orchestrator.steer(id, message);
+        return Response.json({ ok: true }, { status: 202 });
+      }
+    } catch (error) {
+      if (error instanceof ControlError) return Response.json({ error: error.message }, { status: 409 });
+      if (error instanceof Error && error.message.startsWith("unknown session")) return Response.json({ error: error.message }, { status: 404 });
+      throw error;
+    }
+    return Response.json({ error: "not found" }, { status: 404 });
+  };
+
   const api = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (url.pathname.startsWith(`${base}/copilotkit`)) return copilot(request);
@@ -83,6 +110,12 @@ export async function serve(options: { readonly port: number; readonly project: 
         return Response.json(await link.submit(prompt.trim()), { status: 202 });
       }
       if (request.method === "GET" && action === "sessions") return Response.json(await w.orchestrator.sessions());
+      if (request.method === "GET" && action === "spec") {
+        const main = await w.orchestrator.mainTree();
+        return Response.json({ commitId: main.commitId, features: readSpec(main.tree) });
+      }
+      const session = action ? /^sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/.exec(action) : null;
+      if (session) return sessionRequest(request, session[1] as string, session[2] ?? null);
       if (request.method === "GET" && action === "events") return Response.json(await link.events(Number(url.searchParams.get("after") ?? 0)));
       if (request.method === "GET" && action === "cursor") return Response.json({ seq: await link.cursor() });
       return Response.json({ error: "not found" }, { status: 404 });
