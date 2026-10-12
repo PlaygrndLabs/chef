@@ -44,11 +44,11 @@ describe("llm endpoint", () => {
   });
 
   it("drives the reviewer through CPA", async () => {
-    const { fetchImpl } = cpa({ approve: false, reasons: ["AC2 has no test"] });
+    const { fetchImpl } = cpa({ approve: false, reasons: ["AC2 has no test"], retest: true });
     const reviewer = new LlmReviewer(llmFromEnv({ CPA_BASE_URL: "http://127.0.0.1:8317", CPA_API_KEY: "k" }, fetchImpl));
     const feature = { id: "todo-add", title: "Add", status: "building" as const, entrypoint: "POST /todos", revision: 1, shared: [], acceptance: [{ id: "AC1", text: "adds" }], body: "b" };
     const verdict = await reviewer.review({ feature, diff: { "features/todo-add/index.ts": "export {}" }, checksLog: "" });
-    expect(verdict).toMatchObject({ approve: false, reasons: ["AC2 has no test"] });
+    expect(verdict).toMatchObject({ approve: false, reasons: ["AC2 has no test"], retest: true });
   });
 
   it("asks for a configured endpoint", () => {
