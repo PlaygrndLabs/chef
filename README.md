@@ -34,7 +34,7 @@ node --import tsx cli/src/bin.ts route "fix the add button"
 node --import tsx cli/src/bin.ts spike jev           # Jev routing spike; uses Jev when TYPESAFE_API_KEY is set
 node --import tsx cli/src/bin.ts bench               # 10-feature benchmark, Phase 2 versus Phase 3 settings, real checks
 node --import tsx cli/src/bin.ts bench --mode replay # learn on the benchmark, then replay it in a project seeded with that memory
-node --import tsx cli/src/bin.ts voice --say "Add an item to a todo list"   # spoken request end to end; --live uses GPT-Live with OPENAI_API_KEY
+node --import tsx cli/src/bin.ts voice --say "Add an item to a todo list"   # spoken request end to end; --live uses GPT-Live with OPENAI_API_KEY, else the Realtime API through the CPA gateway
 node --import tsx cli/src/bin.ts tune data         # export reviewer examples from real benchmark runs into tune/data
 node --import tsx cli/src/bin.ts llm check           # planner and reviewer through the local CPA, see dev/cpa/README.md
 node --import tsx cli/src/bin.ts demo --live         # one feature with the real planner, Claude coder and reviewer
@@ -56,7 +56,7 @@ The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) w
    npx wrangler secret put TYPESAFE_API_KEY
    npx wrangler secret put CF_ACCOUNT_ID
    npx wrangler secret put CF_API_TOKEN            # can read Workers Builds for the account
-   npx wrangler secret put OPENAI_API_KEY          # optional: the voice front end (GPT-Live)
+   npx wrangler secret put OPENAI_API_KEY          # optional: voice through GPT-Live; without it voice uses the Realtime API through the CPA gateway (a ChatGPT login in its dashboard)
    ```
 
 3. Create the memory index and its metadata indexes, before the first deploy:

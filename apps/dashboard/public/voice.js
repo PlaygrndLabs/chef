@@ -1,5 +1,7 @@
 export function transcript(lines, event) {
-  const speaker = event.type === "session.input_transcript.delta" ? "you" : event.type === "session.output_transcript.delta" ? "kargah" : null;
+  const said = event.type === "session.input_transcript.delta" || event.type === "conversation.item.input_audio_transcription.delta";
+  const spoken = event.type === "session.output_transcript.delta" || event.type === "response.output_audio_transcript.delta";
+  const speaker = said ? "you" : spoken ? "kargah" : null;
   if (!speaker || typeof event.delta !== "string") return lines;
   const last = lines[lines.length - 1];
   if (last && last.speaker === speaker) last.text += event.delta;
@@ -30,6 +32,7 @@ export async function startTalk({ project, onEvent, onStatus }) {
   for (const track of mic.getTracks()) pc.addTrack(track, mic);
   const channel = pc.createDataChannel("oai-events");
   let closed = () => {};
+  let live = false;
   const finished = new Promise((resolve) => (closed = resolve));
   channel.addEventListener("message", (message) => {
     let event;
@@ -38,7 +41,8 @@ export async function startTalk({ project, onEvent, onStatus }) {
     } catch {
       return;
     }
-    if (event.type === "session.started") onStatus("listening");
+    if (event.type === "session.started" || event.type === "session.created") onStatus("listening");
+    if (event.type === "session.started") live = true;
     if (event.type === "session.closed") closed();
     onEvent(event);
   });
@@ -54,7 +58,7 @@ export async function startTalk({ project, onEvent, onStatus }) {
   }
   await pc.setRemoteDescription({ type: "answer", sdp: body.sdp });
   return async function stop() {
-    if (channel.readyState === "open") {
+    if (live && channel.readyState === "open") {
       channel.send(JSON.stringify({ type: "session.close", event_id: "dashboard-close" }));
       await Promise.race([finished, new Promise((resolve) => setTimeout(resolve, 15000))]);
     }

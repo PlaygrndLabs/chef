@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseFeature, readSpec, startVoiceCall, voiceInstructions, VoiceDelegate, type LiveCommand, type LiveEvent, type SubmitResult } from "@kargah/core";
+import { parseFeature, readSpec, startVoiceCall, voiceInstructions, VoiceDelegate, type LiveCommand, type LiveConnection, type LiveEvent, type SubmitResult } from "@kargah/core";
 import { ScriptedVoiceHost, SequentialIds } from "@kargah/core/fakes";
 import type { Connect, SocketLike } from "@kargah/adapters/gpt-live";
 import { readTree } from "./fs.ts";
@@ -70,10 +70,9 @@ export async function runVoice(options: { readonly say: string; readonly live: b
     kargahSaid = reply ?? "";
   } else {
     const apiKey = process.env["OPENAI_API_KEY"];
-    if (!apiKey) throw new Error("--live needs OPENAI_API_KEY");
-    const { speak, startServerSession } = await import("@kargah/adapters/gpt-live");
-    log(`synthesizing "${options.say}"`);
-    const pcm = await speak({ apiKey, text: options.say });
+    const gatewayUrl = process.env["CPA_BASE_URL"];
+    const gatewayKey = process.env["CPA_API_KEY"];
+    if (!apiKey && !(gatewayUrl && gatewayKey)) throw new Error("--live needs OPENAI_API_KEY, or CPA_BASE_URL and CPA_API_KEY");
     let send: (command: LiveCommand) => void = () => {};
     const replies: string[] = [];
     let delegate: VoiceDelegate | null = null;
@@ -86,19 +85,30 @@ export async function runVoice(options: { readonly say: string; readonly live: b
       if (delegate) void delegate.handle(event);
       else pending.push(event);
     };
-    const session = await startServerSession({ apiKey, instructions: voiceInstructions(spec), onEvent, connect: nodeConnect });
+    let session: { readonly sessionId: string; readonly connection: LiveConnection; feed(): void };
+    if (apiKey) {
+      const { speak, startServerSession } = await import("@kargah/adapters/gpt-live");
+      log(`synthesizing "${options.say}"`);
+      const pcm = await speak({ apiKey, text: options.say });
+      const live = await startServerSession({ apiKey, instructions: voiceInstructions(spec), onEvent, connect: nodeConnect });
+      log(`GPT-Live session ${live.sessionId}`);
+      session = { sessionId: live.sessionId, connection: live.connection, feed: () => (live.sendAudio(pcm), live.sendAudio(new Uint8Array(24000 * 2 * 2))) };
+    } else {
+      const { startRealtimeSession } = await import("@kargah/adapters/realtime");
+      const live = await startRealtimeSession({ baseUrl: `${String(gatewayUrl).replace(/\/$/, "")}/v1`, apiKey: String(gatewayKey), instructions: voiceInstructions(spec), onEvent, connect: nodeConnect });
+      log("Realtime session through the gateway; the request is sent as text");
+      session = { sessionId: `realtime-${Date.now()}`, connection: live.connection, feed: () => live.say(options.say) };
+    }
     voiceSessionId = session.sessionId;
-    log(`GPT-Live session ${session.sessionId}`);
     send = (command) => {
       if (command.type === "session.commentary.append") replies.push(command.content);
       session.connection.send(command);
     };
     delegate = new VoiceDelegate(session.sessionId, w.orchestrator, (command) => send(command), new SequentialIds(), () => new Promise((resolve) => setTimeout(resolve, 800)));
     for (const event of pending.splice(0)) void delegate.handle(event);
-    session.sendAudio(pcm);
-    session.sendAudio(new Uint8Array(24000 * 2 * 2));
+    session.feed();
     const active = delegate;
-    if (!(await until(() => active.requests.length > 0, 60_000))) log("GPT-Live never delegated the request");
+    if (!(await until(() => active.requests.length > 0, 60_000))) log("the voice model never delegated the request");
     await active.idle();
     await until(() => kargahSaid.length > 0, 15_000);
     await new Promise((resolve) => setTimeout(resolve, 4000));
