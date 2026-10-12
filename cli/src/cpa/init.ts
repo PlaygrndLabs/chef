@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const CPA_URL = "http://127.0.0.1:8317";
+export const CPA_URL = "http://127.0.0.1:8327";
 
 export interface CpaInit {
   readonly config: string;
