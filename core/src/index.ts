@@ -11,6 +11,7 @@ export type * from "./events/events.ts";
 export type * from "./ports/index.ts";
 export * from "./orchestrator/capabilities.ts";
 export * from "./orchestrator/orchestrator.ts";
+export * from "./previews/keeper.ts";
 export * from "./util/glob.ts";
 export * from "./util/hash.ts";
 export * from "./memory/memory.ts";

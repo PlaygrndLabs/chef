@@ -10,6 +10,7 @@
     "./artifacts": "./src/artifacts.ts",
     "./anthropic": "./src/anthropic.ts",
     "./settings": "./src/settings.ts",
+    "./project-settings": "./src/project-settings.ts",
     "./vectorize": "./src/vectorize.ts",
     "./gpt-live": "./src/gpt-live.ts",
     "./realtime": "./src/realtime.ts",

@@ -32,4 +32,9 @@ export class SandboxCoder implements Coder {
       llm.apiKey,
     );
   }
+
+  async release(sessionId: string): Promise<void> {
+    const stub = this.sessions.get(this.sessions.idFromName(sessionId)) as unknown as { stop(): Promise<boolean> };
+    await stub.stop();
+  }
 }
