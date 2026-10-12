@@ -38,7 +38,7 @@ export interface SessionLive {
   attempt: { readonly group: string; readonly index: number; readonly of: number } | null;
   parent: string | null;
   commits: { readonly id: string; readonly role: string; readonly message: string }[];
-  preview: { readonly url: string; readonly commitId: string } | null;
+  preview: { readonly url: string; readonly commitId: string; readonly link?: string | undefined } | null;
   verdict: { readonly approve: boolean; readonly reasons: readonly string[] } | null;
   gate: { readonly ok: boolean; readonly checks: readonly CheckView[] } | null;
   stuck: string | null;
@@ -63,7 +63,7 @@ export interface ProjectLive {
   readonly rules: { readonly id: string; readonly message: string; readonly sessions: readonly string[]; readonly featureId: string; readonly at: number }[];
   readonly voice: { readonly prompt: string; readonly intent: string; readonly sessionId: string | null; readonly featureId: string | null; readonly at: number }[];
   readonly log: { readonly seq: number; readonly at: number; readonly type: string; readonly sessionId: string; readonly featureId: string; readonly summary: string }[];
-  readonly previews: Record<string, { readonly url: string; readonly commitId: string; readonly sessionId: string; readonly at: number }>;
+  readonly previews: Record<string, { readonly url: string; readonly commitId: string; readonly link?: string | undefined; readonly sessionId: string; readonly at: number }>;
 }
 
 export function emptyProject(): ProjectLive {
@@ -198,8 +198,8 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
     }
     case "preview.updated": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
-      s.preview = { url: event.url, commitId: event.commitId };
-      state.previews[event.featureId] = { url: event.url, commitId: event.commitId, sessionId: event.sessionId, at };
+      s.preview = { url: event.url, commitId: event.commitId, link: event.link };
+      state.previews[event.featureId] = { url: event.url, commitId: event.commitId, link: event.link, sessionId: event.sessionId, at };
       keep(s.timeline, { kind: "preview", at, url: event.url, commitId: event.commitId }, TIMELINE_LIMIT);
       return true;
     }

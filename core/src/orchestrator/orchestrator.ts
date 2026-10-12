@@ -60,6 +60,7 @@ export interface ProjectConfig {
   readonly budget?: Budget;
   readonly router?: RouterConfig;
   readonly tokenTtlSeconds?: number;
+  readonly previewLink?: (key: string) => string;
 }
 
 export interface SubmitResult {
@@ -905,9 +906,10 @@ export class Orchestrator {
     if (!record.head) return;
     const branch = await this.previews.publish(record.previewKey, record.head, record.fork);
     const deployment = await this.deps.previews.deploy({ repo: this.canonical, branch, commitId: record.head });
-    record.preview = { url: deployment.url, commitId: record.head };
+    const link = this.config.previewLink?.(record.previewKey);
+    record.preview = { url: deployment.url, commitId: record.head, ...(link ? { link } : {}) };
     record.firstPreviewCommit ??= record.head;
-    await this.emit({ type: "preview.updated", sessionId: record.id, featureId: record.featureId, url: deployment.url, commitId: record.head });
+    await this.emit({ type: "preview.updated", sessionId: record.id, featureId: record.featureId, url: deployment.url, commitId: record.head, ...(link ? { link } : {}) });
   }
 
   private onPush(event: PushedEvent): void {
@@ -967,7 +969,15 @@ export class Orchestrator {
     const stored = await this.deps.store.get<SessionRecord>(`session/${record.id}`);
     if (stored?.syncPending && !this.running.has(record.id)) record.syncPending = true;
     if (this.syncAfterRun.delete(record.id)) record.syncPending = true;
+    const state = record.machine.state;
+    const release = isTerminal(state) && record.released !== state;
+    record.released = isTerminal(state) ? state : null;
     await this.deps.store.put(`session/${record.id}`, record);
+    if (release) await this.release(record);
+  }
+
+  private async release(record: SessionRecord): Promise<void> {
+    await this.deps.coder.release?.(record.id).catch(() => undefined);
   }
 
   private async emit(event: DistributiveOmit<ChefEvent, "project" | "at">): Promise<void> {

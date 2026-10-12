@@ -41,4 +41,5 @@ export interface CoderTurnResult {
 
 export interface Coder {
   runTurn(input: CoderTurnInput): Promise<CoderTurnResult>;
+  release?(sessionId: string): Promise<void>;
 }
