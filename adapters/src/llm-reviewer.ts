@@ -2,11 +2,11 @@ import { z } from "zod";
 import type { FileChanges, PickInput, PickVerdict, ReviewInput, ReviewVerdict, Reviewer } from "@kargah/core";
 import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
-const VerdictSchema = z.object({ approve: z.boolean(), reasons: z.array(z.string()) });
+const VerdictSchema = z.object({ approve: z.boolean(), reasons: z.array(z.string()), retest: z.boolean() });
 
 const PickSchema = z.object({ sessionId: z.string(), reasons: z.array(z.string()) });
 
-const SYSTEM = `You review one feature's diff against its spec for kargah. Approve only if every acceptance criterion is implemented and covered by a test named after its id, the diff stays inside the feature's slice, and nothing weakens an existing test. Each reason is one line the coder can act on. Approve with an empty reason list when nothing blocks.`;
+const SYSTEM = `You review one feature's diff against its spec for kargah. Approve only if every acceptance criterion is implemented and covered by a test named after its id, the diff stays inside the feature's slice, and nothing weakens an existing test. Each reason is one line the coder can act on. Set retest when any reason needs a test added, renamed or fixed: tests are locked against coders, so those reasons go back to the test writer first. Approve with an empty reason list when nothing blocks.`;
 
 const PICK_SYSTEM = `You pick one of several competing attempts at the same kargah feature. Each attempt's code was run against the tests written by every attempt; prefer the attempt that passes the most of them, then the one that best matches the spec, then the smaller diff. Answer with the chosen sessionId and one line per reason.`;
 
@@ -26,7 +26,7 @@ export class LlmReviewer implements Reviewer {
       schema: VerdictSchema,
       prompt: `Spec:\n${JSON.stringify(input.feature, null, 2)}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}`,
     });
-    return { approve: result.approve && result.reasons.length === 0, reasons: result.reasons, model: this.model };
+    return { approve: result.approve && result.reasons.length === 0, reasons: result.reasons, retest: result.retest, model: this.model };
   }
 
   async pick(input: PickInput): Promise<PickVerdict> {
