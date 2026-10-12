@@ -1,4 +1,4 @@
-import { checkTree, formatProblems, parseTap } from "@kargah/core/checks";
+import { parseTap } from "@kargah/core/tap";
 import { diffTrees, lintSpecFiles, type CheckResult, type CheckRunner, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@kargah/core";
 import type { ChecksJob, CommandResult } from "./session-agent.ts";
 
@@ -34,6 +34,7 @@ export class SandboxCheckRunner implements CheckRunner {
       { name: "typecheck", argv: ["npx", "tsc", "-p", "tsconfig.json"] },
       { name: "test", argv: ["node", "--test", "--test-reporter=tap", "--experimental-strip-types", "features/**/*.test.ts", "shared/**/*.test.ts", "app/**/*.test.ts"] },
       { name: "generated", argv: ["npm", "run", "--silent", "app", "--", "gen", "--check"] },
+      { name: "lint", argv: ["node", "/opt/kargah/template/lint.mjs"] },
     ]);
     const stub = this.sessions.get(this.sessions.idFromName(sessionId)) as unknown as ChecksStub;
     let results: CommandResult[];
@@ -44,13 +45,11 @@ export class SandboxCheckRunner implements CheckRunner {
     } finally {
       await prepared.token();
     }
-    const code = checkTree(input.tree);
     const specFiles: Record<string, string> = {};
     for (const [path, content] of Object.entries(input.tree)) if (path.startsWith("spec/")) specFiles[path] = content;
     const spec = lintSpecFiles(specFiles).problems;
     return [
       ...results.map((r) => ({ name: r.name, ok: r.code === 0, log: tail(`${r.stdout}\n${r.stderr}`) || `${r.name} ok`, ...(r.name === "test" ? { cases: parseTap(r.stdout) } : {}) })),
-      { name: "lint", ok: code.length === 0, log: formatProblems(code) || "no problems" },
       { name: "spec-lint", ok: spec.length === 0, log: spec.map((p) => `${p.path}: ${p.message}`).join("\n") || "spec ok" },
     ];
   }

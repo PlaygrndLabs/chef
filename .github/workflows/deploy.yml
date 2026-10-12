@@ -39,6 +39,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           jq -n '{CPA_BASE_URL: env.CPA_BASE_URL, CPA_API_KEY: env.CPA_API_KEY, TYPESAFE_API_KEY: env.TYPESAFE_API_KEY, CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, OPENAI_API_KEY: env.OPENAI_API_KEY} | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
+          set -o pipefail
           npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json" | tee "$RUNNER_TEMP/deploy.log"
           grep -o 'https://[a-z0-9.-]*workers.dev' "$RUNNER_TEMP/deploy.log" | head -1 > "$RUNNER_TEMP/url"
       - name: Smoke test
