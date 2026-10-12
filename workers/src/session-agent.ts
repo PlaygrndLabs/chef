@@ -76,6 +76,8 @@ interface TurnOutput {
 }
 
 export class SessionAgent extends Agent<Env> {
+  private exit: string | null = null;
+
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void): Promise<CoderTurnResult> {
     let result: TurnOutput | null = null;
     const { code, tail } = await this.runScript("runner.mjs", job, (event) => {
@@ -103,18 +105,23 @@ export class SessionAgent extends Agent<Env> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     if (!container.running) {
-      container.start({ image: container.images["coder"] as string, enableInternet: false });
-      let stopped: unknown = null;
-      container.monitor().catch((error: unknown) => (stopped = error ?? "stopped"));
-      for (let waited = 0; !container.running && !stopped && waited < 60_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
-      if (!container.running) throw new Error(`the sandbox container did not start: ${String(stopped ?? "timed out")}`);
+      this.exit = null;
+      container.start({ image: container.images["coder"] as string, enableInternet: false, instance: SANDBOX_INSTANCE });
+      container.monitor().then(
+        () => (this.exit = "its main process exited"),
+        (error: unknown) => (this.exit = String(error)),
+      );
+      for (let waited = 0; !container.running && !this.exit && waited < 60_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
+      if (!container.running) throw new Error(`the sandbox container did not start: ${this.exit ?? "timed out"}`);
     }
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");
     await container.interceptOutboundHttps("*", outbound({ props: { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cloudflare: job.cloudflare ?? null } }));
     const { readToken, ...visible } = job;
     void readToken;
-    const process = await container.exec(["node", `/opt/kargah/${script}`], { env: { ...SANDBOX_ENV, KARGAH_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" });
+    const process = await container.exec(["node", `/opt/kargah/${script}`], { env: { ...SANDBOX_ENV, KARGAH_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" }).catch((error: unknown) => {
+      throw new Error(`${String(error)} (the sandbox container stopped: ${this.exit ?? "no reason reported"})`);
+    });
     const lines = (process.stdout as ReadableStream<Uint8Array>).pipeThrough(new TextDecoderStream()).pipeThrough(splitLines());
     let tail = "";
     for await (const line of lines) {
@@ -131,6 +138,7 @@ export class SessionAgent extends Agent<Env> {
 const CA = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
 const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, GIT_SSL_CAINFO: CA, SSL_CERT_FILE: CA };
 const SANDBOX_USER = "1000:1000";
+const SANDBOX_INSTANCE = "standard-1";
 
 function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);
