@@ -3,7 +3,7 @@ import type { Tree } from "../git/tree.ts";
 import { projectRuleProblems } from "./project-rules.ts";
 
 export interface CodeProblem {
-  readonly rule: "no-comments" | "import-boundaries" | "project-rules";
+  readonly rule: "no-comments" | "import-boundaries" | "known-packages" | "project-rules";
   readonly path: string;
   readonly line: number;
   readonly message: string;
@@ -111,15 +111,38 @@ export function findBoundaryViolations(path: string, text: string): CodeProblem[
   return problems;
 }
 
+export function packageName(specifier: string): string | null {
+  if (specifier.startsWith(".") || specifier.startsWith("/") || /^[a-z]+:/.test(specifier)) return null;
+  const parts = specifier.split("/");
+  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] as string);
+}
+
+export function declaredPackages(manifest: string): Set<string> {
+  const parsed = JSON.parse(manifest) as Record<string, Record<string, string> | undefined>;
+  return new Set(["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"].flatMap((key) => Object.keys(parsed[key] ?? {})));
+}
+
+export function findUnknownPackages(path: string, text: string, declared: ReadonlySet<string>): CodeProblem[] {
+  const problems: CodeProblem[] = [];
+  for (const { specifier, line } of findImports(path, text)) {
+    const name = packageName(specifier);
+    if (name && !declared.has(name)) problems.push({ rule: "known-packages", path, line, message: `package "${name}" is not installed; import a node: builtin or a package listed in package.json` });
+  }
+  return problems;
+}
+
 export type CodeRule = CodeProblem["rule"];
 
-export function checkTree(tree: Tree, rules: readonly CodeRule[] = ["no-comments", "import-boundaries", "project-rules"], ignore: (path: string) => boolean = () => false): CodeProblem[] {
+export function checkTree(tree: Tree, rules: readonly CodeRule[] = ["no-comments", "import-boundaries", "known-packages", "project-rules"], ignore: (path: string) => boolean = () => false): CodeProblem[] {
   const problems: CodeProblem[] = [];
+  const manifest = tree["package.json"];
+  const declared = rules.includes("known-packages") && manifest !== undefined ? declaredPackages(manifest) : null;
   if (rules.includes("project-rules")) problems.push(...projectRuleProblems(tree, Object.keys(tree).filter((p) => !ignore(p))).map((p) => ({ rule: p.rule, path: p.path, line: p.line, message: p.message })));
   for (const [path, text] of Object.entries(tree)) {
     if (!CODE_FILE.test(path) || ignore(path) || path.endsWith(".d.ts")) continue;
     if (rules.includes("no-comments")) problems.push(...findComments(path, text));
     if (rules.includes("import-boundaries")) problems.push(...findBoundaryViolations(path, text));
+    if (declared) problems.push(...findUnknownPackages(path, text, declared));
   }
   return problems;
 }

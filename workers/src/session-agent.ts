@@ -136,7 +136,7 @@ export class SessionAgent extends Agent<Env> {
 }
 
 const CA = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
-const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, GIT_SSL_CAINFO: CA, SSL_CERT_FILE: CA };
+const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, GIT_SSL_CAINFO: CA, SSL_CERT_FILE: CA, PLAYWRIGHT_BROWSERS_PATH: "/opt/pw-browsers" };
 const SANDBOX_USER = "1000:1000";
 const SANDBOX_INSTANCE = "standard-1";
 
