@@ -37,6 +37,14 @@ describe("ArtifactsRepoHost over real git smart HTTP", () => {
     await expect(host.commit(read, { ref: "main", parent: onMain.id, changes: { "c.txt": "x" }, message: "nope", author: { name: "t", email: "ma.karimi76@gmail.com" } })).rejects.toThrow();
   });
 
+  it("reads a project that does not exist yet as empty, then bootstraps it", async () => {
+    const host = new ArtifactsRepoHost(server.control());
+    const w = world({ script: scriptFromFixture(fixture("todo")), deps: { repos: host }, config: { name: "fresh-git" } });
+    expect(await w.orchestrator.mainTree()).toEqual({ commitId: null, tree: {} });
+    const commitId = await w.orchestrator.bootstrap(templateTree());
+    expect((await w.orchestrator.mainTree()).commitId).toBe(commitId);
+  });
+
   it("runs the phase 1 loop end to end on real git repos", async () => {
     const host = new ArtifactsRepoHost(server.control());
     const PROMPT = "Add an item to a todo list";

@@ -118,6 +118,7 @@ export class ArtifactsRepoHost implements RepoHost {
   }
 
   async resolveRef(repo: string, ref: string): Promise<string | null> {
+    if (!this.cache.has(repo) && !(await this.control.info(repo))) return null;
     return this.withRead(repo, async (secret, cached) => {
       const refs = await git.listServerRefs({ http: this.http, url: cached.remote, prefix: fullRef(ref), onAuth: auth(secret) });
       return refs.find((r) => r.ref === fullRef(ref))?.oid ?? null;
