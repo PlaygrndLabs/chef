@@ -1,14 +1,17 @@
+import { NO_LLM } from "@chef/adapters/providers";
 import type { Coder, CoderTurnInput, CoderTurnResult } from "@chef/core";
 
 export class SandboxCoder implements Coder {
   constructor(
     private readonly sessions: DurableObjectNamespace,
-    private readonly options: { readonly model: string; readonly llmBaseUrl: string },
+    private readonly options: { readonly model: string; readonly llm: { readonly baseUrl: string; readonly apiKey: string } | null },
   ) {}
 
   async runTurn(input: CoderTurnInput): Promise<CoderTurnResult> {
+    const llm = this.options.llm;
+    if (!llm) throw new Error(NO_LLM);
     const stub = this.sessions.get(this.sessions.idFromName(input.sessionId)) as unknown as {
-      runTurn(job: unknown, onEvent: CoderTurnInput["onEvent"]): Promise<CoderTurnResult>;
+      runTurn(job: unknown, onEvent: CoderTurnInput["onEvent"], llmKey: string): Promise<CoderTurnResult>;
     };
     return stub.runTurn(
       {
@@ -23,9 +26,10 @@ export class SandboxCoder implements Coder {
         ref: input.workspace.ref,
         commitId: input.workspace.commitId,
         readToken: input.workspace.readToken,
-        llm: { baseUrl: this.options.llmBaseUrl },
+        llm: { baseUrl: llm.baseUrl },
       },
       input.onEvent,
+      llm.apiKey,
     );
   }
 }
