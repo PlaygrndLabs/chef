@@ -26,6 +26,8 @@ jobs:
         env:
           SAY: ${{ inputs.say }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CPA_BASE_URL: ${{ secrets.CPA_BASE_URL }}
+          CPA_API_KEY: ${{ secrets.CPA_API_KEY }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

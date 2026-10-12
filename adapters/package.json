@@ -12,6 +12,7 @@
     "./anthropic": "./src/anthropic.ts",
     "./vectorize": "./src/vectorize.ts",
     "./gpt-live": "./src/gpt-live.ts",
+    "./realtime": "./src/realtime.ts",
     "./workers-ai-reviewer": "./src/workers-ai-reviewer.ts",
     "./agui": "./src/agui.ts"
   },
