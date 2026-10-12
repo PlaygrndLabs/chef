@@ -33,7 +33,7 @@ export class ProjectAgent extends Agent<Env> {
     const orchestrator = new Orchestrator(
       {
         repos,
-        coder: new SandboxCoder(env.SESSION),
+        coder: new SandboxCoder(env.SESSION, { model: env.CODER_MODEL, llmBaseUrl: env.CPA_BASE_URL }),
         classifier: new JevClassifier(new TypeSafeClient({ apiKey: env.TYPESAFE_API_KEY, defaultModel: env.JEV_MODEL }), env.JEV_MODEL),
         planner: new LlmPlanner(llm, env.PLANNER_MODEL),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
@@ -101,6 +101,7 @@ export class ProjectAgent extends Agent<Env> {
       return Response.json({ sessionId: call.sessionId, sdp: call.sdp }, { status: 201 });
     }
     if (request.method === "GET" && action === "sessions") return Response.json(await orchestrator.sessions());
+    if (request.method === "GET" && action === "cursor") return Response.json({ seq: await bus.cursor() });
     if (request.method === "GET" && action === "events") return Response.json(await bus.since(Number(url.searchParams.get("after") ?? 0)));
     return Response.json({ error: "not found" }, { status: 404 });
   }

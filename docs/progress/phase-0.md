@@ -4,7 +4,7 @@ Date: 2026-10-11. Branch `claude/kargah-build-t66ame`.
 
 | Spike | Result | Note |
 | --- | --- | --- |
-| Copilot SDK in Sandbox | Coded, not run | [copilot-sandbox.md](../spikes/copilot-sandbox.md) |
+| Coder in Sandbox | Coded, not run on Cloudflare (first built on the GitHub Copilot SDK, now the Claude Agent SDK) | [coder-sandbox.md](../spikes/coder-sandbox.md) |
 | Preview from branch push | Coded, not run | [preview-from-branch.md](../spikes/preview-from-branch.md) |
 | Jev routing quality | Harness and 104-prompt set ready, run on the fake only | [jev-routing.md](../spikes/jev-routing.md) |
 | Artifacts fork and notes | Proven against real git over smart HTTP, not on Artifacts | [artifacts-fork-notes.md](../spikes/artifacts-fork-notes.md) |

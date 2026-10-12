@@ -173,6 +173,7 @@ function open(name) {
   project = name;
   $("project").value = name;
   history.replaceState(null, "", `?project=${encodeURIComponent(name)}`);
+  document.dispatchEvent(new CustomEvent("kargah:project", { detail: name }));
   connect();
 }
 
@@ -185,16 +186,6 @@ $("bootstrap").addEventListener("click", async () => {
   const response = await fetch(`/api/projects/${project}/bootstrap`, { method: "POST" });
   const body = await response.json();
   $("prompt-result").textContent = body.created ? `Bootstrapped main at ${short(body.commitId)}` : `Main already at ${short(body.commitId)}`;
-});
-
-$("prompt-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const prompt = $("prompt").value.trim();
-  if (!prompt) return;
-  const response = await fetch(`/api/projects/${project}/prompts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt }) });
-  const body = await response.json();
-  $("prompt-result").textContent = body.error ?? (body.sessionId ? `Session ${short(body.sessionId)} started` : body.answer ? `${body.answer.text}${body.answer.sources.length ? ` (from ${body.answer.sources.join(", ")})` : ""}` : `Routed: ${body.decision?.intent ?? "done"}`);
-  if (response.ok) $("prompt").value = "";
 });
 
 function showHeard() {

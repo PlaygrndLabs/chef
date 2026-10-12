@@ -12,15 +12,16 @@
   },
   "dependencies": {
     "@cloudflare/sandbox": "1.0.0",
+    "@copilotkit/runtime": "1.78.0",
     "@kargah/adapters": "workspace:*",
     "@kargah/core": "workspace:*",
     "@kargah/template": "workspace:*",
-    "agents": "0.28.0",
-    "@typesafe-ai/sdk": "0.6.0"
+    "@typesafe-ai/sdk": "0.6.0",
+    "agents": "0.28.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261011.1",
-    "wrangler": "4.149.0",
-    "tsx": "4.23.15"
+    "tsx": "4.23.15",
+    "wrangler": "4.149.0"
   }
 }

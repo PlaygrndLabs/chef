@@ -5,7 +5,7 @@ status: building
 entrypoint: Orchestrator.coderTurn
 acceptance:
   - id: AC1
-    text: Each profile in agents/ runs as a Copilot custom agent named kargah-<role> with its write scope
+    text: Each profile in agents/ runs as a Claude Agent SDK subagent named kargah-<role> with its write scope
   - id: AC2
     text: A coder turn that changes a test written by the test role is rejected, and the gate fails any commit that did
   - id: AC3

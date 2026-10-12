@@ -12,9 +12,9 @@ A human-free, spec-driven software builder on Cloudflare. Each feature has one s
 ```
 spec/        kargah's own feature map
 core/        spec, router, state machine, orchestrator, merge, ports and fakes
-adapters/    Artifacts, Jev, Claude planner and reviewer, Workers Builds previews, Vectorize memory
-workers/     the kargah Worker: project and session Durable Objects, Copilot sandbox, sync workflow
-apps/        dashboard
+adapters/    Artifacts, Jev, Claude planner and reviewer, Workers Builds previews, Vectorize memory, the CopilotKit agent
+workers/     the kargah Worker: project and session Durable Objects, coder sandbox, sync workflow
+apps/        dashboard with a CopilotKit chat that streams sessions
 agents/      specialist profiles with write scopes
 template/    the template every project kargah builds starts from
 cli/         kargah CLI and local runners
@@ -27,7 +27,8 @@ Requires Node 22.18 or later, pnpm 10 and git.
 
 ```
 pnpm install
-pnpm run verify                                      # typecheck, lint, spec lint, unit and e2e tests
+pnpm run verify                                      # typecheck, lint, spec lint, dashboard build, unit and e2e tests (the browser test needs Chromium: pnpm --filter @kargah/cli exec playwright install chromium)
+node --import tsx cli/src/bin.ts serve               # dashboard and CopilotKit chat at http://127.0.0.1:8787, after pnpm build
 node --import tsx cli/src/bin.ts demo                # one feature through every state with real tsc, tests and proof
 node --import tsx cli/src/bin.ts route "fix the add button"
 node --import tsx cli/src/bin.ts spike jev           # Jev routing spike; uses Jev when TYPESAFE_API_KEY is set
@@ -38,7 +39,7 @@ node --import tsx cli/src/bin.ts tune data         # export reviewer examples fr
 node --import tsx cli/src/bin.ts llm check           # planner and reviewer through the local CPA, see dev/cpa/README.md
 ```
 
-The planner and reviewer reach Claude through CPA (CLIProxyAPI) with a subscription login, set by `CPA_BASE_URL` and `CPA_API_KEY`. `ANTHROPIC_API_KEY` is used only when `CPA_BASE_URL` is not set.
+The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) with a subscription login, set by `CPA_BASE_URL` and `CPA_API_KEY`. On Cloudflare `CPA_BASE_URL` is a public HTTPS gateway in front of CPA. The coder sandbox gets only a placeholder key; the Worker's outbound handler swaps in `CPA_API_KEY`. `ANTHROPIC_API_KEY` is used by the planner and reviewer only when `CPA_BASE_URL` is not set.
 
 ## Deploy to a fresh Cloudflare account
 
@@ -47,10 +48,9 @@ The planner and reviewer reach Claude through CPA (CLIProxyAPI) with a subscript
 
    ```
    cd workers
-   npx wrangler secret put CPA_BASE_URL            # CPA reachable from Cloudflare, see dev/cpa/README.md
+   npx wrangler secret put CPA_BASE_URL            # the CPA gateway's public HTTPS URL
    npx wrangler secret put CPA_API_KEY
    npx wrangler secret put TYPESAFE_API_KEY
-   npx wrangler secret put COPILOT_GITHUB_TOKEN    # a GitHub identity with Copilot access
    npx wrangler secret put CF_ACCOUNT_ID
    npx wrangler secret put CF_API_TOKEN            # can read Workers Builds for the account
    npx wrangler secret put OPENAI_API_KEY          # optional: the voice front end (GPT-Live)

@@ -1,7 +1,10 @@
 import type { Coder, CoderTurnInput, CoderTurnResult } from "@kargah/core";
 
 export class SandboxCoder implements Coder {
-  constructor(private readonly sessions: DurableObjectNamespace) {}
+  constructor(
+    private readonly sessions: DurableObjectNamespace,
+    private readonly options: { readonly model: string; readonly llmBaseUrl: string },
+  ) {}
 
   async runTurn(input: CoderTurnInput): Promise<CoderTurnResult> {
     const stub = this.sessions.get(this.sessions.idFromName(input.sessionId)) as unknown as {
@@ -12,7 +15,7 @@ export class SandboxCoder implements Coder {
         sessionId: input.sessionId,
         featureId: input.featureId,
         role: input.role,
-        model: input.model,
+        model: input.model === "coder-default" ? this.options.model : input.model,
         prompt: input.prompt,
         agent: input.agent,
         writeScope: input.writeScope,
@@ -20,6 +23,7 @@ export class SandboxCoder implements Coder {
         ref: input.workspace.ref,
         commitId: input.workspace.commitId,
         readToken: input.workspace.readToken,
+        llm: { baseUrl: this.options.llmBaseUrl },
       },
       input.onEvent,
     );
