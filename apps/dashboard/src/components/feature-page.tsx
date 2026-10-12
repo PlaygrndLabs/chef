@@ -94,7 +94,7 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
     setBusy(true);
     try {
       await api.retry(node.id, guidance.trim());
-      toast.success("kargah is trying again");
+      toast.success("chef is trying again");
       setGuidance("");
       data.refresh();
     } catch (error) {
@@ -105,7 +105,7 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   };
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-bad/30 bg-bad/5 p-4" data-needs-you={node.id}>
-      <div className="font-semibold text-bad">kargah needs your help</div>
+      <div className="font-semibold text-bad">chef needs your help</div>
       <p>{node.live?.stuck ?? node.record?.machine.reason ?? "It stopped before finishing."}</p>
       {feedback ? (
         <Collapsible>
@@ -118,7 +118,7 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      <Textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} rows={3} placeholder="Tell kargah what to do differently" aria-label="Tell kargah what to do differently" className="bg-background" />
+      <Textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} rows={3} placeholder="Tell chef what to do differently" aria-label="Tell chef what to do differently" className="bg-background" />
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => void retry()} disabled={busy}>
           {busy ? <Loader2 className="animate-spin" /> : <RotateCcw />}
@@ -149,7 +149,7 @@ function StopDialog({ node, open, onOpenChange }: { readonly node: SessionNode; 
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Stop building this?</AlertDialogTitle>
-          <AlertDialogDescription>kargah stops working on it and nothing goes live. The work so far is kept, and you can start over later.</AlertDialogDescription>
+          <AlertDialogDescription>chef stops working on it and nothing goes live. The work so far is kept, and you can start over later.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep going</AlertDialogCancel>
@@ -195,13 +195,13 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
     try {
       if (node && active) {
         await api.steer(node.id, text);
-        toast.success("kargah reads your note on its next step");
+        toast.success("chef reads your note on its next step");
       } else if (node?.state === "stuck") {
         await api.retry(node.id, text);
-        toast.success("kargah is trying again with your note");
+        toast.success("chef is trying again with your note");
       } else {
         const result = await api.prompt(`#${feature.id} ${text}`);
-        toast.success("kargah started on your change");
+        toast.success("chef started on your change");
         if (result.sessionId) openSession(result.sessionId);
       }
       data.refresh();
@@ -263,11 +263,11 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
             <div className="flex flex-col gap-3 rounded-2xl border p-4">
               <Steps node={node} />
               <p>{p.now}</p>
-              {attempts.length > 1 ? <p className="text-sm text-muted-foreground">kargah is trying {attempts.length} approaches at once and keeps the one that passes the most tests.</p> : null}
+              {attempts.length > 1 ? <p className="text-sm text-muted-foreground">chef is trying {attempts.length} approaches at once and keeps the one that passes the most tests.</p> : null}
             </div>
           ) : (
             <div className="flex flex-col gap-2 rounded-2xl border p-4">
-              <p>kargah has not built this yet.</p>
+              <p>chef has not built this yet.</p>
               {feature.spec?.body ? <p className="text-muted-foreground">{feature.spec.body}</p> : null}
               <p className="text-sm text-muted-foreground">Describe what you want below and it starts.</p>
             </div>
@@ -295,7 +295,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
       <Composer
         ref={composerRef}
         key={node?.id ?? feature.id}
-        placeholder={active ? "Add a note. kargah reads it on its next step" : node?.state === "stuck" ? "Or reply here with a hint" : `Ask for a change to ${feature.title}`}
+        placeholder={active ? "Add a note. chef reads it on its next step" : node?.state === "stuck" ? "Or reply here with a hint" : `Ask for a change to ${feature.title}`}
         hint={active ? "Your note does not restart the work" : node?.state === "stuck" ? "Sending tries again with your hint" : "Starts a new build of this feature"}
         onSend={send}
       />

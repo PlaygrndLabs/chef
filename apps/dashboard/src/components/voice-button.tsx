@@ -35,7 +35,7 @@ export function VoiceButton({ compact = false }: { readonly compact?: boolean })
   return (
     <Popover open={open && on} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant={on ? "secondary" : compact ? "ghost" : "outline"} size={compact ? "icon" : "sm"} onClick={() => void toggle()} aria-label={on ? "Stop talking" : "Talk to kargah"} className={cn(on && "text-run")}>
+        <Button variant={on ? "secondary" : compact ? "ghost" : "outline"} size={compact ? "icon" : "sm"} onClick={() => void toggle()} aria-label={on ? "Stop talking" : "Talk to chef"} className={cn(on && "text-run")}>
           {on ? <MicOff /> : <Mic />}
           {compact ? null : on ? "Stop" : "Talk"}
         </Button>

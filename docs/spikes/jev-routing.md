@@ -15,7 +15,7 @@ How well does Jev route raw prompts versus prompts translated to English, in Eng
 ## What was built
 
 - `docs/spikes/jev-routing/prompts.json`: 104 labeled prompts against an eight-feature todo app, 52 English and 52 Persian. Each Persian prompt is paired with its English counterpart, which is the "translated" input. Labels are intent, feature and change kind; 36 new features, 48 changes and 20 questions.
-- `cli/src/spike/jev.ts` and `kargah spike jev`: asks Jev the router's own three questions for every prompt, applies the router's rules and thresholds, and reports top-1 accuracy, accepted share, misroutes at the current thresholds, a threshold sweep per language and mode, and every accepted misroute.
+- `cli/src/spike/jev.ts` and `chef spike jev`: asks Jev the router's own three questions for every prompt, applies the router's rules and thresholds, and reports top-1 accuracy, accepted share, misroutes at the current thresholds, a threshold sweep per language and mode, and every accepted misroute.
 - The router's questions and decision logic are shared with the spike through `routingQuestions` and `decideFromAnswers` in `core/src/router/router.ts`, so the spike measures exactly what production runs.
 
 ## Evidence so far

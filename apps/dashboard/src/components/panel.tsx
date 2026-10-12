@@ -44,7 +44,7 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
 
 function PreviewTab({ url, commitId }: { readonly url: string | null; readonly commitId: string }) {
   const [nonce, setNonce] = useState(0);
-  if (!url) return <Empty>The preview appears after kargah's first step.</Empty>;
+  if (!url) return <Empty>The preview appears after chef's first step.</Empty>;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex h-9 items-center gap-2 rounded-xl border px-3">
@@ -60,7 +60,7 @@ function PreviewTab({ url, commitId }: { readonly url: string | null; readonly c
         </Button>
       </div>
       <iframe key={nonce} src={url} title="Preview" className="min-h-[460px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-      <p className="text-xs text-muted-foreground">This preview updates after every step kargah takes. Built from {short(commitId)}.</p>
+      <p className="text-xs text-muted-foreground">This preview updates after every step chef takes. Built from {short(commitId)}.</p>
     </div>
   );
 }

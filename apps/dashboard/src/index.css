@@ -148,12 +148,12 @@
     @apply font-sans;
     }
 }
-@keyframes kargah-pulse {
+@keyframes chef-pulse {
   50% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--run) 0%, transparent); }
 }
 
 @layer utilities {
-  .pulse-run { box-shadow: 0 0 0 2px color-mix(in oklab, var(--run) 25%, transparent); animation: kargah-pulse 1.6s ease-in-out infinite; }
+  .pulse-run { box-shadow: 0 0 0 2px color-mix(in oklab, var(--run) 25%, transparent); animation: chef-pulse 1.6s ease-in-out infinite; }
 }
 
 html, body, #root { height: 100%; }

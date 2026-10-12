@@ -47,12 +47,12 @@ describe("phase 5 voice front end on fakes", () => {
     expect(sent.at(-1)).toMatchObject({ delegation_id: "d0", content: "I did not catch a request. Please say it again." });
 
     await delegate.handle({ type: "session.input_transcript.delta", delta: "What is ", start_ms: 1000 });
-    await delegate.handle({ type: "session.input_transcript.delta", delta: "kargah?", start_ms: 1300 });
+    await delegate.handle({ type: "session.input_transcript.delta", delta: "chef?", start_ms: 1300 });
     await delegate.handle({ type: "session.input_transcript.delta", delta: "Also ", start_ms: 2500 });
     await delegate.handle({ type: "session.delegation.created", offset_ms: 2000, delegation: { id: "d1", target: "client" } });
     await delegate.handle({ type: "session.delegation.created", offset_ms: 2000, delegation: { id: "d2", target: "responses" } });
-    expect(prompts).toEqual(["What is kargah?"]);
-    expect(sent.at(-1)).toMatchObject({ type: "session.commentary.append", delegation_id: "d1", content: "heard What is kargah?" });
+    expect(prompts).toEqual(["What is chef?"]);
+    expect(sent.at(-1)).toMatchObject({ type: "session.commentary.append", delegation_id: "d1", content: "heard What is chef?" });
     await delegate.handle({ type: "session.input_transcript.delta", delta: "add a dark mode", start_ms: 2700 });
     await delegate.handle({ type: "session.delegation.created", offset_ms: 4000, delegation: { id: "d3", target: "client" } });
     expect(prompts.at(-1)).toBe("Also add a dark mode");

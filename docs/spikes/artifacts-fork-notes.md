@@ -4,7 +4,7 @@ Status: partly proven locally, not yet run on a Cloudflare account.
 
 ## Question
 
-Can kargah create a canonical repo, fork it per session, issue a token scoped to the fork, push `refs/notes/*`, and learn about pushes to `main` through `cf.artifacts.repo.pushed`?
+Can chef create a canonical repo, fork it per session, issue a token scoped to the fork, push `refs/notes/*`, and learn about pushes to `main` through `cf.artifacts.repo.pushed`?
 
 ## What the docs say
 
@@ -26,7 +26,7 @@ Can kargah create a canonical repo, fork it per session, issue a token scoped to
 `pnpm test:e2e` runs `adapters/test/e2e/artifacts-git.test.ts`:
 
 - `ArtifactsRepoHost` commits, merges, writes notes and pushes a preview branch; the server rejects a push made with a read token.
-- The full Phase 1 loop (route, plan, test, code, review, gate, merge) runs on real git repos served over HTTP; `git log` and `git notes --ref=kargah` on the canonical repo show each turn's commit and its note after the merge.
+- The full Phase 1 loop (route, plan, test, code, review, gate, merge) runs on real git repos served over HTTP; `git log` and `git notes --ref=chef` on the canonical repo show each turn's commit and its note after the merge.
 
 ## Decision
 

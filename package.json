@@ -1,5 +1,5 @@
 {
-  "name": "kargah",
+  "name": "chef",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.0",
@@ -13,7 +13,7 @@
     "test:e2e": "vitest run --project e2e",
     "spec:lint": "node --import tsx cli/src/bin.ts spec lint spec",
     "verify": "pnpm typecheck && pnpm lint && pnpm spec:lint && pnpm build && pnpm test && pnpm test:e2e",
-    "build": "pnpm --filter @kargah/dashboard build"
+    "build": "pnpm --filter @chef/dashboard build"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

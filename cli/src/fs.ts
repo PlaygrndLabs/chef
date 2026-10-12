@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import type { Tree } from "@kargah/core";
+import type { Tree } from "@chef/core";
 
-const SKIP = new Set(["node_modules", ".git", ".wrangler", "dist", "coverage", ".kargah"]);
+const SKIP = new Set(["node_modules", ".git", ".wrangler", "dist", "coverage", ".chef"]);
 
 export function readTree(dir: string, filter: (path: string) => boolean = () => true): Tree {
   const out: Record<string, string> = {};

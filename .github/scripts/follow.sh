@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u
-auth="authorization: Bearer $KARGAH_PASSWORD"
-api="$KARGAH_URL/api/projects/$PROJECT"
+auth="authorization: Bearer $CHEF_PASSWORD"
+api="$CHEF_URL/api/projects/$PROJECT"
 curl -sS -m 120 -X POST -H "$auth" "$api/bootstrap"; echo
 curl -sS -m 120 -X POST -H "$auth" -H 'content-type: application/json' -d "$(jq -n --arg prompt "$PROMPT" '{prompt: $prompt}')" "$api/prompts"; echo
 last=0

@@ -3,7 +3,7 @@ export interface CloudflareGrant {
   readonly worker: string;
 }
 
-export const PLACEHOLDER = "kargah-placeholder";
+export const PLACEHOLDER = "chef-placeholder";
 
 export function cloudflareAllowed(url: URL, grant: CloudflareGrant): boolean {
   if (url.hostname !== "api.cloudflare.com") return false;

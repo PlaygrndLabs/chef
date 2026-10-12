@@ -10,7 +10,7 @@ interface __BaseEnv_Env {
 	REVIEWER_MODEL: "claude-opus-5-5";
 	CODER_MODEL: "claude-sonnet-5-5";
 	JEV_MODEL: "jev-1.13.0";
-	PREVIEW_WORKER: "kargah-project";
+	PREVIEW_WORKER: "chef-project";
 	ATTEMPTS: "2";
 	VOICE_MODEL: "gpt-live-1";
 	REALTIME_MODEL: "gpt-realtime";

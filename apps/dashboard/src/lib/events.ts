@@ -1,8 +1,8 @@
-import type { KargahEvent, RouteDecision, SessionState } from "@kargah/core";
+import type { ChefEvent, RouteDecision, SessionState } from "@chef/core";
 
 export interface LogEntry {
   readonly seq: number;
-  readonly event: KargahEvent;
+  readonly event: ChefEvent;
 }
 
 export interface CheckView {
@@ -94,7 +94,7 @@ function clip(text: string, limit = 4000): string {
   return text.length > limit ? `${text.slice(0, limit)}\n[truncated]` : text;
 }
 
-export function summarize(event: KargahEvent): string {
+export function summarize(event: ChefEvent): string {
   switch (event.type) {
     case "route.decided":
       return `${event.decision.intent} ${event.decision.featureId ?? ""} ${event.decision.confidence.toFixed(2)}`.trim();

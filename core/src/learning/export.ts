@@ -1,4 +1,4 @@
-import type { KargahEvent } from "../events/events.ts";
+import type { ChefEvent } from "../events/events.ts";
 import { diffTrees, type FileChanges } from "../git/tree.ts";
 import { NOTES_NAMESPACE, parseNote, type TurnNote } from "../notes/notes.ts";
 import type { RepoHost } from "../ports/repo-host.ts";
@@ -39,7 +39,7 @@ export interface TurnExample {
 
 const CODER_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["test", "code", "fix", "refactor", "conflict"]);
 
-export function reviewPoints(log: readonly KargahEvent[]): ReviewPoint[] {
+export function reviewPoints(log: readonly ChefEvent[]): ReviewPoint[] {
   const reverted = new Set(log.flatMap((e) => (e.type === "main.reverted" ? [e.revertedCommit] : [])));
   const points: ReviewPoint[] = [];
   log.forEach((event, index) => {
@@ -58,7 +58,7 @@ export function reviewPoints(log: readonly KargahEvent[]): ReviewPoint[] {
   return points;
 }
 
-export async function exportOutcomes(input: { readonly log: readonly KargahEvent[]; readonly repos: Pick<RepoHost, "readCommit" | "readNote">; readonly canonical: string; readonly sessions: readonly SessionRecord[] }): Promise<{ reviews: ReviewExample[]; turns: TurnExample[] }> {
+export async function exportOutcomes(input: { readonly log: readonly ChefEvent[]; readonly repos: Pick<RepoHost, "readCommit" | "readNote">; readonly canonical: string; readonly sessions: readonly SessionRecord[] }): Promise<{ reviews: ReviewExample[]; turns: TurnExample[] }> {
   const forks = new Map(input.sessions.map((s) => [s.id, s.fork]));
   const points = reviewPoints(input.log);
   const reviews: ReviewExample[] = [];

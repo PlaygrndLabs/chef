@@ -1,4 +1,4 @@
-import type { KeyValueStore } from "@kargah/core";
+import type { KeyValueStore } from "@chef/core";
 
 export class DurableStore implements KeyValueStore {
   constructor(private readonly storage: DurableObjectStorage) {}

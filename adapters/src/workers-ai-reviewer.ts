@@ -1,4 +1,4 @@
-import { gemmaPrompt, parseReviewAnswer, reviewMessages, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@kargah/core";
+import { gemmaPrompt, parseReviewAnswer, reviewMessages, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
 
 export interface TextGenerator {
   run(model: string, input: { prompt: string; raw: boolean; lora: string; max_tokens: number; temperature: number }): Promise<unknown>;

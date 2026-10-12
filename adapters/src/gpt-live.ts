@@ -1,4 +1,4 @@
-import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceOffer } from "@kargah/core";
+import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceOffer } from "@chef/core";
 
 export interface SocketLike {
   send(data: string): void;
@@ -59,7 +59,7 @@ function connection(socket: SocketLike, finished: Promise<void>): LiveConnection
   return {
     send: (command: LiveCommand) => socket.send(JSON.stringify(command)),
     close: async () => {
-      socket.send(JSON.stringify({ type: "session.close", event_id: "kargah-close" }));
+      socket.send(JSON.stringify({ type: "session.close", event_id: "chef-close" }));
       let timer: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([finished, new Promise((resolve) => (timer = setTimeout(resolve, 15_000)))]);
       clearTimeout(timer);
@@ -130,7 +130,7 @@ export async function startServerSession(options: LiveOptions & { readonly instr
   socket.send(
     JSON.stringify({
       type: "session.start",
-      event_id: "kargah-start",
+      event_id: "chef-start",
       session: {
         model: options.model ?? LIVE_MODEL,
         instructions: options.instructions,

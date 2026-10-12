@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       say:
-        description: Request to speak to kargah
+        description: Request to speak to chef
         default: Add an item to a todo list
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: git config --global user.email ci@kargah.invalid && git config --global user.name ci
+      - run: git config --global user.email ci@chef.invalid && git config --global user.name ci
       - run: node --import tsx cli/src/bin.ts voice --live --say "$SAY" --out results/voice-live.json
         env:
           SAY: ${{ inputs.say }}

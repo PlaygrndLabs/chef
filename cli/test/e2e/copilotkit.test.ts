@@ -20,7 +20,7 @@ async function runAgent(url: string, prompt: string): Promise<Frame[]> {
     .map((line) => JSON.parse(line.slice(6)) as Frame);
 }
 
-describe("CopilotKit runtime streams kargah sessions", () => {
+describe("CopilotKit runtime streams chef sessions", () => {
   it("routes a chat message, streams the session as AG-UI events and finishes when it merges", async () => {
     const local = await serve({ port: 0, project: "demo", real: false });
     try {

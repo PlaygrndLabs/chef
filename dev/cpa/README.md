@@ -1,6 +1,6 @@
 # Local CPA
 
-kargah's planner and reviewer reach Claude through a local [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) (CPA), the same proxy nocheh uses, pinned to the same revision. CPA holds one Claude subscription login and serves the Anthropic Messages API on `http://127.0.0.1:8327/v1/messages` to clients that present a local key. This instance is kargah's own; it does not share nocheh's login or config, and it publishes host port 8327 so it can run next to another CPA on the default port 8317.
+chef's planner and reviewer reach Claude through a local [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) (CPA), the same proxy nocheh uses, pinned to the same revision. CPA holds one Claude subscription login and serves the Anthropic Messages API on `http://127.0.0.1:8327/v1/messages` to clients that present a local key. This instance is chef's own; it does not share nocheh's login or config, and it publishes host port 8327 so it can run next to another CPA on the default port 8317.
 
 ## Set up once
 

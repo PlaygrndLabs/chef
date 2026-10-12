@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ChoiceAnswers, ChoiceQuestions, Classifier } from "@kargah/core";
+import type { ChoiceAnswers, ChoiceQuestions, Classifier } from "@chef/core";
 import { report, runSpike, stats, sweep, type SpikeDataset } from "../../src/spike/jev.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 

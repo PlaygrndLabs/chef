@@ -1,5 +1,5 @@
 import { TypeSafeClient, type TypeSafeClientConfig } from "@typesafe-ai/sdk";
-import type { ChoiceAnswers, ChoiceQuestions, Classifier } from "@kargah/core";
+import type { ChoiceAnswers, ChoiceQuestions, Classifier } from "@chef/core";
 
 export class JevClassifier implements Classifier {
   readonly model: string;

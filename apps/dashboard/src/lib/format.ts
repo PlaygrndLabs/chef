@@ -1,4 +1,4 @@
-import type { SessionState } from "@kargah/core";
+import type { SessionState } from "@chef/core";
 
 export const short = (id: string | null | undefined, length = 7) => (id ? id.slice(0, length) : "");
 

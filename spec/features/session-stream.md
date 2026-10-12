@@ -13,7 +13,7 @@ acceptance:
   - id: AC4
     text: The run finishes with a summary once every session has merged, got stuck or been dropped
   - id: AC5
-    text: The same runtime serves the dashboard on the Worker and from kargah serve on a local machine
+    text: The same runtime serves the dashboard on the Worker and from chef serve on a local machine
 ---
 
-The runtime is CopilotKit's; the agent is `KargahAgent` in `adapters/src/agui.ts`. Tests: `cli/test/e2e/copilotkit.test.ts` and the browser run in `cli/test/e2e/dashboard.test.ts`.
+The runtime is CopilotKit's; the agent is `ChefAgent` in `adapters/src/agui.ts`. Tests: `cli/test/e2e/copilotkit.test.ts` and the browser run in `cli/test/e2e/dashboard.test.ts`.

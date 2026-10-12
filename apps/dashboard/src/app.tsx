@@ -36,8 +36,8 @@ function Center({ workspace }: { readonly workspace: Workspace }) {
   const { selection, feature } = workspace;
   useEffect(() => {
     const focus = () => composer.current?.focus();
-    window.addEventListener("kargah:compose", focus);
-    return () => window.removeEventListener("kargah:compose", focus);
+    window.addEventListener("chef:compose", focus);
+    return () => window.removeEventListener("chef:compose", focus);
   }, []);
   if (selection.view === "feature" && feature) return <FeaturePage feature={feature} composerRef={composer} />;
   if (selection.view === "feature") return <div className="grid h-full place-items-center text-muted-foreground">Loading</div>;
@@ -79,7 +79,7 @@ export function App() {
     },
     focusComposer: () => {
       setSidebar(false);
-      window.setTimeout(() => window.dispatchEvent(new Event("kargah:compose")), 50);
+      window.setTimeout(() => window.dispatchEvent(new Event("chef:compose")), 50);
     },
   };
 
@@ -91,7 +91,7 @@ export function App() {
       } else if (!typing(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === "n") {
         e.preventDefault();
         select({ view: "project", feature: null, session: null, panel: null });
-        window.setTimeout(() => window.dispatchEvent(new Event("kargah:compose")), 50);
+        window.setTimeout(() => window.dispatchEvent(new Event("chef:compose")), 50);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -99,7 +99,7 @@ export function App() {
   }, [select]);
 
   useEffect(() => {
-    document.title = feature && selection.view === "feature" ? `${feature.title} · kargah` : `${selection.project} · kargah`;
+    document.title = feature && selection.view === "feature" ? `${feature.title} · chef` : `${selection.project} · chef`;
   }, [feature, selection.view, selection.project]);
 
   return (

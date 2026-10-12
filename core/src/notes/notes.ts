@@ -1,10 +1,10 @@
 import { z } from "zod";
 
-export const NOTES_NAMESPACE = "refs/notes/kargah";
-export const PROOF_NAMESPACE = "refs/notes/kargah-proof";
+export const NOTES_NAMESPACE = "refs/notes/chef";
+export const PROOF_NAMESPACE = "refs/notes/chef-proof";
 
 export const TurnNote = z.strictObject({
-  kargah: z.literal(1),
+  chef: z.literal(1),
   project: z.string(),
   feature: z.string(),
   session: z.string(),

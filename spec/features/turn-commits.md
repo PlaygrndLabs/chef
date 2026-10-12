@@ -2,7 +2,7 @@
 id: turn-commits
 title: One commit per agent turn with git notes
 status: building
-entrypoint: refs/notes/kargah
+entrypoint: refs/notes/chef
 acceptance:
   - id: AC1
     text: Every agent turn with changed files becomes exactly one commit on the session fork

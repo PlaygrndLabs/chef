@@ -1,6 +1,6 @@
 import { Agent } from "agents";
 import { WorkerEntrypoint } from "cloudflare:workers";
-import type { CoderEvent, CoderTurnResult, CustomAgent, FileChanges } from "@kargah/core";
+import type { CoderEvent, CoderTurnResult, CustomAgent, FileChanges } from "@chef/core";
 import { cloudflareAllowed, PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
 
 export interface SandboxJob {
@@ -90,7 +90,7 @@ export class SessionAgent extends Agent<Env> {
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void): Promise<CoderTurnResult> {
     let result: TurnOutput | null = null;
     const { code, tail } = await this.runScript("runner.mjs", job, (event) => {
-      if (event["type"] === "kargah.result") result = event as unknown as typeof result;
+      if (event["type"] === "chef.result") result = event as unknown as typeof result;
       else onEvent(event as unknown as CoderEvent);
     });
     const final = result as TurnOutput | null;
@@ -104,7 +104,7 @@ export class SessionAgent extends Agent<Env> {
   async runChecks(job: ChecksJob): Promise<CommandResult[]> {
     let results: CommandResult[] | null = null;
     const { code, tail } = await this.runScript("checks.mjs", job, (event) => {
-      if (event["type"] === "kargah.checks") results = event["results"] as CommandResult[];
+      if (event["type"] === "chef.checks") results = event["results"] as CommandResult[];
     });
     if (!results) throw new Error(`checks runner failed with exit code ${code}: ${tail.slice(-500)}`);
     return results;
@@ -128,7 +128,7 @@ export class SessionAgent extends Agent<Env> {
     await container.interceptOutboundHttps("*", outbound({ props: { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cloudflare: job.cloudflare ?? null } }));
     const { readToken, ...visible } = job;
     void readToken;
-    const process = await container.exec(["node", `/opt/kargah/${script}`], { env: { ...SANDBOX_ENV, KARGAH_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" }).catch((error: unknown) => {
+    const process = await container.exec(["node", `/opt/chef/${script}`], { env: { ...SANDBOX_ENV, CHEF_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" }).catch((error: unknown) => {
       throw new Error(`${String(error)} (the sandbox container stopped: ${this.exit ?? "no reason reported"})`);
     });
     const lines = (process.stdout as ReadableStream<Uint8Array>).pipeThrough(new TextDecoderStream()).pipeThrough(splitLines());

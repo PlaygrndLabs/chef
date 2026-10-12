@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { NOTES_NAMESPACE, parseNote } from "../../src/notes/notes.ts";
 import { readSpec } from "../../src/spec/lint.ts";
-import type { KargahEvent } from "../../src/events/events.ts";
+import type { ChefEvent } from "../../src/events/events.ts";
 import { fixture, scriptFromFixture, templateTree, todoSpec, world } from "../harness.ts";
 import { bootstrapTree, FEATURES, MENU_PATH, presets, promptFor, script } from "../scenarios/shared-menu.ts";
 
-function counts(log: readonly KargahEvent[]): Record<string, number> {
+function counts(log: readonly ChefEvent[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const event of log) out[event.type] = (out[event.type] ?? 0) + 1;
   return out;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderRule, rulePath, type ProjectRule } from "../../src/checks/project-rules.ts";
-import type { KargahEvent } from "../../src/events/events.ts";
+import type { ChefEvent } from "../../src/events/events.ts";
 import type { Script } from "../../src/fakes/index.ts";
 import { featureMapProblems, lineRegex, normalizeLine } from "../../src/gardener/gardener.ts";
 import { fixture, scriptFromFixture, templateTree, todoSpec, world } from "../harness.ts";
@@ -9,8 +9,8 @@ const prompt = "Add an item to a todo list";
 const todo = fixture("todo");
 const TEST_PATH = "features/todo-add/todo-add.test.ts";
 
-function ofType<T extends KargahEvent["type"]>(log: readonly KargahEvent[], type: T): Extract<KargahEvent, { type: T }>[] {
-  return log.filter((e): e is Extract<KargahEvent, { type: T }> => e.type === type);
+function ofType<T extends ChefEvent["type"]>(log: readonly ChefEvent[], type: T): Extract<ChefEvent, { type: T }>[] {
+  return log.filter((e): e is Extract<ChefEvent, { type: T }> => e.type === type);
 }
 
 function todoWorld(script: Script) {
