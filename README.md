@@ -72,6 +72,8 @@ The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) w
 5. Create a project: `curl -X POST https://<kargah-worker>/api/projects/demo/bootstrap`. This creates the canonical repo `demo` in the `kargah` Artifacts namespace from `template/`.
 6. Open `https://<kargah-worker>/?project=demo` and send a prompt such as "Add an item to a todo list".
 
+The `cloud` workflow (Actions, run by hand) does steps 5 and 6 from CI: it bootstraps a project, sends a prompt, follows its sessions until they end and prints the Worker's logs from `wrangler tail`.
+
 Models are set in `workers/wrangler.jsonc` (`PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `JEV_MODEL`, `VOICE_MODEL`).
 
 Optional tuned reviewer: train it with `python tune/train.py` (see `tune/README.md`), upload it with `npx wrangler ai finetune create @cf/google/gemma-2b-it-lora kargah-reviewer tune/out/adapter`, and set the var `REVIEWER_LORA` to `kargah-reviewer`.
