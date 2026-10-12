@@ -21,9 +21,9 @@ describe("dashboard in a browser", () => {
       await input.fill(TODO_PROMPT);
       await input.press("Enter");
       await page.locator('#live-sessions [data-state="merged"]').waitFor({ timeout: 60_000 });
-      const chat = await page.locator("#chat").innerText();
-      expect(chat).toContain("Routed as new feature for todo-add");
-      expect(chat).toMatch(/s1 merged as [0-9a-f]{12}/);
+      const chat = () => page.locator("#chat").innerText();
+      await expect.poll(chat, { timeout: 10_000 }).toMatch(/s1 merged as [0-9a-f]{12}/);
+      expect(await chat()).toContain("Routed as new feature for todo-add");
       const card = await page.locator("#live-sessions").innerText();
       expect(card).toContain("review approved");
       expect(card).toContain("gate passed");
