@@ -9,7 +9,7 @@
     "./llm-reviewer": "./src/llm-reviewer.ts",
     "./artifacts": "./src/artifacts.ts",
     "./anthropic": "./src/anthropic.ts",
-    "./providers": "./src/providers.ts",
+    "./settings": "./src/settings.ts",
     "./vectorize": "./src/vectorize.ts",
     "./gpt-live": "./src/gpt-live.ts",
     "./realtime": "./src/realtime.ts",

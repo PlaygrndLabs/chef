@@ -1,15 +1,31 @@
 import { DurableObject } from "cloudflare:workers";
-import { applyUpdate, describeSettings, effectiveSettings, NO_SETTINGS, type ProviderSettings } from "@chef/adapters/providers";
+import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
+import { hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
 
-const KEY = "providers";
+const SETTINGS = "providers";
+const PASSWORD = "password";
 
 export class Settings extends DurableObject<Env> {
-  async read(): Promise<ProviderSettings> {
-    return (await this.ctx.storage.get<ProviderSettings>(KEY)) ?? NO_SETTINGS;
+  async read(): Promise<AppSettings> {
+    return { ...NO_SETTINGS, ...(await this.ctx.storage.get<Partial<AppSettings>>(SETTINGS)) };
   }
 
-  async write(settings: ProviderSettings): Promise<void> {
-    await this.ctx.storage.put(KEY, settings);
+  async write(settings: AppSettings): Promise<void> {
+    await this.ctx.storage.put(SETTINGS, settings);
+  }
+
+  async password(): Promise<StoredPassword | null> {
+    return (await this.ctx.storage.get<StoredPassword>(PASSWORD)) ?? null;
+  }
+
+  async claimPassword(password: StoredPassword): Promise<boolean> {
+    if (await this.ctx.storage.get(PASSWORD)) return false;
+    await this.ctx.storage.put(PASSWORD, password);
+    return true;
+  }
+
+  async replacePassword(password: StoredPassword): Promise<void> {
+    await this.ctx.storage.put(PASSWORD, password);
   }
 }
 
@@ -17,22 +33,42 @@ function stub(env: Env): DurableObjectStub<Settings> {
   return env.SETTINGS.get(env.SETTINGS.idFromName("global"));
 }
 
-export async function savedSettings(env: Env): Promise<ProviderSettings> {
-  return stub(env).read();
+export async function currentSettings(env: Env): Promise<Resolved> {
+  return resolveSettings(await stub(env).read(), env);
 }
 
-export async function currentSettings(env: Env): Promise<ProviderSettings> {
-  return effectiveSettings(await savedSettings(env), env);
+export async function credential(env: Env): Promise<Credential | null> {
+  if (env.CHEF_PASSWORD) return { kind: "deployment", password: env.CHEF_PASSWORD };
+  const stored = await stub(env).password();
+  return stored ? { kind: "app", ...stored } : null;
+}
+
+export function claimPassword(env: Env): (password: StoredPassword) => Promise<boolean> {
+  return (password) => stub(env).claimPassword(password);
+}
+
+async function view(env: Env, saved: AppSettings) {
+  return { ...describeSettings(saved, env), password: env.CHEF_PASSWORD ? "deployment" : "app" };
 }
 
 export async function settingsRequest(request: Request, env: Env): Promise<Response> {
-  const saved = await savedSettings(env);
-  if (request.method === "GET") return Response.json(describeSettings(saved, env));
-  if (request.method === "PUT") {
-    const result = applyUpdate(saved, await request.json().catch(() => null));
-    if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
-    await stub(env).write(result.settings);
-    return Response.json(describeSettings(result.settings, env));
+  const settings = stub(env);
+  const saved = await settings.read();
+  if (request.method === "GET") return Response.json(await view(env, saved));
+  if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (body && "password" in body) {
+    const { password, ...rest } = body;
+    if (env.CHEF_PASSWORD) return Response.json({ error: "the password is set by the deployment's CHEF_PASSWORD secret" }, { status: 409 });
+    const problem = typeof password === "string" ? passwordProblem(password) : "the password must be text";
+    if (problem) return Response.json({ error: problem }, { status: 400 });
+    if (Object.keys(rest).length > 0) return Response.json({ error: "change the password on its own" }, { status: 400 });
+    const stored = await hashPassword(password as string);
+    await settings.replacePassword(stored);
+    return Response.json(await view(env, saved), { headers: { "set-cookie": await sessionCookie({ kind: "app", ...stored }) } });
   }
-  return Response.json({ error: "method not allowed" }, { status: 405 });
+  const result = applyUpdate(saved, body);
+  if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+  await settings.write(result.settings);
+  return Response.json(await view(env, result.settings));
 }

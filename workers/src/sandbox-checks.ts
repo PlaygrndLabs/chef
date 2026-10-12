@@ -3,7 +3,7 @@ import { diffTrees, lintSpecFiles, type CheckResult, type CheckRunner, type Prev
 import { PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
 import type { ChecksJob, CommandResult } from "./session-agent.ts";
 
-type ChecksStub = { runChecks(job: ChecksJob): Promise<CommandResult[]> };
+type ChecksStub = { runChecks(job: ChecksJob, cloudflareToken?: string | null): Promise<CommandResult[]> };
 
 function tail(text: string, lines = 40): string {
   return text.trim().split("\n").slice(-lines).join("\n");
@@ -117,6 +117,7 @@ export class SandboxPreviewHost implements PreviewHost {
     private readonly sessions: DurableObjectNamespace,
     private readonly repos: RepoHost,
     private readonly grant: CloudflareGrant,
+    private readonly apiToken: string,
   ) {}
 
   async deploy(input: { repo: string; branch: string; commitId: string }): Promise<PreviewDeployment> {
@@ -130,7 +131,7 @@ export class SandboxPreviewHost implements PreviewHost {
       try {
         const { token, ...rest } = prepared;
         void token;
-        result = (await stub.runChecks({ ...rest, sessionId: `preview-${name}`, cloudflare: this.grant }))[0];
+        result = (await stub.runChecks({ ...rest, sessionId: `preview-${name}`, cloudflare: this.grant }, this.apiToken))[0];
       } finally {
         await prepared.token();
       }
