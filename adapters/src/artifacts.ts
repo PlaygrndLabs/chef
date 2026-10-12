@@ -3,6 +3,8 @@ import webHttp from "isomorphic-git/http/web";
 import { applyChanges, threeWayMerge, type Author, type Commit, type CommitInput, type MergeInput, type MergeOutcome, type PushedEvent, type RepoHost, type RepoInfo, type RepoToken, type TokenScope, type Tree } from "@kargah/core";
 import { MemoryFs } from "./memory-fs.ts";
 
+const NOTE_ATTEMPTS = 8;
+
 export interface ControlRepo {
   readonly name: string;
   readonly remote: string;
@@ -290,13 +292,22 @@ export class ArtifactsRepoHost implements RepoHost {
 
   private async writeNotes(cached: Cached, token: RepoToken, namespace: string, entries: readonly [string, string][]): Promise<void> {
     const remoteNotes = `refs/remotes/origin/${namespace.replace(/^refs\//, "")}`;
-    const before = await this.localRef(cached, remoteNotes);
-    if (before) await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: namespace, value: before, force: true });
-    else await git.deleteRef({ fs: cached.fs, gitdir: GITDIR, ref: namespace }).catch(() => undefined);
-    for (const [oid, note] of entries) await git.addNote({ fs: cached.fs, gitdir: GITDIR, ref: namespace, oid, note, force: true, author: { name: "kargah", email: "ma.karimi76@gmail.com" } });
-    const after = await this.localRef(cached, namespace);
-    if (!after) return;
-    await this.push(cached, token, namespace, after, false, before);
+    for (let attempt = 1; ; attempt++) {
+      const before = await this.localRef(cached, remoteNotes);
+      if (before) await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: namespace, value: before, force: true });
+      else await git.deleteRef({ fs: cached.fs, gitdir: GITDIR, ref: namespace }).catch(() => undefined);
+      for (const [oid, note] of entries) await git.addNote({ fs: cached.fs, gitdir: GITDIR, ref: namespace, oid, note, force: true, author: { name: "kargah", email: "ma.karimi76@gmail.com" } });
+      const after = await this.localRef(cached, namespace);
+      if (!after) return;
+      try {
+        await this.push(cached, token, namespace, after, false, before);
+        return;
+      } catch (error) {
+        if (attempt >= NOTE_ATTEMPTS) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 50 * attempt + Math.random() * 100));
+        await this.fetchAll(cached, tokenSecret(token.secret));
+      }
+    }
   }
 
   private async localNote(cached: Cached, ref: string, oid: string): Promise<string | null> {
