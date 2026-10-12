@@ -1,6 +1,7 @@
 import { Agent } from "agents";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { CoderEvent, CoderTurnResult, CustomAgent, FileChanges } from "@kargah/core";
+import { cloudflareAllowed, PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
 
 export interface SandboxJob {
   readonly sessionId: string;
@@ -22,9 +23,8 @@ interface OutboundProps {
   readonly readToken: string;
   readonly allowHosts: readonly string[];
   readonly llmHost: string | null;
+  readonly cloudflare: CloudflareGrant | null;
 }
-
-const PLACEHOLDER = "kargah-placeholder";
 
 export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
   override async fetch(request: Request): Promise<Response> {
@@ -34,6 +34,9 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
     if (url.hostname === this.ctx.props.artifactsHost) {
       if (url.pathname.endsWith("/git-receive-pack") || url.searchParams.get("service") === "git-receive-pack") return new Response("the coder sandbox cannot push", { status: 403 });
       headers.set("authorization", `Bearer ${this.ctx.props.readToken}`);
+    } else if (this.ctx.props.cloudflare && cloudflareAllowed(url, this.ctx.props.cloudflare)) {
+      const current = headers.get("authorization");
+      if (current?.includes(PLACEHOLDER)) headers.set("authorization", current.replace(PLACEHOLDER, this.env.CF_API_TOKEN));
     } else if (url.hostname === this.ctx.props.llmHost) {
       for (const name of ["x-api-key", "authorization"]) {
         const current = headers.get(name);
@@ -52,8 +55,9 @@ export interface ChecksJob {
   readonly ref: string;
   readonly commitId: string;
   readonly readToken: string;
-  readonly commands: readonly { name: string; argv: readonly string[]; timeoutMs?: number }[];
+  readonly commands: readonly { name: string; argv: readonly string[]; timeoutMs?: number; env?: Readonly<Record<string, string>> }[];
   readonly allowHosts?: readonly string[];
+  readonly cloudflare?: CloudflareGrant;
   readonly overlay?: FileChanges;
 }
 
@@ -95,13 +99,13 @@ export class SessionAgent extends Agent<Env> {
     return results;
   }
 
-  private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void): Promise<{ code: number; tail: string }> {
+  private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant }, onEvent: (event: Record<string, unknown>) => void): Promise<{ code: number; tail: string }> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     if (!container.running) container.start({ image: container.images["coder"] as string, enableInternet: false });
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");
-    await container.interceptOutboundHttps("*", outbound({ props: { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null } }));
+    await container.interceptOutboundHttps("*", outbound({ props: { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cloudflare: job.cloudflare ?? null } }));
     const { readToken, ...visible } = job;
     void readToken;
     const process = await container.exec(["node", `/opt/kargah/${script}`], { env: { KARGAH_JOB: toBase64(JSON.stringify(visible)) }, stdout: "pipe", stderr: "combined" });

@@ -20,7 +20,7 @@ if (!existsSync(join(dir, "node_modules"))) symlinkSync("/opt/kargah/template/no
 
 const results = [];
 for (const command of job.commands) {
-  const run = spawnSync(command.argv[0], command.argv.slice(1), { cwd: dir, encoding: "utf8", timeout: command.timeoutMs ?? 300000, maxBuffer: 16 * 1024 * 1024 });
+  const run = spawnSync(command.argv[0], command.argv.slice(1), { cwd: dir, encoding: "utf8", timeout: command.timeoutMs ?? 300000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, ...command.env } });
   results.push({ name: command.name, code: run.status ?? 1, stdout: run.stdout.slice(-20000), stderr: run.stderr.slice(-20000) });
 }
 process.stdout.write(`${JSON.stringify({ type: "kargah.checks", results })}\n`);

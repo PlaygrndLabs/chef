@@ -12,7 +12,7 @@ A human-free, spec-driven software builder on Cloudflare. Each feature has one s
 ```
 spec/        kargah's own feature map
 core/        spec, router, state machine, orchestrator, merge, ports and fakes
-adapters/    Artifacts, Jev, Claude planner and reviewer, Workers Builds previews, Vectorize memory, the CopilotKit agent
+adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, the CopilotKit agent
 workers/     the kargah Worker: project and session Durable Objects, coder sandbox, sync workflow
 apps/        dashboard with a CopilotKit chat that streams sessions
 agents/      specialist profiles with write scopes
@@ -46,7 +46,7 @@ The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) w
 
 ## Deploy to a fresh Cloudflare account
 
-1. Use an account on Workers Paid with Artifacts, Containers and Workers Builds enabled. Docker must be running where you deploy, to build the sandbox image.
+1. Use an account on Workers Paid with Artifacts and Containers enabled. Docker must be running where you deploy, to build the sandbox image.
 2. Set the secrets for the kargah Worker:
 
    ```
@@ -56,7 +56,7 @@ The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) w
    npx wrangler secret put CPA_API_KEY
    npx wrangler secret put TYPESAFE_API_KEY
    npx wrangler secret put CF_ACCOUNT_ID
-   npx wrangler secret put CF_API_TOKEN            # can read Workers Builds for the account
+   npx wrangler secret put CF_API_TOKEN            # can edit Workers; previews of project demo go to the Worker kargah-project-demo
    npx wrangler secret put OPENAI_API_KEY          # optional: voice through GPT-Live; without it voice uses the Realtime API through the CPA gateway (a ChatGPT login in its dashboard)
    ```
 
@@ -70,8 +70,7 @@ The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) w
 
 4. Deploy: `pnpm --filter @kargah/workers run deploy`. The `deploy` workflow (Actions, run by hand) does steps 2 to 4 from the repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CPA_BASE_URL`, `CPA_API_KEY`, `TYPESAFE_API_KEY`, `KARGAH_PASSWORD` and, if set, `OPENAI_API_KEY`. Scripts can call the API with `Authorization: Bearer <KARGAH_PASSWORD>`.
 5. Create a project: `curl -X POST https://<kargah-worker>/api/projects/demo/bootstrap`. This creates the canonical repo `demo` in the `kargah` Artifacts namespace from `template/`.
-6. One-time: in the dashboard, connect the `demo` Artifacts repo to Workers Builds as the Worker `kargah-project` and turn on builds for preview branches.
-7. Open `https://<kargah-worker>/?project=demo` and send a prompt such as "Add an item to a todo list".
+6. Open `https://<kargah-worker>/?project=demo` and send a prompt such as "Add an item to a todo list".
 
 Models are set in `workers/wrangler.jsonc` (`PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `JEV_MODEL`, `VOICE_MODEL`).
 
