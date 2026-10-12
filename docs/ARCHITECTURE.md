@@ -7,7 +7,7 @@ kargah turns a prompt or a spec entry into a merged feature with no human step. 
 | Package | Role |
 | --- | --- |
 | `core` | Spec format and lint, router, session state machine, orchestrator, merge, ports and their in-memory fakes, code rules. No I/O. |
-| `adapters` | Real implementations of the ports: Artifacts over isomorphic-git, Jev classifier, Claude planner and reviewer, Workers Builds previews, and `KargahAgent`, the AG-UI agent CopilotKit streams sessions through. |
+| `adapters` | Real implementations of the ports: Artifacts over isomorphic-git, Jev classifier, Claude planner and reviewer, and `KargahAgent`, the AG-UI agent CopilotKit streams sessions through. |
 | `workers` | The kargah Worker: `ProjectAgent` and `SessionAgent` Durable Objects, the coder sandbox, the `upstream-sync` Workflow, the HTTP API. |
 | `template` | The vertical-slice template every project kargah builds starts from, with its own `app` CLI (`gen`, `drive`, `proof`). |
 | `cli` | `kargah` CLI: spec lint, code rules, routing, the local demo with real checks, the Jev spike, and `kargah serve`, the dashboard and CopilotKit runtime on the local world. |
@@ -25,7 +25,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 | `Classifier` | `KeywordClassifier` | `JevClassifier` (`adapters/src/jev.ts`) |
 | `Planner` | `TemplatePlanner` | `LlmPlanner` (`adapters/src/llm-planner.ts`) |
 | `Reviewer` | `RuleReviewer` | `LlmReviewer` (`adapters/src/llm-reviewer.ts`), or `WorkersAiReviewer` (`adapters/src/workers-ai-reviewer.ts`, a tuned LoRA on Workers AI) when `REVIEWER_LORA` is set |
-| `PreviewHost` | `MemoryPreviewHost` | `WorkersBuildsPreviewHost` (`adapters/src/workers-previews.ts`) |
+| `PreviewHost` | `MemoryPreviewHost` | `SandboxPreviewHost` (`workers/src/sandbox-checks.ts`): runs `wrangler preview` for the branch in the session sandbox |
 | `CheckRunner`, `ProofRunner` | `FakeCheckRunner`, `FakeProofRunner` | `LocalCheckRunner` and `LocalProofRunner` (`cli/src/local`), `SandboxCheckRunner` and `SandboxProofRunner` (`workers/src/sandbox-checks.ts`) |
 | `VoiceHost` | `ScriptedVoiceHost` | `GptLiveHost` (`adapters/src/gpt-live.ts`, GPT-Live `gpt-live-1`) |
 | `MemoryIndex` | `LexicalIndex` (TF-IDF) | `VectorizeIndex` (`adapters/src/vectorize.ts`, Vectorize plus Workers AI `@cf/baai/bge-base-en-v1.5`) |
@@ -41,7 +41,7 @@ The planner and reviewer call Claude through `adapters/src/anthropic.ts` with st
    `queued → planning → testing → coding → reviewing → gating → merged | stuck | dropped`.
    A prompt can start several attempts. Each attempt is its own session with its own fork and its own preview branch `preview/<feature>--<session>` until it wins.
 4. **Turns**. Each coder turn runs one work item under one profile. Its changed files become one commit on the fork with a note under `refs/notes/kargah` (prompt, root prompt, run id, model, role, spec revision, paths). A turn is rejected before it is committed, and the reason fed back, when it writes outside its role's scope, when a non-test role changes a test the test role wrote (locked tests), when a test turn adds tests that pass against an empty stub of the feature (red check, using per-test results from node's TAP output), or when it breaks a project lint rule in `lint/rules/` (project-lint). Before each turn the orchestrator recalls up to three memory documents, lessons and feature memories of the same feature first, and appends them to the prompt. Each profile runs in the Claude Agent SDK as a subagent named `kargah-<role>`; the profile model `coder-default` resolves to `CODER_MODEL`.
-5. **Preview**. After each commit, `PreviewPublisher` pushes the fork head to `preview/<feature>` on the canonical repo, and the preview host reads the deployed URL back.
+5. **Preview**. After each commit, `PreviewPublisher` pushes the fork head to `preview/<feature>` on the canonical repo, and the preview host runs `wrangler preview --name <feature>` on that commit in a sandbox, creating the project Worker `kargah-project-<project>` on first use, and reads the Preview URL back. The sandbox only sees a placeholder Cloudflare token; the outbound handler swaps in `CF_API_TOKEN` for that Worker's API paths and nothing else.
 6. **Review**. The reviewer compares the diff from the session's base to its head against the spec. When every live attempt of a prompt has reached the gate, each attempt's code runs against the tests of all attempts and the reviewer picks one; the others are `dropped`.
 7. **Gate** (`Orchestrator.gate`). Sync from `main`, then typecheck, lint (no comments, import boundaries), tests, generated files, spec lint, write scope of every commit by the role in its note, no coder commit touching a locked test, a reviewer approval from a model that wrote no code in the session of the current head, and a proof: the feature's flow driven against its preview, stored under `refs/notes/kargah-proof`. Merges run one at a time through a mutex; if `main` moved, the session syncs and is gated again.
 8. **Merge**. A gardener commit sets the feature's status to `merged`, adds spec entries for feature folders that have none, condenses the session into `memory/features/<id>.md`, and writes any lint rule mined from corrections. Then `MainWriter.mergeFork` merges the fork into `main`. Only the gate holds `MainWriter`.
