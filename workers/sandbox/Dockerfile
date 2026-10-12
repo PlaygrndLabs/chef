@@ -4,7 +4,8 @@ WORKDIR /opt/kargah
 COPY package.json runner.mjs checks.mjs ./
 RUN npm install --omit=dev --no-audit --no-fund
 COPY template-package.json /opt/kargah/template/package.json
-RUN cd /opt/kargah/template && npm install --no-audit --no-fund
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+RUN cd /opt/kargah/template && npm install --no-audit --no-fund && npx playwright install --with-deps --only-shell chromium && rm -rf /var/lib/apt/lists/*
 COPY lint.mjs /opt/kargah/template/lint.mjs
 COPY lint /opt/kargah/template/lint
 ENV NODE_EXTRA_CA_CERTS=/etc/cloudflare/certs/cloudflare-containers-ca.crt \
