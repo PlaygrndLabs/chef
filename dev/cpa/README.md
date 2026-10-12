@@ -12,6 +12,15 @@ docker compose -f dev/cpa/compose.yaml run --rm --service-ports login
 
 The login prints a URL. Open it, sign in to Claude, and the browser returns to `localhost:54545`, which the login container receives. The login is saved in `dev/cpa/state/auth/`.
 
+The login needs port 54545 on the host, because Claude's sign-in returns there. If Docker reports `Bind for 127.0.0.1:54545 failed: port is already allocated`, find what holds it:
+
+```
+docker ps --filter publish=54545 --format '{{.Names}}'
+lsof -nP -iTCP:54545 -sTCP:LISTEN
+```
+
+A leftover `kargah-cpa-login-run-*` container from an interrupted login can be removed with `docker rm -f <name>`. Another app's CPA login (nocheh's, for example) can be stopped with `docker stop <name>` for the length of this login and started again afterwards. Then run the login again.
+
 ## Run
 
 ```
