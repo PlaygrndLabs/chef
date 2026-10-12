@@ -75,8 +75,17 @@ interface TurnOutput {
   readonly usage?: { readonly inputTokens: number; readonly outputTokens: number };
 }
 
+export interface SandboxStatus {
+  readonly running: boolean;
+  readonly exit: string | null;
+}
+
 export class SessionAgent extends Agent<Env> {
   private exit: string | null = null;
+
+  async status(): Promise<SandboxStatus> {
+    return { running: this.ctx.container?.running ?? false, exit: this.exit };
+  }
 
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void): Promise<CoderTurnResult> {
     let result: TurnOutput | null = null;

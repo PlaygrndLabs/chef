@@ -15,6 +15,7 @@ export type SessionEvent =
   | { readonly type: "turn_rejected"; readonly rule: RejectionRule; readonly paths: readonly string[]; readonly scope: readonly string[]; readonly detail?: string }
   | { readonly type: "reopened"; readonly log: string; readonly charged?: boolean }
   | { readonly type: "dropped"; readonly reason: string }
+  | { readonly type: "retried"; readonly guidance: string }
   | { readonly type: "fail"; readonly reason: string };
 
 export type RejectionRule = "write-scope" | "locked-tests" | "red-tests" | "project-lint";
@@ -52,7 +53,8 @@ const NEXT: Readonly<Record<SessionEvent["type"], Partial<Record<SessionState, S
   conflict: { planning: "coding", testing: "coding", coding: "coding", reviewing: "coding", gating: "coding" },
   turn_rejected: { testing: "testing", coding: "coding" },
   reopened: { merged: "coding", stuck: "coding" },
-  dropped: { planning: "dropped", testing: "dropped", coding: "dropped", reviewing: "dropped", gating: "dropped" },
+  dropped: { queued: "dropped", planning: "dropped", testing: "dropped", coding: "dropped", reviewing: "dropped", gating: "dropped", stuck: "dropped" },
+  retried: { stuck: "coding" },
   fail: { queued: "stuck", planning: "stuck", testing: "stuck", coding: "stuck", reviewing: "stuck", gating: "stuck" },
 };
 
@@ -82,9 +84,9 @@ export function transition(current: MachineState, event: SessionEvent, budget: B
   if (event.type === "review_rejected" && current.state === "reviewing" && event.retest) to = "testing";
   if (!to) throw new InvalidTransition(current.state, event.type);
   const retry = event.type === "review_rejected" || event.type === "gate_failed" || event.type === "turn_rejected" || (event.type === "reopened" && event.charged !== false);
-  const usage: Usage = retry ? { ...current.usage, attempts: current.usage.attempts + 1 } : current.usage;
+  const usage: Usage = event.type === "retried" ? { attempts: 1, tokens: 0, startedAt: now } : retry ? { ...current.usage, attempts: current.usage.attempts + 1 } : current.usage;
   const carried = (to === "coding" || to === "testing") && event.type !== "planned" && (event.type !== "tests_committed" || current.reason === "review_rejected");
-  const feedback = feedbackOf(event) ?? (carried ? current.feedback : null);
+  const feedback = event.type === "retried" ? retriedFeedback(event.guidance, current.feedback) : (feedbackOf(event) ?? (carried ? current.feedback : null));
   const reason = event.type === "fail" || event.type === "dropped" ? event.reason : event.type;
   if (to === "coding" || event.type === "turn_rejected" || event.type === "review_rejected") {
     const over = exceeded(usage, budget, now);
@@ -108,6 +110,11 @@ function feedbackOf(event: SessionEvent): string | null {
     default:
       return null;
   }
+}
+
+function retriedFeedback(guidance: string, last: string | null): string {
+  const note = guidance.trim() ? `A person retried this session and asked:\n${guidance.trim()}` : "A person retried this session with a fresh budget.";
+  return last ? `${note}\n\nThe last failure was:\n${last}` : note;
 }
 
 export function initialMachine(now: number): MachineState {

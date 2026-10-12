@@ -8,7 +8,7 @@ import { REPO_ROOT } from "../../src/world.ts";
 const DIST = join(REPO_ROOT, "apps", "dashboard", "dist");
 
 describe("dashboard in a browser", () => {
-  it("sends a chat message through CopilotKit and shows the session until it merges", async () => {
+  it("sends a chat message through CopilotKit, follows the feature until it goes live and opens it", async () => {
     expect(existsSync(join(DIST, "index.html")), "run pnpm build first").toBe(true);
     const local = await serve({ port: 0, project: "demo", real: false, assets: DIST });
     const browser = await chromium.launch();
@@ -20,14 +20,21 @@ describe("dashboard in a browser", () => {
       const input = page.locator("#chat textarea");
       await input.fill(TODO_PROMPT);
       await input.press("Enter");
-      await page.locator('#live-sessions [data-state="merged"]').waitFor({ timeout: 60_000 });
-      const chat = () => page.locator("#chat").innerText();
-      await expect.poll(chat, { timeout: 10_000 }).toMatch(/s1 merged as [0-9a-f]{12}/);
-      expect(await chat()).toContain("Routed as new feature for todo-add");
-      const card = await page.locator("#live-sessions").innerText();
-      expect(card).toContain("review approved");
-      expect(card).toContain("gate passed");
-      await expect.poll(() => page.locator("#features").innerText(), { timeout: 10_000 }).toContain("merged");
+      const card = page.locator('#chat [data-session="s1"][data-state="merged"]');
+      await card.waitFor({ timeout: 60_000 });
+      expect(await card.innerText()).toContain("Live");
+      expect(await page.locator("#chat").innerText()).toContain("On it. This is a new feature.");
+      await expect.poll(() => page.locator('#features [data-feature="todo-add"]').getAttribute("data-status"), { timeout: 10_000 }).toBe("merged");
+      await card.click();
+      const feature = page.locator('[data-view="feature"][data-state="merged"]');
+      await feature.waitFor({ timeout: 10_000 });
+      await feature.locator('[data-review="approved"]').waitFor();
+      await feature.locator('[data-gate="passed"]').waitFor();
+      expect(await feature.innerText()).toContain("Went live");
+      expect(new URL(page.url()).searchParams.get("session")).toBe("s1");
+      await page.getByRole("button", { name: "More" }).click();
+      await page.getByRole("menuitem", { name: "Show changes and details" }).click();
+      await expect.poll(() => page.getByRole("tabpanel", { name: "Changes" }).innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
