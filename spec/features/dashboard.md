@@ -12,4 +12,4 @@ acceptance:
     text: Stuck sessions are shown with their last feedback
 ---
 
-A single static page served from the kargah Worker's assets.
+Served from the kargah Worker's assets, built from `apps/dashboard` with Vite. The chat is the CopilotKit stream in [session-stream](session-stream.md).

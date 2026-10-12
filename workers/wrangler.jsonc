@@ -5,7 +5,8 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
-  "assets": { "directory": "../apps/dashboard/public", "binding": "ASSETS", "run_worker_first": ["/api/*", "/agents/*"] },
+  "build": { "command": "pnpm --dir .. build" },
+  "assets": { "directory": "../apps/dashboard/dist", "binding": "ASSETS", "run_worker_first": ["/api/*", "/agents/*"] },
   "artifacts": [{ "binding": "ARTIFACTS", "namespace": "kargah" }],
   "durable_objects": {
     "bindings": [
@@ -42,6 +43,7 @@
     "PREVIEW_WORKER": "kargah-project",
     "ATTEMPTS": "2",
     "VOICE_MODEL": "gpt-live-1",
-    "VOICE": "marin"
+    "VOICE": "marin",
+    "COPILOTKIT_TELEMETRY_DISABLED": "true"
   }
 }

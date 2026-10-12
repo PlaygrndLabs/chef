@@ -101,6 +101,7 @@ export class ProjectAgent extends Agent<Env> {
       return Response.json({ sessionId: call.sessionId, sdp: call.sdp }, { status: 201 });
     }
     if (request.method === "GET" && action === "sessions") return Response.json(await orchestrator.sessions());
+    if (request.method === "GET" && action === "cursor") return Response.json({ seq: await bus.cursor() });
     if (request.method === "GET" && action === "events") return Response.json(await bus.since(Number(url.searchParams.get("after") ?? 0)));
     return Response.json({ error: "not found" }, { status: 404 });
   }

@@ -12,9 +12,9 @@ A human-free, spec-driven software builder on Cloudflare. Each feature has one s
 ```
 spec/        kargah's own feature map
 core/        spec, router, state machine, orchestrator, merge, ports and fakes
-adapters/    Artifacts, Jev, Claude planner and reviewer, Workers Builds previews, Vectorize memory
+adapters/    Artifacts, Jev, Claude planner and reviewer, Workers Builds previews, Vectorize memory, the CopilotKit agent
 workers/     the kargah Worker: project and session Durable Objects, Copilot sandbox, sync workflow
-apps/        dashboard
+apps/        dashboard with a CopilotKit chat that streams sessions
 agents/      specialist profiles with write scopes
 template/    the template every project kargah builds starts from
 cli/         kargah CLI and local runners
@@ -27,7 +27,8 @@ Requires Node 22.18 or later, pnpm 10 and git.
 
 ```
 pnpm install
-pnpm run verify                                      # typecheck, lint, spec lint, unit and e2e tests
+pnpm run verify                                      # typecheck, lint, spec lint, dashboard build, unit and e2e tests (the browser test needs Chromium: pnpm --filter @kargah/cli exec playwright install chromium)
+node --import tsx cli/src/bin.ts serve               # dashboard and CopilotKit chat at http://127.0.0.1:8787, after pnpm build
 node --import tsx cli/src/bin.ts demo                # one feature through every state with real tsc, tests and proof
 node --import tsx cli/src/bin.ts route "fix the add button"
 node --import tsx cli/src/bin.ts spike jev           # Jev routing spike; uses Jev when TYPESAFE_API_KEY is set

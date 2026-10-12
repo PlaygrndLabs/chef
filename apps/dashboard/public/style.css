@@ -30,11 +30,10 @@ h1 { font-size: 18px; margin: 0; color: var(--accent); }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
 main { display: grid; gap: 20px; padding: 16px; max-width: 1100px; margin: 0 auto; }
 section { min-width: 0; }
-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-input, textarea, button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
-textarea { flex: 1 1 320px; resize: vertical; }
-button { cursor: pointer; }
-button[type=submit] { background: var(--accent); color: #fff; border-color: var(--accent); }
+header form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+:where(header, .voice) :is(input, button) { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+:where(header, .voice) button { cursor: pointer; }
+header button[type=submit] { background: var(--accent); color: #fff; border-color: var(--accent); }
 table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
 th { color: var(--muted); font-weight: 500; }
@@ -60,3 +59,4 @@ code { font: 12px ui-monospace, monospace; }
 .columns { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 h3 { font-size: 14px; margin: 0 0 6px; }
 .voice { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+.chat { height: 480px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }

@@ -12,16 +12,20 @@
     "./anthropic": "./src/anthropic.ts",
     "./vectorize": "./src/vectorize.ts",
     "./gpt-live": "./src/gpt-live.ts",
-    "./workers-ai-reviewer": "./src/workers-ai-reviewer.ts"
+    "./workers-ai-reviewer": "./src/workers-ai-reviewer.ts",
+    "./agui": "./src/agui.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@ag-ui/client": "1.0.2",
+    "@ag-ui/core": "1.0.2",
+    "@anthropic-ai/sdk": "0.133.0",
     "@kargah/core": "workspace:*",
     "@typesafe-ai/sdk": "0.6.0",
     "isomorphic-git": "1.43.3",
-    "zod": "4.6.6",
-    "@anthropic-ai/sdk": "0.133.0"
+    "rxjs": "7.8.1",
+    "zod": "4.6.6"
   }
 }

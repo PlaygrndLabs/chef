@@ -22,5 +22,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm spec:lint
+      - run: pnpm build
+      - run: pnpm --filter @kargah/cli exec playwright install --with-deps chromium
       - run: pnpm test
       - run: pnpm test:e2e

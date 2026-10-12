@@ -7,11 +7,11 @@ kargah turns a prompt or a spec entry into a merged feature with no human step. 
 | Package | Role |
 | --- | --- |
 | `core` | Spec format and lint, router, session state machine, orchestrator, merge, ports and their in-memory fakes, code rules. No I/O. |
-| `adapters` | Real implementations of the ports: Artifacts over isomorphic-git, Jev classifier, Claude planner and reviewer, Workers Builds previews. |
+| `adapters` | Real implementations of the ports: Artifacts over isomorphic-git, Jev classifier, Claude planner and reviewer, Workers Builds previews, and `KargahAgent`, the AG-UI agent CopilotKit streams sessions through. |
 | `workers` | The kargah Worker: `ProjectAgent` and `SessionAgent` Durable Objects, the Copilot sandbox, the `upstream-sync` Workflow, the HTTP API. |
 | `template` | The vertical-slice template every project kargah builds starts from, with its own `app` CLI (`gen`, `drive`, `proof`). |
-| `cli` | `kargah` CLI: spec lint, code rules, routing, the local demo with real checks, and the Jev spike. |
-| `apps/dashboard` | Static dashboard served by the kargah Worker. |
+| `cli` | `kargah` CLI: spec lint, code rules, routing, the local demo with real checks, the Jev spike, and `kargah serve`, the dashboard and CopilotKit runtime on the local world. |
+| `apps/dashboard` | Dashboard served by the kargah Worker: a CopilotKit chat (React, built with Vite into `dist/`) that streams sessions, next to the event panels. |
 | `agents` | Specialist profiles with write scopes. |
 
 ## Ports
@@ -101,6 +101,17 @@ The voice front end hands spoken requests to the same router as typed prompts; G
 
 `kargah voice --say "<request>"` runs the same path locally: scripted transcripts by default, or with `--live` the request is synthesized with OpenAI text to speech and streamed to a server-side GPT-Live session over WebSocket.
 
+## Streaming to the app
+
+Sessions reach the app through CopilotKit. The kargah Worker hosts the CopilotKit runtime at `/api/projects/:name/copilotkit` (`workers/src/copilot.ts`) with one agent, `default`, a `KargahAgent` (`adapters/src/agui.ts`):
+
+1. The dashboard's CopilotKit chat sends the user's message to the runtime, which runs `KargahAgent` and streams its AG-UI events back over SSE.
+2. `KargahAgent` reads the project's event cursor, submits the prompt to `ProjectAgent`, answers with the route it took, and then follows the project's events from that cursor.
+3. `SessionStream` maps each kargah event of the sessions the prompt started to AG-UI: coder text deltas become assistant messages, coder tool calls become tool calls, every state change is a step (`<session>:<state>`), and the preview, review, gate, merge and stuck results update a shared state snapshot (`KargahState`) that the chat renders as session cards.
+4. The run ends with a summary line when every session has merged, got stuck or been dropped.
+
+`kargah serve` runs the same runtime and dashboard on the Mac against the local world (fake coder, real or fake checks).
+
 ## Learning
 
 Every session leaves a labelled record: the change the reviewer approved, and what happened to it afterwards.
@@ -138,4 +149,6 @@ Served by the kargah Worker (`workers/src/index.ts`):
 | `POST /api/projects/:name/prompts` | Routes `{ prompt }` and starts a session when there is work; a question returns `answer` with its sources |
 | `GET /api/projects/:name/sessions` | Session records |
 | `GET /api/projects/:name/events?after=<seq>` | Stored events after a sequence number |
+| `GET /api/projects/:name/cursor` | The last event sequence number |
+| `POST /api/projects/:name/copilotkit/*` | The CopilotKit runtime; `agent/default/run` streams a prompt's sessions as AG-UI events |
 | `WS /agents/project-agent/:name` | Live events, replayed from the start on connect |
