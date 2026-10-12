@@ -5,7 +5,7 @@ import type { CheckResult, CheckRunner, ProofRunner } from "../ports/check-runne
 import type { Classifier } from "../ports/classifier.ts";
 import type { Coder } from "../ports/coder.ts";
 import type { EventBus } from "../ports/event-bus.ts";
-import type { Planner, WorkItem } from "../ports/planner.ts";
+import { withTestItem, type Planner, type WorkItem } from "../ports/planner.ts";
 import type { PreviewHost } from "../ports/preview-host.ts";
 import type { PushedEvent, RepoHost, RepoToken } from "../ports/repo-host.ts";
 import type { MemoryHit, MemoryIndex } from "../ports/memory-index.ts";
@@ -138,7 +138,8 @@ export class Orchestrator {
     const decision = await this.router.route(prompt, spec);
     await this.emit({ type: "route.decided", prompt, decision });
     if (decision.intent === "question") return { decision, sessionId: null, sessionIds: [], answer: await this.answer(prompt) };
-    const plan = await this.deps.planner.plan({ prompt, intent: decision.intent, changeKind: decision.changeKind, featureId: decision.featureId, spec });
+    const planned = await this.deps.planner.plan({ prompt, intent: decision.intent, changeKind: decision.changeKind, featureId: decision.featureId, spec });
+    const plan = this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
     const attempts = Math.max(1, Math.floor(options.attempts ?? this.specialization.attempts));
     const ids = Array.from({ length: attempts }, () => this.deps.ids.next("s"));
     const group = ids[0] as string;

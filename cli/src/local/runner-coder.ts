@@ -9,6 +9,7 @@ export interface RunnerCoderOptions {
   readonly baseUrl: string;
   readonly apiKey: string;
   readonly model: string;
+  readonly nodeModules?: string;
 }
 
 interface TurnOutput {
@@ -47,7 +48,7 @@ export class RunnerCoder implements Coder {
   private spawn(job: object, workspace: string, onEvent: (event: CoderEvent) => void, signal?: AbortSignal): Promise<TurnOutput> {
     return new Promise((resolve, reject) => {
       const child = spawn("node", [this.options.runner], {
-        env: { ...process.env, KARGAH_WORKSPACE: workspace, KARGAH_LLM_KEY: this.options.apiKey, KARGAH_JOB: Buffer.from(JSON.stringify(job)).toString("base64") },
+        env: { ...process.env, KARGAH_WORKSPACE: workspace, ...(this.options.nodeModules ? { KARGAH_NODE_MODULES: this.options.nodeModules } : {}), KARGAH_LLM_KEY: this.options.apiKey, KARGAH_JOB: Buffer.from(JSON.stringify(job)).toString("base64") },
         ...(signal ? { signal } : {}),
       });
       let result: TurnOutput | null = null;

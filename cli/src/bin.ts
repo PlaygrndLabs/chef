@@ -100,7 +100,7 @@ async function liveDeps(): Promise<Partial<Deps>> {
     classifier,
     planner: new LlmPlanner(llm, process.env["PLANNER_MODEL"] ?? "claude-opus-5-5"),
     reviewer: new LlmReviewer(llm, process.env["REVIEWER_MODEL"] ?? "claude-opus-5-5"),
-    coder: new RunnerCoder({ runner: join(REPO_ROOT, "workers", "sandbox", "runner.mjs"), baseUrl, apiKey, model: process.env["CODER_MODEL"] ?? "claude-sonnet-5-5" }),
+    coder: new RunnerCoder({ runner: join(REPO_ROOT, "workers", "sandbox", "runner.mjs"), baseUrl, apiKey, model: process.env["CODER_MODEL"] ?? "claude-sonnet-5-5", nodeModules: join(REPO_ROOT, "template", "node_modules") }),
   };
 }
 

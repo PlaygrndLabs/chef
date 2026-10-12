@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./fakes": "./src/fakes/index.ts",
-    "./checks": "./src/checks/index.ts"
+    "./checks": "./src/checks/index.ts",
+    "./tap": "./src/checks/tap.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
