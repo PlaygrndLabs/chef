@@ -3,19 +3,26 @@ name: llm
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: check runs the planner and reviewer; demo runs a full feature with the Claude coder
+        type: choice
+        options: [check, demo]
+        default: check
       prompt:
-        description: Prompt for the planner and reviewer check
+        description: Prompt for the run
         default: Add an item to a todo list
 
 permissions:
   contents: read
 
 jobs:
-  check:
+  run:
     runs-on: ubuntu-latest
     env:
-      CPA_BASE_URL: https://llm-gateway.playgrndlabs.workers.dev
+      CPA_BASE_URL: ${{ secrets.CPA_BASE_URL || 'https://llm-gateway.playgrndlabs.workers.dev' }}
       CPA_API_KEY: ${{ secrets.CPA_API_KEY }}
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+      PROMPT: ${{ inputs.prompt }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,6 +31,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node --import tsx cli/src/bin.ts llm check "$PROMPT"
-        env:
-          PROMPT: ${{ inputs.prompt }}
+      - if: inputs.mode == 'check'
+        run: node --import tsx cli/src/bin.ts llm check "$PROMPT"
+      - if: inputs.mode == 'demo'
+        run: node --import tsx cli/src/bin.ts demo "$PROMPT" --fake-checks --live
