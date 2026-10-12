@@ -67,7 +67,7 @@ The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) w
    npx wrangler vectorize create-metadata-index kargah-memory --property-name=kind --type=string
    ```
 
-4. Deploy: `pnpm --filter @kargah/workers run deploy`.
+4. Deploy: `pnpm --filter @kargah/workers run deploy`. The `deploy` workflow (Actions, run by hand) does steps 2 to 4 from the repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CPA_BASE_URL`, `CPA_API_KEY`, `TYPESAFE_API_KEY` and, if set, `OPENAI_API_KEY`.
 5. Create a project: `curl -X POST https://<kargah-worker>/api/projects/demo/bootstrap`. This creates the canonical repo `demo` in the `kargah` Artifacts namespace from `template/`.
 6. One-time: in the dashboard, connect the `demo` Artifacts repo to Workers Builds as the Worker `kargah-project` and turn on builds for preview branches.
 7. Open `https://<kargah-worker>/?project=demo` and send a prompt such as "Add an item to a todo list".
