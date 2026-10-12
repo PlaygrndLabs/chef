@@ -39,6 +39,8 @@ node --import tsx cli/src/bin.ts tune data         # export reviewer examples fr
 node --import tsx cli/src/bin.ts llm check           # planner and reviewer through the local CPA, see dev/cpa/README.md
 ```
 
+The `llm` workflow (Actions, run by hand) runs `llm check` against the hosted gateway `https://llm-gateway.playgrndlabs.workers.dev` with the `CPA_API_KEY` Actions secret.
+
 The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) with a subscription login, set by `CPA_BASE_URL` and `CPA_API_KEY`. On Cloudflare `CPA_BASE_URL` is a public HTTPS gateway in front of CPA. The coder sandbox gets only a placeholder key; the Worker's outbound handler swaps in `CPA_API_KEY`. `ANTHROPIC_API_KEY` is used by the planner and reviewer only when `CPA_BASE_URL` is not set.
 
 ## Deploy to a fresh Cloudflare account
