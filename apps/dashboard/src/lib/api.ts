@@ -25,23 +25,30 @@ export interface SandboxStatus {
   readonly exit: string | null;
 }
 
+export type Source = "app" | "deployment";
+
 export interface ProviderView {
   readonly kind: string;
   readonly baseUrl: string | null;
   readonly keyHint: string;
-  readonly source: "app" | "deployment";
+  readonly source: Source;
 }
 
 export interface SettingsView {
   readonly llm: ProviderView | null;
   readonly voice: ProviderView | null;
+  readonly jev: { readonly keyHint: string; readonly source: Source } | null;
+  readonly cloudflare: { readonly accountId: string; readonly keyHint: string; readonly source: Source } | null;
+  readonly models: { readonly planner: string; readonly reviewer: string; readonly coder: string; readonly source: Source };
+  readonly attempts: { readonly value: number; readonly source: Source };
+  readonly password: Source;
 }
 
-export type ProviderInput = { readonly kind: string; readonly apiKey: string; readonly baseUrl?: string } | null;
+export type SettingsUpdate = Readonly<Record<string, unknown>>;
 
 export const settingsApi = {
   get: () => call<SettingsView>("/api/settings"),
-  save: (update: { llm?: ProviderInput; voice?: ProviderInput }) => call<SettingsView>("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
+  save: (update: SettingsUpdate) => call<SettingsView>("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
 };
 
 export function projectApi(project: string) {

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FEATURE_LABEL, FEATURE_TONE, StatusDot } from "@/components/status";
-import { ProviderSettings, useSettings } from "@/components/provider-settings";
+import { missingSettings, SettingsDialog, useSettings } from "@/components/settings-dialog";
 import { VoiceButton } from "@/components/voice-button";
 import { sortFeatures } from "@/lib/model";
 import { isProjectName } from "@/lib/selection";
@@ -78,7 +78,7 @@ function SettingsMenu() {
   const { setTheme } = useTheme();
   const { settings, setSettings, available } = useSettings();
   const [providers, setProviders] = useState(false);
-  const missing = available && settings !== null && settings.llm === null;
+  const missing = available && missingSettings(settings).length > 0;
   useEffect(() => {
     if (missing) setProviders(true);
   }, [missing]);
@@ -103,7 +103,7 @@ function SettingsMenu() {
           {available ? (
             <DropdownMenuItem onClick={() => setProviders(true)}>
               <KeyRound />
-              Model provider
+              Settings
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem onClick={() => select({ view: "insights", feature: null, session: null, panel: null })}>
@@ -132,7 +132,7 @@ function SettingsMenu() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {available ? <ProviderSettings open={providers} onOpenChange={setProviders} settings={settings} onChange={setSettings} /> : null}
+      {available ? <SettingsDialog open={providers} onOpenChange={setProviders} settings={settings} onChange={setSettings} /> : null}
     </>
   );
 }

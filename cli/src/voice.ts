@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { parseFeature, readSpec, startVoiceCall, voiceInstructions, VoiceDelegate, type LiveCommand, type LiveConnection, type LiveEvent, type SubmitResult } from "@chef/core";
 import { ScriptedVoiceHost, SequentialIds } from "@chef/core/fakes";
 import type { Connect, SocketLike } from "@chef/adapters/gpt-live";
-import { voiceFromEnv } from "@chef/adapters/providers";
+import { voiceFromEnv } from "@chef/adapters/settings";
 import { readTree } from "./fs.ts";
 import { demoScript } from "./demo.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";

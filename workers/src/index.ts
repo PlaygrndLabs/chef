@@ -1,7 +1,7 @@
 import { routeAgentRequest } from "agents";
 import { guard } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
-import { settingsRequest } from "./settings.ts";
+import { claimPassword, credential, settingsRequest } from "./settings.ts";
 
 export { ProjectAgent } from "./project-agent.ts";
 export { SandboxOutbound, SessionAgent } from "./session-agent.ts";
@@ -13,7 +13,7 @@ const COPILOTKIT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/copilotkit(\/|$)/;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const blocked = await guard(request, env.CHEF_PASSWORD);
+    const blocked = await guard(request, await credential(env), claimPassword(env));
     if (blocked) return blocked;
     const url = new URL(request.url);
     if (url.pathname === "/api/settings") return settingsRequest(request, env);

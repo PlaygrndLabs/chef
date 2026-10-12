@@ -42,24 +42,33 @@ describe("dashboard in a browser", () => {
     }
   });
 
-  it("asks for a model provider when none is set and saves an API key", async () => {
-    const local = await serve({ port: 0, project: "demo", real: false, assets: DIST, providers: {} });
+  it("asks for a model and a Cloudflare account when none is set and saves them", async () => {
+    const local = await serve({ port: 0, project: "demo", real: false, assets: DIST, settings: { TYPESAFE_API_KEY: "ts-deployment-key" } });
     const browser = await chromium.launch();
     try {
       const page = await browser.newPage();
       await page.goto(`${local.url}/?project=demo`);
-      const dialog = page.locator('[data-dialog="providers"]');
+      const dialog = page.locator('[data-dialog="settings"]');
       await dialog.waitFor({ timeout: 10_000 });
-      const claude = dialog.locator("#provider-llm");
-      expect(await claude.locator("[data-current]").getAttribute("data-current")).toBe("none");
+      const claude = dialog.locator("#settings-llm");
+      expect(await claude.locator('[data-current="llm"]').getAttribute("data-set")).toBe("no");
       await claude.getByRole("radio", { name: "Custom provider" }).click();
       await claude.getByLabel("Base URL").fill("https://llm.example/");
       await claude.getByLabel("API key").fill("sk-test-12345678");
       await claude.getByRole("button", { name: "Save" }).click();
-      await expect.poll(() => claude.locator("[data-current]").getAttribute("data-current"), { timeout: 10_000 }).toBe("custom");
-      expect(await claude.locator("[data-current]").innerText()).toContain("https://llm.example, key …5678");
-      const response = await page.request.get(`${local.url}/api/settings`);
-      expect(await response.json()).toEqual({ llm: { kind: "custom", baseUrl: "https://llm.example", keyHint: "…5678", source: "app" }, voice: null });
+      await expect.poll(() => claude.locator('[data-current="llm"]').innerText(), { timeout: 10_000 }).toContain("https://llm.example, key …5678");
+      await dialog.getByRole("tab", { name: /Previews/ }).click();
+      const cloudflare = dialog.locator("#settings-cloudflare");
+      await cloudflare.getByLabel("Account id").fill("0123456789abcdef0123456789abcdef");
+      await cloudflare.getByLabel("API token").fill("cf-token-abcd1234");
+      await cloudflare.getByRole("button", { name: "Save" }).click();
+      await expect.poll(() => cloudflare.locator('[data-current="cloudflare"]').getAttribute("data-set"), { timeout: 10_000 }).toBe("yes");
+      await dialog.getByRole("tab", { name: "Routing" }).click();
+      expect(await dialog.locator('[data-current="jev"]').innerText()).toContain("from the deployment");
+      const settings = (await (await page.request.get(`${local.url}/api/settings`)).json()) as Record<string, unknown>;
+      expect(settings["llm"]).toEqual({ kind: "custom", baseUrl: "https://llm.example", keyHint: "…5678", source: "app" });
+      expect(settings["cloudflare"]).toEqual({ accountId: "0123456789abcdef0123456789abcdef", keyHint: "…1234", source: "app" });
+      expect(JSON.stringify(settings)).not.toContain("sk-test-12345678");
     } finally {
       await browser.close();
       await local.close();
