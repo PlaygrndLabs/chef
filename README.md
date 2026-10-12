@@ -37,9 +37,10 @@ node --import tsx cli/src/bin.ts bench --mode replay # learn on the benchmark, t
 node --import tsx cli/src/bin.ts voice --say "Add an item to a todo list"   # spoken request end to end; --live uses GPT-Live with OPENAI_API_KEY
 node --import tsx cli/src/bin.ts tune data         # export reviewer examples from real benchmark runs into tune/data
 node --import tsx cli/src/bin.ts llm check           # planner and reviewer through the local CPA, see dev/cpa/README.md
+node --import tsx cli/src/bin.ts demo --live         # one feature with the real planner, Claude coder and reviewer
 ```
 
-The `llm` workflow (Actions, run by hand) runs `llm check` against the hosted gateway `https://llm-gateway.playgrndlabs.workers.dev` with the `CPA_API_KEY` Actions secret.
+The `llm` workflow (Actions, run by hand) runs `llm check` (mode `check`) or `demo --live` (mode `demo`) against the gateway in the `CPA_BASE_URL` secret, falling back to `https://llm-gateway.playgrndlabs.workers.dev`, with the `CPA_API_KEY` secret. `TYPESAFE_API_KEY`, when set, makes the demo route with Jev.
 
 The planner, the reviewer and the coder reach Claude through CPA (CLIProxyAPI) with a subscription login, set by `CPA_BASE_URL` and `CPA_API_KEY`. On Cloudflare `CPA_BASE_URL` is a public HTTPS gateway in front of CPA. The coder sandbox gets only a placeholder key; the Worker's outbound handler swaps in `CPA_API_KEY`. `ANTHROPIC_API_KEY` is used by the planner and reviewer only when `CPA_BASE_URL` is not set.
 
