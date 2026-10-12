@@ -77,6 +77,26 @@ export interface GateOutcome {
   readonly reverted?: { readonly commitId: string; readonly revertId: string; readonly log: string };
 }
 
+export class ControlError extends Error {}
+
+interface Control {
+  readonly type: "drop";
+  readonly reason: string;
+}
+
+export interface SessionTurn {
+  readonly commitId: string;
+  readonly message: string;
+  readonly timestamp: number | null;
+  readonly note: { readonly role: string; readonly kind: string; readonly prompt: string; readonly model: string; readonly paths: readonly string[] } | null;
+}
+
+export interface SessionChanges {
+  readonly base: string | null;
+  readonly head: string | null;
+  readonly files: readonly { readonly path: string; readonly before: string | null; readonly after: string | null }[];
+}
+
 export class Orchestrator {
   readonly canonical: string;
   private readonly router: Router;
@@ -194,6 +214,58 @@ export class Orchestrator {
     return [...(await this.deps.store.list<SessionRecord>("session/")).values()].sort((a, b) => a.createdAt - b.createdAt);
   }
 
+  async drop(id: string, reason = "dropped by a person"): Promise<SessionRecord> {
+    const record = await this.session(id);
+    if (record.machine.state === "merged" || record.machine.state === "dropped") throw new ControlError(`session ${id} is already ${record.machine.state}`);
+    if (this.running.has(id)) {
+      await this.deps.store.put<Control>(`control/${id}`, { type: "drop", reason });
+      return record;
+    }
+    await this.apply(record, { type: "dropped", reason });
+    await this.save(record);
+    return record;
+  }
+
+  async retry(id: string, guidance: string): Promise<SessionRecord> {
+    const record = await this.session(id);
+    if (record.machine.state !== "stuck") throw new ControlError(`only a stuck session can be retried, and ${id} is ${record.machine.state}`);
+    if (!record.head) throw new ControlError(`session ${id} never started, so send the request again instead`);
+    await this.apply(record, { type: "retried", guidance });
+    await this.save(record);
+    return record;
+  }
+
+  async steer(id: string, message: string): Promise<void> {
+    const record = await this.session(id);
+    if (isTerminal(record.machine.state)) throw new ControlError(`session ${id} is ${record.machine.state}, so retry it instead`);
+    const notes = (await this.deps.store.get<string[]>(`steer/${id}`)) ?? [];
+    await this.deps.store.put(`steer/${id}`, [...notes, message].slice(-10));
+    await this.emit({ type: "session.steered", sessionId: id, featureId: record.featureId, message });
+  }
+
+  async turns(id: string, limit = 30): Promise<SessionTurn[]> {
+    const record = await this.session(id);
+    const ids = record.commits.slice(-limit).reverse();
+    return Promise.all(
+      ids.map(async (commitId) => {
+        const commit = await this.deps.repos.readCommit(record.fork, commitId);
+        const note = parseNote(await this.deps.repos.readNote(record.fork, NOTES_NAMESPACE, commitId));
+        return { commitId, message: commit?.message ?? "", timestamp: commit?.timestamp ?? null, note: note ? { role: note.role, kind: note.kind, prompt: note.prompt, model: note.model, paths: note.paths } : null };
+      }),
+    );
+  }
+
+  async changes(id: string, maxChars = 100_000): Promise<SessionChanges> {
+    const record = await this.session(id);
+    const from = record.merge?.mainBefore ?? record.baseMain;
+    if (!record.head || !from) return { base: from, head: record.head, files: [] };
+    const head = await this.commitOf(record.fork, record.head);
+    const base = await this.commitOf(this.canonical, from);
+    const clip = (text: string | undefined) => (text === undefined ? null : text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text);
+    const files = changedPaths(diffTrees(base.tree, head.tree)).map((path) => ({ path, before: clip(base.tree[path]), after: clip(head.tree[path]) }));
+    return { base: base.id, head: head.id, files };
+  }
+
   async drain(maxRounds = 200): Promise<SessionRecord[]> {
     for (let round = 0; round < maxRounds; round++) {
       const active = (await this.sessions()).filter((s) => !isTerminal(s.machine.state));
@@ -217,6 +289,14 @@ export class Orchestrator {
     this.running.add(id);
     try {
       const record = await this.session(id);
+      const control = await this.deps.store.get<Control | null>(`control/${id}`);
+      if (control) {
+        await this.deps.store.put(`control/${id}`, null);
+        if (record.machine.state !== "merged" && record.machine.state !== "dropped") {
+          await this.apply(record, { type: "dropped", reason: control.reason });
+          return await this.save(record);
+        }
+      }
       if (isTerminal(record.machine.state)) return;
       try {
         if (record.syncPending && record.head && record.machine.state !== "queued") {
@@ -717,7 +797,10 @@ export class Orchestrator {
     const info = await this.deps.repos.info(record.fork);
     const recalled = await this.recall(record, feature, item);
     if (recalled.length) await this.emit({ type: "memory.recalled", sessionId: record.id, featureId: record.featureId, paths: recalled.map((h) => h.doc.path) });
-    const prompt = [item.prompt, feedback, renderRecall(recalled)].filter(Boolean).join("\n\n");
+    const steering = (await this.deps.store.get<string[]>(`steer/${record.id}`)) ?? [];
+    if (steering.length) await this.deps.store.put(`steer/${record.id}`, []);
+    const notes = steering.length ? `A person added notes for this turn:\n${steering.map((n) => `- ${n}`).join("\n")}` : null;
+    const prompt = [item.prompt, feedback, notes, renderRecall(recalled)].filter(Boolean).join("\n\n");
     let result;
     try {
       result = await this.deps.coder.runTurn({
