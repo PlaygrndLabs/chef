@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePreview, previewName } from "../../src/sandbox-checks.ts";
+import { lostCreateRace, parsePreview, previewName } from "../../src/sandbox-checks.ts";
 import { cloudflareAllowed } from "../../src/sandbox-grants.ts";
 
 const grant = { accountId: "acc1", worker: "kargah-project-demo" };
@@ -17,6 +17,11 @@ describe("sandbox previews", () => {
     expect(parsePreview(stdout, "c1")).toEqual({ url: "https://add-todo-item-kargah-project-demo.acme.workers.dev", versionId: "dep1", commitId: "c1" });
     expect(() => parsePreview("Error: not authorized", "c1")).toThrow(/no JSON/);
     expect(() => parsePreview(JSON.stringify({ preview: {}, deployment: {} }), "c1")).toThrow(/no URL/);
+  });
+
+  it("spots a preview that lost the race to create the project Worker", () => {
+    expect(lostCreateRace("✘ [ERROR] A request to the Cloudflare API (/accounts/a/workers/workers) failed.\n\n  A Worker with the name 'kargah-project-todo5' already exists. Choose a different name. [code: 10040]")).toBe(true);
+    expect(lostCreateRace("✘ [ERROR] Authentication error [code: 10000]")).toBe(false);
   });
 
   it("lends the Cloudflare token only to the project Worker's API paths", () => {
