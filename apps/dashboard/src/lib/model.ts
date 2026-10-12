@@ -26,11 +26,6 @@ export interface FeatureNode {
   readonly updatedAt: number;
 }
 
-export interface FeatureGroup {
-  readonly name: string;
-  readonly features: readonly FeatureNode[];
-}
-
 export function sessionNodes(live: ProjectLive, records: readonly SessionRecord[]): SessionNode[] {
   const byId = new Map<string, SessionNode>();
   for (const record of records) {
@@ -81,29 +76,6 @@ export function featureNodes(live: ProjectLive, records: readonly SessionRecord[
 
 const STATUS_ORDER: Readonly<Record<FeatureStatus, number>> = { stuck: 0, building: 1, proposed: 2, merged: 3, dropped: 4 };
 
-export function groupFeatures(nodes: readonly FeatureNode[]): FeatureGroup[] {
-  const flows = new Map<string, FeatureNode[]>();
-  for (const node of nodes) flows.set(node.flow, [...(flows.get(node.flow) ?? []), node]);
-  const shared: FeatureGroup[] = [];
-  const single: FeatureNode[] = [];
-  for (const [flow, list] of flows) {
-    if (list.length > 1) shared.push({ name: flow, features: sortFeatures(list) });
-    else single.push(...list);
-  }
-  const groups = shared.sort((a, b) => a.name.localeCompare(b.name));
-  if (single.length) groups.push({ name: groups.length ? "Other features" : "Features", features: sortFeatures(single) });
-  return groups;
-}
-
-function sortFeatures(list: readonly FeatureNode[]): FeatureNode[] {
+export function sortFeatures(list: readonly FeatureNode[]): FeatureNode[] {
   return [...list].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
-}
-
-export function matches(node: FeatureNode, filter: string, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (q && !node.id.includes(q) && !node.title.toLowerCase().includes(q) && !node.sessions.some((s) => s.id.includes(q))) return false;
-  if (filter === "active") return node.status === "building";
-  if (filter === "stuck") return node.status === "stuck";
-  if (filter === "done") return node.status === "merged";
-  return true;
 }

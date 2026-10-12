@@ -11,14 +11,18 @@ acceptance:
   - id: AC3
     text: Stuck sessions are shown with their last feedback
   - id: AC4
-    text: The sidebar is a feature map tree from main's spec and live sessions, with each node's state
+    text: A first visit shows what kargah does in three steps with example requests
   - id: AC5
-    text: A person can drop a session, retry a stuck one with guidance, steer a running one and start a new attempt
+    text: The sidebar lists features from main's spec and live sessions with a plain status, the ones that need a person first
   - id: AC6
-    text: The inspector shows a session's preview, its diff against main, its Artifacts repos and commits with turn notes, its sandbox and its budget
+    text: A feature page shows five plain steps and updates, with technical detail behind a Details toggle
+  - id: AC7
+    text: A person can stop a build, try a stuck one again with a hint, add a note to a running one and start over
+  - id: AC8
+    text: An on-demand panel shows the preview, the diff against main, and the repository, commits with turn notes, sandbox and budget
 ---
 
-Served from the kargah Worker's assets, built from `apps/dashboard` with Vite, Tailwind and shadcn/ui. The layout follows a coding agent workspace: the feature map on the left, the chat in the middle (project chat, a feature, or one session's timeline), and the inspector on the right. The chat is the CopilotKit stream in [session-stream](session-stream.md).
+Served from the kargah Worker's assets, built from `apps/dashboard` with Vite, Tailwind and shadcn/ui. The layout is chat first so a new person can start at once: a plain list of features on the left and the chat in the middle. Opening a feature shows its progress; the preview and the technical detail open in a side panel only when asked for. The chat is the CopilotKit stream in [session-stream](session-stream.md).
 
 Read and control routes on the project:
 

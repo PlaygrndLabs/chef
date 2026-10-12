@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { CopilotKitProvider } from "@copilotkit/react-core/v2";
-import { Loader2 } from "lucide-react";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { CommandPalette, EventsDrawer, StatusBar, TopBar } from "@/components/chrome";
-import { FeatureTree } from "@/components/feature-tree";
-import { FeatureView } from "@/components/feature-view";
-import { Inspector } from "@/components/inspector";
+import { CommandPalette } from "@/components/command-palette";
+import { FeaturePage } from "@/components/feature-page";
+import { Home } from "@/components/home";
 import { InsightsView } from "@/components/insights-view";
-import { ProjectChat } from "@/components/project-chat";
-import { SessionView } from "@/components/session-view";
+import { Panel } from "@/components/panel";
+import { Sidebar } from "@/components/sidebar";
 import { projectApi } from "@/lib/api";
 import { useProject } from "@/lib/live";
 import { featureNodes, sessionNodes } from "@/lib/model";
@@ -34,26 +33,16 @@ function typing(target: EventTarget | null): boolean {
 
 function Center({ workspace }: { readonly workspace: Workspace }) {
   const composer = useRef<HTMLTextAreaElement>(null);
-  const { selection, session, feature } = workspace;
+  const { selection, feature } = workspace;
   useEffect(() => {
     const focus = () => composer.current?.focus();
     window.addEventListener("kargah:compose", focus);
     return () => window.removeEventListener("kargah:compose", focus);
   }, []);
-  if (selection.view === "session") {
-    if (session) return <SessionView node={session} composerRef={composer} />;
-    return (
-      <div className="grid h-full place-items-center text-sm text-muted-foreground">
-        <span className="flex items-center gap-2">
-          <Loader2 className="size-4 animate-spin" />
-          Loading session {selection.session}
-        </span>
-      </div>
-    );
-  }
-  if (selection.view === "feature" && feature) return <FeatureView node={feature} composerRef={composer} />;
+  if (selection.view === "feature" && feature) return <FeaturePage feature={feature} composerRef={composer} />;
+  if (selection.view === "feature") return <div className="grid h-full place-items-center text-muted-foreground">Loading</div>;
   if (selection.view === "insights") return <InsightsView />;
-  return <ProjectChat composerRef={composer} />;
+  return <Home composerRef={composer} />;
 }
 
 export function App() {
@@ -67,9 +56,8 @@ export function App() {
   const feature = featureId ? (features.find((f) => f.id === featureId) ?? null) : null;
   const compact = useMediaQuery("(max-width: 1023px)");
   const [palette, setPalette] = useState(false);
-  const [events, setEvents] = useState(false);
   const [sidebar, setSidebar] = useState(false);
-  const [inspector, setInspector] = useState(false);
+  const panel = selection.view === "feature" && feature !== null && selection.panel !== null;
 
   const workspace: Workspace = {
     data,
@@ -82,11 +70,11 @@ export function App() {
     session,
     openSession: (id) => {
       const node = sessions.find((s) => s.id === id);
-      select({ view: "session", session: id, feature: node?.featureId ?? null });
+      select({ view: "feature", session: id, feature: node?.featureId ?? null });
       setSidebar(false);
     },
     openFeature: (id) => {
-      select({ view: "feature", feature: id, session: null });
+      select({ view: "feature", feature: id, session: null, panel: null });
       setSidebar(false);
     },
     focusComposer: () => {
@@ -102,7 +90,7 @@ export function App() {
         setPalette((p) => !p);
       } else if (!typing(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === "n") {
         e.preventDefault();
-        select({ view: "project", feature: null, session: null });
+        select({ view: "project", feature: null, session: null, panel: null });
         window.setTimeout(() => window.dispatchEvent(new Event("kargah:compose")), 50);
       }
     };
@@ -111,56 +99,52 @@ export function App() {
   }, [select]);
 
   useEffect(() => {
-    document.title = session ? `${session.featureId} · kargah` : feature ? `${feature.title} · kargah` : `${selection.project} · kargah`;
-  }, [session, feature, selection.project]);
+    document.title = feature && selection.view === "feature" ? `${feature.title} · kargah` : `${selection.project} · kargah`;
+  }, [feature, selection.view, selection.project]);
 
   return (
     <CopilotKitProvider key={selection.project} runtimeUrl={`/api/projects/${selection.project}/copilotkit`}>
       <WorkspaceContext.Provider value={workspace}>
-        <div className="flex h-dvh flex-col overflow-hidden">
-          <TopBar onPalette={() => setPalette(true)} onSidebar={() => setSidebar(true)} onInspector={() => setInspector(true)} compact={compact} />
-          <div className="min-h-0 flex-1">
+        <div className="flex h-dvh overflow-hidden">
+          {compact ? null : (
+            <aside className="w-66 shrink-0 border-r" aria-label="Features">
+              <Sidebar />
+            </aside>
+          )}
+          <div className="flex min-w-0 flex-1 flex-col">
             {compact ? (
-              <main className="h-full min-w-0">
-                <Center workspace={workspace} />
-              </main>
-            ) : (
-              <ResizablePanelGroup orientation="horizontal" id="kargah-layout">
-                <ResizablePanel id="sidebar" defaultSize={290} minSize={220} maxSize={460}>
-                  <aside className="h-full border-r" aria-label="Feature map">
-                    <FeatureTree />
-                  </aside>
-                </ResizablePanel>
-                <ResizableHandle />
-                <ResizablePanel id="center" minSize={420}>
-                  <main className="h-full min-w-0 bg-background">
-                    <Center workspace={workspace} />
-                  </main>
-                </ResizablePanel>
-                <ResizableHandle />
-                <ResizablePanel id="inspector" defaultSize={420} minSize={320} maxSize={760}>
-                  <aside className="h-full border-l" aria-label="Inspector">
-                    <Inspector />
-                  </aside>
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            )}
+              <div className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
+                <Button variant="ghost" size="icon" onClick={() => setSidebar(true)} aria-label="Show features">
+                  <Menu />
+                </Button>
+                <span className="grid size-6 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">k</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{selection.project}</span>
+              </div>
+            ) : null}
+            <main className="min-h-0 min-w-0 flex-1">
+              <Center workspace={workspace} />
+            </main>
           </div>
-          {events ? <EventsDrawer /> : null}
-          <StatusBar events={events} onEvents={() => setEvents((e) => !e)} />
+          {panel && !compact ? (
+            <aside className="w-[440px] shrink-0 border-l" aria-label="Preview and details">
+              <Panel />
+            </aside>
+          ) : null}
         </div>
         {compact ? (
           <>
             <Sheet open={sidebar} onOpenChange={setSidebar}>
-              <SheetContent side="left" className="w-80 p-0">
-                <SheetTitle className="sr-only">Feature map</SheetTitle>
-                <FeatureTree />
+              <SheetContent side="left" className="w-72 p-0">
+                <SheetTitle className="sr-only">Features</SheetTitle>
+                <Sidebar />
               </SheetContent>
             </Sheet>
-            <Sheet open={inspector} onOpenChange={setInspector}>
-              <SheetContent side="right" className="w-[min(100vw,28rem)] p-0">
-                <SheetTitle className="sr-only">Inspector</SheetTitle>
-                <Inspector />
+            <Sheet open={panel} onOpenChange={(open) => {
+                if (!open) select({ panel: null });
+              }}>
+              <SheetContent side="right" className="w-[min(100vw,28rem)] p-0 [&>button]:hidden">
+                <SheetTitle className="sr-only">Preview and details</SheetTitle>
+                <Panel />
               </SheetContent>
             </Sheet>
           </>
