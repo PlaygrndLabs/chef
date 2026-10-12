@@ -1,6 +1,6 @@
 # Spike: preview from branch push
 
-Status: designed and coded, not yet run on a Cloudflare account.
+Status: Workers Builds path dropped on the first Cloudflare run (2026-10-12); previews now come from `wrangler preview` in the sandbox.
 
 ## Question
 
@@ -24,7 +24,13 @@ Does pushing `preview/<feature>` to the canonical Artifacts repo yield a reachab
 
 Use Workers Builds preview branches as the primary path. The fallback, if the field names below differ or builds are too slow, is to run `npx wrangler preview --name <feature> --json` in the session sandbox and read `.preview.urls[0]`. The `PreviewHost` interface stays the same either way.
 
-## Open
+## Run on Cloudflare (2026-10-12)
+
+The first prompt on the deployed Worker got stuck at the first preview: `Cloudflare API /workers/scripts/kargah-project/settings failed: 404 This Worker does not exist on your account.` The Workers Builds path needs a dashboard step per project (connect the Artifacts repo, turn on preview builds), and the Builds API cannot do it, so it breaks the human-free goal.
+
+kargah now takes the fallback as the only path. `SandboxPreviewHost` (`workers/src/sandbox-checks.ts`) clones the preview branch at the commit in a sandbox and runs `npx wrangler preview --name <feature> --worker-name kargah-project-<project> --json`. Wrangler 4.149 creates the parent Worker when it is missing (`POST /accounts/{id}/workers/workers`), then the Preview and a deployment, and prints `{ preview: { urls }, deployment: { id, urls } }`. The sandbox gets `CLOUDFLARE_API_TOKEN=kargah-placeholder`; the outbound handler swaps in `CF_API_TOKEN` only for `api.cloudflare.com` paths under that Worker (`sandbox-grants.ts`).
+
+## Open (Workers Builds, kept for reference)
 
 - The commit and URL field names on a build (`commit_hash`, `preview_url`) are inferred from the API reference and need confirming on a real build.
 - The Artifacts repo must be connected to Workers Builds once in the dashboard. That is a one-time setup step in `README.md`, not a per-feature human action.
