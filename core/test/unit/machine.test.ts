@@ -20,6 +20,15 @@ describe("session machine", () => {
     expect(m.usage.attempts).toBe(2);
   });
 
+  it("sends a review asking for tests back to testing, then carries the review into coding", () => {
+    const rejected = run([{ type: "start" }, { type: "planned", withTests: true }, { type: "tests_committed" }, { type: "coded" }, { type: "review_rejected", reasons: ["no test named after AC2"], retest: true }]);
+    expect(rejected.state).toBe("testing");
+    expect(rejected.usage.attempts).toBe(2);
+    const coding = transition(rejected, { type: "tests_committed" }, DEFAULT_BUDGET, 0);
+    expect(coding.state).toBe("coding");
+    expect(coding.feedback).toContain("no test named after AC2");
+  });
+
   it("goes stuck when attempts run out", () => {
     const budget = { ...DEFAULT_BUDGET, maxAttempts: 1 };
     const m = run([{ type: "start" }, { type: "planned", withTests: false }, { type: "coded" }, { type: "review_rejected", reasons: ["no"] }], budget);

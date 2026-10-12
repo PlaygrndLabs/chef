@@ -281,7 +281,7 @@ export class Orchestrator {
   }
 
   private async testing(record: SessionRecord): Promise<void> {
-    const item = this.nextItem(record, ["test"]);
+    const item = this.nextItem(record, ["test"]) ?? (record.machine.reason === "review_rejected" ? (record.plan.items.find((i) => i.kind === "test") ?? null) : null);
     if (!item) return this.apply(record, { type: "tests_committed" });
     const outcome = await this.coderTurn(record, item, record.machine.feedback);
     if (outcome === "rejected") return;
@@ -312,7 +312,7 @@ export class Orchestrator {
     record.verdict = { ...verdict, commitId: head.id };
     await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons, model: verdict.model, head: head.id, base: base.id });
     if (verdict.approve) await this.apply(record, { type: "review_approved" });
-    else await this.apply(record, { type: "review_rejected", reasons: verdict.reasons });
+    else await this.apply(record, { type: "review_rejected", reasons: verdict.reasons, retest: this.specialization.lockTests && verdict.retest === true && record.plan.items.some((i) => i.kind === "test") });
   }
 
   private async gating(record: SessionRecord): Promise<void> {
@@ -749,7 +749,7 @@ export class Orchestrator {
     const tree = applyChanges(head.tree, result.changes);
     const linted = projectRuleProblems(tree, paths);
     if (linted.length > 0) return this.reject(record, item.role, "project-lint", [...new Set(linted.map((p) => p.path))], scope, linted.map((p) => `${p.path}:${p.line} ${p.message}`).join("\n"), result.changes);
-    if (item.kind === "test") {
+    if (item.kind === "test" && !record.lastCodeItem) {
       const red = await this.redCheck(record, head, tree, feature);
       if (red) return this.reject(record, item.role, "red-tests", red.paths, scope, red.detail, result.changes, red.passing);
     }
