@@ -1,4 +1,4 @@
-import type { FeatureSpec } from "@kargah/core";
+import type { FeatureSpec } from "@chef/core";
 
 export type Fault = "vacuous-test" | "missed-edge" | "gate-caught" | "none";
 
@@ -59,7 +59,7 @@ export const BENCH_ITEMS: readonly BenchItem[] = [
     fault: "missed-edge",
     normal: { text: "POST /reverse returns the characters in reverse order", input: "abc", output: "cba" },
     edge: { text: "emoji and other astral characters stay intact", input: "ab😀", output: "😀ba" },
-    weak: { input: "kargah", output: "hagrak" },
+    weak: { input: "chef", output: "fehc" },
     hidden: [{ input: "🙂x", output: "x🙂" }],
     correct: 'return [...value].reverse().join("");',
     buggy: 'return value.split("").reverse().join("");',
@@ -79,7 +79,7 @@ export const BENCH_ITEMS: readonly BenchItem[] = [
     id: "vowels",
     title: "Count the vowels in a text",
     fault: "missed-edge",
-    normal: { text: "POST /vowels returns how many vowels the value has", input: "kargah", output: 2 },
+    normal: { text: "POST /vowels returns how many vowels the value has", input: "chef", output: 1 },
     edge: { text: "uppercase vowels count too", input: "AEi", output: 3 },
     weak: { input: "banana", output: 3 },
     hidden: [{ input: "Orange", output: 3 }],
@@ -126,7 +126,7 @@ export const BENCH_ITEMS: readonly BenchItem[] = [
     normal: { text: "POST /palindrome answers true for a word that reads the same backwards", input: "level", output: true },
     edge: { text: "letter case is ignored", input: "Racecar", output: true },
     weak: { input: "noon", output: true },
-    hidden: [{ input: "kargah", output: false }],
+    hidden: [{ input: "chef", output: false }],
     correct: 'const lower = value.toLowerCase();\n  return lower === [...lower].reverse().join("");',
     buggy: 'return value === [...value].reverse().join("");',
   },

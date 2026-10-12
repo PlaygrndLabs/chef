@@ -1,4 +1,4 @@
-import type { SessionState } from "@kargah/core";
+import type { SessionState } from "@chef/core";
 import { cn } from "@/lib/utils";
 import { STATE_LABEL, stateTone, type Tone } from "@/lib/format";
 import type { FeatureStatus } from "@/lib/model";

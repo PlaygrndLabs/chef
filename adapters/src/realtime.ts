@@ -1,8 +1,8 @@
-import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceOffer } from "@kargah/core";
+import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceOffer } from "@chef/core";
 import type { Connect, SocketLike } from "./gpt-live.ts";
 
 export const REALTIME_MODEL = "gpt-realtime";
-export const REQUEST_TOOL = "kargah_request";
+export const REQUEST_TOOL = "chef_request";
 
 export interface RealtimeOptions {
   readonly baseUrl: string;
@@ -26,7 +26,7 @@ export function realtimeSession(options: { readonly model?: string; readonly voi
       {
         type: "function",
         name: REQUEST_TOOL,
-        description: "Hand a request to build, change or fix something, or a question about the project, to kargah. Returns what kargah did.",
+        description: "Hand a request to build, change or fix something, or a question about the project, to chef. Returns what chef did.",
         parameters: { type: "object", properties: { request: { type: "string", description: "The user's request, in their words." } }, required: ["request"] },
       },
     ],

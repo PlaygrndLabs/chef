@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FeatureFrontmatter, type AnswerInput, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@kargah/core";
+import { FeatureFrontmatter, type AnswerInput, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@chef/core";
 import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
 const TriageSchema = z.object({
@@ -24,7 +24,7 @@ const PlanSchema = z.object({
 
 const AnswerSchema = z.object({ answer: z.string() });
 
-const SYSTEM = `You are the planner of kargah, a spec-driven builder. The spec is the memory: one feature per entry, each with acceptance criteria that a user can observe through the feature's entrypoint.
+const SYSTEM = `You are the planner of chef, a spec-driven builder. The spec is the memory: one feature per entry, each with acceptance criteria that a user can observe through the feature's entrypoint.
 Projects use vertical slices: features/<id>/ holds a feature's code, its tests named after acceptance criterion ids ("AC1: ..."), and flow.ts, which drives the entrypoint. shared/ holds contracts; list a shared path only when the feature must change it.
 Feature ids are lowercase kebab-case, at most 40 characters. Acceptance criterion ids are AC1, AC2 and so on.
 Never remove or weaken an existing acceptance criterion; add new ones with the next free id.

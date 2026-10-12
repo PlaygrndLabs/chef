@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type Ref } from "react";
 import { useAgent, useCopilotKit, UseAgentUpdate } from "@copilotkit/react-core/v2";
-import type { RouteDecision, SessionState } from "@kargah/core";
+import type { RouteDecision, SessionState } from "@chef/core";
 import { ChevronRight, Hammer, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -58,7 +58,7 @@ export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
 }
 
 function replyFor(decision: RouteDecision, title: string | null, attempts: number): string {
-  if (decision.intent === "question") return "Answered from what kargah knows about this project.";
+  if (decision.intent === "question") return "Answered from what chef knows about this project.";
   const parallel = attempts > 1 ? ` I'm trying ${attempts} approaches at once and will keep the best one.` : "";
   if (decision.intent === "change_feature") return `On it. This changes ${title ?? "an existing feature"}.${parallel}`;
   return `On it. This is a new feature.${parallel}`;
@@ -99,7 +99,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
     <div className="flex flex-col items-center gap-3 pt-16 pb-4 text-center sm:pt-24" data-view="welcome">
       <span className="grid size-11 place-items-center rounded-xl bg-brand text-lg font-semibold text-brand-foreground">k</span>
       <h2 className="text-2xl font-semibold tracking-tight">What should we build?</h2>
-      <p className="max-w-md text-muted-foreground">Describe a feature in plain words. kargah plans it, writes the tests and the code, checks it, and puts it live.</p>
+      <p className="max-w-md text-muted-foreground">Describe a feature in plain words. chef plans it, writes the tests and the code, checks it, and puts it live.</p>
       {empty ? (
         <Button className="mt-2" onClick={() => void create()} disabled={creating}>
           <Hammer />
@@ -117,7 +117,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
       <ol className="mt-8 grid w-full gap-3 text-left sm:grid-cols-3">
         {[
           ["Describe it", "Type or talk. One sentence is enough."],
-          ["kargah builds it", "In its own sandbox, with tests and a review."],
+          ["chef builds it", "In its own sandbox, with tests and a review."],
           ["Try it live", "Every feature gets its own preview link."],
         ].map(([title, text], i) => (
           <li key={title} className="rounded-xl border p-4">
@@ -216,7 +216,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
           <div ref={end} />
         </div>
       </div>
-      <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "kargah is working. You can keep typing." : "kargah figures out which feature it belongs to"} onSend={send} draft={draft} />
+      <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to"} onSend={send} draft={draft} />
     </div>
   );
 }

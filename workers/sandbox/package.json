@@ -1,5 +1,5 @@
 {
-  "name": "kargah-coder-runner",
+  "name": "chef-coder-runner",
   "private": true,
   "type": "module",
   "dependencies": {

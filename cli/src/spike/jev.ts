@@ -8,7 +8,7 @@ import {
   type RouteDecision,
   type RouterConfig,
   type RoutingAnswers,
-} from "@kargah/core";
+} from "@chef/core";
 
 export type SpikeMode = "raw" | "translated";
 

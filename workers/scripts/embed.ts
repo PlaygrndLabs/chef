@@ -23,7 +23,7 @@ for (const [path, expected] of outputs) {
   })();
   if (current === expected) continue;
   if (check) {
-    process.stderr.write(`${path.slice(root.length + 1)} is out of date; run pnpm --filter @kargah/workers embed\n`);
+    process.stderr.write(`${path.slice(root.length + 1)} is out of date; run pnpm --filter @chef/workers embed\n`);
     process.exitCode = 1;
   } else {
     mkdirSync(dirname(path), { recursive: true });

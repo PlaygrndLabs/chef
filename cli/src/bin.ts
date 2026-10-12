@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { checkTree, formatProblems, type CodeRule } from "@kargah/core/checks";
-import { lintSpecFiles, parseFeature, Router, readSpec, type Deps, type KargahEvent } from "@kargah/core";
-import { KeywordClassifier, TemplatePlanner } from "@kargah/core/fakes";
+import { checkTree, formatProblems, type CodeRule } from "@chef/core/checks";
+import { lintSpecFiles, parseFeature, Router, readSpec, type Deps, type ChefEvent } from "@chef/core";
+import { KeywordClassifier, TemplatePlanner } from "@chef/core/fakes";
 import { readTree } from "./fs.ts";
 import { demoScript } from "./demo.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
@@ -56,13 +56,13 @@ async function route(prompt: string, specDir: string | undefined): Promise<numbe
   const prefixed: Record<string, string> = {};
   for (const [path, content] of Object.entries(tree)) prefixed[path.startsWith("spec/") ? path : `spec/${path}`] = content;
   const spec = readSpec(prefixed);
-  const classifier = process.env["TYPESAFE_API_KEY"] ? await (await import("@kargah/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
+  const classifier = process.env["TYPESAFE_API_KEY"] ? await (await import("@chef/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
   const router = new Router({ classifier, planner: new TemplatePlanner() });
   process.stdout.write(`${JSON.stringify(await router.route(prompt, spec), null, 2)}\n`);
   return 0;
 }
 
-function describe(event: KargahEvent): string | null {
+function describe(event: ChefEvent): string | null {
   switch (event.type) {
     case "route.decided":
       return `route  ${event.decision.intent} via ${event.decision.via} (${event.decision.confidence.toFixed(2)})`;
@@ -88,14 +88,14 @@ function describe(event: KargahEvent): string | null {
 }
 
 async function liveDeps(): Promise<Partial<Deps>> {
-  const { llmFromEnv } = await import("@kargah/adapters/anthropic");
-  const { LlmPlanner } = await import("@kargah/adapters/llm-planner");
-  const { LlmReviewer } = await import("@kargah/adapters/llm-reviewer");
+  const { llmFromEnv } = await import("@chef/adapters/anthropic");
+  const { LlmPlanner } = await import("@chef/adapters/llm-planner");
+  const { LlmReviewer } = await import("@chef/adapters/llm-reviewer");
   const baseUrl = process.env["CPA_BASE_URL"];
   const apiKey = process.env["CPA_API_KEY"];
   if (!baseUrl || !apiKey) throw new Error("--live needs CPA_BASE_URL and CPA_API_KEY");
   const llm = llmFromEnv(process.env);
-  const classifier = process.env["TYPESAFE_API_KEY"] ? (await import("@kargah/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
+  const classifier = process.env["TYPESAFE_API_KEY"] ? (await import("@chef/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
   return {
     classifier,
     planner: new LlmPlanner(llm, process.env["PLANNER_MODEL"] ?? "claude-opus-5-5"),
@@ -140,7 +140,7 @@ async function spikeJev(args: readonly string[]): Promise<number> {
   const dataset = JSON.parse(readFileSync(resolve(option(args, "data") ?? join(REPO_ROOT, "docs", "spikes", "jev-routing", "prompts.json")), "utf8")) as SpikeDataset;
   const mode = option(args, "mode") ?? "both";
   const modes: SpikeMode[] = mode === "both" ? ["raw", "translated"] : [mode as SpikeMode];
-  const classifier = process.env["TYPESAFE_API_KEY"] ? (await import("@kargah/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
+  const classifier = process.env["TYPESAFE_API_KEY"] ? (await import("@chef/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
   let done = 0;
   const results = await runSpike(classifier, dataset, modes, undefined, () => {
     done++;
@@ -204,9 +204,9 @@ async function tuneData(args: readonly string[]): Promise<number> {
 
 async function llmCheck(args: readonly string[]): Promise<number> {
   const prompt = positional(args)[2] ?? "Add an item to a todo list";
-  const { llmFromEnv } = await import("@kargah/adapters/anthropic");
-  const { LlmPlanner } = await import("@kargah/adapters/llm-planner");
-  const { LlmReviewer } = await import("@kargah/adapters/llm-reviewer");
+  const { llmFromEnv } = await import("@chef/adapters/anthropic");
+  const { LlmPlanner } = await import("@chef/adapters/llm-planner");
+  const { LlmReviewer } = await import("@chef/adapters/llm-reviewer");
   const llm = llmFromEnv(process.env);
   const model = option(args, "model") ?? process.env["PLANNER_MODEL"] ?? "claude-opus-5-5";
   const planner = new LlmPlanner(llm, model);
@@ -226,7 +226,7 @@ async function llmCheck(args: readonly string[]): Promise<number> {
 
 async function serveCommand(args: readonly string[]): Promise<number> {
   const local = await serve({ port: Number(option(args, "port") ?? 8787), project: option(args, "project") ?? "demo", real: !args.includes("--fake-checks"), log: (line) => process.stderr.write(`${line}\n`) });
-  process.stdout.write(`kargah is serving ${local.url}/?project=${option(args, "project") ?? "demo"}\n`);
+  process.stdout.write(`chef is serving ${local.url}/?project=${option(args, "project") ?? "demo"}\n`);
   await new Promise<void>((resolve) => process.once("SIGINT", resolve));
   await local.close();
   return 0;
@@ -252,7 +252,7 @@ async function main(args: readonly string[]): Promise<number> {
     process.stdout.write(`${result.created ? "created" : "kept"} the local CPA key\nconfig: ${result.config}\nworker vars: ${result.devVars}\n`);
     return 0;
   }
-  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] [--live] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md] | kargah llm check [prompt] [--model id] | kargah cpa init | kargah bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | kargah voice [--say text] [--live] | kargah tune data [--out dir] | kargah serve [--port n] [--project id] [--fake-checks]\n");
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef cpa init | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--fake-checks]\n");
   return 2;
 }
 

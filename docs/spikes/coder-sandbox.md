@@ -18,7 +18,7 @@ The first version ran the GitHub Copilot SDK. That came from reading "copilot" i
 ## What was built
 
 - `workers/sandbox/Dockerfile`: Node 24 with git, the sandbox shim, the Agent SDK with its native binary, and the template's dependencies preinstalled. Runs as a non-root user.
-- `workers/sandbox/runner.mjs`: clones the fork, runs one query under the profile's subagent `kargah-<role>`, maps text deltas to `assistant.message_delta` and tool starts to `tool.execution_start`, and on success prints `session.idle` and the changed files as `kargah.result` with token usage. It never commits or pushes.
+- `workers/sandbox/runner.mjs`: clones the fork, runs one query under the profile's subagent `chef-<role>`, maps text deltas to `assistant.message_delta` and tool starts to `tool.execution_start`, and on success prints `session.idle` and the changed files as `chef.result` with token usage. It never commits or pushes.
 - `workers/src/session-agent.ts`: `SessionAgent` starts the container and streams its stdout lines back as coder events. `SandboxOutbound` is the only network path: it blocks `git-receive-pack`, adds the read token for the Artifacts host, swaps the placeholder API key for `CPA_API_KEY` on the CPA gateway's host, and refuses every other host.
 - `workers/src/sandbox-coder.ts`: `SandboxCoder` implements the `Coder` port and resolves the profile model `coder-default` to `CODER_MODEL`.
 

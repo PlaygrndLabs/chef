@@ -6,7 +6,7 @@ import { cpaInit, upsertVars } from "../../src/cpa/init.ts";
 
 describe("cpa init", () => {
   it("writes a private config and worker vars, and keeps the key on rerun", () => {
-    const root = mkdtempSync(join(tmpdir(), "kargah-cpa-"));
+    const root = mkdtempSync(join(tmpdir(), "chef-cpa-"));
     const first = cpaInit(root);
     const config = JSON.parse(readFileSync(first.config, "utf8")) as { port: number; "api-keys": string[] };
     expect(first.created).toBe(true);

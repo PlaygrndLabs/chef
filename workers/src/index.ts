@@ -11,7 +11,7 @@ const COPILOTKIT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/copilotkit(\/|$)/;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const blocked = await guard(request, env.KARGAH_PASSWORD);
+    const blocked = await guard(request, env.CHEF_PASSWORD);
     if (blocked) return blocked;
     const url = new URL(request.url);
     const copilotKit = COPILOTKIT.exec(url.pathname);

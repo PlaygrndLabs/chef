@@ -1,5 +1,5 @@
-import type { Tree } from "@kargah/core";
-import type { Script } from "@kargah/core/fakes";
+import type { Tree } from "@chef/core";
+import type { Script } from "@chef/core/fakes";
 
 export function demoScript(files: Tree): Script {
   return (input) => {

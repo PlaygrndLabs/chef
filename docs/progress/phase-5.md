@@ -10,7 +10,7 @@ Date: 2026-10-11. Branch `claude/kargah-build-t66ame`.
 - **Spoken requests use the same router.** GPT-Live decides when the user asked for something and sends `session.delegation.created`. `VoiceDelegate` in `core/src/voice/delegate.ts` takes the transcript up to that point and calls `Orchestrator.submitSpoken`, which routes it like a typed prompt and records a `voice.request` event. It then answers with `session.commentary.append`; GPT-Live speaks the result in the user's language. GPT-Live never writes the spec and never picks a feature.
 - **Worker route.** `POST /api/projects/:name/voice` takes `{ sdp }`, creates the session with the project's feature list in its instructions, keeps the sideband connection in `ProjectAgent`, and schedules the build like a typed prompt. The OpenAI key stays in the Worker.
 - **Dashboard.** It has a Talk button (microphone over WebRTC, `oai-events` data channel), a live transcript, and the list of spoken requests with the feature each one started.
-- **CLI.** `kargah voice --say "<request>"` runs the whole path with real checks. By default the transcript is scripted. With `--live`, the request is synthesized and spoken to a real GPT-Live session. The `live` GitHub Actions workflow runs that with the `OPENAI_API_KEY` repository secret.
+- **CLI.** `chef voice --say "<request>"` runs the whole path with real checks. By default the transcript is scripted. With `--live`, the request is synthesized and spoken to a real GPT-Live session. The `live` GitHub Actions workflow runs that with the `OPENAI_API_KEY` repository secret.
 
 ### Evidence so far
 
@@ -38,7 +38,7 @@ Not yet done: the definition of done asks for a spoken request, so the scripted 
 ### Built
 
 - **Outcome export** (`core/src/learning`). `review.verdict` now records the reviewed head and base commits. Each approved review is followed to its outcome: `merged`, `reverted` (merged and later reverted from main), or `gate-failed`. It becomes a reviewer example with the spec's acceptance criteria and the feature's files as the prompt, and `approve` or `reject: <why>` as the answer. Each coder turn is exported with its prompt and changes, labelled positive or negative by the review it led to.
-- **`kargah tune data`** runs 20 training features (the 10 benchmark features plus 10 new ones) and 10 held-out features in separate projects with real checks, and writes `tune/data`.
+- **`chef tune data`** runs 20 training features (the 10 benchmark features plus 10 new ones) and 10 held-out features in separate projects with real checks, and writes `tune/data`.
 - **`tune/train.py`** trains a rank 8 LoRA on the attention projections of Gemma 2B (`unsloth/gemma-2b-it`, the same weights as Workers AI's `@cf/google/gemma-2b-it-lora`) on CPU, with loss on the answer only. It scores the base and the tuned model on the held-out examples with greedy decoding and the same first-word parsing the Worker uses.
 - **`WorkersAiReviewer`** (`adapters/src/workers-ai-reviewer.ts`) serves an uploaded adapter through `env.AI.run(..., { raw: true, lora })` when `REVIEWER_LORA` is set. It is off by default; see the result below.
 - **Bench fix.** The bench measured session time on the fake clock, which advances one second per call across the whole project. With 20 features, three sessions ran out the one-hour time budget after a revert and got stuck. The bench now measures time on the wall clock, and all 30 features merge.
@@ -68,7 +68,7 @@ The tuned profile is not better than the base. The base approves every change. R
 
 Training took 17 and 19 minutes on 4 CPU cores. Scoring 18 reviews took about 2.5 minutes per model.
 
-What would change the result is more varied data, not more epochs: real coding-agent sessions (with Copilot and Cloudflare keys) produce many more reverted and gate-failed changes, with different mistakes. `kargah tune data` and `tune/train.py` rerun unchanged on that data. The adapter was not uploaded to Workers AI; that needs the Cloudflare account, and on this result it should stay off.
+What would change the result is more varied data, not more epochs: real coding-agent sessions (with Copilot and Cloudflare keys) produce many more reverted and gate-failed changes, with different mistakes. `chef tune data` and `tune/train.py` rerun unchanged on that data. The adapter was not uploaded to Workers AI; that needs the Cloudflare account, and on this result it should stay off.
 
 ### Tests
 

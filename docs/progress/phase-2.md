@@ -35,7 +35,7 @@ Event counts from one run of each scenario:
 | `main.merged` | 3 | 2 |
 | `main.reverted` | 0 | 1 |
 
-Coder turns in the three-feature run: 3 test, 3 backend, 3 conflict-resolver. `main` ends with 9 commits, each with a `refs/notes/kargah` note.
+Coder turns in the three-feature run: 3 test, 3 backend, 3 conflict-resolver. `main` ends with 9 commits, each with a `refs/notes/chef` note.
 
 ## Not yet on a real account
 

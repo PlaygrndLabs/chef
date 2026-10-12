@@ -2,7 +2,7 @@
 id: router
 title: Prompt router
 status: building
-entrypoint: kargah route <prompt> [--spec dir]
+entrypoint: chef route <prompt> [--spec dir]
 acceptance:
   - id: AC1
     text: Rules decide explicit commands and feature mentions without calling a model

@@ -25,10 +25,10 @@ jobs:
       - name: Create the memory index once
         working-directory: workers
         run: |
-          if ! npx wrangler vectorize get kargah-memory >/dev/null 2>&1; then
-            npx wrangler vectorize create kargah-memory --dimensions=768 --metric=cosine
-            npx wrangler vectorize create-metadata-index kargah-memory --property-name=project --type=string
-            npx wrangler vectorize create-metadata-index kargah-memory --property-name=kind --type=string
+          if ! npx wrangler vectorize get chef-memory >/dev/null 2>&1; then
+            npx wrangler vectorize create chef-memory --dimensions=768 --metric=cosine
+            npx wrangler vectorize create-metadata-index chef-memory --property-name=project --type=string
+            npx wrangler vectorize create-metadata-index chef-memory --property-name=kind --type=string
           fi
       - name: Deploy with secrets
         working-directory: workers
@@ -37,15 +37,15 @@ jobs:
           CPA_API_KEY: ${{ secrets.CPA_API_KEY }}
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          KARGAH_PASSWORD: ${{ secrets.KARGAH_PASSWORD }}
+          CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD || secrets.KARGAH_PASSWORD }}
         run: |
-          jq -n '{CPA_BASE_URL: env.CPA_BASE_URL, CPA_API_KEY: env.CPA_API_KEY, TYPESAFE_API_KEY: env.TYPESAFE_API_KEY, CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, OPENAI_API_KEY: env.OPENAI_API_KEY, KARGAH_PASSWORD: env.KARGAH_PASSWORD} | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
+          jq -n '{CPA_BASE_URL: env.CPA_BASE_URL, CPA_API_KEY: env.CPA_API_KEY, TYPESAFE_API_KEY: env.TYPESAFE_API_KEY, CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, OPENAI_API_KEY: env.OPENAI_API_KEY, CHEF_PASSWORD: env.CHEF_PASSWORD} | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
           set -o pipefail
           npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json" | tee "$RUNNER_TEMP/deploy.log"
           grep -o 'https://[a-z0-9.-]*workers.dev' "$RUNNER_TEMP/deploy.log" | head -1 > "$RUNNER_TEMP/url"
       - name: Smoke test
         run: |
           url=$(cat "$RUNNER_TEMP/url")
-          echo "kargah is at $url"
+          echo "chef is at $url"
           curl -fsS -o /dev/null -w '%{http_code}\n' "$url/"
           test "$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/projects/demo/sessions")" != 200

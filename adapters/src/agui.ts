@@ -1,11 +1,11 @@
 import { AbstractAgent, EventType, type BaseEvent, type RunAgentInput } from "@ag-ui/client";
 import { Observable } from "rxjs";
-import type { KargahEvent, SessionState, SubmitResult } from "@kargah/core";
+import type { ChefEvent, SessionState, SubmitResult } from "@chef/core";
 
-export interface KargahLink {
+export interface ChefLink {
   cursor(): Promise<number>;
   submit(prompt: string): Promise<SubmitResult>;
-  events(after: number): Promise<readonly { readonly seq: number; readonly event: KargahEvent }[]>;
+  events(after: number): Promise<readonly { readonly seq: number; readonly event: ChefEvent }[]>;
 }
 
 export interface SessionView {
@@ -21,7 +21,7 @@ export interface SessionView {
   readonly commits: number;
 }
 
-export interface KargahState {
+export interface ChefState {
   readonly prompt: string;
   readonly intent: string | null;
   readonly featureId: string | null;
@@ -30,7 +30,7 @@ export interface KargahState {
 
 const TERMINAL: ReadonlySet<SessionState> = new Set(["merged", "stuck", "dropped"]);
 
-export function isFinished(state: KargahState): boolean {
+export function isFinished(state: ChefState): boolean {
   const sessions = Object.values(state.sessions);
   return sessions.length > 0 && sessions.every((s) => TERMINAL.has(s.state));
 }
@@ -45,7 +45,7 @@ function lastUserText(input: RunAgentInput): string {
 }
 
 export class SessionStream {
-  private state: KargahState;
+  private state: ChefState;
   private readonly openText = new Map<string, string>();
   private readonly steps = new Map<string, string>();
   private turn = 0;
@@ -60,7 +60,7 @@ export class SessionStream {
     for (const id of result.sessionIds) this.track(id, { id, featureId: this.state.featureId ?? "", attempt: "", state: "queued", preview: null, review: null, gate: null, merged: null, stuck: null, commits: 0 });
   }
 
-  snapshot(): KargahState {
+  snapshot(): ChefState {
     return this.state;
   }
 
@@ -68,7 +68,7 @@ export class SessionStream {
     return sessionId in this.state.sessions;
   }
 
-  push(event: KargahEvent): BaseEvent[] {
+  push(event: ChefEvent): BaseEvent[] {
     if (!("sessionId" in event) || typeof event.sessionId !== "string" || !this.follows(event.sessionId)) return [];
     const id = event.sessionId;
     const out: BaseEvent[] = [];
@@ -107,7 +107,7 @@ export class SessionStream {
     }
   }
 
-  private coder(id: string, event: Extract<KargahEvent, { type: "coder.event" }>["event"]): BaseEvent[] {
+  private coder(id: string, event: Extract<ChefEvent, { type: "coder.event" }>["event"]): BaseEvent[] {
     if (event.type === "assistant.message_delta") {
       const out: BaseEvent[] = [];
       let messageId = this.openText.get(id);
@@ -173,7 +173,7 @@ export function routeLine(result: SubmitResult): string {
   return `Routed as ${d.intent.replace("_", " ")} for ${target}${attempts}. I will stream each session here until it merges or gets stuck.`;
 }
 
-export function summaryLine(state: KargahState): string {
+export function summaryLine(state: ChefState): string {
   return Object.values(state.sessions)
     .map((s) => {
       if (s.state === "merged") return `${s.id} merged${s.merged ? ` as ${s.merged.slice(0, 12)}` : ""}${s.preview ? `; preview ${s.preview}` : ""}.`;
@@ -183,24 +183,24 @@ export function summaryLine(state: KargahState): string {
     .join("\n");
 }
 
-export interface KargahAgentOptions {
-  readonly link: KargahLink;
+export interface ChefAgentOptions {
+  readonly link: ChefLink;
   readonly pollMs?: number;
   readonly maxMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
-export class KargahAgent extends AbstractAgent {
-  private readonly options: KargahAgentOptions;
+export class ChefAgent extends AbstractAgent {
+  private readonly options: ChefAgentOptions;
 
-  constructor(options: KargahAgentOptions) {
-    super({ description: "kargah: routes a request to a feature, runs its sessions and streams them until they merge" });
+  constructor(options: ChefAgentOptions) {
+    super({ description: "chef: routes a request to a feature, runs its sessions and streams them until they merge" });
     this.options = options;
   }
 
-  override clone(): KargahAgent {
-    const copy = super.clone() as KargahAgent;
-    (copy as unknown as { options: KargahAgentOptions }).options = this.options;
+  override clone(): ChefAgent {
+    const copy = super.clone() as ChefAgent;
+    (copy as unknown as { options: ChefAgentOptions }).options = this.options;
     return copy;
   }
 

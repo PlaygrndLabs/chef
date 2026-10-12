@@ -1,9 +1,9 @@
-name: kargah-cpa
+name: chef-cpa
 
 services:
   cpa:
     build: .
-    image: kargah-cpa:c76dfd4e
+    image: chef-cpa:c76dfd4e
     restart: unless-stopped
     init: true
     command: [./CLIProxyAPI, -config, /state/config.yaml]
@@ -20,7 +20,7 @@ services:
 
   login:
     profiles: [login]
-    image: kargah-cpa:c76dfd4e
+    image: chef-cpa:c76dfd4e
     command: [./CLIProxyAPI, -config, /state/config.yaml, -claude-login, -no-browser]
     ports:
       - "127.0.0.1:54545:54545"

@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { loadProfiles, Orchestrator, type Deps, type FeatureSpec, type ProjectConfig, type Tree } from "@kargah/core";
-import { FakeCheckRunner, FakeProofRunner, KeywordClassifier, LexicalIndex, MemoryEventBus, MemoryPreviewHost, MemoryRepoHost, MemoryStore, RuleReviewer, ScriptedCoder, SequentialIds, TemplatePlanner, TickingClock, type Script } from "@kargah/core/fakes";
-import { renderRegistry, renderStub, stubPath } from "@kargah/template/gen";
+import { loadProfiles, Orchestrator, type Deps, type FeatureSpec, type ProjectConfig, type Tree } from "@chef/core";
+import { FakeCheckRunner, FakeProofRunner, KeywordClassifier, LexicalIndex, MemoryEventBus, MemoryPreviewHost, MemoryRepoHost, MemoryStore, RuleReviewer, ScriptedCoder, SequentialIds, TemplatePlanner, TickingClock, type Script } from "@chef/core/fakes";
+import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { readTree } from "./fs.ts";
 import { LocalCheckRunner, LocalProofRunner } from "./local/runners.ts";
 
@@ -50,6 +50,6 @@ export function localWorld(options: LocalWorldOptions) {
     memory: new LexicalIndex(),
     ...options.deps,
   };
-  const orchestrator = new Orchestrator(deps, { name: "demo", author: { name: "kargah", email: "ma.karimi76@gmail.com" }, profiles: repoProfiles(), generated, ...options.config });
+  const orchestrator = new Orchestrator(deps, { name: "demo", author: { name: "chef", email: "ma.karimi76@gmail.com" }, profiles: repoProfiles(), generated, ...options.config });
   return { orchestrator, repos, bus, coder, previews, deps };
 }

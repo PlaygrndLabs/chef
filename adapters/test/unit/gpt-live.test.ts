@@ -72,7 +72,7 @@ describe("GPT-Live adapter", () => {
     expect(session.sessionId).toBe("sess_2");
     expect(socket.sent[0]).toEqual({
       type: "session.start",
-      event_id: "kargah-start",
+      event_id: "chef-start",
       session: { model: "gpt-live-1", instructions: "hi", audio: { format: { type: "audio/pcm", rate: 24000 }, output: { voice: "marin" } }, delegation: { type: "client" } },
     });
     session.sendAudio(new Uint8Array(20000).fill(1));

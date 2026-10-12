@@ -1,10 +1,10 @@
 {
-  "name": "@kargah/cli",
+  "name": "@chef/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "kargah": "./src/bin.ts"
+    "chef": "./src/bin.ts"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -15,9 +15,9 @@
   },
   "dependencies": {
     "@copilotkit/runtime": "1.78.0",
-    "@kargah/adapters": "workspace:*",
-    "@kargah/core": "workspace:*",
-    "@kargah/template": "workspace:*"
+    "@chef/adapters": "workspace:*",
+    "@chef/core": "workspace:*",
+    "@chef/template": "workspace:*"
   },
   "devDependencies": {
     "playwright": "1.56.1"
