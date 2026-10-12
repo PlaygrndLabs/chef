@@ -11,12 +11,37 @@ export interface ControlRepo {
   readonly defaultBranch: string;
 }
 
+export interface CommitMeta {
+  readonly hash: string;
+  readonly treeHash: string;
+  readonly message: string;
+  readonly author: { readonly name: string; readonly email: string };
+  readonly parents: readonly string[];
+  readonly authoredAt: number;
+}
+
+export interface TreeEntryMeta {
+  readonly name: string;
+  readonly mode: string;
+  readonly hash: string;
+  readonly type: string;
+}
+
+export interface ArtifactsReader {
+  readCommit(repo: string, hash: string): Promise<CommitMeta | null>;
+  readTree(repo: string, hash: string): Promise<readonly TreeEntryMeta[] | null>;
+  readBlob(repo: string, hash: string): Promise<Uint8Array | null>;
+  log(repo: string, ref: string, limit: number): Promise<readonly CommitMeta[]>;
+}
+
 export interface ArtifactsControl {
   create(name: string, opts: { defaultBranch: string; description?: string }): Promise<ControlRepo>;
   fork(source: string, name: string): Promise<ControlRepo>;
   info(name: string): Promise<ControlRepo | null>;
+  delete(name: string): Promise<boolean>;
   createToken(repo: string, scope: TokenScope, ttlSeconds: number): Promise<{ plaintext: string; expiresAt: number }>;
   revokeToken(repo: string, token: string): Promise<void>;
+  readonly read?: ArtifactsReader;
 }
 
 interface ArtifactsRepoHandle {
@@ -24,12 +49,17 @@ interface ArtifactsRepoHandle {
   createToken(scope?: TokenScope, ttl?: number): Promise<{ plaintext: string; expiresAt: string | number }>;
   revokeToken(tokenOrId: string): Promise<boolean>;
   fork(name: string, opts?: { description?: string; readOnly?: boolean; defaultBranchOnly?: boolean }): Promise<{ name: string; remote: string; defaultBranch?: string }>;
+  readCommit?(hash: string): Promise<CommitMeta | null>;
+  readTree?(hash: string): Promise<TreeEntryMeta[] | null>;
+  readBlob?(hash: string): Promise<Blob | null>;
+  log?(opts?: { ref?: string; limit?: number; offset?: number }): Promise<CommitMeta[]>;
   [Symbol.dispose]?: () => void;
 }
 
 export interface ArtifactsBindingLike {
   create(name: string, opts?: { description?: string; readOnly?: boolean; setDefaultBranch?: string }): Promise<{ name: string; remote: string; defaultBranch: string; token: string }>;
   get(name: string): Promise<ArtifactsRepoHandle>;
+  delete?(name: string): Promise<boolean>;
 }
 
 export function bindingControl(binding: ArtifactsBindingLike): ArtifactsControl {
@@ -67,6 +97,20 @@ export function bindingControl(binding: ArtifactsBindingLike): ArtifactsControl 
         return { plaintext: token.plaintext, expiresAt: typeof token.expiresAt === "number" ? token.expiresAt : Date.parse(token.expiresAt) };
       }),
     revokeToken: (repo, token) => withRepo(repo, async (handle) => void (await handle.revokeToken(token))),
+    async delete(name) {
+      if (!binding.delete) throw new Error("this Artifacts binding cannot delete repos");
+      return binding.delete(name);
+    },
+    read: {
+      readCommit: (repo, hash) => withRepo(repo, async (handle) => (handle.readCommit ? handle.readCommit(hash) : null)),
+      readTree: (repo, hash) => withRepo(repo, async (handle) => (handle.readTree ? handle.readTree(hash) : null)),
+      readBlob: (repo, hash) =>
+        withRepo(repo, async (handle) => {
+          const blob = handle.readBlob ? await handle.readBlob(hash) : null;
+          return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+        }),
+      log: (repo, ref, limit) => withRepo(repo, async (handle) => (handle.log ? handle.log({ ref, limit }) : [])),
+    },
   };
 }
 
@@ -75,34 +119,101 @@ export function tokenSecret(token: string): string {
 }
 
 const GITDIR = "/repo.git";
+const MAX_REPOS = 3;
+const MAX_REPO_BYTES = 48 * 1024 * 1024;
+const MAX_COMMIT_BYTES = 24 * 1024 * 1024;
+const MAX_BLOB_BYTES = 16 * 1024 * 1024;
 
 interface Cached {
   readonly fs: MemoryFs;
   readonly remote: string;
 }
 
+export class Lru<V> {
+  private readonly entries = new Map<string, { readonly value: V; readonly size: number }>();
+  private total = 0;
+
+  constructor(private readonly maxBytes: number) {}
+
+  get bytes(): number {
+    return this.total;
+  }
+
+  get size(): number {
+    return this.entries.size;
+  }
+
+  get(key: string): V | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    return entry.value;
+  }
+
+  set(key: string, value: V, size: number): void {
+    this.delete(key);
+    if (size > this.maxBytes) return;
+    this.entries.set(key, { value, size });
+    this.total += size;
+    for (const [oldest, entry] of this.entries) {
+      if (this.total <= this.maxBytes) break;
+      this.entries.delete(oldest);
+      this.total -= entry.size;
+    }
+  }
+
+  delete(key: string): void {
+    const entry = this.entries.get(key);
+    if (!entry) return;
+    this.entries.delete(key);
+    this.total -= entry.size;
+  }
+}
+
+export interface ArtifactsHostOptions {
+  readonly http?: HttpClient;
+  readonly readTtlSeconds?: number;
+  readonly maxRepos?: number;
+  readonly maxRepoBytes?: number;
+}
+
 export class ArtifactsRepoHost implements RepoHost {
   private readonly cache = new Map<string, Cached>();
-  private readonly commits = new Map<string, Commit>();
+  private readonly remotes = new Map<string, string>();
+  private readonly commits = new Lru<Commit>(MAX_COMMIT_BYTES);
+  private readonly blobs = new Lru<string>(MAX_BLOB_BYTES);
   private readonly listeners = new Set<(event: PushedEvent) => void>();
 
   constructor(
     private readonly control: ArtifactsControl,
-    private readonly options: { readonly http?: HttpClient; readonly readTtlSeconds?: number } = {},
+    private readonly options: ArtifactsHostOptions = {},
   ) {}
 
   private get http(): HttpClient {
     return this.options.http ?? webHttp;
   }
 
+  get cachedRepos(): readonly string[] {
+    return [...this.cache.keys()];
+  }
+
   async createRepo(name: string, opts: { defaultBranch?: string; description?: string } = {}): Promise<RepoInfo> {
     const repo = await this.control.create(name, { defaultBranch: opts.defaultBranch ?? "main", ...(opts.description ? { description: opts.description } : {}) });
+    this.remotes.set(repo.name, repo.remote);
     return { name: repo.name, remote: repo.remote, defaultBranch: repo.defaultBranch };
   }
 
   async fork(source: string, name: string): Promise<RepoInfo> {
     const repo = await this.control.fork(source, name);
+    this.remotes.set(repo.name, repo.remote);
     return { name: repo.name, remote: repo.remote, defaultBranch: repo.defaultBranch, forkedFrom: source };
+  }
+
+  async deleteRepo(name: string): Promise<boolean> {
+    this.cache.delete(name);
+    this.remotes.delete(name);
+    return this.control.delete(name);
   }
 
   async info(repo: string): Promise<RepoInfo | null> {
@@ -120,7 +231,12 @@ export class ArtifactsRepoHost implements RepoHost {
   }
 
   async resolveRef(repo: string, ref: string): Promise<string | null> {
-    if (!this.cache.has(repo) && !(await this.control.info(repo))) return null;
+    const read = this.control.read;
+    if (read) {
+      const head = (await read.log(repo, shortRef(ref), 1).catch(() => []))[0];
+      if (head) return head.hash;
+    }
+    if (!this.remotes.has(repo) && !(await this.control.info(repo))) return null;
     return this.withRead(repo, async (secret, cached) => {
       const refs = await git.listServerRefs({ http: this.http, url: cached.remote, prefix: fullRef(ref), onAuth: auth(secret) });
       return refs.find((r) => r.ref === fullRef(ref))?.oid ?? null;
@@ -130,16 +246,30 @@ export class ArtifactsRepoHost implements RepoHost {
   async readCommit(repo: string, id: string): Promise<Commit | null> {
     const known = this.commits.get(id);
     if (known) return known;
+    const viaApi = await this.readCommitViaApi(repo, id);
+    if (viaApi) return viaApi;
     return this.withRead(repo, async (secret, cached) => {
-      if (!(await this.hasObject(cached, id))) await this.fetchAll(cached, secret);
+      if (!(await this.hasObject(cached, id))) await this.fetchRefs(cached, secret);
       if (!(await this.hasObject(cached, id))) return null;
       return this.loadCommit(cached, id);
     });
   }
 
   async log(repo: string, ref: string, limit = 50): Promise<Commit[]> {
+    const read = this.control.read;
+    if (read) {
+      const entries = await read.log(repo, shortRef(ref), limit).catch(() => []);
+      if (entries.length > 0) {
+        const out: Commit[] = [];
+        for (const entry of entries) {
+          const commit = await this.readCommit(repo, entry.hash);
+          if (commit) out.push(commit);
+        }
+        return out;
+      }
+    }
     return this.withRead(repo, async (secret, cached) => {
-      await this.fetchAll(cached, secret);
+      await this.fetchRefs(cached, secret, [fullRef(ref)]);
       const head = await this.localRef(cached, `refs/remotes/origin/${shortRef(ref)}`);
       if (!head) return [];
       const entries = await git.log({ fs: cached.fs, gitdir: GITDIR, ref: head, depth: limit });
@@ -151,7 +281,7 @@ export class ArtifactsRepoHost implements RepoHost {
 
   async commit(token: RepoToken, input: CommitInput): Promise<Commit> {
     const cached = await this.repo(token.repo);
-    await this.fetchAll(cached, tokenSecret(token.secret));
+    await this.fetchRefs(cached, tokenSecret(token.secret), [fullRef(input.ref)]);
     const current = await this.localRef(cached, `refs/remotes/origin/${shortRef(input.ref)}`);
     if (current !== input.parent) throw new Error(`non-fast-forward: ${input.ref} is at ${current ?? "nothing"}, not ${input.parent ?? "nothing"}`);
     const base: Tree = input.parent ? (await this.loadCommit(cached, input.parent)).tree : {};
@@ -164,8 +294,9 @@ export class ArtifactsRepoHost implements RepoHost {
   async pushRef(token: RepoToken, input: { ref: string; commitId: string; fromRepo?: string; force?: boolean }): Promise<PushedEvent> {
     const cached = await this.repo(token.repo);
     const secret = tokenSecret(token.secret);
-    await this.fetchAll(cached, secret);
+    await this.fetchRefs(cached, secret, [fullRef(input.ref)]);
     if (input.fromRepo) await this.fetchFrom(cached, input.fromRepo);
+    else if (!(await this.hasObject(cached, input.commitId))) await this.fetchRefs(cached, secret);
     const before = await this.localRef(cached, `refs/remotes/origin/${shortRef(input.ref)}`);
     await this.push(cached, token, input.ref, input.commitId, input.force ?? false, before);
     if (input.fromRepo) await this.copyNotes(cached, token, input.fromRepo, input.commitId);
@@ -174,7 +305,7 @@ export class ArtifactsRepoHost implements RepoHost {
 
   async merge(token: RepoToken, input: MergeInput): Promise<MergeOutcome> {
     const cached = await this.repo(token.repo);
-    await this.fetchAll(cached, tokenSecret(token.secret));
+    await this.fetchRefs(cached, tokenSecret(token.secret), [fullRef(input.into)]);
     const theirs = await this.fetchFrom(cached, input.from.repo, input.from.ref);
     if (!theirs) throw new Error(`unknown ref ${input.from.repo}:${input.from.ref}`);
     const ours = await this.localRef(cached, `refs/remotes/origin/${shortRef(input.into)}`);
@@ -203,13 +334,15 @@ export class ArtifactsRepoHost implements RepoHost {
 
   async addNote(token: RepoToken, input: { namespace: string; commitId: string; note: string }): Promise<void> {
     const cached = await this.repo(token.repo);
-    await this.fetchAll(cached, tokenSecret(token.secret));
+    await this.fetchRefs(cached, tokenSecret(token.secret), [input.namespace]);
     await this.writeNotes(cached, token, input.namespace, [[input.commitId, input.note]]);
   }
 
   async readNote(repo: string, namespace: string, commitId: string): Promise<string | null> {
+    const viaApi = await this.readNoteViaApi(repo, namespace, commitId);
+    if (viaApi !== undefined) return viaApi;
     return this.withRead(repo, async (secret, cached) => {
-      await this.fetchAll(cached, secret);
+      await this.fetchRefs(cached, secret, [namespace]);
       return this.localNote(cached, `refs/remotes/origin/${namespace.replace(/^refs\//, "")}`, commitId);
     });
   }
@@ -223,16 +356,99 @@ export class ArtifactsRepoHost implements RepoHost {
     for (const listener of [...this.listeners]) listener(event);
   }
 
-  private async repo(name: string): Promise<Cached> {
-    const existing = this.cache.get(name);
-    if (existing) return existing;
+  private async readCommitViaApi(repo: string, id: string): Promise<Commit | null> {
+    const read = this.control.read;
+    if (!read) return null;
+    try {
+      const meta = await read.readCommit(repo, id);
+      if (!meta) return null;
+      const tree: Record<string, string> = {};
+      const walk = async (hash: string, prefix: string): Promise<void> => {
+        const entries = await read.readTree(repo, hash);
+        if (!entries) throw new Error(`tree ${hash} is missing`);
+        await Promise.all(
+          entries.map(async (entry) => {
+            if (entry.type === "tree") return walk(entry.hash, `${prefix}${entry.name}/`);
+            if (entry.type !== "blob" && entry.type !== "exec") return;
+            tree[`${prefix}${entry.name}`] = await this.blobText(repo, entry.hash);
+          }),
+        );
+      };
+      await walk(meta.treeHash, "");
+      const sorted: Record<string, string> = {};
+      for (const key of Object.keys(tree).sort()) sorted[key] = tree[key] as string;
+      return this.remember({ id, parents: [...meta.parents], tree: sorted, message: meta.message.trimEnd(), author: { name: meta.author.name, email: meta.author.email }, timestamp: meta.authoredAt * 1000 });
+    } catch {
+      return null;
+    }
+  }
+
+  private async blobText(repo: string, hash: string): Promise<string> {
+    const known = this.blobs.get(hash);
+    if (known !== undefined) return known;
+    const bytes = await this.control.read?.readBlob(repo, hash);
+    if (!bytes) throw new Error(`blob ${hash} is missing`);
+    const text = new TextDecoder().decode(bytes);
+    this.blobs.set(hash, text, text.length * 2);
+    return text;
+  }
+
+  private async readNoteViaApi(repo: string, namespace: string, commitId: string): Promise<string | null | undefined> {
+    const read = this.control.read;
+    if (!read) return undefined;
+    try {
+      const head = (await read.log(repo, namespace, 1))[0];
+      if (!head) return undefined;
+      const root = await read.readTree(repo, head.treeHash);
+      if (!root) return undefined;
+      const flat = root.find((e) => e.name === commitId);
+      if (flat) return new TextDecoder().decode((await read.readBlob(repo, flat.hash)) ?? new Uint8Array());
+      const fanout = root.find((e) => e.name === commitId.slice(0, 2) && e.type === "tree");
+      if (!fanout) return null;
+      const inner = (await read.readTree(repo, fanout.hash))?.find((e) => e.name === commitId.slice(2));
+      return inner ? new TextDecoder().decode((await read.readBlob(repo, inner.hash)) ?? new Uint8Array()) : null;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private remember(commit: Commit): Commit {
+    let size = 256 + commit.message.length * 2;
+    for (const [path, content] of Object.entries(commit.tree)) size += (path.length + content.length) * 2;
+    this.commits.set(commit.id, commit, size);
+    return commit;
+  }
+
+  private async remoteOf(name: string): Promise<string> {
+    const known = this.remotes.get(name) ?? this.cache.get(name)?.remote;
+    if (known) return known;
     const info = await this.control.info(name);
     if (!info) throw new Error(`unknown repo ${name}`);
+    this.remotes.set(name, info.remote);
+    return info.remote;
+  }
+
+  private async repo(name: string): Promise<Cached> {
+    const existing = this.cache.get(name);
+    if (existing) {
+      this.cache.delete(name);
+      if (existing.fs.bytes() <= (this.options.maxRepoBytes ?? MAX_REPO_BYTES)) {
+        this.cache.set(name, existing);
+        return existing;
+      }
+    }
+    const remote = await this.remoteOf(name);
+    const info = existing ? null : await this.control.info(name);
+    if (!existing && !info) throw new Error(`unknown repo ${name}`);
     const fs = new MemoryFs();
-    await git.init({ fs, gitdir: GITDIR, bare: true, defaultBranch: info.defaultBranch });
-    await addRemote(fs, "origin", info.remote);
-    const cached = { fs, remote: info.remote };
+    await git.init({ fs, gitdir: GITDIR, bare: true, defaultBranch: info?.defaultBranch ?? "main" });
+    await addRemote(fs, "origin", remote);
+    const cached = { fs, remote };
     this.cache.set(name, cached);
+    for (const oldest of this.cache.keys()) {
+      if (this.cache.size <= (this.options.maxRepos ?? MAX_REPOS)) break;
+      this.cache.delete(oldest);
+    }
     return cached;
   }
 
@@ -246,31 +462,39 @@ export class ArtifactsRepoHost implements RepoHost {
     }
   }
 
-  private async fetchAll(cached: Cached, secret: string): Promise<void> {
+  private async fetchRefs(cached: Cached, secret: string, wanted?: readonly string[]): Promise<void> {
     const refs = await git.listServerRefs({ http: this.http, url: cached.remote, onAuth: auth(secret) });
     if (refs.length === 0) return;
-    for (const { ref } of refs) {
-      if (!ref.startsWith("refs/heads/") && !ref.startsWith("refs/notes/")) continue;
+    for (const { ref, oid } of refs) {
+      const isNote = ref.startsWith("refs/notes/");
+      if (!ref.startsWith("refs/heads/") && !isNote) continue;
+      if (wanted && !isNote && !wanted.includes(ref)) continue;
+      const local = `refs/remotes/origin/${ref.replace(/^refs\/(heads\/)?/, "")}`;
+      if ((await this.localRef(cached, local)) === oid) continue;
       await git.fetch({ fs: cached.fs, http: this.http, gitdir: GITDIR, url: cached.remote, ref, remoteRef: ref, remote: "origin", singleBranch: true, tags: false, onAuth: auth(secret) });
-      const oid = refs.find((r) => r.ref === ref)?.oid;
-      if (oid) await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: `refs/remotes/origin/${ref.replace(/^refs\/(heads\/)?/, "")}`, value: oid, force: true });
+      await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: local, value: oid, force: true });
     }
   }
 
   private async fetchFrom(cached: Cached, repo: string, ref = "main"): Promise<string | null> {
-    const source = await this.repo(repo);
+    const sourceRemote = await this.remoteOf(repo);
     const remote = `src-${repo}`;
-    await addRemote(cached.fs, remote, source.remote);
-    return this.withRead(repo, async (secret) => {
-      const refs = await git.listServerRefs({ http: this.http, url: source.remote, onAuth: auth(secret) });
+    await addRemote(cached.fs, remote, sourceRemote);
+    const token = await this.control.createToken(repo, "read", this.options.readTtlSeconds ?? 300);
+    const secret = tokenSecret(token.plaintext);
+    try {
+      const refs = await git.listServerRefs({ http: this.http, url: sourceRemote, onAuth: auth(secret) });
       const head = refs.find((r) => r.ref === fullRef(ref))?.oid ?? null;
       for (const r of refs) {
         if (r.ref !== fullRef(ref) && !r.ref.startsWith("refs/notes/")) continue;
-        await git.fetch({ fs: cached.fs, http: this.http, gitdir: GITDIR, url: source.remote, ref: r.ref, remoteRef: r.ref, remote, singleBranch: true, tags: false, onAuth: auth(secret) });
-        await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: `refs/sources/${repo}/${r.ref.replace(/^refs\/(heads\/)?/, "")}`, value: r.oid, force: true });
+        const local = `refs/sources/${repo}/${r.ref.replace(/^refs\/(heads\/)?/, "")}`;
+        if ((await this.localRef(cached, local)) !== r.oid) await git.fetch({ fs: cached.fs, http: this.http, gitdir: GITDIR, url: sourceRemote, ref: r.ref, remoteRef: r.ref, remote, singleBranch: true, tags: false, onAuth: auth(secret) });
+        await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: local, value: r.oid, force: true });
       }
       return head;
-    });
+    } finally {
+      await this.control.revokeToken(repo, token.plaintext).catch(() => undefined);
+    }
   }
 
   private async copyNotes(cached: Cached, token: RepoToken, fromRepo: string, head: string): Promise<void> {
@@ -305,7 +529,7 @@ export class ArtifactsRepoHost implements RepoHost {
       } catch (error) {
         if (attempt >= NOTE_ATTEMPTS) throw error;
         await new Promise((resolve) => setTimeout(resolve, 50 * attempt + Math.random() * 100));
-        await this.fetchAll(cached, tokenSecret(token.secret));
+        await this.fetchRefs(cached, tokenSecret(token.secret), [namespace]);
       }
     }
   }
@@ -363,9 +587,7 @@ export class ArtifactsRepoHost implements RepoHost {
     await walk(commit.tree, "");
     const sorted: Record<string, string> = {};
     for (const key of Object.keys(tree).sort()) sorted[key] = tree[key] as string;
-    const result: Commit = { id: oid, parents: commit.parent, tree: sorted, message: commit.message.trimEnd(), author: { name: commit.author.name, email: commit.author.email }, timestamp: commit.author.timestamp * 1000 };
-    this.commits.set(oid, result);
-    return result;
+    return this.remember({ id: oid, parents: commit.parent, tree: sorted, message: commit.message.trimEnd(), author: { name: commit.author.name, email: commit.author.email }, timestamp: commit.author.timestamp * 1000 });
   }
 
   private async writeCommit(cached: Cached, tree: Tree, parents: readonly string[], message: string, author: Author): Promise<string> {

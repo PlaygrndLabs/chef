@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ArtifactsControl, ControlRepo } from "../src/artifacts.ts";
+import type { ArtifactsControl, ArtifactsReader, CommitMeta, ControlRepo } from "../src/artifacts.ts";
 
 interface TokenRecord {
   readonly repo: string;
@@ -84,9 +84,75 @@ export class LocalGitServer {
     return `http://127.0.0.1:${this.port}/git/${name}.git`;
   }
 
-  control(): ArtifactsControl {
+  readonly reads: string[] = [];
+
+  reader(): ArtifactsReader {
+    const gitDir = (repo: string) => join(this.root, `${repo}.git`);
+    const run = (repo: string, args: string[]): Buffer | null => {
+      try {
+        return execFileSync("git", ["--git-dir", gitDir(repo), ...args], { stdio: ["ignore", "pipe", "ignore"] });
+      } catch {
+        return null;
+      }
+    };
+    const commit = (repo: string, hash: string): CommitMeta | null => {
+      const raw = run(repo, ["cat-file", "commit", hash])?.toString();
+      if (!raw) return null;
+      const split = raw.indexOf("\n\n");
+      const headers = raw.slice(0, split).split("\n");
+      const author = /^author (.*) <(.*)> (\d+) /.exec(headers.find((h) => h.startsWith("author ")) ?? "");
+      return {
+        hash,
+        treeHash: (headers.find((h) => h.startsWith("tree ")) ?? "").slice(5),
+        parents: headers.filter((h) => h.startsWith("parent ")).map((h) => h.slice(7)),
+        message: raw.slice(split + 2).replace(/\n$/, ""),
+        author: { name: author?.[1] ?? "", email: author?.[2] ?? "" },
+        authoredAt: Number(author?.[3] ?? 0),
+      };
+    };
+    return {
+      readCommit: async (repo, hash) => (this.reads.push(`commit ${repo}`), commit(repo, hash)),
+      readTree: async (repo, hash) => {
+        this.reads.push(`tree ${repo}`);
+        const out = run(repo, ["ls-tree", hash])?.toString();
+        if (out === undefined) return null;
+        const kinds: Record<string, string> = { "100644": "blob", "100755": "exec", "120000": "symlink", "160000": "gitlink", "040000": "tree" };
+        return out
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => {
+            const [meta, name] = line.split("\t") as [string, string];
+            const [mode, , hash] = meta.split(" ") as [string, string, string];
+            return { name, mode, hash, type: kinds[mode] ?? "blob" };
+          });
+      },
+      readBlob: async (repo, hash) => {
+        this.reads.push(`blob ${repo}`);
+        const out = run(repo, ["cat-file", "blob", hash]);
+        return out ? new Uint8Array(out) : null;
+      },
+      log: async (repo, ref, limit) => {
+        this.reads.push(`log ${repo} ${ref}`);
+        const out = run(repo, ["log", "--first-parent", `-n${limit}`, "--format=%H", ref.startsWith("refs/") ? ref : `refs/heads/${ref}`])?.toString();
+        if (!out) return [];
+        return out
+          .split("\n")
+          .filter(Boolean)
+          .map((hash) => commit(repo, hash))
+          .filter((c): c is CommitMeta => c !== null);
+      },
+    };
+  }
+
+  control(options: { readonly read?: boolean } = {}): ArtifactsControl {
     const repos = new Map<string, ControlRepo>();
     return {
+      ...(options.read ? { read: this.reader() } : {}),
+      delete: async (name) => {
+        if (!repos.delete(name)) return false;
+        rmSync(join(this.root, `${name}.git`), { recursive: true, force: true });
+        return true;
+      },
       create: async (name, opts) => {
         execFileSync("git", ["init", "--bare", "-q", "-b", opts.defaultBranch, join(this.root, `${name}.git`)]);
         const repo = { name, remote: this.remote(name), defaultBranch: opts.defaultBranch };

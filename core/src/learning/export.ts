@@ -60,12 +60,14 @@ export function reviewPoints(log: readonly ChefEvent[]): ReviewPoint[] {
 
 export async function exportOutcomes(input: { readonly log: readonly ChefEvent[]; readonly repos: Pick<RepoHost, "readCommit" | "readNote">; readonly canonical: string; readonly sessions: readonly SessionRecord[] }): Promise<{ reviews: ReviewExample[]; turns: TurnExample[] }> {
   const forks = new Map(input.sessions.map((s) => [s.id, s.fork]));
+  const readCommit = async (repo: string, id: string) => (await input.repos.readCommit(repo, id)) ?? (repo === input.canonical ? null : input.repos.readCommit(input.canonical, id));
+  const readNote = async (repo: string, id: string) => (await input.repos.readNote(repo, NOTES_NAMESPACE, id)) ?? (repo === input.canonical ? null : input.repos.readNote(input.canonical, NOTES_NAMESPACE, id));
   const points = reviewPoints(input.log);
   const reviews: ReviewExample[] = [];
   for (const point of points) {
     const fork = forks.get(point.sessionId);
     if (!fork) continue;
-    const head = await input.repos.readCommit(fork, point.head);
+    const head = await readCommit(fork, point.head);
     const base = await input.repos.readCommit(input.canonical, point.base);
     if (!head || !base) continue;
     const feature = readSpec(head.tree).find((f) => f.id === point.featureId) ?? input.sessions.find((s) => s.id === point.sessionId)?.plan.feature;
@@ -78,10 +80,10 @@ export async function exportOutcomes(input: { readonly log: readonly ChefEvent[]
     if (event.type !== "commit.created") continue;
     const point = points.find((p) => p.sessionId === event.sessionId && p.logIndex > index);
     if (!point) continue;
-    const note = parseNote(await input.repos.readNote(event.repo, NOTES_NAMESPACE, event.commitId));
+    const note = parseNote(await readNote(event.repo, event.commitId));
     if (!note || !CODER_KINDS.has(note.kind)) continue;
-    const commit = await input.repos.readCommit(event.repo, event.commitId);
-    const parent = commit?.parents[0] ? await input.repos.readCommit(event.repo, commit.parents[0]) : null;
+    const commit = await readCommit(event.repo, event.commitId);
+    const parent = commit?.parents[0] ? await readCommit(event.repo, commit.parents[0]) : null;
     if (!commit) continue;
     turns.push({
       id: event.commitId.slice(0, 12),

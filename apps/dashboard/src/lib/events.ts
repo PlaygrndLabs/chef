@@ -125,6 +125,10 @@ export function summarize(event: ChefEvent): string {
       return `conflict ${event.paths.join(", ")}`;
     case "session.stuck":
       return event.reason;
+    case "fork.deleted":
+      return event.archived ? `fork deleted, work kept on ${event.archived}` : "fork deleted";
+    case "fork.kept":
+      return `fork kept: ${event.reason}`;
     case "session.steered":
       return event.message;
     case "turn.rejected":
@@ -273,6 +277,9 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
         const s = state.sessions[candidate.sessionId];
         if (s) keep(s.timeline, { kind: "picked", at, won: candidate.sessionId === event.winner, winner: event.winner, reasons: event.reasons, candidates: event.candidates }, TIMELINE_LIMIT);
       }
+      return true;
+    case "fork.deleted":
+    case "fork.kept":
       return true;
   }
 }
