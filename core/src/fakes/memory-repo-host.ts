@@ -67,7 +67,7 @@ export class MemoryRepoHost implements RepoHost {
   }
 
   async resolveRef(repo: string, ref: string): Promise<string | null> {
-    return this.repo(repo).refs.get(ref) ?? null;
+    return this.repos.get(repo)?.refs.get(ref) ?? null;
   }
 
   async readCommit(_repo: string, id: string): Promise<Commit | null> {
