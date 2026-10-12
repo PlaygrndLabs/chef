@@ -14,8 +14,12 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@copilotkit/runtime": "1.78.0",
+    "@kargah/adapters": "workspace:*",
     "@kargah/core": "workspace:*",
-    "@kargah/template": "workspace:*",
-    "@kargah/adapters": "workspace:*"
+    "@kargah/template": "workspace:*"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
   }
 }

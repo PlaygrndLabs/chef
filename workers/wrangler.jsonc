@@ -5,7 +5,8 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
-  "assets": { "directory": "../apps/dashboard/public", "binding": "ASSETS", "run_worker_first": ["/api/*", "/agents/*"] },
+  "build": { "command": "pnpm --dir .. build" },
+  "assets": { "directory": "../apps/dashboard/dist", "binding": "ASSETS", "run_worker_first": ["/api/*", "/agents/*"] },
   "artifacts": [{ "binding": "ARTIFACTS", "namespace": "kargah" }],
   "durable_objects": {
     "bindings": [
@@ -33,15 +34,16 @@
       }
     ]
   },
-  "secrets": { "required": ["CPA_BASE_URL", "CPA_API_KEY", "TYPESAFE_API_KEY", "COPILOT_GITHUB_TOKEN", "CF_API_TOKEN", "CF_ACCOUNT_ID"] },
+  "secrets": { "required": ["CPA_BASE_URL", "CPA_API_KEY", "TYPESAFE_API_KEY", "CF_API_TOKEN", "CF_ACCOUNT_ID"] },
   "vars": {
     "PLANNER_MODEL": "claude-opus-5-5",
     "REVIEWER_MODEL": "claude-opus-5-5",
-    "CODER_MODEL": "gpt-5",
+    "CODER_MODEL": "claude-sonnet-5-5",
     "JEV_MODEL": "jev-1.13.0",
     "PREVIEW_WORKER": "kargah-project",
     "ATTEMPTS": "2",
     "VOICE_MODEL": "gpt-live-1",
-    "VOICE": "marin"
+    "VOICE": "marin",
+    "COPILOTKIT_TELEMETRY_DISABLED": "true"
   }
 }

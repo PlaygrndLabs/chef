@@ -1,14 +1,18 @@
 import { routeAgentRequest } from "agents";
+import { copilotKitHandler } from "./copilotkit.ts";
 
 export { ProjectAgent } from "./project-agent.ts";
 export { SandboxOutbound, SessionAgent } from "./session-agent.ts";
 export { UpstreamSync } from "./upstream-sync.ts";
 
-const PROJECT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/(bootstrap|prompts|sessions|events|voice)$/;
+const PROJECT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/(bootstrap|prompts|sessions|events|cursor|voice)$/;
+const COPILOTKIT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/copilotkit(\/|$)/;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const copilotKit = COPILOTKIT.exec(url.pathname);
+    if (copilotKit) return copilotKitHandler(request, env, copilotKit[1] as string);
     const match = PROJECT.exec(url.pathname);
     if (match) {
       const stub = env.PROJECT.get(env.PROJECT.idFromName(match[1] as string));

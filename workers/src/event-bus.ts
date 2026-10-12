@@ -22,6 +22,10 @@ export class DurableEventBus implements EventBus {
     return () => this.listeners.delete(listener);
   }
 
+  async cursor(): Promise<number> {
+    return (await this.storage.get<number>("event-seq")) ?? 0;
+  }
+
   async since(after: number, limit = 500): Promise<{ seq: number; event: KargahEvent }[]> {
     const entries = await this.storage.list<KargahEvent>({ prefix: "event/", start: `event/${String(after + 1).padStart(10, "0")}`, limit });
     return [...entries].map(([key, event]) => ({ seq: Number(key.slice(6)), event }));

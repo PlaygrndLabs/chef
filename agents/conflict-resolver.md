@@ -1,6 +1,6 @@
 ---
 role: conflict-resolver
-model: copilot-default
+model: coder-default
 description: Resolves merge conflicts between main and a session fork.
 sharedAccess: true
 writeScope:

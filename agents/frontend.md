@@ -1,6 +1,6 @@
 ---
 role: frontend
-model: copilot-default
+model: coder-default
 description: Implements a feature's user interface inside its vertical slice.
 sharedAccess: true
 writeScope:

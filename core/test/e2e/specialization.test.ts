@@ -59,7 +59,7 @@ describe("phase 3 specialization on fakes", () => {
     const record = await w.orchestrator.session(id);
     const token = await w.repos.createToken(record.fork, "write", 60);
     const sneaky = await w.repos.commit(token, { ref: "main", parent: record.head, changes: { [TEST_PATH]: "export {};\n" }, message: "code(todo-add): simplify", author: { name: "kargah", email: "ma.karimi76@gmail.com" } });
-    const note: TurnNote = { kargah: 1, project: "demo", feature: "todo-add", session: id, role: "backend", kind: "code", workItem: null, prompt: "x", rootPrompt: prompt, runId: "r", model: "copilot-default", specRevision: 1, paths: [TEST_PATH] };
+    const note: TurnNote = { kargah: 1, project: "demo", feature: "todo-add", session: id, role: "backend", kind: "code", workItem: null, prompt: "x", rootPrompt: prompt, runId: "r", model: "coder-default", specRevision: 1, paths: [TEST_PATH] };
     await w.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: sneaky.id, note: renderNote(note) });
     await w.repos.revokeToken(token);
     const updated: SessionRecord = { ...record, head: sneaky.id, commits: [...record.commits, sneaky.id] };
@@ -76,7 +76,7 @@ describe("phase 3 specialization on fakes", () => {
 
   it("never merges when the reviewer runs on the coder's model", async () => {
     class SameModelReviewer extends RuleReviewer {
-      override readonly model = "copilot-default";
+      override readonly model = "coder-default";
       override async review(input: ReviewInput): Promise<ReviewVerdict> {
         return { ...(await super.review(input)), model: this.model };
       }

@@ -1,6 +1,6 @@
 ---
 role: backend
-model: copilot-default
+model: coder-default
 description: Implements a feature's server code inside its vertical slice.
 sharedAccess: true
 writeScope:

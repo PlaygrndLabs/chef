@@ -6,6 +6,7 @@
 <title>kargah</title>
 <link rel="stylesheet" href="/style.css">
 <script type="module" src="/app.js"></script>
+<script type="module" src="/src/chat.tsx"></script>
 </head>
 <body>
 <header>
@@ -19,10 +20,7 @@
 </header>
 <main>
   <section class="prompt">
-    <form id="prompt-form">
-      <textarea id="prompt" rows="2" placeholder="Describe a feature or a change" required></textarea>
-      <button type="submit">Send</button>
-    </form>
+    <div id="chat"></div>
     <p id="prompt-result" class="muted"></p>
     <div class="voice">
       <button type="button" id="talk">Talk</button>

@@ -6,7 +6,7 @@ import { initialMachine, isTerminal, transition, DEFAULT_BUDGET } from "../../sr
 
 const profile = parseProfile(`---
 role: backend
-model: copilot-default
+model: coder-default
 description: Implements a feature.
 writeScope:
   - features/{feature}/**
@@ -15,7 +15,7 @@ tools: [view, edit]
 Implement {feature} so its locked tests pass.`);
 
 describe("specialization building blocks", () => {
-  it("turns a profile into a Copilot custom agent with its write scope", () => {
+  it("turns a profile into a coder subagent with its write scope", () => {
     const agent = customAgent(profile, "todo-add", ["features/todo-add/**"]);
     expect(agent).toEqual({
       name: "kargah-backend",
@@ -23,7 +23,7 @@ describe("specialization building blocks", () => {
       description: "Implements a feature.",
       prompt: "Implement todo-add so its locked tests pass.\n\nYou may only change files matching:\nfeatures/todo-add/**",
       tools: ["view", "edit"],
-      model: "copilot-default",
+      model: "coder-default",
     });
     expect(customAgent({ ...profile, tools: null }, "x", []).prompt).toContain("You may not change any file.");
   });

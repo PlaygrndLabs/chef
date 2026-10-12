@@ -14,15 +14,17 @@ export interface SandboxJob {
   readonly ref: string;
   readonly commitId: string;
   readonly readToken: string;
+  readonly llm: { readonly baseUrl: string };
 }
 
 interface OutboundProps {
   readonly artifactsHost: string;
   readonly readToken: string;
   readonly allowHosts: readonly string[];
+  readonly llmHost: string | null;
 }
 
-const COPILOT_HOSTS = [/(^|\.)github\.com$/, /(^|\.)githubcopilot\.com$/, /(^|\.)githubusercontent\.com$/];
+const PLACEHOLDER = "kargah-placeholder";
 
 export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
   override async fetch(request: Request): Promise<Response> {
@@ -32,9 +34,11 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
     if (url.hostname === this.ctx.props.artifactsHost) {
       if (url.pathname.endsWith("/git-receive-pack") || url.searchParams.get("service") === "git-receive-pack") return new Response("the coder sandbox cannot push", { status: 403 });
       headers.set("authorization", `Bearer ${this.ctx.props.readToken}`);
-    } else if (COPILOT_HOSTS.some((host) => host.test(url.hostname))) {
-      const current = headers.get("authorization") ?? "";
-      if (current.includes("kargah-placeholder")) headers.set("authorization", current.replace("kargah-placeholder", this.env.COPILOT_GITHUB_TOKEN));
+    } else if (url.hostname === this.ctx.props.llmHost) {
+      for (const name of ["x-api-key", "authorization"]) {
+        const current = headers.get(name);
+        if (current?.includes(PLACEHOLDER)) headers.set(name, current.replace(PLACEHOLDER, this.env.CPA_API_KEY));
+      }
     } else if (!this.ctx.props.allowHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) {
       return new Response(`host ${url.hostname} is not allowed from the coder sandbox`, { status: 403 });
     }
@@ -60,19 +64,26 @@ export interface CommandResult {
   readonly stderr: string;
 }
 
+interface TurnOutput {
+  readonly changes: FileChanges;
+  readonly summary: string;
+  readonly model: string;
+  readonly usage?: { readonly inputTokens: number; readonly outputTokens: number };
+}
+
 export class SessionAgent extends Agent<Env> {
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void): Promise<CoderTurnResult> {
-    let result: { changes: FileChanges; summary: string; model: string } | null = null;
+    let result: TurnOutput | null = null;
     const { code, tail } = await this.runScript("runner.mjs", job, (event) => {
       if (event["type"] === "kargah.result") result = event as unknown as typeof result;
       else onEvent(event as unknown as CoderEvent);
     });
-    const final = result as { changes: FileChanges; summary: string; model: string } | null;
+    const final = result as TurnOutput | null;
     if (code !== 0 || !final) {
       onEvent({ type: "session.error", message: tail || `runner exited with ${code}` });
       throw new Error(`coder runner failed with exit code ${code}: ${tail.slice(-500)}`);
     }
-    return { changes: final.changes, summary: final.summary, model: final.model, runId: `${job.sessionId}-${Date.now()}`, usage: { inputTokens: 0, outputTokens: 0 } };
+    return { changes: final.changes, summary: final.summary, model: final.model, runId: `${job.sessionId}-${Date.now()}`, usage: final.usage ?? { inputTokens: 0, outputTokens: 0 } };
   }
 
   async runChecks(job: ChecksJob): Promise<CommandResult[]> {
@@ -84,13 +95,13 @@ export class SessionAgent extends Agent<Env> {
     return results;
   }
 
-  private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[] }, onEvent: (event: Record<string, unknown>) => void): Promise<{ code: number; tail: string }> {
+  private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void): Promise<{ code: number; tail: string }> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     if (!container.running) container.start({ image: container.images["coder"] as string, enableInternet: false });
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");
-    await container.interceptOutboundHttps("*", outbound({ props: { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])] } }));
+    await container.interceptOutboundHttps("*", outbound({ props: { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null } }));
     const { readToken, ...visible } = job;
     void readToken;
     const process = await container.exec(["node", `/opt/kargah/${script}`], { env: { KARGAH_JOB: toBase64(JSON.stringify(visible)) }, stdout: "pipe", stderr: "combined" });
