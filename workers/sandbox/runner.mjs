@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
@@ -13,6 +13,11 @@ execFileSync("git", ["clone", "--quiet", "--no-tags", "--branch", job.ref, job.r
 git("checkout", "--quiet", job.commitId);
 git("config", "user.email", "ma.karimi76@gmail.com");
 git("config", "user.name", "kargah");
+const modules = process.env.KARGAH_NODE_MODULES ?? "/opt/kargah/template/node_modules";
+if (existsSync(modules) && !existsSync(join(dir, "node_modules"))) {
+  symlinkSync(modules, join(dir, "node_modules"), "dir");
+  appendFileSync(join(dir, ".git", "info", "exclude"), "\nnode_modules\n");
+}
 
 const env = {
   PATH: process.env.PATH ?? "",
