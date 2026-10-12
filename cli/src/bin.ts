@@ -12,6 +12,7 @@ import { report, runSpike, type SpikeDataset, type SpikeMode } from "./spike/jev
 import { BENCH_ITEMS } from "./bench/items.ts";
 import { runVoice, VOICE_PROMPT } from "./voice.ts";
 import { exportTuneData } from "./tune/data.ts";
+import { serve } from "./serve.ts";
 import { renderReport, runBench, runReplay, type BenchMode, type BenchResult } from "./bench/run.ts";
 
 function option(args: readonly string[], name: string): string | undefined {
@@ -192,6 +193,14 @@ async function llmCheck(args: readonly string[]): Promise<number> {
   return 0;
 }
 
+async function serveCommand(args: readonly string[]): Promise<number> {
+  const local = await serve({ port: Number(option(args, "port") ?? 8787), project: option(args, "project") ?? "demo", real: !args.includes("--fake-checks"), log: (line) => process.stderr.write(`${line}\n`) });
+  process.stdout.write(`kargah is serving ${local.url}/?project=${option(args, "project") ?? "demo"}\n`);
+  await new Promise<void>((resolve) => process.once("SIGINT", resolve));
+  await local.close();
+  return 0;
+}
+
 async function main(args: readonly string[]): Promise<number> {
   const [command, sub] = args;
   if (command === "spec" && sub === "lint") return specLint(positional(args)[2] ?? "spec");
@@ -206,12 +215,13 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "bench") return bench(args);
   if (command === "voice") return voice(args);
   if (command === "tune" && sub === "data") return tuneData(args);
+  if (command === "serve") return serveCommand(args);
   if (command === "cpa" && sub === "init") {
     const result = cpaInit(REPO_ROOT);
     process.stdout.write(`${result.created ? "created" : "kept"} the local CPA key\nconfig: ${result.config}\nworker vars: ${result.devVars}\n`);
     return 0;
   }
-  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md] | kargah llm check [prompt] [--model id] | kargah cpa init | kargah bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | kargah voice [--say text] [--live] | kargah tune data [--out dir]\n");
+  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md] | kargah llm check [prompt] [--model id] | kargah cpa init | kargah bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | kargah voice [--say text] [--live] | kargah tune data [--out dir] | kargah serve [--port n] [--project id] [--fake-checks]\n");
   return 2;
 }
 

@@ -16,7 +16,8 @@ Build kargah, a human-free, spec-driven software builder on Cloudflare, until a 
 - Every push to canonical `main` is merged into every active fork (continuous upstream sync). A conflict becomes a task for the same session.
 - Only the merge gate writes to `main`. Nothing ever waits on a human click.
 - Routing: rules first, then Jev (TypeSafe AI's System One model, `@typesafe-ai/sdk`) answers typed `choice` questions with calibrated confidence, then a planner LLM with structured output writes spec and work items when confidence is low or the feature is new. Jev never writes text.
-- The coder is the GitHub Copilot SDK running a Copilot CLI session inside a Cloudflare Sandbox on the fork's checkout. Its session events are streamed to the dashboard over the session Durable Object's WebSocket.
+- The coder is the Claude Agent SDK running inside a Cloudflare Sandbox on the fork's checkout. It reaches Claude through the CPA gateway (`CPA_BASE_URL`, `CPA_API_KEY`), the same endpoint the planner and reviewer use.
+- Sessions are streamed to the app with CopilotKit: the kargah Worker hosts the CopilotKit runtime, each prompt runs as an AG-UI agent that streams the session's coder text, tool calls, state steps, preview, review, gate and merge, and the dashboard's CopilotKit chat renders it live.
 
 ## Non-negotiables
 
@@ -31,7 +32,7 @@ Build kargah, a human-free, spec-driven software builder on Cloudflare, until a 
 
 ## Stack
 
-TypeScript everywhere, pnpm workspaces, Wrangler 4.135.0 or later, Workers, Durable Objects (Agents SDK), Workflows, Queues, Cloudflare Sandbox, the Artifacts Workers binding, Vectorize, Workers AI, `@typesafe-ai/sdk`, GitHub Copilot SDK, and a schema validator for the spec and every RPC edge. GitHub Actions runs typecheck, lint, unit tests and the fake end-to-end suite on every push.
+TypeScript everywhere, pnpm workspaces, Wrangler 4.135.0 or later, Workers, Durable Objects (Agents SDK), Workflows, Queues, Cloudflare Sandbox, the Artifacts Workers binding, Vectorize, Workers AI, `@typesafe-ai/sdk`, the Claude Agent SDK, CopilotKit (runtime in the Worker, React chat in the dashboard, AG-UI between them), and a schema validator for the spec and every RPC edge. GitHub Actions runs typecheck, lint, unit tests and the fake end-to-end suite on every push.
 
 Repository layout (already scaffolded):
 
@@ -39,7 +40,7 @@ Repository layout (already scaffolded):
 spec/        feature map: spec/features/<id>.md with typed frontmatter (id, title, status, entrypoint, acceptance criteria)
 workers/     router, session Durable Object, orchestrator, upstream sync workflow, merge gate
 agents/      specialist profiles (planner, frontend, backend, test, reviewer, conflict-resolver, gardener)
-apps/        dashboard: features, sessions, live event stream, commits, preview URLs, stuck items
+apps/        dashboard: CopilotKit chat streaming sessions, features, commits, preview URLs, stuck items
 template/    agent-friendly template for projects kargah builds (Dune-style vertical slices)
 cli/         kargah CLI and the project CLI (app drive <flow>, app proof <feature>)
 ```
@@ -50,14 +51,14 @@ Each spike ends with a short note in `docs/spikes/<name>.md` that states the res
 
 | Spike | Done when | Fallback if it fails |
 | --- | --- | --- |
-| Copilot SDK in Sandbox | A Copilot CLI session inside a Cloudflare Sandbox edits a cloned Artifacts fork, emits `assistant.message_delta` and `session.idle`, and the change is pushed back | Keep the `Coder` interface and run another headless coding agent in the Sandbox; record which |
+| Coder in Sandbox | A Claude Agent SDK session inside a Cloudflare Sandbox edits a cloned Artifacts fork, emits `assistant.message_delta` and `session.idle`, and the change is pushed back | Keep the `Coder` interface and run another headless coding agent in the Sandbox; record which |
 | Preview from branch push | Pushing `preview/<feature>` to the canonical repo yields a reachable Worker Preview URL, read back through the API | Build the preview from the Sandbox with `wrangler preview` and record the URL |
 | Jev routing quality | A labeled set of at least 100 prompts (half English, half Persian) is routed raw and translated-to-English; accuracy and misroutes at the chosen threshold are reported | Pick the better mode; tune per-action thresholds so accepted misroutes stay under 2% |
 | Artifacts fork and notes | Create repo, fork, scoped token, push `refs/notes/*`, and receive `cf.artifacts.repo.pushed` on a Queue | Document the gap and emulate in the orchestrator |
 
 ## Phase 1: core loop
 
-Build: spec format and `kargah spec lint`; router (rules, Jev, planner); session Durable Object with the state machine `queued → planning → testing → coding → reviewing → gating → merged | stuck`; fork per session with scoped tokens; Copilot coder in Sandbox; auto-commit on `session.idle` with git notes; preview push; the project template with import-boundary lint and a no-comment lint; the project CLI that drives the preview and stores proof next to the commit; a merge gate (typecheck, lint, tests, reviewer verdict, proof present); a minimal dashboard with the live event stream; per-session budgets on tokens, time and attempts.
+Build: spec format and `kargah spec lint`; router (rules, Jev, planner); session Durable Object with the state machine `queued → planning → testing → coding → reviewing → gating → merged | stuck`; fork per session with scoped tokens; Claude Agent SDK coder in Sandbox; auto-commit on `session.idle` with git notes; preview push; the project template with import-boundary lint and a no-comment lint; the project CLI that drives the preview and stores proof next to the commit; a merge gate (typecheck, lint, tests, reviewer verdict, proof present); a minimal dashboard with the live event stream, streamed through CopilotKit; per-session budgets on tokens, time and attempts.
 
 Done when:
 - `pnpm test` and the fake end-to-end suite pass in CI.
@@ -76,7 +77,7 @@ Done when:
 
 ## Phase 3: specialization
 
-Build: specialist profiles as Copilot custom agents with write scopes enforced by the gate on the diff; test-first, where the test agent's failing tests are locked and the gate rejects coder commits that touch them (role read from git notes); a reviewer on a different model that checks the diff against the spec; parallel attempts as extra forks with the reviewer picking one; the full dashboard.
+Build: specialist profiles as coder subagents with write scopes enforced by the gate on the diff; test-first, where the test agent's failing tests are locked and the gate rejects coder commits that touch them (role read from git notes); a reviewer on a different model that checks the diff against the spec; parallel attempts as extra forks with the reviewer picking one; the full dashboard.
 
 Done when:
 - On a fixed benchmark of at least 10 features, the revert rate is lower than the Phase 2 baseline on the same benchmark.
@@ -108,5 +109,5 @@ Done when:
 
 - Build the thinnest end-to-end slice on fakes first, then replace one fake at a time with a real adapter.
 - Keep `docs/ARCHITECTURE.md` current with the code.
-- When a credential is missing (Cloudflare API token and account id, TypeSafe API key, a GitHub identity with Copilot access, a planner LLM key, an OpenAI key for Phase 5), keep going on fakes and list exactly what is needed in the current progress file.
+- When a credential is missing (Cloudflare API token and account id, TypeSafe API key, the CPA gateway URL and key for Claude, an OpenAI key for Phase 5), keep going on fakes and list exactly what is needed in the current progress file.
 - When a phase's criteria are met, write its progress file before starting the next phase.
