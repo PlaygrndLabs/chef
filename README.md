@@ -5,7 +5,7 @@ A human-free, spec-driven software builder on Cloudflare. Each feature has one s
 - Concept doc: https://claude.ai/code/artifact/21197d74-c9ea-42da-b7ba-c34d4b201e77
 - Implementation goal: [GOAL.md](GOAL.md)
 - How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Status: Phases 0 to 4 (core loop, concurrency, specialist agents, memory) run on fakes, on real git and with real checks; not yet run on a Cloudflare account. See [docs/progress](docs/progress).
+- Status: runs on Cloudflare (Workers, Durable Objects, Containers, Artifacts) with real Claude; progress notes in [docs/progress](docs/progress).
 
 ## Layout
 
@@ -56,7 +56,18 @@ What is saved in the dashboard wins over the Worker's secrets, so the secrets ar
 
 The local CLI reads the same environment variables. The `llm` workflow (Actions, run by hand) runs `llm check` (mode `check`) or `demo --live` (mode `demo`) with the repository secrets `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`. `TYPESAFE_API_KEY`, when set, makes the demo route with Jev.
 
-## Deploy to a fresh Cloudflare account
+## Host your own
+
+The shortest way, with no tools on your machine:
+
+1. Fork this repository on GitHub.
+2. In the fork, add two Actions secrets: `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (a token that can edit Workers, Containers, Vectorize and Artifacts). The account needs Workers Paid with Artifacts and Containers enabled.
+3. Run the `deploy` workflow from the Actions tab. It creates the memory index, builds the sandbox image and prints chef's URL.
+4. Open the URL, pick a password, and fill in Settings: your Claude provider and the Cloudflare account for previews. Everything else is optional.
+
+A Deploy to Cloudflare button is not offered yet: the button builds a self-contained Worker folder and does not document Containers or Artifacts, both of which chef needs.
+
+## Deploy to a fresh Cloudflare account by hand
 
 1. Use an account on Workers Paid with Artifacts and Containers enabled. Docker must be running where you deploy, to build the sandbox image.
 2. Optional: set any of the secrets from [Settings](#settings) with `npx wrangler secret put <NAME>` in `workers/`. Everything can also be set in the dashboard after the deploy.
