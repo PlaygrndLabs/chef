@@ -145,7 +145,7 @@ Served by the kargah Worker (`workers/src/index.ts`):
 | Method and path | Effect |
 | --- | --- |
 | `POST /api/projects/:name/bootstrap` | Creates the canonical repo from the template if it does not exist |
-| `POST /api/projects/:name/voice` | Exchanges a WebRTC `{ sdp }` offer for a GPT-Live session that delegates spoken requests to the router; needs `OPENAI_API_KEY` |
+| `POST /api/projects/:name/voice` | Exchanges a WebRTC `{ sdp }` offer for a voice session that delegates spoken requests to the router: GPT-Live with `OPENAI_API_KEY`, otherwise the Realtime API through the CPA gateway, where a `kargah_request` tool call stands in for client delegation |
 | `POST /api/projects/:name/prompts` | Routes `{ prompt }` and starts a session when there is work; a question returns `answer` with its sources |
 | `GET /api/projects/:name/sessions` | Session records |
 | `GET /api/projects/:name/events?after=<seq>` | Stored events after a sequence number |

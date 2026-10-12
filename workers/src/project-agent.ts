@@ -7,6 +7,7 @@ import { LlmReviewer } from "@kargah/adapters/llm-reviewer";
 import { WorkersAiReviewer, type TextGenerator } from "@kargah/adapters/workers-ai-reviewer";
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@kargah/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@kargah/adapters/gpt-live";
+import { RealtimeHost } from "@kargah/adapters/realtime";
 import { WorkersBuildsPreviewHost } from "@kargah/adapters/workers-previews";
 import { isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PushedEvent, type Tree, type VoiceCall } from "@kargah/core";
 import { renderRegistry, renderStub, stubPath } from "@kargah/template/gen";
@@ -75,10 +76,11 @@ export class ProjectAgent extends Agent<Env> {
       return Response.json(result, { status: 202 });
     }
     if (request.method === "POST" && action === "voice") {
-      if (!this.env.OPENAI_API_KEY) return Response.json({ error: "voice needs the OPENAI_API_KEY secret" }, { status: 503 });
       const { sdp } = (await request.json()) as { sdp?: string };
       if (!sdp) return Response.json({ error: "sdp is required" }, { status: 400 });
-      const host = new GptLiveHost({ apiKey: this.env.OPENAI_API_KEY, model: this.env.VOICE_MODEL, voice: this.env.VOICE, connect: workersConnect });
+      const host = this.env.OPENAI_API_KEY
+        ? new GptLiveHost({ apiKey: this.env.OPENAI_API_KEY, model: this.env.VOICE_MODEL, voice: this.env.VOICE, connect: workersConnect })
+        : new RealtimeHost({ baseUrl: `${this.env.CPA_BASE_URL.replace(/\/$/, "")}/v1`, apiKey: this.env.CPA_API_KEY, model: this.env.REALTIME_MODEL, voice: this.env.VOICE, connect: workersConnect });
       const target = {
         submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
           const result = await orchestrator.submitSpoken(prompt, call);
@@ -127,7 +129,7 @@ export class ProjectAgent extends Agent<Env> {
 const workersConnect: Connect = async (url, headers) => {
   const response = await fetch(url.replace(/^ws/, "http"), { headers: { ...headers, upgrade: "websocket" } });
   const socket = response.webSocket;
-  if (!socket) throw new Error(`GPT-Live refused the WebSocket: ${response.status}`);
+  if (!socket) throw new Error(`the voice API refused the WebSocket: ${response.status}`);
   socket.accept();
   return socket as unknown as SocketLike;
 };
