@@ -50,6 +50,7 @@ export interface PushedEvent {
 export interface RepoHost {
   createRepo(name: string, opts?: { defaultBranch?: string; description?: string }): Promise<RepoInfo>;
   fork(source: string, name: string): Promise<RepoInfo>;
+  deleteRepo(name: string): Promise<boolean>;
   info(repo: string): Promise<RepoInfo | null>;
   createToken(repo: string, scope: TokenScope, ttlSeconds: number): Promise<RepoToken>;
   revokeToken(token: RepoToken): Promise<void>;

@@ -20,6 +20,25 @@ export class PreviewPublisher {
   }
 }
 
+export class Archiver {
+  constructor(
+    private readonly repos: RepoHost,
+    private readonly canonical: string,
+    private readonly ttlSeconds: number,
+  ) {}
+
+  async archive(sessionId: string, commitId: string, fromRepo: string): Promise<string> {
+    const branch = `archive/${sessionId}`;
+    const token = await this.repos.createToken(this.canonical, "write", this.ttlSeconds);
+    try {
+      await this.repos.pushRef(token, { ref: branch, commitId, fromRepo, force: true });
+    } finally {
+      await this.repos.revokeToken(token);
+    }
+    return branch;
+  }
+}
+
 export class MainWriter {
   constructor(
     private readonly repos: RepoHost,

@@ -49,6 +49,12 @@ export class MemoryRepoHost implements RepoHost {
     return info;
   }
 
+  async deleteRepo(name: string): Promise<boolean> {
+    if (!this.repos.delete(name)) return false;
+    for (const state of this.tokens.values()) if (state.token.repo === name) state.revoked = true;
+    return true;
+  }
+
   async info(repo: string): Promise<RepoInfo | null> {
     return this.repos.get(repo)?.info ?? null;
   }
@@ -70,7 +76,8 @@ export class MemoryRepoHost implements RepoHost {
     return this.repos.get(repo)?.refs.get(ref) ?? null;
   }
 
-  async readCommit(_repo: string, id: string): Promise<Commit | null> {
+  async readCommit(repo: string, id: string): Promise<Commit | null> {
+    if (!this.repos.has(repo)) return null;
     return this.objects.get(id) ?? null;
   }
 
@@ -140,7 +147,7 @@ export class MemoryRepoHost implements RepoHost {
   }
 
   async readNote(repo: string, namespace: string, commitId: string): Promise<string | null> {
-    return this.repo(repo).notes.get(namespace)?.get(commitId) ?? null;
+    return this.repos.get(repo)?.notes.get(namespace)?.get(commitId) ?? null;
   }
 
   onPush(listener: (event: PushedEvent) => void): () => void {
