@@ -8,7 +8,7 @@ export type SessionEvent =
   | { readonly type: "tests_committed" }
   | { readonly type: "coded" }
   | { readonly type: "review_approved" }
-  | { readonly type: "review_rejected"; readonly reasons: readonly string[] }
+  | { readonly type: "review_rejected"; readonly reasons: readonly string[]; readonly retest?: boolean }
   | { readonly type: "gate_passed" }
   | { readonly type: "gate_failed"; readonly log: string }
   | { readonly type: "conflict"; readonly paths: readonly string[] }
@@ -79,13 +79,14 @@ export function exceeded(usage: Usage, budget: Budget, now: number): string | nu
 export function transition(current: MachineState, event: SessionEvent, budget: Budget, now: number): MachineState {
   let to = NEXT[event.type][current.state];
   if (event.type === "planned" && current.state === "planning" && event.withTests) to = "testing";
+  if (event.type === "review_rejected" && current.state === "reviewing" && event.retest) to = "testing";
   if (!to) throw new InvalidTransition(current.state, event.type);
   const retry = event.type === "review_rejected" || event.type === "gate_failed" || event.type === "turn_rejected" || (event.type === "reopened" && event.charged !== false);
   const usage: Usage = retry ? { ...current.usage, attempts: current.usage.attempts + 1 } : current.usage;
-  const carried = (to === "coding" || to === "testing") && event.type !== "tests_committed" && event.type !== "planned";
+  const carried = (to === "coding" || to === "testing") && event.type !== "planned" && (event.type !== "tests_committed" || current.reason === "review_rejected");
   const feedback = feedbackOf(event) ?? (carried ? current.feedback : null);
   const reason = event.type === "fail" || event.type === "dropped" ? event.reason : event.type;
-  if (to === "coding" || event.type === "turn_rejected") {
+  if (to === "coding" || event.type === "turn_rejected" || event.type === "review_rejected") {
     const over = exceeded(usage, budget, now);
     if (over) return { state: "stuck", usage, feedback, reason: over };
   }

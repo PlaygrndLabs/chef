@@ -49,6 +49,29 @@ describe("phase 3 specialization on fakes", () => {
     expect(main.tree[TEST_PATH]).toBe(todo[TEST_PATH]);
   });
 
+  it("sends a review that finds missing tests back to the test writer, not the coder", async () => {
+    const base = scriptFromFixture(todo);
+    const full = todo[TEST_PATH] as string;
+    const script: Script = async (input, attempt) => {
+      const out = await base(input, attempt);
+      if (input.role === "test" && attempt === 1) return { ...out, changes: { ...out.changes, [TEST_PATH]: full.slice(0, full.indexOf('test("AC3')) } };
+      return out;
+    };
+    const w = todoWorld(script);
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    const record = await w.orchestrator.run(sessionId as string);
+
+    expect(record.machine.state).toBe("merged");
+    const states = ofType(w.bus.log, "session.state").map((e) => `${e.from}->${e.to}`);
+    expect(states).toContain("reviewing->testing");
+    const testTurns = w.coder.turns.filter((t) => t.role === "test");
+    expect(testTurns).toHaveLength(2);
+    expect(testTurns[1]?.prompt).toContain("no test named after AC3");
+    expect(ofType(w.bus.log, "turn.rejected")).toEqual([]);
+    expect((await w.orchestrator.mainTree()).tree[TEST_PATH]).toBe(full);
+  });
+
   it("fails the gate when a commit changed a locked test, reading roles from git notes", async () => {
     const w = todoWorld(scriptFromFixture(todo));
     await w.orchestrator.bootstrap(templateTree());

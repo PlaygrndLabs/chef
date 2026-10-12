@@ -10,6 +10,7 @@ export interface ReviewInput {
 export interface ReviewVerdict {
   readonly approve: boolean;
   readonly reasons: readonly string[];
+  readonly retest?: boolean;
   readonly model: string;
 }
 
