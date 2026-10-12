@@ -22,7 +22,7 @@ export interface FeatureNode {
   readonly spec: FeatureSpec | null;
   readonly onMain: boolean;
   readonly sessions: readonly SessionNode[];
-  readonly preview: { readonly url: string; readonly commitId: string; readonly sessionId: string } | null;
+  readonly preview: { readonly url: string; readonly commitId: string; readonly link?: string | undefined; readonly sessionId: string } | null;
   readonly updatedAt: number;
 }
 

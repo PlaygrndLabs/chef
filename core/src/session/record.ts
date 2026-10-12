@@ -16,7 +16,7 @@ export interface SessionRecord {
   head: string | null;
   baseMain: string | null;
   commits: string[];
-  preview: { url: string; commitId: string } | null;
+  preview: { url: string; commitId: string; link?: string } | null;
   firstPreviewCommit: string | null;
   verdict: (ReviewVerdict & { commitId: string }) | null;
   lastCodeItem: string | null;
@@ -26,6 +26,7 @@ export interface SessionRecord {
   previewKey: string;
   readonly parent: string | null;
   history: string[];
+  released?: MachineState["state"] | null;
   createdAt: number;
   updatedAt: number;
 }

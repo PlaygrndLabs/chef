@@ -42,9 +42,10 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, commitId }: { readonly url: string | null; readonly commitId: string }) {
+function PreviewTab({ url, link, commitId }: { readonly url: string | null; readonly link: string | null; readonly commitId: string }) {
   const [nonce, setNonce] = useState(0);
   if (!url) return <Empty>The preview appears after chef's first step.</Empty>;
+  const href = link ?? url;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex h-9 items-center gap-2 rounded-xl border px-3">
@@ -54,13 +55,13 @@ function PreviewTab({ url, commitId }: { readonly url: string | null; readonly c
           <RefreshCw />
         </Button>
         <Button variant="ghost" size="icon-xs" asChild>
-          <a href={url} target="_blank" rel="noreferrer" aria-label="Open the preview in a new tab">
+          <a href={href} target="_blank" rel="noreferrer" aria-label="Open the preview in a new tab">
             <ExternalLink />
           </a>
         </Button>
       </div>
-      <iframe key={nonce} src={url} title="Preview" className="min-h-[460px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-      <p className="text-xs text-muted-foreground">This preview updates after every step chef takes. Built from {short(commitId)}.</p>
+      <iframe key={nonce} src={href} title="Preview" className="min-h-[460px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+      <p className="text-xs text-muted-foreground">This preview updates after every step chef takes. Built from {short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.</p>
     </div>
   );
 }
@@ -246,7 +247,7 @@ export function Panel() {
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         <TabsContent value="preview" className="flex min-h-0 flex-1 flex-col">
-          <PreviewTab url={preview?.url ?? null} commitId={preview?.commitId ?? ""} />
+          <PreviewTab url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} />
         </TabsContent>
         <TabsContent value="changes">{node ? <ChangesTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
         <TabsContent value="details">{node ? <DetailsTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>

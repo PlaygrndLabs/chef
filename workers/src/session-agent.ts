@@ -83,11 +83,35 @@ export interface SandboxStatus {
   readonly exit: string | null;
 }
 
+export const SANDBOX_IDLE_SECONDS = 300;
+
+const LAST_USED = "sandbox/last-used";
+
 export class SessionAgent extends Agent<Env> {
   private exit: string | null = null;
+  private busy = 0;
 
   async status(): Promise<SandboxStatus> {
     return { running: this.ctx.container?.running ?? false, exit: this.exit };
+  }
+
+  async stop(): Promise<boolean> {
+    const container = this.ctx.container;
+    if (!container?.running || this.busy > 0) return false;
+    await container.destroy();
+    return true;
+  }
+
+  async sleepIfIdle(): Promise<void> {
+    const container = this.ctx.container;
+    if (!container?.running) return;
+    const lastUsed = (await this.ctx.storage.get<number>(LAST_USED)) ?? 0;
+    const idleFor = Date.now() - lastUsed;
+    if (this.busy === 0 && idleFor >= SANDBOX_IDLE_SECONDS * 1000) {
+      await container.destroy();
+      return;
+    }
+    await this.schedule(Math.max(30, Math.ceil(SANDBOX_IDLE_SECONDS - idleFor / 1000)), "sleepIfIdle", undefined, { idempotent: true });
   }
 
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<CoderTurnResult> {
@@ -124,6 +148,17 @@ export class SessionAgent extends Agent<Env> {
   }
 
   private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null } = {}): Promise<{ code: number; tail: string }> {
+    this.busy++;
+    try {
+      return await this.exec(script, job, onEvent, secrets);
+    } finally {
+      this.busy--;
+      await this.ctx.storage.put(LAST_USED, Date.now());
+      await this.schedule(SANDBOX_IDLE_SECONDS, "sleepIfIdle", undefined, { idempotent: true });
+    }
+  }
+
+  private async exec(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null }): Promise<{ code: number; tail: string }> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     if (!container.running) {
@@ -135,6 +170,7 @@ export class SessionAgent extends Agent<Env> {
       );
       for (let waited = 0; !container.running && !this.exit && waited < 60_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
       if (!container.running) throw new Error(`the sandbox container did not start: ${this.exit ?? "timed out"}`);
+      await container.setInactivityTimeout(SANDBOX_IDLE_SECONDS * 1000).catch(() => undefined);
     }
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");

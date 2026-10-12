@@ -9,7 +9,8 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, PreviewKeeper, readSpec, startVoiceCall, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { applyProjectUpdate, readProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
@@ -17,16 +18,20 @@ import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder } from "./sandbox-coder.ts";
+import { buildingPage, CloudflareWorkerSpace } from "./preview-space.ts";
 import { currentSettings } from "./settings.ts";
 import type { SandboxStatus } from "./session-agent.ts";
 
 const SESSION_ROUTE = /^\/api\/projects\/[a-z][a-z0-9-]{1,30}\/sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/;
+const PREVIEW_ROUTE = /^\/preview\/[a-z][a-z0-9-]{1,30}\/([a-z0-9-]{1,80})\/?$/;
+const PROJECT_SETTINGS = "project/settings";
+const BUSY_SWEEP_SECONDS = 600;
 
 const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
 
 export class ProjectAgent extends Agent<Env> {
   private readonly calls = new Map<string, VoiceCall>();
-  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; settings: Resolved; fingerprint: string } | null = null;
+  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; settings: Resolved; fingerprint: string } | null = null;
 
   private async build() {
     const settings = await currentSettings(this.env);
@@ -37,6 +42,13 @@ export class ProjectAgent extends Agent<Env> {
     const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message));
     const llm = settings.llm ? llmFromProvider(settings.llm) : missingLlm;
     const llmReviewer = new LlmReviewer(llm, settings.models.reviewer);
+    const store = new DurableStore(this.ctx.storage);
+    const clock = { now: () => Date.now() };
+    const grant = settings.cloudflare ? { accountId: settings.cloudflare.accountId, worker: `${env.PREVIEW_WORKER}-${this.name}` } : null;
+    const keeper =
+      settings.cloudflare && grant
+        ? new PreviewKeeper(new SandboxPreviewHost(env.SESSION, repos, grant, settings.cloudflare.apiToken), new CloudflareWorkerSpace(grant, settings.cloudflare.apiToken), { repos, store, clock, canonical: this.name, onActivity: () => void this.scheduleSweep() })
+        : null;
     const orchestrator = new Orchestrator(
       {
         repos,
@@ -44,13 +56,13 @@ export class ProjectAgent extends Agent<Env> {
         classifier: settings.jev ? new JevClassifier(new TypeSafeClient({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL }), env.JEV_MODEL) : NO_CLASSIFIER,
         planner: new LlmPlanner(llm, settings.models.planner),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
-        previews: settings.cloudflare ? new SandboxPreviewHost(env.SESSION, repos, { accountId: settings.cloudflare.accountId, worker: `${env.PREVIEW_WORKER}-${this.name}` }, settings.cloudflare.apiToken) : noPreviews,
+        previews: keeper ?? noPreviews,
         checks: new SandboxCheckRunner(env.SESSION, repos),
         proofs: new SandboxProofRunner(env.SESSION, repos),
         bus,
-        clock: { now: () => Date.now() },
+        clock,
         ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
-        store: new DurableStore(this.ctx.storage),
+        store,
         memory: new VectorizeIndex(env.MEMORY as unknown as VectorizeLike, env.AI as unknown as EmbedderLike, this.name),
       },
       {
@@ -59,9 +71,10 @@ export class ProjectAgent extends Agent<Env> {
         profiles: loadProfiles(agentFiles),
         generated,
         specialization: { attempts: settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
+        previewLink: (key) => `/preview/${this.name}/${key}`,
       },
     );
-    this.built = { orchestrator, bus, repos, settings, fingerprint };
+    this.built = { orchestrator, bus, repos, keeper, settings, fingerprint };
     return this.built;
   }
 
@@ -71,6 +84,9 @@ export class ProjectAgent extends Agent<Env> {
     const { orchestrator, bus, settings } = await this.build();
     const session = SESSION_ROUTE.exec(url.pathname);
     if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
+    const preview = PREVIEW_ROUTE.exec(url.pathname);
+    if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"));
+    if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
       return Response.json({ commitId: main.commitId, features: readSpec(main.tree) });
@@ -159,6 +175,57 @@ export class ProjectAgent extends Agent<Env> {
       throw error;
     }
     return Response.json({ error: "not found" }, { status: 404 });
+  }
+
+  private async previewRequest(key: string, retry: boolean): Promise<Response> {
+    const { keeper } = await this.build();
+    if (!keeper) return buildingPage({ status: "failed", key, error: NO_CLOUDFLARE });
+    let visit = await keeper.visit(key);
+    if (visit.status === "failed" && retry) visit = { status: "rebuild" };
+    if (visit.status === "ready") return new Response(null, { status: 302, headers: { location: visit.url, "cache-control": "no-store" } });
+    if (visit.status === "rebuild") {
+      await keeper.startRebuild(key);
+      await this.schedule(0, "rebuildPreview", key);
+      return buildingPage({ status: "building", key });
+    }
+    if (visit.status === "failed") return buildingPage({ status: "failed", key, error: visit.error });
+    return buildingPage({ status: visit.status, key });
+  }
+
+  async rebuildPreview(key: string): Promise<void> {
+    const { keeper } = await this.build();
+    await keeper?.rebuild(key);
+  }
+
+  async projectSettings(): Promise<ProjectSettings> {
+    return readProjectSettings(await this.ctx.storage.get<Partial<ProjectSettings>>(PROJECT_SETTINGS));
+  }
+
+  private async settingsRequest(request: Request): Promise<Response> {
+    const stored = await this.ctx.storage.get<Partial<ProjectSettings>>(PROJECT_SETTINGS);
+    if (request.method === "GET") return Response.json(readProjectSettings(stored));
+    if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
+    const result = applyProjectUpdate(stored, await request.json().catch(() => null));
+    if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+    await this.ctx.storage.put(PROJECT_SETTINGS, result.settings);
+    await this.scheduleSweep();
+    return Response.json(readProjectSettings(result.settings));
+  }
+
+  private async scheduleSweep(): Promise<void> {
+    const { previewIdleMinutes } = await this.projectSettings();
+    await this.schedule(previewIdleMinutes * 60, "sweepPreviews", undefined, { idempotent: true });
+  }
+
+  async sweepPreviews(): Promise<void> {
+    const { keeper, orchestrator } = await this.build();
+    if (!keeper) return;
+    const { previewIdleMinutes } = await this.projectSettings();
+    const idleMs = previewIdleMinutes * 60_000;
+    const busy = (await orchestrator.sessions()).some((s) => !isTerminal(s.machine.state));
+    const outcome = await keeper.sweep({ busy, idleMs });
+    if (outcome.status === "busy") await this.schedule(BUSY_SWEEP_SECONDS, "sweepPreviews", undefined, { idempotent: true });
+    if (outcome.status === "awake") await this.schedule(Math.max(60, Math.ceil((idleMs - outcome.idleForMs) / 1000)), "sweepPreviews", undefined, { idempotent: true });
   }
 
   override async onConnect(connection: Connection): Promise<void> {
