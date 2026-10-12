@@ -50,5 +50,5 @@ jobs:
         run: |
           url=$(cat "$RUNNER_TEMP/url")
           echo "chef is at $url"
-          curl -fsS -o /dev/null -w '%{http_code}\n' "$url/"
+          curl -fsS --retry 10 --retry-all-errors --retry-delay 6 -o /dev/null -w '%{http_code}\n' "$url/"
           test "$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/projects/demo/sessions")" != 200

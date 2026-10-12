@@ -1,4 +1,4 @@
-import { NO_LLM } from "@chef/adapters/providers";
+import { NO_LLM } from "@chef/adapters/settings";
 import type { Coder, CoderTurnInput, CoderTurnResult } from "@chef/core";
 
 export class SandboxCoder implements Coder {

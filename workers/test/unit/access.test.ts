@@ -1,23 +1,48 @@
 import { describe, expect, it } from "vitest";
-import { guard } from "../../src/access.ts";
+import { guard, hashPassword, type Credential, type StoredPassword } from "../../src/access.ts";
 
 const at = (path: string, init?: RequestInit) => new Request(`https://chef.example${path}`, init);
+const form = (fields: Record<string, string>) => ({ method: "POST", body: new URLSearchParams(fields) });
+const never = async () => false;
+
+async function signsInWith(credential: Credential, password: string) {
+  expect((await guard(at("/"), credential, never))?.headers.get("content-type")).toContain("text/html");
+  expect((await guard(at("/api/projects/demo/sessions"), credential, never))?.status).toBe(401);
+  expect((await guard(at("/login", form({ password: "nope-nope" })), credential, never))?.status).toBe(401);
+  const login = await guard(at("/login", form({ password })), credential, never);
+  expect(login?.status).toBe(303);
+  const session = (login?.headers.get("set-cookie") ?? "").split(";")[0] as string;
+  expect(await guard(at("/api/projects/demo/sessions", { headers: { cookie: session } }), credential, never)).toBeNull();
+  expect(await guard(at("/agents/project-agent/demo", { headers: { authorization: `Bearer ${password}` } }), credential, never)).toBeNull();
+  expect((await guard(at("/", { headers: { cookie: "chef_access=forged" } }), credential, never))?.status).toBe(200);
+}
 
 describe("dashboard access", () => {
-  it("refuses everything while no password is set", async () => {
-    expect((await guard(at("/"), undefined))?.status).toBe(503);
-    expect((await guard(at("/api/projects/demo/sessions"), undefined))?.status).toBe(503);
+  it("asks the first visitor to set a password and refuses the API until then", async () => {
+    expect((await guard(at("/api/projects/demo/sessions"), null, never))?.status).toBe(503);
+    const setup = await guard(at("/"), null, never);
+    expect(await setup?.text()).toContain("Set the password");
+    expect((await guard(at("/setup", form({ password: "short", confirm: "short" })), null, never))?.status).toBe(400);
+    expect((await guard(at("/setup", form({ password: "long enough", confirm: "different" })), null, never))?.status).toBe(400);
+    let stored: StoredPassword | null = null;
+    const claim = async (password: StoredPassword) => {
+      if (stored) return false;
+      stored = password;
+      return true;
+    };
+    const done = await guard(at("/setup", form({ password: "long enough", confirm: "long enough" })), null, claim);
+    expect(done?.status).toBe(303);
+    expect(done?.headers.get("set-cookie")).toContain("chef_access=");
+    expect(stored).not.toBeNull();
+    const late = await guard(at("/setup", form({ password: "someone else", confirm: "someone else" })), null, claim);
+    expect(late?.headers.get("set-cookie")).toBeNull();
   });
 
-  it("shows the sign-in page, rejects the API, and lets a signed-in browser or a bearer through", async () => {
-    expect((await guard(at("/"), "s3cret"))?.headers.get("content-type")).toContain("text/html");
-    expect((await guard(at("/api/projects/demo/sessions"), "s3cret"))?.status).toBe(401);
-    expect((await guard(at("/login", { method: "POST", body: new URLSearchParams({ password: "nope" }) }), "s3cret"))?.status).toBe(401);
-    const login = await guard(at("/login", { method: "POST", body: new URLSearchParams({ password: "s3cret" }) }), "s3cret");
-    expect(login?.status).toBe(303);
-    const session = (login?.headers.get("set-cookie") ?? "").split(";")[0] as string;
-    expect(await guard(at("/api/projects/demo/sessions", { headers: { cookie: session } }), "s3cret")).toBeNull();
-    expect(await guard(at("/agents/project-agent/demo", { headers: { authorization: "Bearer s3cret" } }), "s3cret")).toBeNull();
-    expect((await guard(at("/", { headers: { cookie: "chef_access=forged" } }), "s3cret"))?.status).toBe(200);
+  it("signs in with the deployment's password", async () => {
+    await signsInWith({ kind: "deployment", password: "s3cret-pass" }, "s3cret-pass");
+  });
+
+  it("signs in with a password set in the app", async () => {
+    await signsInWith({ kind: "app", ...(await hashPassword("app password")) }, "app password");
   });
 });
