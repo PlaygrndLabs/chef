@@ -2,12 +2,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { checkTree, formatProblems, type CodeRule } from "@kargah/core/checks";
-import { lintSpecFiles, parseFeature, Router, readSpec, type KargahEvent } from "@kargah/core";
+import { lintSpecFiles, parseFeature, Router, readSpec, type Deps, type KargahEvent } from "@kargah/core";
 import { KeywordClassifier, TemplatePlanner } from "@kargah/core/fakes";
 import { readTree } from "./fs.ts";
 import { demoScript } from "./demo.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
 import { cpaInit } from "./cpa/init.ts";
+import { RunnerCoder } from "./local/runner-coder.ts";
 import { report, runSpike, type SpikeDataset, type SpikeMode } from "./spike/jev.ts";
 import { BENCH_ITEMS } from "./bench/items.ts";
 import { runVoice, VOICE_PROMPT } from "./voice.ts";
@@ -86,9 +87,39 @@ function describe(event: KargahEvent): string | null {
   }
 }
 
+async function liveDeps(): Promise<Partial<Deps>> {
+  const { llmFromEnv } = await import("@kargah/adapters/anthropic");
+  const { LlmPlanner } = await import("@kargah/adapters/llm-planner");
+  const { LlmReviewer } = await import("@kargah/adapters/llm-reviewer");
+  const baseUrl = process.env["CPA_BASE_URL"];
+  const apiKey = process.env["CPA_API_KEY"];
+  if (!baseUrl || !apiKey) throw new Error("--live needs CPA_BASE_URL and CPA_API_KEY");
+  const llm = llmFromEnv(process.env);
+  const classifier = process.env["TYPESAFE_API_KEY"] ? (await import("@kargah/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
+  return {
+    classifier,
+    planner: new LlmPlanner(llm, process.env["PLANNER_MODEL"] ?? "claude-opus-5-5"),
+    reviewer: new LlmReviewer(llm, process.env["REVIEWER_MODEL"] ?? "claude-opus-5-5"),
+    coder: new RunnerCoder({ runner: join(REPO_ROOT, "workers", "sandbox", "runner.mjs"), baseUrl, apiKey, model: process.env["CODER_MODEL"] ?? "claude-sonnet-5-5" }),
+  };
+}
+
 async function demo(args: readonly string[]): Promise<number> {
   const prompt = positional(args)[1] ?? "Add an item to a todo list";
   const real = !args.includes("--fake-checks");
+  if (args.includes("--live")) {
+    const w = localWorld({ script: () => ({ changes: {} }), real, deps: await liveDeps() });
+    w.bus.subscribe((event) => {
+      const line = describe(event);
+      if (line) process.stdout.write(`${line}\n`);
+    });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    if (!sessionId) return 1;
+    const record = await w.orchestrator.run(sessionId);
+    process.stdout.write(`\n${record.featureId}: ${record.machine.state} after ${record.machine.usage.attempts} attempt(s), ${record.commits.length} commits\n`);
+    return record.machine.state === "merged" ? 0 : 1;
+  }
   const fixture = readTree(join(REPO_ROOT, "core", "test", "fixtures", "todo"));
   const spec = parseFeature(readFileSync(join(REPO_ROOT, "core", "test", "fixtures", "todo-add.md"), "utf8"));
   if (!spec.ok) throw new Error(spec.errors.join("\n"));
@@ -221,7 +252,7 @@ async function main(args: readonly string[]): Promise<number> {
     process.stdout.write(`${result.created ? "created" : "kept"} the local CPA key\nconfig: ${result.config}\nworker vars: ${result.devVars}\n`);
     return 0;
   }
-  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md] | kargah llm check [prompt] [--model id] | kargah cpa init | kargah bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | kargah voice [--say text] [--live] | kargah tune data [--out dir] | kargah serve [--port n] [--project id] [--fake-checks]\n");
+  process.stderr.write("usage: kargah spec lint [dir] | kargah check [--root dir] [--rules a,b] | kargah route <prompt> [--spec dir] | kargah demo [prompt] [--fake-checks] [--live] | kargah spike jev [--mode raw|translated|both] [--data file] [--out file.md] | kargah llm check [prompt] [--model id] | kargah cpa init | kargah bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | kargah voice [--say text] [--live] | kargah tune data [--out dir] | kargah serve [--port n] [--project id] [--fake-checks]\n");
   return 2;
 }
 

@@ -18,7 +18,7 @@ const env = {
   PATH: process.env.PATH ?? "",
   HOME: process.env.HOME ?? "/tmp",
   ANTHROPIC_BASE_URL: job.llm.baseUrl,
-  ANTHROPIC_API_KEY: "kargah-placeholder",
+  ANTHROPIC_API_KEY: process.env.KARGAH_LLM_KEY ?? "kargah-placeholder",
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
   DISABLE_TELEMETRY: "1",
   DISABLE_AUTOUPDATER: "1",

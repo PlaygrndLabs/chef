@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { RunnerCoder } from "../../src/local/index.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 interface Seen {
@@ -34,7 +35,9 @@ function sse(res: ServerResponse, model: string, blocks: readonly Block[], stop:
   res.end();
 }
 
-function fakeClaude(target: string) {
+const HELLO = "export const hello = () => \"hello\";\n";
+
+function fakeClaude(call: { readonly name: string; readonly input: object }) {
   const seen: Seen[] = [];
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     let raw = "";
@@ -48,7 +51,7 @@ function fakeClaude(target: string) {
       if (!path.endsWith("/v1/messages")) return void res.writeHead(404).end();
       const model = body.model ?? "claude";
       const answered = JSON.stringify(body.messages ?? []).includes("tool_result");
-      if (tools.includes("Write") && !answered) return sse(res, model, [{ type: "text", text: "Writing the feature.\n" }, { type: "tool_use", id: "toolu_01", name: "Write", input: { file_path: target, content: "export const hello = () => \"hello\";\n" } }], "tool_use");
+      if (tools.includes("Write") && !answered) return sse(res, model, [{ type: "text", text: "Writing the feature.\n" }, { type: "tool_use", id: "toolu_01", ...call }], "tool_use");
       const text = tools.includes("Write") ? "Added features/hello/index.ts." : "ok";
       if (body.stream) return sse(res, model, [{ type: "text", text }], "end_turn");
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", model, content: [{ type: "text", text }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 12, output_tokens: 3 } }));
@@ -74,7 +77,7 @@ describe("coder runner on the Claude Agent SDK", () => {
     mkdirSync(remote);
     const commitId = origin(remote);
     const workspace = join(root, "workspace");
-    const { server, seen } = fakeClaude(join(workspace, "s1", "repo", "features", "hello", "index.ts"));
+    const { server, seen } = fakeClaude({ name: "Write", input: { file_path: join(workspace, "s1", "repo", "features", "hello", "index.ts"), content: HELLO } });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
@@ -114,6 +117,38 @@ describe("coder runner on the Claude Agent SDK", () => {
       expect(turns.length).toBe(2);
       expect(turns.every((s) => s.model === "claude-sonnet-5-5")).toBe(true);
       expect(seen.filter((s) => s.path.startsWith("/v1/") && s.key !== "kargah-placeholder").map((s) => s.path)).toEqual([]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("drives the same runner as the local Coder, with the real key swapped in", async () => {
+    const { server, seen } = fakeClaude({ name: "Bash", input: { command: `mkdir -p features/hello && printf '%s' '${HELLO}' > features/hello/index.ts`, description: "Write the feature" } });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const coder = new RunnerCoder({ runner: join(REPO_ROOT, "workers", "sandbox", "runner.mjs"), baseUrl: `http://127.0.0.1:${port}`, apiKey: "local-key", model: "claude-sonnet-5-5" });
+    const events: string[] = [];
+    try {
+      const result = await coder.runTurn({
+        sessionId: "s1",
+        featureId: "hello",
+        role: "backend",
+        model: "coder-default",
+        prompt: "Add features/hello/index.ts exporting hello().",
+        instructions: "",
+        writeScope: ["features/hello/**"],
+        agent: { name: "kargah-backend", displayName: "kargah backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
+        attempt: { index: 1, of: 1 },
+        workspace: { repo: "demo", remote: "", ref: "main", commitId: "", readToken: "", tree: { "README.md": "# demo\n" } },
+        onEvent: (event) => events.push(event.type),
+      });
+      expect(result.changes).toEqual({ "features/hello/index.ts": "export const hello = () => \"hello\";\n" });
+      expect(result.summary).toBe("Added features/hello/index.ts.");
+      expect(result.runId).toBe("s1-local-1");
+      expect(events).toContain("tool.execution_start");
+      expect(seen.filter((s) => s.tools.includes("Write")).every((s) => s.model === "claude-sonnet-5-5")).toBe(true);
+      expect(seen.filter((s) => s.path.startsWith("/v1/") && s.key !== "local-key").map((s) => s.path)).toEqual([]);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
