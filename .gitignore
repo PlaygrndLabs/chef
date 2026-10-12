@@ -7,5 +7,4 @@ dist/
 .DS_Store
 coverage/
 .chef/
-dev/cpa/state/
 tune/out/

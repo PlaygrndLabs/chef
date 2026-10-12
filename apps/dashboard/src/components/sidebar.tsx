@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
-import { ChevronsUpDown, Hammer, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronsUpDown, Hammer, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FEATURE_LABEL, FEATURE_TONE, StatusDot } from "@/components/status";
+import { ProviderSettings, useSettings } from "@/components/provider-settings";
 import { VoiceButton } from "@/components/voice-button";
 import { sortFeatures } from "@/lib/model";
 import { isProjectName } from "@/lib/selection";
@@ -75,6 +76,12 @@ function ProjectSwitcher() {
 
 function SettingsMenu() {
   const { setTheme } = useTheme();
+  const { settings, setSettings, available } = useSettings();
+  const [providers, setProviders] = useState(false);
+  const missing = available && settings !== null && settings.llm === null;
+  useEffect(() => {
+    if (missing) setProviders(true);
+  }, [missing]);
   const { select, api, data, selection } = useWorkspace();
   const bootstrap = () =>
     api.bootstrap().then(
@@ -85,39 +92,48 @@ function SettingsMenu() {
       (e: unknown) => toast.error("Could not create the project", { description: e instanceof Error ? e.message : String(e) }),
     );
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Settings">
-          <Settings />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="top" className="w-56">
-        <DropdownMenuItem onClick={() => select({ view: "insights", feature: null, session: null, panel: null })}>
-          <Lightbulb />
-          Health and memory
-        </DropdownMenuItem>
-        {data.spec && !data.spec.commitId ? (
-          <DropdownMenuItem onClick={() => void bootstrap()}>
-            <Hammer />
-            Create {selection.project} from the template
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="Settings" className={cn(missing && "text-bad")}>
+            <Settings />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" side="top" className="w-56">
+          {available ? (
+            <DropdownMenuItem onClick={() => setProviders(true)}>
+              <KeyRound />
+              Model provider
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onClick={() => select({ view: "insights", feature: null, session: null, panel: null })}>
+            <Lightbulb />
+            Health and memory
           </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => setTheme("light")}>
-          <Sun />
-          Light
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")}>
-          <Moon />
-          Dark
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")}>
-          <Monitor />
-          System
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {data.spec && !data.spec.commitId ? (
+            <DropdownMenuItem onClick={() => void bootstrap()}>
+              <Hammer />
+              Create {selection.project} from the template
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => setTheme("light")}>
+            <Sun />
+            Light
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("dark")}>
+            <Moon />
+            Dark
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("system")}>
+            <Monitor />
+            System
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {available ? <ProviderSettings open={providers} onOpenChange={setProviders} settings={settings} onChange={setSettings} /> : null}
+    </>
   );
 }
 
@@ -127,7 +143,7 @@ export function Sidebar() {
   return (
     <div className="flex h-full flex-col gap-4 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex items-center gap-1 px-1.5">
-        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">k</span>
+        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">c</span>
         <span className="pl-1 text-sm font-semibold">chef</span>
         <span className="text-muted-foreground">/</span>
         <ProjectSwitcher />

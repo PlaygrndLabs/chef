@@ -7,7 +7,6 @@ import { KeywordClassifier, TemplatePlanner } from "@chef/core/fakes";
 import { readTree } from "./fs.ts";
 import { demoScript } from "./demo.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
-import { cpaInit } from "./cpa/init.ts";
 import { RunnerCoder } from "./local/runner-coder.ts";
 import { report, runSpike, type SpikeDataset, type SpikeMode } from "./spike/jev.ts";
 import { BENCH_ITEMS } from "./bench/items.ts";
@@ -88,13 +87,14 @@ function describe(event: ChefEvent): string | null {
 }
 
 async function liveDeps(): Promise<Partial<Deps>> {
-  const { llmFromEnv } = await import("@chef/adapters/anthropic");
+  const { llmFromProvider, providerBaseUrl, providerFromEnv } = await import("@chef/adapters/anthropic");
   const { LlmPlanner } = await import("@chef/adapters/llm-planner");
   const { LlmReviewer } = await import("@chef/adapters/llm-reviewer");
-  const baseUrl = process.env["CPA_BASE_URL"];
-  const apiKey = process.env["CPA_API_KEY"];
-  if (!baseUrl || !apiKey) throw new Error("--live needs CPA_BASE_URL and CPA_API_KEY");
-  const llm = llmFromEnv(process.env);
+  const provider = providerFromEnv(process.env);
+  if (!provider) throw new Error("--live needs ANTHROPIC_API_KEY, or LLM_BASE_URL and LLM_API_KEY for a custom provider");
+  const llm = llmFromProvider(provider);
+  const baseUrl = providerBaseUrl(provider);
+  const apiKey = provider.apiKey;
   const classifier = process.env["TYPESAFE_API_KEY"] ? (await import("@chef/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
   return {
     classifier,
@@ -247,12 +247,7 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "voice") return voice(args);
   if (command === "tune" && sub === "data") return tuneData(args);
   if (command === "serve") return serveCommand(args);
-  if (command === "cpa" && sub === "init") {
-    const result = cpaInit(REPO_ROOT);
-    process.stdout.write(`${result.created ? "created" : "kept"} the local CPA key\nconfig: ${result.config}\nworker vars: ${result.devVars}\n`);
-    return 0;
-  }
-  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef cpa init | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--fake-checks]\n");
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--fake-checks]\n");
   return 2;
 }
 

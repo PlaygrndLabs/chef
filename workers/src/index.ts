@@ -1,9 +1,11 @@
 import { routeAgentRequest } from "agents";
 import { guard } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
+import { settingsRequest } from "./settings.ts";
 
 export { ProjectAgent } from "./project-agent.ts";
 export { SandboxOutbound, SessionAgent } from "./session-agent.ts";
+export { Settings } from "./settings.ts";
 export { UpstreamSync } from "./upstream-sync.ts";
 
 const PROJECT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/(bootstrap|prompts|sessions|events|cursor|voice|spec|sessions\/[a-z0-9-]{1,40}(?:\/(?:drop|retry|steer|turns|changes|sandbox))?)$/;
@@ -14,6 +16,7 @@ export default {
     const blocked = await guard(request, env.CHEF_PASSWORD);
     if (blocked) return blocked;
     const url = new URL(request.url);
+    if (url.pathname === "/api/settings") return settingsRequest(request, env);
     const copilotKit = COPILOTKIT.exec(url.pathname);
     if (copilotKit) return copilotKitHandler(request, env, copilotKit[1] as string);
     const match = PROJECT.exec(url.pathname);
