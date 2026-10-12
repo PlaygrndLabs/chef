@@ -93,7 +93,7 @@ export class SessionStream {
       case "commit.created":
         return this.update(id, { commits: view.commits + 1 });
       case "preview.updated":
-        return this.update(id, { preview: event.url });
+        return this.update(id, { preview: event.link ?? event.url });
       case "review.verdict":
         return this.update(id, { review: event.approve ? "approved" : `rejected: ${event.reasons.join("; ")}` });
       case "gate.result":

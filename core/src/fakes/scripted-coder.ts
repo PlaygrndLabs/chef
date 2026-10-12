@@ -5,6 +5,7 @@ export type Script = (input: CoderTurnInput, attempt: number) => { changes: File
 
 export class ScriptedCoder implements Coder {
   readonly turns: CoderTurnInput[] = [];
+  readonly released: string[] = [];
   private readonly attempts = new Map<string, number>();
   private runs = 0;
 
@@ -21,5 +22,9 @@ export class ScriptedCoder implements Coder {
     input.onEvent({ type: "session.idle" });
     const size = JSON.stringify(changes).length;
     return { changes, summary: summary ?? `${input.role} turn ${attempt}`, model: input.model, runId: `run-${++this.runs}`, usage: { inputTokens: 1000 + input.prompt.length, outputTokens: size } };
+  }
+
+  async release(sessionId: string): Promise<void> {
+    this.released.push(sessionId);
   }
 }
