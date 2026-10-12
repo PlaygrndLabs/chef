@@ -33,7 +33,7 @@ export class ProjectAgent extends Agent<Env> {
     const orchestrator = new Orchestrator(
       {
         repos,
-        coder: new SandboxCoder(env.SESSION),
+        coder: new SandboxCoder(env.SESSION, { model: env.CODER_MODEL, llmBaseUrl: env.CPA_BASE_URL }),
         classifier: new JevClassifier(new TypeSafeClient({ apiKey: env.TYPESAFE_API_KEY, defaultModel: env.JEV_MODEL }), env.JEV_MODEL),
         planner: new LlmPlanner(llm, env.PLANNER_MODEL),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
