@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PickInput, Reviewer } from "@kargah/core";
+import type { PickInput, Reviewer } from "@chef/core";
 import { LORA_BASE_MODEL, WorkersAiReviewer, type TextGenerator } from "../../src/workers-ai-reviewer.ts";
 
 const feature = { id: "shout", title: "Shout", status: "building" as const, entrypoint: "POST /shout", revision: 1, shared: [], acceptance: [{ id: "AC1", text: "uppercases" }], body: "" };
@@ -23,11 +23,11 @@ const picker: Reviewer = {
 describe("WorkersAiReviewer", () => {
   it("asks the tuned adapter with a raw Gemma prompt and parses its one-line answer", async () => {
     const ai = generator({ response: "reject: whitespace is not trimmed\n" });
-    const reviewer = new WorkersAiReviewer(ai, "kargah-reviewer", picker);
+    const reviewer = new WorkersAiReviewer(ai, "chef-reviewer", picker);
     const verdict = await reviewer.review({ feature, diff: { "features/shout/index.ts": "x" }, checksLog: "" });
-    expect(verdict).toEqual({ approve: false, reasons: ["whitespace is not trimmed"], model: `${LORA_BASE_MODEL}+kargah-reviewer` });
+    expect(verdict).toEqual({ approve: false, reasons: ["whitespace is not trimmed"], model: `${LORA_BASE_MODEL}+chef-reviewer` });
     expect(ai.calls[0]?.model).toBe(LORA_BASE_MODEL);
-    expect(ai.calls[0]?.input).toMatchObject({ raw: true, lora: "kargah-reviewer", temperature: 0 });
+    expect(ai.calls[0]?.input).toMatchObject({ raw: true, lora: "chef-reviewer", temperature: 0 });
     expect(ai.calls[0]?.input.prompt.startsWith("<start_of_turn>user\n")).toBe(true);
     expect(ai.calls[0]?.input.prompt.endsWith("<start_of_turn>model\n")).toBe(true);
   });

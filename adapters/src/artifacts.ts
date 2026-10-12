@@ -1,6 +1,6 @@
 import git, { type HttpClient, type TreeEntry } from "isomorphic-git";
 import webHttp from "isomorphic-git/http/web";
-import { applyChanges, threeWayMerge, type Author, type Commit, type CommitInput, type MergeInput, type MergeOutcome, type PushedEvent, type RepoHost, type RepoInfo, type RepoToken, type TokenScope, type Tree } from "@kargah/core";
+import { applyChanges, threeWayMerge, type Author, type Commit, type CommitInput, type MergeInput, type MergeOutcome, type PushedEvent, type RepoHost, type RepoInfo, type RepoToken, type TokenScope, type Tree } from "@chef/core";
 import { MemoryFs } from "./memory-fs.ts";
 
 const NOTE_ATTEMPTS = 8;
@@ -296,7 +296,7 @@ export class ArtifactsRepoHost implements RepoHost {
       const before = await this.localRef(cached, remoteNotes);
       if (before) await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: namespace, value: before, force: true });
       else await git.deleteRef({ fs: cached.fs, gitdir: GITDIR, ref: namespace }).catch(() => undefined);
-      for (const [oid, note] of entries) await git.addNote({ fs: cached.fs, gitdir: GITDIR, ref: namespace, oid, note, force: true, author: { name: "kargah", email: "ma.karimi76@gmail.com" } });
+      for (const [oid, note] of entries) await git.addNote({ fs: cached.fs, gitdir: GITDIR, ref: namespace, oid, note, force: true, author: { name: "chef", email: "ma.karimi76@gmail.com" } });
       const after = await this.localRef(cached, namespace);
       if (!after) return;
       try {
@@ -320,7 +320,7 @@ export class ArtifactsRepoHost implements RepoHost {
   }
 
   private async push(cached: Cached, token: RepoToken, ref: string, oid: string, force: boolean, before: string | null): Promise<void> {
-    const local = `refs/kargah/push/${shortRef(ref)}`;
+    const local = `refs/chef/push/${shortRef(ref)}`;
     await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: local, value: oid, force: true });
     const result = await git.push({ fs: cached.fs, http: this.http, gitdir: GITDIR, url: cached.remote, ref: local, remoteRef: fullRef(ref), force, onAuth: auth(tokenSecret(token.secret)) });
     if (!result.ok) throw new Error(`push to ${ref} rejected: ${result.error ?? JSON.stringify(result.refs)}`);

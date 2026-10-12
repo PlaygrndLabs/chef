@@ -1,15 +1,15 @@
 import { Agent, type Connection } from "agents";
-import { ArtifactsRepoHost, bindingControl, type ArtifactsBindingLike } from "@kargah/adapters/artifacts";
-import { JevClassifier } from "@kargah/adapters/jev";
-import { llmFromEnv } from "@kargah/adapters/anthropic";
-import { LlmPlanner } from "@kargah/adapters/llm-planner";
-import { LlmReviewer } from "@kargah/adapters/llm-reviewer";
-import { WorkersAiReviewer, type TextGenerator } from "@kargah/adapters/workers-ai-reviewer";
-import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@kargah/adapters/vectorize";
-import { GptLiveHost, type Connect, type SocketLike } from "@kargah/adapters/gpt-live";
-import { RealtimeHost } from "@kargah/adapters/realtime";
-import { ControlError, DEFAULT_BUDGET, isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PushedEvent, type Tree, type VoiceCall } from "@kargah/core";
-import { renderRegistry, renderStub, stubPath } from "@kargah/template/gen";
+import { ArtifactsRepoHost, bindingControl, type ArtifactsBindingLike } from "@chef/adapters/artifacts";
+import { JevClassifier } from "@chef/adapters/jev";
+import { llmFromEnv } from "@chef/adapters/anthropic";
+import { LlmPlanner } from "@chef/adapters/llm-planner";
+import { LlmReviewer } from "@chef/adapters/llm-reviewer";
+import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai-reviewer";
+import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
+import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
+import { RealtimeHost } from "@chef/adapters/realtime";
+import { ControlError, DEFAULT_BUDGET, isTerminal, loadProfiles, Orchestrator, readSpec, startVoiceCall, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
@@ -51,7 +51,7 @@ export class ProjectAgent extends Agent<Env> {
       },
       {
         name: this.name,
-        author: { name: "kargah", email: "ma.karimi76@gmail.com" },
+        author: { name: "chef", email: "ma.karimi76@gmail.com" },
         profiles: loadProfiles(agentFiles),
         generated,
         specialization: { attempts: Number(env.ATTEMPTS), stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },

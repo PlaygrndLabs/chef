@@ -2,7 +2,7 @@
 id: tuned-reviewer
 title: Reviewer tuned on merged and reverted changes
 status: building
-entrypoint: kargah tune data
+entrypoint: chef tune data
 acceptance:
   - id: AC1
     text: Every approved review is labelled by its outcome, merged, reverted or failed at the gate, and exported with the spec and the feature's files

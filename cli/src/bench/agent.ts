@@ -1,4 +1,4 @@
-import type { Script } from "@kargah/core/fakes";
+import type { Script } from "@chef/core/fakes";
 import { flow, implementation, tests, type BenchItem, type TestStyle } from "./items.ts";
 
 const TEST_FEEDBACK = ["pass before the feature is implemented", "project lint rule"];

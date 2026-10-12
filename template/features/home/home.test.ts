@@ -8,5 +8,5 @@ test("AC1: GET / answers with the app name", async () => {
   const app = createApp([feature], new MemoryStore());
   const response = await app(new Request("http://app.test/"));
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true, app: "kargah-project" });
+  assert.deepEqual(await response.json(), { ok: true, app: "chef-project" });
 });

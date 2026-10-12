@@ -1,4 +1,4 @@
-import { hashHex, type MemoryDoc, type MemoryHit, type MemoryIndex, type MemoryKind } from "@kargah/core";
+import { hashHex, type MemoryDoc, type MemoryHit, type MemoryIndex, type MemoryKind } from "@chef/core";
 
 export interface VectorizeLike {
   upsert(vectors: { id: string; values: number[]; metadata?: Record<string, string> }[]): Promise<unknown>;

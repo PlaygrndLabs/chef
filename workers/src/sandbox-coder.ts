@@ -1,4 +1,4 @@
-import type { Coder, CoderTurnInput, CoderTurnResult } from "@kargah/core";
+import type { Coder, CoderTurnInput, CoderTurnResult } from "@chef/core";
 
 export class SandboxCoder implements Coder {
   constructor(

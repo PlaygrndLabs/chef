@@ -1,13 +1,13 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { applyChanges, parseFeature } from "@kargah/core";
-import { ManualClock } from "@kargah/core/fakes";
+import { applyChanges, parseFeature } from "@chef/core";
+import { ManualClock } from "@chef/core/fakes";
 import { readTree } from "../../src/fs.ts";
 import { demoScript } from "../../src/demo.ts";
 import { LocalCheckRunner, LocalProofRunner } from "../../src/local/index.ts";
 import { generated, localWorld, REPO_ROOT, stub, templateTree } from "../../src/world.ts";
-import type { Script } from "@kargah/core/fakes";
+import type { Script } from "@chef/core/fakes";
 
 const nodeModules = join(REPO_ROOT, "template", "node_modules");
 const fixture = readTree(join(REPO_ROOT, "core", "test", "fixtures", "todo"));

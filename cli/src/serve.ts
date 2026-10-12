@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { ControlError, DEFAULT_BUDGET, isTerminal, parseFeature, readSpec, type FeatureSpec } from "@kargah/core";
-import type { Script } from "@kargah/core/fakes";
-import { KargahAgent, type KargahLink } from "@kargah/adapters/agui";
+import { ControlError, DEFAULT_BUDGET, isTerminal, parseFeature, readSpec, type FeatureSpec } from "@chef/core";
+import type { Script } from "@chef/core/fakes";
+import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
 import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { createNodeFetchHandler } from "@copilotkit/runtime/v2/node";
 import { benchScript } from "./bench/agent.ts";
@@ -55,7 +55,7 @@ export async function serve(options: { readonly port: number; readonly project: 
         driving = null;
       });
   };
-  const link: KargahLink = {
+  const link: ChefLink = {
     cursor: async () => w.bus.log.length,
     submit: async (prompt) => {
       const result = await w.orchestrator.submit(prompt);
@@ -66,7 +66,7 @@ export async function serve(options: { readonly port: number; readonly project: 
   };
   const base = `/api/projects/${options.project}`;
   process.env["COPILOTKIT_TELEMETRY_DISABLED"] ??= "true";
-  const runtime = new CopilotRuntime({ agents: () => ({ default: new KargahAgent({ link, pollMs: 200 }) }) });
+  const runtime = new CopilotRuntime({ agents: () => ({ default: new ChefAgent({ link, pollMs: 200 }) }) });
   const copilot = createCopilotRuntimeHandler({ runtime, basePath: `${base}/copilotkit` });
   const assets = options.assets ?? join(REPO_ROOT, "apps", "dashboard", "dist");
   if (!existsSync(join(assets, "index.html"))) log(`no dashboard build in ${assets}; run pnpm build`);

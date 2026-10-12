@@ -1,5 +1,5 @@
 {
-  "name": "@kargah/dashboard",
+  "name": "@chef/dashboard",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -29,8 +29,8 @@
     "zod": "4.6.6"
   },
   "devDependencies": {
-    "@kargah/adapters": "workspace:*",
-    "@kargah/core": "workspace:*",
+    "@chef/adapters": "workspace:*",
+    "@chef/core": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",

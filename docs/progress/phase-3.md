@@ -4,7 +4,7 @@ Date: 2026-10-11. Branch `claude/kargah-build-t66ame`.
 
 ## Built
 
-- **Specialist profiles as Copilot custom agents.** `customAgent()` in `core/src/profiles/profile.ts` turns each profile in `agents/` into a Copilot SDK `CustomAgentConfig` (`kargah-<role>`, its instructions, its write scope, its model and optional tool list). The sandbox runner starts every session with that agent selected.
+- **Specialist profiles as Copilot custom agents.** `customAgent()` in `core/src/profiles/profile.ts` turns each profile in `agents/` into a Copilot SDK `CustomAgentConfig` (`chef-<role>`, its instructions, its write scope, its model and optional tool list). The sandbox runner starts every session with that agent selected.
 - **Write scopes on the diff.** These were already in place from Phase 1. Every turn's changed paths are checked against the role's scope before commit, and the gate re-checks every commit by the role in its git note.
 - **Locked tests.** Paths written by the `test` role (read from git notes) are locked. A coder turn that changes one is rejected with feedback, whatever its write scope says, and the gate's `locked-tests` check fails any commit that slipped through. A conflict-resolver may only edit a locked file that contains conflict markers.
 - **Test first, really failing.** A test turn's new tests run against an empty stub of the feature (`renderStub` in `template/app/gen.ts`) before they are committed. Any new test that passes is vacuous, so the turn is rejected and the test agent retries with the names of the passing tests. Per-test results come from node's TAP output (`parseTap`).
@@ -15,7 +15,7 @@ Date: 2026-10-11. Branch `claude/kargah-build-t66ame`.
 
 ## Benchmark
 
-`kargah bench` runs 10 features on the project template with real `tsc`, `node --test`, lint, generated-file checks and proofs, once with Phase 2 settings (one attempt, no locked or red-test checks) and once with Phase 3 settings (two attempts, locked tests, red check). After every merge a hidden monitor suite runs on `main`, playing the part of production monitoring; when it fails, the gate reverts the merge.
+`chef bench` runs 10 features on the project template with real `tsc`, `node --test`, lint, generated-file checks and proofs, once with Phase 2 settings (one attempt, no locked or red-test checks) and once with Phase 3 settings (two attempts, locked tests, red check). After every merge a hidden monitor suite runs on `main`, playing the part of production monitoring; when it fails, the gate reverts the merge.
 
 The coding and test agents are scripted. Each feature carries one injected mistake that real agents make, and the agents fix their work when they get the matching feedback:
 

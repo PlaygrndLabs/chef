@@ -117,6 +117,6 @@ export function world(options: { script: Script; presets?: Map<string, FeatureSp
     memory: new LexicalIndex(),
     ...options.deps,
   };
-  const orchestrator = new Orchestrator(deps, { name: "demo", author: { name: "kargah", email: "ma.karimi76@gmail.com" }, profiles: profiles(), generated, ...options.config });
+  const orchestrator = new Orchestrator(deps, { name: "demo", author: { name: "chef", email: "ma.karimi76@gmail.com" }, profiles: profiles(), generated, ...options.config });
   return { orchestrator, repos, bus, coder, checks, proofs, previews, planner, deps };
 }

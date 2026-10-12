@@ -9,7 +9,7 @@ interface Base {
   readonly at: number;
 }
 
-export type KargahEvent = Base &
+export type ChefEvent = Base &
   (
     | { readonly type: "route.decided"; readonly prompt: string; readonly decision: RouteDecision }
     | { readonly type: "session.created"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly reason: string; readonly attempt: { readonly group: string; readonly index: number; readonly of: number }; readonly parent: string | null }
@@ -34,6 +34,6 @@ export type KargahEvent = Base &
     | { readonly type: "attempt.picked"; readonly featureId: string; readonly group: string; readonly winner: string; readonly candidates: readonly AttemptScore[]; readonly reasons: readonly string[]; readonly model: string }
   );
 
-export type KargahEventType = KargahEvent["type"];
+export type ChefEventType = ChefEvent["type"];
 
-export type EventOf<T extends KargahEventType> = Extract<KargahEvent, { type: T }>;
+export type EventOf<T extends ChefEventType> = Extract<ChefEvent, { type: T }>;

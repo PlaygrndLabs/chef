@@ -1,5 +1,5 @@
 {
-  "name": "@kargah/adapters",
+  "name": "@chef/adapters",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -22,7 +22,7 @@
     "@ag-ui/client": "1.0.2",
     "@ag-ui/core": "1.0.2",
     "@anthropic-ai/sdk": "0.133.0",
-    "@kargah/core": "workspace:*",
+    "@chef/core": "workspace:*",
     "@typesafe-ai/sdk": "0.6.0",
     "isomorphic-git": "1.43.3",
     "rxjs": "7.8.1",

@@ -41,7 +41,7 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 0.133.0
         version: 0.133.0(zod@4.6.6)
-      '@kargah/core':
+      '@chef/core':
         specifier: workspace:*
         version: link:../core
       '@typesafe-ai/sdk':
@@ -114,10 +114,10 @@ importers:
         specifier: 4.6.6
         version: 4.6.6
     devDependencies:
-      '@kargah/adapters':
+      '@chef/adapters':
         specifier: workspace:*
         version: link:../../adapters
-      '@kargah/core':
+      '@chef/core':
         specifier: workspace:*
         version: link:../../core
       '@tailwindcss/vite':
@@ -150,13 +150,13 @@ importers:
       '@copilotkit/runtime':
         specifier: 1.78.0
         version: 1.78.0(@anthropic-ai/sdk@0.133.0(zod@4.6.6))(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(ws@8.21.0))(@langchain/langgraph-sdk@1.12.3(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(ws@8.21.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@opentelemetry/api@1.9.1)(@types/express@5.0.6)(express@5.3.0)(langchain@1.5.16(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(ws@8.21.0))(@opentelemetry/api@1.9.1)(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(ws@8.21.0))(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.3(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
-      '@kargah/adapters':
+      '@chef/adapters':
         specifier: workspace:*
         version: link:../adapters
-      '@kargah/core':
+      '@chef/core':
         specifier: workspace:*
         version: link:../core
-      '@kargah/template':
+      '@chef/template':
         specifier: workspace:*
         version: link:../template
     devDependencies:
@@ -199,13 +199,13 @@ importers:
       '@copilotkit/runtime':
         specifier: 1.78.0
         version: 1.78.0(@anthropic-ai/sdk@0.133.0(zod@4.6.6))(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(ws@8.21.0))(@langchain/langgraph-sdk@1.12.3(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(ws@8.21.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@opentelemetry/api@1.9.1)(@types/express@5.0.6)(express@5.3.0)(langchain@1.5.16(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(ws@8.21.0))(@opentelemetry/api@1.9.1)(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(ws@8.21.0))(openai@7.32.0(undici@7.29.1)(ws@8.21.0)(zod@4.6.6))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.3(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
-      '@kargah/adapters':
+      '@chef/adapters':
         specifier: workspace:*
         version: link:../adapters
-      '@kargah/core':
+      '@chef/core':
         specifier: workspace:*
         version: link:../core
-      '@kargah/template':
+      '@chef/template':
         specifier: workspace:*
         version: link:../template
       '@typesafe-ai/sdk':

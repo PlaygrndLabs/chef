@@ -1,5 +1,5 @@
-import { parseTap } from "@kargah/core/tap";
-import { diffTrees, lintSpecFiles, type CheckResult, type CheckRunner, type PreviewDeployment, type PreviewHost, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@kargah/core";
+import { parseTap } from "@chef/core/tap";
+import { diffTrees, lintSpecFiles, type CheckResult, type CheckRunner, type PreviewDeployment, type PreviewHost, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@chef/core";
 import { PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
 import type { ChecksJob, CommandResult } from "./session-agent.ts";
 
@@ -35,7 +35,7 @@ export class SandboxCheckRunner implements CheckRunner {
       { name: "typecheck", argv: ["npx", "tsc", "-p", "tsconfig.json"] },
       { name: "test", argv: ["node", "--test", "--test-reporter=tap", "--experimental-strip-types", "features/**/*.test.ts", "shared/**/*.test.ts", "app/**/*.test.ts"] },
       { name: "generated", argv: ["npm", "run", "--silent", "app", "--", "gen", "--check"] },
-      { name: "lint", argv: ["node", "/opt/kargah/template/lint.mjs"] },
+      { name: "lint", argv: ["node", "/opt/chef/template/lint.mjs"] },
     ]);
     const stub = this.sessions.get(this.sessions.idFromName(sessionId)) as unknown as ChecksStub;
     let results: CommandResult[];

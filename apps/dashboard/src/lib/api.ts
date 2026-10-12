@@ -1,4 +1,4 @@
-import type { Budget, FeatureSpec, SessionChanges, SessionRecord, SessionTurn, SubmitResult } from "@kargah/core";
+import type { Budget, FeatureSpec, SessionChanges, SessionRecord, SessionTurn, SubmitResult } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(

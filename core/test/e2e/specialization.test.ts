@@ -3,7 +3,7 @@ import { RuleReviewer, type Script } from "../../src/fakes/index.ts";
 import { NOTES_NAMESPACE, renderNote, type TurnNote } from "../../src/notes/notes.ts";
 import type { ReviewInput, ReviewVerdict } from "../../src/ports/reviewer.ts";
 import type { SessionRecord } from "../../src/session/record.ts";
-import type { KargahEvent } from "../../src/events/events.ts";
+import type { ChefEvent } from "../../src/events/events.ts";
 import { fixture, profiles, scriptFromFixture, templateTree, todoSpec, world } from "../harness.ts";
 import { bootstrapTree, FEATURES, MENU_PATH, presets, promptFor, script as menuScript } from "../scenarios/shared-menu.ts";
 
@@ -16,8 +16,8 @@ function todoWorld(script: Script, extra: Omit<Parameters<typeof world>[0], "scr
   return world({ script, presets: new Map([[prompt, todoSpec]]), ...extra });
 }
 
-function ofType<T extends KargahEvent["type"]>(log: readonly KargahEvent[], type: T): Extract<KargahEvent, { type: T }>[] {
-  return log.filter((e): e is Extract<KargahEvent, { type: T }> => e.type === type);
+function ofType<T extends ChefEvent["type"]>(log: readonly ChefEvent[], type: T): Extract<ChefEvent, { type: T }>[] {
+  return log.filter((e): e is Extract<ChefEvent, { type: T }> => e.type === type);
 }
 
 const broadBackend = () => {
@@ -81,8 +81,8 @@ describe("phase 3 specialization on fakes", () => {
 
     const record = await w.orchestrator.session(id);
     const token = await w.repos.createToken(record.fork, "write", 60);
-    const sneaky = await w.repos.commit(token, { ref: "main", parent: record.head, changes: { [TEST_PATH]: "export {};\n" }, message: "code(todo-add): simplify", author: { name: "kargah", email: "ma.karimi76@gmail.com" } });
-    const note: TurnNote = { kargah: 1, project: "demo", feature: "todo-add", session: id, role: "backend", kind: "code", workItem: null, prompt: "x", rootPrompt: prompt, runId: "r", model: "coder-default", specRevision: 1, paths: [TEST_PATH] };
+    const sneaky = await w.repos.commit(token, { ref: "main", parent: record.head, changes: { [TEST_PATH]: "export {};\n" }, message: "code(todo-add): simplify", author: { name: "chef", email: "ma.karimi76@gmail.com" } });
+    const note: TurnNote = { chef: 1, project: "demo", feature: "todo-add", session: id, role: "backend", kind: "code", workItem: null, prompt: "x", rootPrompt: prompt, runId: "r", model: "coder-default", specRevision: 1, paths: [TEST_PATH] };
     await w.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: sneaky.id, note: renderNote(note) });
     await w.repos.revokeToken(token);
     const updated: SessionRecord = { ...record, head: sneaky.id, commits: [...record.commits, sneaky.id] };

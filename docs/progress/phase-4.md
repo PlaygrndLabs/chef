@@ -17,7 +17,7 @@ Date: 2026-10-11. Branch `claude/kargah-build-t66ame`.
 
 ## Benchmark
 
-`kargah bench --mode replay` runs the 10 Phase 3 features twice with real `tsc`, `node --test`, lint, generated-file checks, proofs and the hidden monitor on `main`:
+`chef bench --mode replay` runs the 10 Phase 3 features twice with real `tsc`, `node --test`, lint, generated-file checks, proofs and the hidden monitor on `main`:
 
 1. **Learning run** (`phase4`): one attempt per feature, with locked tests, the red check and memory. Each feature carries its Phase 3 injected mistake.
 2. **Replay run** (`replay`): a new project created from the template plus the `memory/` and `lint/` files from the learning run's `main`. The same features are submitted again.
@@ -65,5 +65,5 @@ Tests:
 `VectorizeIndex`, the `MEMORY` and `AI` bindings, and `LlmPlanner.answer` are covered by unit tests with fakes only. To run them for real:
 
 - `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` with Workers, Vectorize, Workers AI, Artifacts, Containers and Workers Builds permissions.
-- The `kargah-memory` index and its `project` and `kind` metadata indexes, created as in `README.md` before the first deploy.
-- For the rest of the loop, as in earlier phases: `TYPESAFE_API_KEY`, `COPILOT_GITHUB_TOKEN`, and a Claude login in kargah's CPA with `CPA_API_KEY`.
+- The `chef-memory` index and its `project` and `kind` metadata indexes, created as in `README.md` before the first deploy.
+- For the rest of the loop, as in earlier phases: `TYPESAFE_API_KEY`, `COPILOT_GITHUB_TOKEN`, and a Claude login in chef's CPA with `CPA_API_KEY`.

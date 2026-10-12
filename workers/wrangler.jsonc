@@ -1,13 +1,13 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "kargah",
+  "name": "chef",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "build": { "command": "pnpm --dir .. build" },
   "assets": { "directory": "../apps/dashboard/dist", "binding": "ASSETS", "run_worker_first": true },
-  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "kargah" }],
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "chef" }],
   "durable_objects": {
     "bindings": [
       { "name": "PROJECT", "class_name": "ProjectAgent" },
@@ -23,13 +23,13 @@
     }
   ],
   "workflows": [{ "name": "upstream-sync", "binding": "UPSTREAM_SYNC", "class_name": "UpstreamSync" }],
-  "vectorize": [{ "binding": "MEMORY", "index_name": "kargah-memory" }],
+  "vectorize": [{ "binding": "MEMORY", "index_name": "chef-memory" }],
   "ai": { "binding": "AI" },
   "triggers": {
     "events": [
       {
         "type": "cf.artifacts.repo.pushed",
-        "filter": { "namespace": "kargah" },
+        "filter": { "namespace": "chef" },
         "targets": [{ "type": "workflow", "workflow_name": "upstream-sync" }]
       }
     ]
@@ -40,7 +40,7 @@
     "REVIEWER_MODEL": "claude-opus-5-5",
     "CODER_MODEL": "claude-sonnet-5-5",
     "JEV_MODEL": "jev-1.13.0",
-    "PREVIEW_WORKER": "kargah-project",
+    "PREVIEW_WORKER": "chef-project",
     "ATTEMPTS": "2",
     "VOICE_MODEL": "gpt-live-1",
     "REALTIME_MODEL": "gpt-realtime",
