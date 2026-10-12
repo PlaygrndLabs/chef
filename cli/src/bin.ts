@@ -77,7 +77,7 @@ function describe(event: KargahEvent): string | null {
     case "review.verdict":
       return `review ${event.approve ? "approved" : `rejected: ${event.reasons.join("; ")}`}`;
     case "gate.result":
-      return `gate   ${event.ok ? "passed" : "failed"}: ${event.checks.map((c) => `${c.name}=${c.ok ? "ok" : "FAIL"}`).join(" ")}`;
+      return [`gate   ${event.ok ? "passed" : "failed"}: ${event.checks.map((c) => `${c.name}=${c.ok ? "ok" : "FAIL"}`).join(" ")}`, ...event.checks.filter((c) => !c.ok).map((c) => `       ${c.name}: ${c.log.split("\n").slice(0, 6).join("\n       ")}`)].join("\n");
     case "main.merged":
       return `merged ${event.featureId} -> main`;
     case "session.stuck":
@@ -100,7 +100,7 @@ async function liveDeps(): Promise<Partial<Deps>> {
     classifier,
     planner: new LlmPlanner(llm, process.env["PLANNER_MODEL"] ?? "claude-opus-5-5"),
     reviewer: new LlmReviewer(llm, process.env["REVIEWER_MODEL"] ?? "claude-opus-5-5"),
-    coder: new RunnerCoder({ runner: join(REPO_ROOT, "workers", "sandbox", "runner.mjs"), baseUrl, apiKey, model: process.env["CODER_MODEL"] ?? "claude-sonnet-5-5", nodeModules: join(REPO_ROOT, "template", "node_modules") }),
+    coder: new RunnerCoder({ runner: join(REPO_ROOT, "workers", "sandbox", "runner.mjs"), baseUrl, apiKey, model: process.env["CODER_MODEL"] ?? "claude-sonnet-5-5", nodeModules: join(REPO_ROOT, "template", "node_modules"), lint: join(REPO_ROOT, "workers", "sandbox", "lint.mjs") }),
   };
 }
 
