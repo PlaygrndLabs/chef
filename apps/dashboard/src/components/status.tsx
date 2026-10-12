@@ -38,8 +38,22 @@ export function StateBadge({ state, dot = false }: { readonly state: SessionStat
 }
 
 export const FEATURE_TONE: Readonly<Record<FeatureStatus, Tone>> = { building: "run", stuck: "bad", merged: "ok", proposed: "idle", dropped: "gone" };
-export const FEATURE_LABEL: Readonly<Record<FeatureStatus, string>> = { building: "Building", stuck: "Needs you", merged: "Merged", proposed: "Proposed", dropped: "Dropped" };
+export const FEATURE_LABEL: Readonly<Record<FeatureStatus, string>> = { building: "Building", stuck: "Needs you", merged: "Live", proposed: "Not built yet", dropped: "Stopped" };
 
-export function FeatureBadge({ status }: { readonly status: FeatureStatus }) {
-  return <ToneBadge tone={FEATURE_TONE[status]}>{FEATURE_LABEL[status]}</ToneBadge>;
+const PILL: Readonly<Record<Tone, string>> = {
+  run: "bg-run/10 text-run",
+  ok: "bg-ok/10 text-ok",
+  bad: "bg-bad/10 text-bad",
+  idle: "bg-muted text-muted-foreground",
+  gone: "bg-muted text-muted-foreground",
+};
+
+export function StatusPill({ status, className }: { readonly status: FeatureStatus; readonly className?: string }) {
+  const tone = FEATURE_TONE[status];
+  return (
+    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium whitespace-nowrap", PILL[tone], className)}>
+      <StatusDot tone={tone} />
+      {FEATURE_LABEL[status]}
+    </span>
+  );
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { FeatureSpec, KargahEvent, SessionRecord } from "@kargah/core";
 import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
-import { featureNodes, groupFeatures, matches } from "../../src/lib/model.ts";
+import { featureNodes, sortFeatures } from "../../src/lib/model.ts";
+import { activity, progress, updates } from "../../src/lib/progress.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
 const base = { project: "demo", at: 1 };
@@ -70,7 +71,7 @@ describe("project event state", () => {
 describe("feature map", () => {
   const spec = (id: string, flow?: string): FeatureSpec => ({ id, title: `Feature ${id}`, status: "merged", entrypoint: "GET /", revision: 1, shared: [], acceptance: [{ id: "AC1", text: "works" }], body: "", ...(flow ? { flow } : {}) });
 
-  it("joins main's spec with live sessions and groups shared flows", () => {
+  it("joins main's spec with live sessions and puts features that need a person first", () => {
     const state = run([
       { type: "session.created", sessionId: "s1", featureId: "todo-done", fork: "f1", reason: "new", attempt: attempt(), parent: null },
       { type: "session.state", sessionId: "s1", featureId: "todo-done", from: "queued", to: "coding", reason: "planned" },
@@ -83,11 +84,46 @@ describe("feature map", () => {
     expect(byId["home"]?.status).toBe("merged");
     expect(byId["todo-add"]?.status).toBe("stuck");
     expect(byId["todo-done"]).toMatchObject({ status: "building", title: "Mark done", onMain: false });
-    const groups = groupFeatures(nodes);
-    expect(groups.map((g) => g.name)).toEqual(["todo", "Other features"]);
-    expect(groups[0]?.features.map((f) => f.id)).toEqual(["todo-add", "todo-done"]);
-    expect(nodes.filter((n) => matches(n, "stuck", "")).map((n) => n.id)).toEqual(["todo-add"]);
-    expect(nodes.filter((n) => matches(n, "all", "s1")).map((n) => n.id)).toEqual(["todo-done"]);
+    expect(sortFeatures(nodes).map((n) => n.id)).toEqual(["todo-add", "todo-done", "home"]);
+  });
+});
+
+describe("plain progress", () => {
+  const timeline = (events: object[]) => run(events).sessions["s1"]?.timeline ?? [];
+  const created = { type: "session.created", sessionId: "s1", featureId: "a", fork: "f", reason: "new", attempt: attempt(), parent: null };
+  const to = (from: string, next: string, reason: string) => ({ type: "session.state", sessionId: "s1", featureId: "a", from, to: next, reason });
+
+  it("tells a running build in five steps with the agent's last words", () => {
+    const items = timeline([created, to("queued", "planning", "start"), to("planning", "testing", "planned"), to("testing", "coding", "tests_committed"), { type: "coder.event", sessionId: "s1", featureId: "a", event: { type: "assistant.message_delta", delta: "Adding the route" } }]);
+    expect(progress("coding", items)).toMatchObject({ stage: 2, done: false, failed: false });
+    const list = updates(items, "coding", { prompt: "Add a thing", at: 0 });
+    expect(list.map((u) => (u.kind === "you" ? `you: ${u.text}` : `${u.tone}: ${u.text}`))).toEqual(["you: Add a thing", "ok: Planned the feature", "ok: Wrote the tests", "run: Writing the code"]);
+    expect(activity("coding", items, null)).toBe("Writing the code: Adding the route");
+  });
+
+  it("explains review, gate, a fix round and going live", () => {
+    const items = timeline([
+      created,
+      to("queued", "coding", "planned"),
+      to("coding", "reviewing", "coded"),
+      { type: "review.verdict", sessionId: "s1", featureId: "a", approve: false, reasons: ["missing test"], model: "m", head: "c1", base: "b" },
+      to("reviewing", "coding", "review_rejected"),
+      to("coding", "reviewing", "coded"),
+      { type: "review.verdict", sessionId: "s1", featureId: "a", approve: true, reasons: [], model: "m", head: "c2", base: "b" },
+      to("reviewing", "gating", "review_approved"),
+      { type: "gate.result", sessionId: "s1", featureId: "a", ok: true, checks: [{ name: "lint", ok: true, log: "" }, { name: "unit", ok: true, log: "" }] },
+      { type: "main.merged", sessionId: "s1", featureId: "a", commitId: "m1" },
+      to("gating", "merged", "gate_passed"),
+    ]);
+    const texts = updates(items, "merged").map((u) => u.kind === "kargah" ? u.text : u.text);
+    expect(texts).toEqual(["Wrote the code", "A reviewer asked for changes: missing test", "Fixed what the reviewer asked for", "A reviewer approved the change", "Passed all 2 checks", "Went live"]);
+    expect(progress("merged", items)).toMatchObject({ stage: 4, done: true });
+  });
+
+  it("marks where a stuck build stopped", () => {
+    const items = timeline([created, to("queued", "gating", "coded"), { type: "session.stuck", sessionId: "s1", featureId: "a", reason: "gate failed 4 times" }, to("gating", "stuck", "gate_failed")]);
+    expect(progress("stuck", items)).toMatchObject({ stage: 3, failed: true });
+    expect(activity("stuck", items, "gate failed 4 times")).toBe("gate failed 4 times");
   });
 });
 
