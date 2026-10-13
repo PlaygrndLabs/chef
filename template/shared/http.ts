@@ -1,3 +1,4 @@
+import { html, icon, page } from "./ui.ts";
 import type { Store } from "./storage.ts";
 
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -38,10 +39,6 @@ export function matchPath(pattern: string, pathname: string): Record<string, str
   return params;
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-}
-
 export function pagesOf(features: readonly Feature[]): { readonly title: string; readonly path: string }[] {
   return features.flatMap((feature) =>
     feature.routes.filter((route) => route.method === "GET" && route.path !== "/" && !route.path.includes(":") && !route.path.startsWith("/api/") && route.path !== "/api").map((route) => ({ title: feature.title, path: route.path })),
@@ -50,10 +47,10 @@ export function pagesOf(features: readonly Feature[]): { readonly title: string;
 
 export function indexPage(features: readonly Feature[]): Response {
   const pages = pagesOf(features);
-  const items = pages.map((page) => `<li><a href="${escapeHtml(page.path)}">${escapeHtml(page.title)}</a> <code>${escapeHtml(page.path)}</code></li>`).join("");
-  const body = pages.length ? `<ul>${items}</ul>` : "<p>No pages yet. Pages show up here as features add them.</p>";
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;color:#111}li{margin:.4rem 0}code{color:#666;font-size:.85em}</style></head><body><h1>App</h1>${body}</body></html>`;
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+  const body = pages.length
+    ? html`<ul class="list">${pages.map((p) => html`<li><a class="row grow" href="${p.path}" style="text-decoration:none">${icon("file")}<span class="grow strong">${p.title}</span><code>${p.path}</code>${icon("chevron-right", { class: "muted" })}</a></li>`)}</ul>`
+    : html`<div class="empty">${icon("sparkles")}<strong>No pages yet</strong><span>Pages show up here as features add them.</span></div>`;
+  return page({ title: "App", body: html`<header class="page-header"><div><h1>App</h1><p>Every page in this app.</p></div></header>${body}` });
 }
 
 function wantsPage(request: Request): boolean {
