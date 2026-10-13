@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../../src/fakes/runtime.ts";
-import { AgentSettings, agentsView, applyAgentConfig, EMPTY_AGENT_CONFIG, parseAgentConfig, routerConfigOf, DEFAULT_ROUTER_SETTINGS, type AgentConfig, type RoleSetting } from "../../src/profiles/agent-config.ts";
+import { AgentSettings, agentsView, applyAgentConfig, EMPTY_AGENT_CONFIG, parseAgentConfig, routerConfigOf, DEFAULT_ROUTER_SETTINGS, type AgentConfig, type RoleSetting, type RouterSettings } from "../../src/profiles/agent-config.ts";
 import { customAgent, parseProfile, withSkills } from "../../src/profiles/profile.ts";
 
 const backend = parseProfile(`---
@@ -98,7 +98,9 @@ describe("agent settings", () => {
   });
 
   it("turns router settings into the router's config", () => {
-    const router = routerConfigOf({ ...DEFAULT_ROUTER_SETTINGS, useJev: false, thresholds: { new_feature: 0.7, change_feature: 0.8, question: 0.5, feature: 0.9 } });
-    expect(router).toMatchObject({ useClassifier: false, featureThreshold: 0.9, thresholds: { new_feature: 0.7, change_feature: 0.8, question: 0.5 } });
+    const saved = { ...DEFAULT_ROUTER_SETTINGS, useJev: false, thresholds: { new_feature: 0.7, change_feature: 0.8, question: 0.5, feature: 0.9 } } as unknown as RouterSettings;
+    const router = routerConfigOf(saved);
+    expect(router).toMatchObject({ useClassifier: false, featureThreshold: 0.9, thresholds: { new_feature: 0.7, change_feature: 0.8, chore: 0.85, question: 0.5 } });
+    expect(router.wording?.intent.criteria.chore).toContain("maintenance");
   });
 });

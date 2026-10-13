@@ -111,7 +111,7 @@ describe("dashboard in a browser", () => {
       await page.locator("#agents-button").click();
       const view = page.locator('[data-view="agents"]');
       await view.waitFor({ timeout: 10_000 });
-      expect(await view.locator("[data-role]").evaluateAll((items) => items.map((i) => i.getAttribute("data-role")))).toEqual(["planner", "test", "backend", "frontend", "reviewer", "conflict-resolver", "gardener"]);
+      expect(await view.locator("[data-role]").evaluateAll((items) => items.map((i) => i.getAttribute("data-role")))).toEqual(["planner", "test", "backend", "frontend", "chore", "reviewer", "conflict-resolver", "gardener"]);
       await view.locator('[data-role="backend"]').click();
       const editor = view.locator('[data-role-editor="backend"]');
       await editor.getByLabel("System prompt").fill("Implement {feature}. Keep handlers small.");
@@ -180,8 +180,8 @@ describe("dashboard in a browser", () => {
       await page.goto(`${local.url}/?project=shop&session=s1`);
       const team = page.locator('[data-view="feature"] [data-team]');
       await team.waitFor({ timeout: 10_000 });
-      for (const role of ["planner", "test", "backend", "reviewer"]) expect(await team.locator(`[data-member="${role}"]`).getAttribute("data-member-state")).toBe("done");
-      expect(await page.locator('[data-update-role="test"]').count()).toBeGreaterThan(0);
+      for (const role of ["planner", "test", "backend", "reviewer"]) await expect.poll(() => team.locator(`[data-member="${role}"]`).getAttribute("data-member-state"), { timeout: 10_000 }).toBe("done");
+      await page.locator('[data-update-role="test"]').first().waitFor({ timeout: 10_000 });
       await team.locator('[data-member="backend"]').click();
       await page.locator('[data-role-editor="backend"]').waitFor({ timeout: 10_000 });
       expect(errors).toEqual([]);
@@ -190,6 +190,40 @@ describe("dashboard in a browser", () => {
       await local.close();
     }
   });
+
+  it("runs a chore and a hotfix and marks them in the work list and on the build", async () => {
+    const local = await serve({ port: 0, real: false, assets: DIST, project: "shop" });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      const hotfix = (await (await page.request.post(`${local.url}/api/projects/shop/prompts`, { data: { prompt: `/hotfix ${TODO_PROMPT}` } })).json()) as { sessionId: string; decision: { hotfix?: boolean } };
+      expect(hotfix.decision.hotfix).toBe(true);
+      const chore = (await (await page.request.post(`${local.url}/api/projects/shop/prompts`, { data: { prompt: "/chore Explain how to run the tests in the README" } })).json()) as { sessionId: string; featureId: string };
+      expect(chore.featureId).toBe("chore-explain-how-run-tests");
+      await page.goto(`${local.url}/?project=shop`);
+      for (const id of [hotfix.sessionId, chore.sessionId]) await page.locator(`#features [data-session="${id}"][data-state="merged"]`).waitFor({ timeout: 60_000 });
+      expect(await page.locator(`#features [data-session="${hotfix.sessionId}"] [data-hotfix]`).count()).toBe(1);
+      expect(await page.locator(`#features [data-session="${chore.sessionId}"] [data-chore]`).count()).toBe(1);
+
+      await page.goto(`${local.url}/?project=shop&session=${chore.sessionId}`);
+      const feature = page.locator('[data-view="feature"]');
+      await feature.locator("[data-team]").waitFor({ timeout: 10_000 });
+      expect(await feature.locator("header [data-chore]").count()).toBe(1);
+      expect(await feature.locator("[data-team] [data-member]").evaluateAll((items) => items.map((i) => i.getAttribute("data-member")))).toEqual(["chore", "reviewer"]);
+
+      await page.goto(`${local.url}/?project=shop&view=agents&tab=router`);
+      const kinds = await page.locator('[data-router-section="kinds"]').innerText();
+      expect(kinds).toContain("Chore");
+      expect(kinds).toContain("Hotfix");
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+      await local.close();
+    }
+  });
+
   it("asks for a missing key on the feature page, carries on once it is saved and keeps the value hidden", async () => {
     const local = await serve({ port: 0, real: false, assets: DIST, project: "shop" });
     const browser = await chromium.launch();
