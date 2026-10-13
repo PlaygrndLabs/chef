@@ -8,8 +8,24 @@ const dir = join(process.env.CHEF_WORKSPACE ?? "/workspace", job.sessionId, "rep
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
 const git = (...args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 
+function clone(target) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      execFileSync("git", ["clone", "--quiet", "--no-tags", "--branch", job.ref, job.remote, target], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      return;
+    } catch (error) {
+      rmSync(target, { recursive: true, force: true });
+      if (attempt >= 3) {
+        process.stderr.write(`git clone failed: ${String(error.stderr || error.message).trim()}\n`);
+        process.exit(1);
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000 * 4 ** (attempt - 1));
+    }
+  }
+}
+
 execFileSync("rm", ["-rf", dir]);
-execFileSync("git", ["clone", "--quiet", "--no-tags", "--branch", job.ref, job.remote, dir]);
+clone(dir);
 git("checkout", "--quiet", job.commitId);
 git("config", "user.email", "ma.karimi76@gmail.com");
 git("config", "user.name", "chef");
