@@ -20,6 +20,12 @@ export function GitHubPicker(props: { readonly returnTo: string; readonly github
   const [organization, setOrganization] = useState("");
   const { returnTo } = props;
   if (!github) return <p className="text-xs text-muted-foreground">Checking GitHub…</p>;
+  if (github.available === false)
+    return (
+      <p className="rounded-lg border p-3 text-xs text-muted-foreground" data-github="unavailable">
+        {github.error}
+      </p>
+    );
   if (!github.app)
     return (
       <div className="grid gap-2.5 rounded-lg border p-3" data-github="none">
