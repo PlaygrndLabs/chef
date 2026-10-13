@@ -41,7 +41,7 @@ function ProjectList(props: { readonly projects: readonly string[]; readonly onO
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 pt-12 pb-16 sm:px-6 sm:pt-20">
       <div className="grid gap-1.5">
-        <h1 className="text-2xl font-semibold tracking-tight">Your projects</h1>
+        <h1 className="text-xl font-medium tracking-tight">Your projects</h1>
         <p className="text-muted-foreground">Open one to keep building.</p>
       </div>
       <div className="grid gap-2 sm:grid-cols-2" id="project-list">
@@ -71,7 +71,7 @@ function ProjectList(props: { readonly projects: readonly string[]; readonly onO
 function FirstProject(props: { readonly fromGitHub: boolean; readonly onCreated: (name: string) => void }) {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 pt-12 pb-16 text-center sm:pt-20">
-      <h1 className="text-2xl font-semibold tracking-tight">Create your first project</h1>
+      <h1 className="text-xl font-medium tracking-tight">Create your first project</h1>
       <p className="text-muted-foreground">Start fresh, or bring a repository you already have and chef reads it first.</p>
       <div className="mt-4 w-full">
         <NewProjectForm autoFocus fromGitHub={props.fromGitHub} onCreated={props.onCreated} />

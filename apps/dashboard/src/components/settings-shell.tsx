@@ -47,7 +47,7 @@ export function SettingsShell(props: {
         <nav className="flex shrink-0 flex-col gap-0.5 border-b bg-sidebar p-2 pr-11 md:w-56 md:pr-3 md:border-r md:border-b-0 md:p-3" aria-label={`${props.heading} sections`}>
           <div className="hidden px-2 pt-1 pb-3 md:block">
             <div className="text-[11px] tracking-wide text-muted-foreground uppercase">{props.kicker}</div>
-            <DialogTitle className="truncate text-sm font-semibold">{props.heading}</DialogTitle>
+            <DialogTitle className="truncate text-sm font-medium">{props.heading}</DialogTitle>
             <DialogDescription className="sr-only">{props.description}</DialogDescription>
           </div>
           <div className="flex gap-0.5 overflow-x-auto md:flex-col md:overflow-visible">
@@ -71,7 +71,7 @@ export function SettingsShell(props: {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex shrink-0 items-start gap-3 border-b px-5 py-3.5 pr-12 sm:px-6">
             <div className="grid min-w-0 gap-0.5">
-              <h2 className="text-base font-semibold" data-settings-title>
+              <h2 className="text-base font-medium" data-settings-title>
                 {section.label}
               </h2>
               {section.note ? <p className="text-xs text-muted-foreground">{section.note}</p> : null}

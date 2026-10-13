@@ -29,7 +29,7 @@ function Section(props: { readonly title: string; readonly note?: ReactNode; rea
   return (
     <section className="flex flex-col gap-3 rounded-2xl border p-4" data-router-section={props.id}>
       <div className="grid gap-1">
-        <h2 className="text-sm font-semibold">{props.title}</h2>
+        <h2 className="text-sm font-medium">{props.title}</h2>
         {props.note ? <p className="text-xs text-muted-foreground">{props.note}</p> : null}
       </div>
       {props.children}

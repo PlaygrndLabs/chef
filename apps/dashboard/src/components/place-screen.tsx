@@ -162,7 +162,7 @@ function Starting(props: { readonly mode: AppMode; readonly onChange: (mode: App
   const failed = computer?.status === "failed";
   return (
     <div className="mx-auto grid w-full max-w-lg gap-3 px-4 pt-16 text-center" data-view="starting">
-      <h1 className="text-xl font-semibold">{failed ? "chef could not start on this computer" : "Starting chef on this computer"}</h1>
+      <h1 className="text-xl font-medium">{failed ? "chef could not start on this computer" : "Starting chef on this computer"}</h1>
       <p className="text-sm text-muted-foreground">{failed ? computer?.error : "The first start builds the sandbox image, which takes a few minutes."}</p>
       {failed ? null : <Loader2 className="mx-auto animate-spin text-muted-foreground" />}
       <Log lines={computer?.log ?? []} />
@@ -198,7 +198,7 @@ export function PlaceScreen(props: { readonly mode: AppMode; readonly onChange: 
       <div className="mx-auto grid w-full max-w-4xl gap-6 px-4 pt-10 pb-16 sm:pt-16">
         <div className="grid justify-items-center gap-2 text-center">
           <Wordmark className="mb-2 h-11" />
-          <h1 className="text-2xl font-semibold tracking-tight">Where should chef work?</h1>
+          <h1 className="text-xl font-medium tracking-tight">Where should chef work?</h1>
           <p className="max-w-xl text-muted-foreground">This app runs on your computer either way. Pick where the agents, sandboxes and previews run. You can change it later in Settings.</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
