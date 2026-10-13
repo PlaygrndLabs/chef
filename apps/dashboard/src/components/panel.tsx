@@ -148,7 +148,7 @@ function DetailsTab({ node }: { readonly node: SessionNode }) {
       <Section title="Where the code lives">
         <Facts
           rows={[
-            ["Repository", <span className="font-mono text-xs">{record?.fork ?? node.live?.fork ?? "not created"}</span>],
+            ["Repository", <span className="font-mono text-xs">{record?.forkDeleted ? (record.machine.state === "dropped" ? `archive/${record.id} (fork removed)` : "main (fork removed after merge)") : (record?.fork ?? node.live?.fork ?? "not created")}</span>],
             ["Live app", <span className="font-mono text-xs">{`${selection.project} · main ${short(data.spec?.commitId) || "none"}`}</span>],
             ["Build", <span className="font-mono text-xs">{node.id}</span>],
           ]}

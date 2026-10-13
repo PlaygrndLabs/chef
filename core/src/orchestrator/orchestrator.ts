@@ -19,7 +19,7 @@ import type { SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
-import { MainWriter, Mutex, PreviewPublisher } from "./capabilities.ts";
+import { Archiver, MainWriter, Mutex, PreviewPublisher } from "./capabilities.ts";
 import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderLesson, renderRecall, MEMORY_DIR } from "../memory/memory.ts";
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
 import { projectRuleProblems, renderRule, rulePath } from "../checks/project-rules.ts";
@@ -103,6 +103,7 @@ export class Orchestrator {
   private readonly router: Router;
   private readonly previews: PreviewPublisher;
   private readonly main: MainWriter;
+  private readonly archiver: Archiver;
   private readonly mergeQueue = new Mutex();
   private readonly pickQueue = new Mutex();
   private readonly specialization: Specialization;
@@ -122,6 +123,7 @@ export class Orchestrator {
     this.ttl = config.tokenTtlSeconds ?? 900;
     this.previews = new PreviewPublisher(deps.repos, this.canonical, this.ttl);
     this.main = new MainWriter(deps.repos, this.canonical, this.ttl);
+    this.archiver = new Archiver(deps.repos, this.canonical, this.ttl);
     this.budget = config.budget ?? DEFAULT_BUDGET;
     this.specialization = { ...DEFAULT_SPECIALIZATION, ...config.specialization };
     const resolvers: Record<string, Resolver> = {};
@@ -249,8 +251,9 @@ export class Orchestrator {
     const ids = record.commits.slice(-limit).reverse();
     return Promise.all(
       ids.map(async (commitId) => {
-        const commit = await this.deps.repos.readCommit(record.fork, commitId);
-        const note = parseNote(await this.deps.repos.readNote(record.fork, NOTES_NAMESPACE, commitId));
+        const repo = this.repoOf(record);
+        const commit = await this.deps.repos.readCommit(repo, commitId);
+        const note = parseNote(await this.deps.repos.readNote(repo, NOTES_NAMESPACE, commitId));
         return { commitId, message: commit?.message ?? "", timestamp: commit?.timestamp ?? null, note: note ? { role: note.role, kind: note.kind, prompt: note.prompt, model: note.model, paths: note.paths } : null };
       }),
     );
@@ -260,7 +263,7 @@ export class Orchestrator {
     const record = await this.session(id);
     const from = record.merge?.mainBefore ?? record.baseMain;
     if (!record.head || !from) return { base: from, head: record.head, files: [] };
-    const head = await this.commitOf(record.fork, record.head);
+    const head = await this.commitOf(this.repoOf(record), record.head);
     const base = await this.commitOf(this.canonical, from);
     const clip = (text: string | undefined) => (text === undefined ? null : text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text);
     const files = changedPaths(diffTrees(base.tree, head.tree)).map((path) => ({ path, before: clip(base.tree[path]), after: clip(head.tree[path]) }));
@@ -519,6 +522,10 @@ export class Orchestrator {
   }
 
   private async reforkAfterRevert(record: SessionRecord, revertId: string): Promise<void> {
+    if (record.forkDeleted) {
+      await this.deps.repos.fork(this.canonical, record.fork);
+      record.forkDeleted = false;
+    }
     const token = await this.deps.repos.createToken(record.fork, "write", this.ttl);
     try {
       const outcome = await this.deps.repos.merge(token, { into: "main", from: { repo: this.canonical, ref: "main" }, message: "Sync main after revert", author: this.config.author, resolvers: this.resolvers });
@@ -986,14 +993,39 @@ export class Orchestrator {
     if (stored?.syncPending && !this.running.has(record.id)) record.syncPending = true;
     if (this.syncAfterRun.delete(record.id)) record.syncPending = true;
     const state = record.machine.state;
-    const release = isTerminal(state) && record.released !== state;
-    record.released = isTerminal(state) ? state : null;
+    if (!isTerminal(state)) record.released = null;
+    else if (record.released !== state && (await this.release(record))) record.released = state;
     await this.deps.store.put(`session/${record.id}`, record);
-    if (release) await this.release(record);
   }
 
-  private async release(record: SessionRecord): Promise<void> {
+  async reclaim(): Promise<number> {
+    let released = 0;
+    for (const record of await this.sessions()) {
+      if (!isTerminal(record.machine.state) || record.released === record.machine.state || this.running.has(record.id)) continue;
+      await this.save(record);
+      released++;
+    }
+    return released;
+  }
+
+  private async release(record: SessionRecord): Promise<boolean> {
     await this.deps.coder.release?.(record.id).catch(() => undefined);
+    const state = record.machine.state;
+    if ((state !== "merged" && state !== "dropped") || record.forkDeleted) return true;
+    try {
+      if (state === "dropped" && record.head) await this.archiver.archive(record.id, record.head, record.fork);
+      await this.deps.repos.deleteRepo(record.fork);
+      record.forkDeleted = true;
+      await this.emit({ type: "fork.deleted", sessionId: record.id, featureId: record.featureId, fork: record.fork, archived: state === "dropped" && record.head ? `archive/${record.id}` : null });
+      return true;
+    } catch (error) {
+      await this.emit({ type: "fork.kept", sessionId: record.id, featureId: record.featureId, fork: record.fork, reason: (error as Error).message });
+      return false;
+    }
+  }
+
+  private repoOf(record: SessionRecord): string {
+    return record.forkDeleted ? this.canonical : record.fork;
   }
 
   private async emit(event: DistributiveOmit<ChefEvent, "project" | "at">): Promise<void> {

@@ -84,6 +84,16 @@ export class MemoryFs {
     chmod: async (): Promise<void> => undefined,
   };
 
+  bytes(): number {
+    let total = 0;
+    const walk = (node: Node) => {
+      if (node.kind === "file") total += node.data.byteLength;
+      else for (const child of node.children.values()) walk(child);
+    };
+    walk(this.root);
+    return total;
+  }
+
   private lookup(path: string): Node | undefined {
     let node: Node = this.root;
     for (const part of parts(path)) {

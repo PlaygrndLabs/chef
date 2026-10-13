@@ -235,6 +235,7 @@ export class ProjectAgent extends Agent<Env> {
 
   async drive(): Promise<void> {
     const { orchestrator } = await this.build();
+    await orchestrator.reclaim();
     const sessions = await orchestrator.drain(1);
     if (sessions.some((s) => !isTerminal(s.machine.state))) await this.schedule(1, "drive");
   }

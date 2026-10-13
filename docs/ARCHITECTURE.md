@@ -20,7 +20,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 
 | Port | Fake | Real adapter |
 | --- | --- | --- |
-| `RepoHost` | `MemoryRepoHost` | `ArtifactsRepoHost` (`adapters/src/artifacts.ts`) |
+| `RepoHost` | `MemoryRepoHost` | `ArtifactsRepoHost` (`adapters/src/artifacts.ts`): reads through the Artifacts read API, writes over git smart HTTP with isomorphic-git |
 | `Coder` | `ScriptedCoder` | `SandboxCoder` (`workers/src/sandbox-coder.ts`) |
 | `Classifier` | `KeywordClassifier` | `JevClassifier` (`adapters/src/jev.ts`) |
 | `Planner` | `TemplatePlanner` | `LlmPlanner` (`adapters/src/llm-planner.ts`) |
@@ -62,6 +62,8 @@ chef serves many projects from one Cloudflare account, so nothing stays up that 
 
 - **Sandboxes.** Each session has a `SessionAgent` container for its coder turns and checks, and each preview build has one too. A container stops five minutes after its last command (`sleepIfIdle`, plus the platform's inactivity timeout as a backstop), and the orchestrator stops a session's container as soon as the session merges, gets stuck or is dropped (`Coder.release`). The next command starts it again.
 - **Previews.** All previews of a project are versions of one Worker, `chef-project-<project>`. `PreviewKeeper` (`core/src/previews/keeper.ts`) records every deploy and every visit to `/preview/<project>/<feature>`. When a project has had no visit and no deploy for its idle time (one hour by default, `previewIdleMinutes` in the project settings) and no session is running, `ProjectAgent.sweepPreviews` deletes that Worker through the Cloudflare API. The next visit shows a "waking up" page that refreshes itself while chef builds the preview again from `preview/<feature>` on the canonical repo, then redirects to it. Data a preview stored is gone after it sleeps.
+- **Forks.** A fork lives only while its session does. When a session merges, its commits and notes are already on `main`, so the fork is deleted. When a session is dropped, its head and notes are first pushed to `archive/<session>` on the canonical repo, then the fork is deleted. Turns and changes of an ended session are read from the canonical repo. If a merged feature is reverted later, the orchestrator forks `main` again under the same name and restores the session's work there. `Orchestrator.reclaim` releases sessions that ended before this cleanup existed, or whose cleanup failed (`fork.kept`).
+- **Git in memory.** `ArtifactsRepoHost` reads through the Artifacts binding's read API (`log`, `readCommit`, `readTree`, `readBlob`) and keeps no git repository for reads; immutable commits and blobs sit in byte-bounded LRU caches. Only writes (commits, merges, ref and note pushes) use isomorphic-git, and they fetch just the refs they touch plus notes. At most three repos keep their in-memory git between operations, and one that grows past 48 MB is dropped and fetched again when next needed. Reads fall back to git smart HTTP when the binding has no read API.
 
 ## Merging and sync
 

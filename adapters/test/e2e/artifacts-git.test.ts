@@ -77,3 +77,53 @@ describe("ArtifactsRepoHost over real git smart HTTP", () => {
     expect(server.gitLog("demo-git", "preview/todo-add").split("\n")[0]).toContain(head);
   });
 });
+
+describe("ArtifactsRepoHost with the Artifacts read API and a small cache", () => {
+  it("reads commits, logs and notes through the read API and agrees with git", async () => {
+    const control = server.control({ read: true });
+    const host = new ArtifactsRepoHost(control);
+    await host.createRepo("reads", { defaultBranch: "main" });
+    const write = await host.createToken("reads", "write", 600);
+    const author = { name: "t", email: "ma.karimi76@gmail.com" };
+    const first = await host.commit(write, { ref: "main", parent: null, changes: { "a.txt": "a\n", "dir/b.txt": "b\n" }, message: "init", author });
+    const second = await host.commit(write, { ref: "main", parent: first.id, changes: { "dir/b.txt": "B\n" }, message: "second", author });
+    await host.addNote(write, { namespace: NOTES_NAMESPACE, commitId: second.id, note: "hello" });
+
+    const reader = new ArtifactsRepoHost(control);
+    server.reads.length = 0;
+    expect(await reader.resolveRef("reads", "main")).toBe(second.id);
+    expect((await reader.readCommit("reads", second.id))?.tree).toEqual({ "a.txt": "a\n", "dir/b.txt": "B\n" });
+    expect((await reader.log("reads", "main")).map((c) => c.message)).toEqual(["second", "init"]);
+    expect(await reader.readNote("reads", NOTES_NAMESPACE, second.id)).toBe("hello");
+    expect(await reader.readNote("reads", NOTES_NAMESPACE, first.id)).toBeNull();
+    expect(server.reads.length).toBeGreaterThan(0);
+    expect(reader.cachedRepos).toEqual([]);
+    expect(await reader.resolveRef("reads", "nope")).toBeNull();
+    expect(await reader.resolveRef("missing-repo", "main")).toBeNull();
+  });
+
+  it("deletes a repo and forgets it", async () => {
+    const host = new ArtifactsRepoHost(server.control({ read: true }));
+    await host.createRepo("gone", { defaultBranch: "main" });
+    const write = await host.createToken("gone", "write", 600);
+    await host.commit(write, { ref: "main", parent: null, changes: { "a.txt": "a" }, message: "init", author: { name: "t", email: "ma.karimi76@gmail.com" } });
+    expect(await host.deleteRepo("gone")).toBe(true);
+    expect(await host.info("gone")).toBeNull();
+    expect(await host.resolveRef("gone", "main")).toBeNull();
+    expect(await host.deleteRepo("gone")).toBe(false);
+  });
+
+  it("runs the loop end to end with one cached repo at a time and deletes the fork after the merge", async () => {
+    const host = new ArtifactsRepoHost(server.control({ read: true }), { maxRepos: 1 });
+    const PROMPT = "Add an item to a todo list";
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]), deps: { repos: host }, config: { name: "small-cache" } });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(PROMPT);
+    const record = await w.orchestrator.run(sessionId as string);
+    expect(record.machine.state, record.machine.reason).toBe("merged");
+    expect(host.cachedRepos.length).toBeLessThanOrEqual(1);
+    expect(await host.info(record.fork)).toBeNull();
+    expect(server.gitLog("small-cache")).toContain("spec: mark todo-add merged");
+    expect((await w.orchestrator.turns(sessionId as string)).every((t) => t.note !== null)).toBe(true);
+  });
+});
