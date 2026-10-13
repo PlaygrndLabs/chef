@@ -172,7 +172,7 @@ function build(ctx, width, height) {
     ctx.lineTo(22, lanes[1] - 18);
     ctx.stroke();
     const split = ease((t - 1.6) / 0.6);
-    lanes.forEach((y, i) => {
+    lanes.forEach((y) => {
       ctx.strokeStyle = split > 0 ? blue : line;
       ctx.globalAlpha = 0.25 + 0.5 * split;
       ctx.beginPath();
