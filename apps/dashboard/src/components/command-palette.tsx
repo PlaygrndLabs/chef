@@ -5,7 +5,7 @@ import { FEATURE_LABEL, FEATURE_TONE, StatusDot } from "@/components/status";
 import { useWorkspace } from "@/lib/workspace";
 
 export function CommandPalette({ open, onOpenChange }: { readonly open: boolean; readonly onOpenChange: (open: boolean) => void }) {
-  const { features, select, openFeature, focusComposer, addProject, projects, selection, openSettings } = useWorkspace();
+  const { features, select, openFeature, openMemory, focusComposer, addProject, projects, selection, openSettings } = useWorkspace();
   const { setTheme, resolvedTheme } = useTheme();
   const run = (action: () => void) => {
     onOpenChange(false);
@@ -18,16 +18,11 @@ export function CommandPalette({ open, onOpenChange }: { readonly open: boolean;
         <CommandEmpty>Nothing found.</CommandEmpty>
         <CommandGroup heading="Actions">
           <CommandItem
-            onSelect={() =>
-              run(() => {
-                select({ view: "project", feature: null, session: null, panel: null });
-                focusComposer();
-              })
-            }
+            onSelect={() => run(focusComposer)}
           >
             New request
           </CommandItem>
-          <CommandItem onSelect={() => run(() => select({ view: "insights", feature: null, session: null, panel: null }))}>Memory and learning</CommandItem>
+          <CommandItem onSelect={() => run(openMemory)}>Memory and learning</CommandItem>
           <CommandItem onSelect={() => run(() => openSettings("project"))}>Project settings</CommandItem>
           <CommandItem onSelect={() => run(() => openSettings("project", "agents"))}>Agents in this project</CommandItem>
           <CommandItem onSelect={() => run(() => openSettings("project", "environment"))}>Keys and environment of this project</CommandItem>

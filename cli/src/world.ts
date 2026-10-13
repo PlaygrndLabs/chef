@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { loadProfiles, Orchestrator, type Deps, type FeatureSpec, type ProjectConfig, type Tree } from "@chef/core";
+import { loadProfiles, Orchestrator, type Deps, type FeatureSpec, type ProjectConfig, type SplitPart, type Tree } from "@chef/core";
 import { FakeCheckRunner, FakeProofRunner, KeywordClassifier, LexicalIndex, MemoryEventBus, MemoryPreviewHost, MemoryRepoHost, MemoryStore, RuleReviewer, ScriptedCoder, SequentialIds, TemplatePlanner, TickingClock, type Script } from "@chef/core/fakes";
 import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { readTree } from "./fs.ts";
@@ -22,6 +22,7 @@ export function repoProfiles() {
 export interface LocalWorldOptions {
   readonly script: Script;
   readonly presets?: ReadonlyMap<string, FeatureSpec>;
+  readonly splits?: ReadonlyMap<string, readonly SplitPart[]>;
   readonly real?: boolean;
   readonly config?: Partial<ProjectConfig>;
   readonly deps?: Partial<Deps>;
@@ -38,7 +39,7 @@ export function localWorld(options: LocalWorldOptions) {
     repos,
     coder,
     classifier: new KeywordClassifier(),
-    planner: new TemplatePlanner(options.presets ?? new Map()),
+    planner: new TemplatePlanner(options.presets ?? new Map(), options.splits ?? new Map()),
     reviewer: new RuleReviewer(),
     previews,
     checks: options.real ? new LocalCheckRunner(nodeModules) : new FakeCheckRunner(undefined, generated),

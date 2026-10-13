@@ -1,9 +1,9 @@
-import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, FolderPlus, KeyRound, Mic, Monitor, Moon, Plus, Settings, Settings2, Sun } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, FolderPlus, KeyRound, ListTree, Mic, Monitor, Moon, Settings, Settings2, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/status";
-import { WorkList } from "@/components/work-list";
+import { FeatureTree } from "@/components/feature-tree";
 import { useTalkButton } from "@/lib/talk";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
@@ -106,36 +106,42 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
   );
 }
 
-export function Sidebar() {
-  const { select, focusComposer, addProject, openSettings, selection, app } = useWorkspace();
+export function ProjectHeader({ onMenu }: { readonly onMenu?: () => void }) {
+  const { addProject, openSettings, selection } = useWorkspace();
   return (
-    <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
-      <div className="flex items-center gap-1 px-1.5">
-        <a href="/" id="home-link" className="rounded-sm" aria-label="All projects" title="All projects">
-          <Wordmark className="h-[15px] translate-y-px" />
-        </a>
-        <span className="pl-0.5 text-muted-foreground/60">/</span>
-        <ProjectSwitcher />
-        <Button variant="ghost" size="icon-sm" className={cn("shrink-0 text-muted-foreground", selection.settings?.scope === "project" && "bg-sidebar-accent text-foreground")} onClick={() => openSettings("project")} id="project-settings-button" aria-label="Project settings" title={`Settings for ${selection.project}`}>
-          <Settings2 />
+    <div className="flex h-11 shrink-0 items-center gap-1 border-b px-3">
+      {onMenu ? (
+        <Button variant="ghost" size="icon-sm" className="-ml-1.5 shrink-0" onClick={onMenu} aria-label="Show features">
+          <ListTree />
         </Button>
-        <span className="flex-1" />
-        <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground" onClick={addProject} id="new-project-button" aria-label="New project" title="New project">
-          <FolderPlus />
-        </Button>
-      </div>
-      <Button
-        className="h-9"
-        onClick={() => {
-          select({ view: "project", feature: null, session: null, panel: null });
-          focusComposer();
-        }}
-      >
-        <Plus />
-        New request
+      ) : null}
+      <a href="/" id="home-link" className="rounded-sm" aria-label="All projects" title="All projects">
+        <Wordmark className="h-[15px] translate-y-px" />
+      </a>
+      <span className="pl-0.5 text-muted-foreground/60">/</span>
+      <ProjectSwitcher />
+      <Button variant="ghost" size="icon-sm" className={cn("shrink-0 text-muted-foreground", selection.settings?.scope === "project" && "bg-sidebar-accent text-foreground")} onClick={() => openSettings("project")} id="project-settings-button" aria-label="Project settings" title={`Settings for ${selection.project}`}>
+        <Settings2 />
       </Button>
-      <WorkList />
-      <div className="flex items-center gap-1 border-t pt-2.5">
+      <span className="flex-1" />
+      <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground" onClick={addProject} id="new-project-button" aria-label="New project" title="New project">
+        <FolderPlus />
+      </Button>
+    </div>
+  );
+}
+
+export function TreePane() {
+  const { openSettings, app, features } = useWorkspace();
+  const count = features.filter((f) => f.sessions.length > 0).length;
+  return (
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+      <div className="flex h-11 shrink-0 items-center gap-1.5 border-b px-3.5 text-xs font-medium text-muted-foreground">
+        Features
+        {count ? <span className="tabular-nums">{count}</span> : null}
+      </div>
+      <FeatureTree />
+      <div className="flex items-center gap-1 border-t px-2.5 py-2">
         <AppMenu app={app} onSettings={(section) => openSettings("app", section)} />
       </div>
     </div>

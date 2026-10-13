@@ -1,33 +1,31 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Menu } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ResizeHandle, useStoredWidth } from "@/components/resize-handle";
-import { ChatViewSkeleton, PageSkeleton, PanelSkeleton, Shown } from "@/components/loading";
+import { ChatViewSkeleton, Shown } from "@/components/loading";
 import { preloadSettings, SettingsHost } from "@/components/settings-host";
 import { ProjectBar } from "@/components/project-bar";
-import { Sidebar } from "@/components/sidebar";
-import { Wordmark } from "@/components/logo";
+import { InsightsView, SessionTabs, SessionView, TabContent } from "@/components/session-tabs";
+import { ProjectHeader, TreePane } from "@/components/sidebar";
 import { TalkButton } from "@/components/voice-button";
 import { projectApi } from "@/lib/api";
 import { preloadable, useOpenedOnce, whenIdle } from "@/lib/lazy";
 import { useProject } from "@/lib/live";
 import { useMediaQuery, useWindowWidth } from "@/lib/media";
-import { featureNodes, sessionNodes } from "@/lib/model";
+import { currentSession, featureNodes, sessionNodes } from "@/lib/model";
 import { rememberProject, returningToNewProject } from "@/lib/projects";
 import type { Selection, SettingsScope } from "@/lib/selection";
 import { useSettings } from "@/lib/settings";
+import { MEMORY_TAB, useTabs } from "@/lib/tabs";
 import { WorkspaceContext, type Workspace } from "@/lib/workspace";
 
 export const MainView = preloadable(() => import("@/components/main-view").then((m) => m.MainView));
-const Panel = preloadable(() => import("@/components/panel").then((m) => m.Panel));
 const CommandPalette = preloadable(() => import("@/components/command-palette").then((m) => m.CommandPalette));
 const NewProjectDialog = preloadable(() => import("@/components/project-setup").then((m) => m.NewProjectDialog));
 
-const SIDEBAR = { initial: 264, min: 220, max: 440 } as const;
-const PANEL = { initial: 480, min: 360 } as const;
-const CENTER_MIN = 360;
+const CHAT = { initial: 440, min: 340, max: 720 } as const;
+const TREE = { initial: 260, min: 200, max: 440 } as const;
+const TABS_MIN = 420;
 const COMPOSE_DELAY_MS = 50;
 
 function typing(target: EventTarget | null): boolean {
@@ -44,11 +42,16 @@ function titleOf(selection: Selection, featureTitle: string | null): string {
   return `${selection.project} · chef`;
 }
 
-function PanelSlot() {
+function ChatPane({ onMenu }: { readonly onMenu?: () => void }) {
   return (
-    <Suspense fallback={<PanelSkeleton />}>
-      <Panel />
-    </Suspense>
+    <div className="flex h-full min-h-0 flex-col">
+      <ProjectHeader {...(onMenu ? { onMenu } : {})} />
+      <div className="min-h-0 flex-1">
+        <Suspense fallback={<ChatViewSkeleton />}>
+          <MainView />
+        </Suspense>
+      </div>
+    </div>
   );
 }
 
@@ -60,27 +63,35 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const api = useMemo(() => projectApi(project), [project]);
   const sessions = useMemo(() => sessionNodes(data.live, data.records), [data.live, data.version, data.records]);
   const features = useMemo(() => featureNodes(data.live, data.records, data.spec?.features ?? []), [data.live, data.version, data.records, data.spec]);
-  const session = selection.session ? (sessions.find((s) => s.id === selection.session) ?? null) : null;
-  const featureId = session?.featureId ?? selection.feature;
+  const picked = selection.session ? (sessions.find((s) => s.id === selection.session) ?? null) : null;
+  const featureId = selection.view === "feature" ? (selection.feature ?? picked?.featureId ?? null) : null;
   const feature = featureId ? (features.find((f) => f.id === featureId) ?? null) : null;
+  const session = feature ? currentSession(feature, selection.session) : null;
+  const activeTab = selection.view === "insights" ? MEMORY_TAB : (featureId ?? (selection.view === "feature" ? selection.session : null));
+  const { tabs, close, keep } = useTabs(project, activeTab);
   const compact = useMediaQuery("(max-width: 1023px)");
   const width = useWindowWidth();
   const [palette, setPalette] = useState(false);
-  const [sidebar, setSidebar] = useState(false);
+  const [treeSheet, setTreeSheet] = useState(false);
   const [fromGitHub] = useState(returningToNewProject);
   const [adding, setAdding] = useState(fromGitHub);
   const [expanded, setExpanded] = useState(false);
-  const [sideWidth, setSideWidth] = useStoredWidth("chef:sidebar-width", SIDEBAR.initial);
-  const [panelWidth, setPanelWidth] = useStoredWidth("chef:panel-width", PANEL.initial);
+  const [chatWidth, setChatWidth] = useStoredWidth("chef:chat-width", CHAT.initial);
+  const [treeWidth, setTreeWidth] = useStoredWidth("chef:tree-width", TREE.initial);
   const app = useSettings();
-  const panel = selection.view === "feature" && feature !== null && selection.panel !== null;
-  const panelMax = Math.max(PANEL.min, width - sideWidth - CENTER_MIN);
   const paletteLoaded = useOpenedOnce(palette);
   const addingLoaded = useOpenedOnce(adding);
+  const tree = Math.min(Math.max(treeWidth, TREE.min), TREE.max);
+  const chatMax = Math.max(CHAT.min, Math.min(CHAT.max, width - tree - TABS_MIN));
+  const chat = Math.min(Math.max(chatWidth, CHAT.min), chatMax);
+
+  useEffect(() => {
+    if (data.ready) keep((id) => id === MEMORY_TAB || features.some((f) => f.id === id));
+  }, [data.ready, features, keep]);
 
   const openSettings = useCallback(
     (scope: SettingsScope, section = "general", item: string | null = null) => {
-      setSidebar(false);
+      setTreeSheet(false);
       select({ settings: { scope, section }, item });
     },
     [select],
@@ -97,29 +108,42 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
       feature,
       session,
       projects,
-      panelExpanded: expanded && panel,
+      panelExpanded: expanded && feature !== null,
       expandPanel: setExpanded,
       addProject: () => {
-        setSidebar(false);
+        setTreeSheet(false);
         setAdding(true);
       },
       openSession: (id) => {
         const node = sessions.find((s) => s.id === id);
-        select({ view: "feature", session: id, feature: node?.featureId ?? null });
-        setSidebar(false);
+        select({ view: "feature", session: id, feature: node?.featureId ?? null, panel: null });
+        setTreeSheet(false);
       },
       openFeature: (id) => {
         select({ view: "feature", feature: id, session: null, panel: null });
-        setSidebar(false);
+        setTreeSheet(false);
+      },
+      openMemory: () => select({ view: "insights", feature: null, session: null, panel: null }),
+      tabs,
+      activeTab,
+      selectTab: (id) => (id === MEMORY_TAB ? select({ view: "insights", feature: null, session: null, panel: null }) : select({ view: "feature", feature: id, session: null, panel: null })),
+      closeTab: (id) => {
+        const next = close(id);
+        if (id !== activeTab) return;
+        setExpanded(false);
+        if (next === null) select({ view: "project", feature: null, session: null, panel: null });
+        else if (next === MEMORY_TAB) select({ view: "insights", feature: null, session: null, panel: null });
+        else select({ view: "feature", feature: next, session: null, panel: null });
       },
       focusComposer: () => {
-        setSidebar(false);
+        setTreeSheet(false);
+        if (compact) select({ view: "project", feature: null, session: null, panel: null });
         focusComposerSoon();
       },
       openSettings,
       app,
     }),
-    [data, api, selection, select, features, sessions, feature, session, projects, expanded, panel, openSettings, app],
+    [data, api, selection, select, features, sessions, feature, session, projects, expanded, tabs, activeTab, close, compact, openSettings, app],
   );
 
   useEffect(() => {
@@ -129,13 +153,12 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
         setPalette((p) => !p);
       } else if (!typing(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === "n") {
         e.preventDefault();
-        select({ view: "project", feature: null, session: null, panel: null });
         focusComposerSoon();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [select]);
+  }, []);
 
   useEffect(() => rememberProject(project), [project]);
 
@@ -146,76 +169,67 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   useEffect(
     () =>
       whenIdle(() => {
-        void Panel.preload();
+        void SessionView.preload();
+        void InsightsView.preload();
         void CommandPalette.preload();
         preloadSettings();
       }),
     [],
   );
 
+  const showTabs = !(expanded && feature !== null);
   return (
     <WorkspaceContext.Provider value={workspace}>
       <Shown />
-      <div className="flex h-dvh overflow-hidden">
-        {compact ? null : (
-          <aside className="relative shrink-0 border-r" style={{ width: Math.min(Math.max(sideWidth, SIDEBAR.min), SIDEBAR.max) }} aria-label="Features">
-            <Sidebar />
-            <ResizeHandle edge="right" width={sideWidth} min={SIDEBAR.min} max={SIDEBAR.max} initial={SIDEBAR.initial} onResize={setSideWidth} label="Resize the work list" />
-          </aside>
+      <div className="flex h-dvh flex-col overflow-hidden">
+        {compact ? (
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <ChatPane onMenu={() => setTreeSheet(true)} />
+            <TalkButton />
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1">
+            <section className="relative shrink-0 border-r" style={{ width: chat }} aria-label="Chat">
+              <ChatPane />
+              <ResizeHandle edge="right" width={chat} min={CHAT.min} max={chatMax} initial={CHAT.initial} onResize={setChatWidth} label="Resize the chat" />
+            </section>
+            <aside className="relative shrink-0 border-r" style={{ width: tree }} aria-label="Features">
+              <TreePane />
+              <ResizeHandle edge="right" width={tree} min={TREE.min} max={TREE.max} initial={TREE.initial} onResize={setTreeWidth} label="Resize the feature list" />
+            </aside>
+            <main className="relative min-w-0 flex-1" aria-label="Open features">
+              {showTabs ? <SessionTabs /> : null}
+              <TalkButton />
+            </main>
+          </div>
         )}
-        <div className="relative flex min-w-0 flex-1 flex-col">
-          {compact ? (
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
-              <Button variant="ghost" size="icon" onClick={() => setSidebar(true)} aria-label="Show features">
-                <Menu />
-              </Button>
-              <a href="/" aria-label="All projects" title="All projects">
-                <Wordmark className="h-[14px]" />
-              </a>
-              <span className="text-muted-foreground/60">/</span>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{project}</span>
-            </div>
-          ) : null}
-          <ProjectBar />
-          <main className="min-h-0 min-w-0 flex-1">
-            <Suspense fallback={selection.view === "project" ? <ChatViewSkeleton /> : <PageSkeleton />}>
-              <MainView />
-            </Suspense>
-          </main>
-          <TalkButton />
-        </div>
-        {panel && !compact && !expanded ? (
-          <aside className="relative shrink-0 border-l" style={{ width: Math.min(Math.max(panelWidth, PANEL.min), panelMax) }} aria-label="Preview and details">
-            <ResizeHandle edge="left" width={panelWidth} min={PANEL.min} max={panelMax} initial={PANEL.initial} onResize={setPanelWidth} label="Resize the preview" />
-            <PanelSlot />
-          </aside>
-        ) : null}
+        <ProjectBar />
       </div>
       {compact ? (
         <>
-          <Sheet open={sidebar} onOpenChange={setSidebar}>
+          <Sheet open={treeSheet} onOpenChange={setTreeSheet}>
             <SheetContent side="left" className="w-72 p-0">
               <SheetTitle className="sr-only">Features</SheetTitle>
-              <Sidebar />
+              <TreePane />
             </SheetContent>
           </Sheet>
           <Sheet
-            open={panel && !expanded}
+            open={activeTab !== null && !expanded}
             onOpenChange={(open) => {
-              if (!open) select({ panel: null });
+              if (!open) select({ view: "project", feature: null, session: null, panel: null });
             }}
           >
-            <SheetContent side="right" className="w-[min(100vw,28rem)] p-0 [&>button]:hidden">
-              <SheetTitle className="sr-only">Preview and details</SheetTitle>
-              <PanelSlot />
+            <SheetContent side="right" className="w-screen max-w-none p-0 data-[side=right]:w-screen data-[side=right]:sm:max-w-none [&>button]:hidden">
+              <SheetTitle className="sr-only">Open features</SheetTitle>
+              <SessionTabs onClose={() => select({ view: "project", feature: null, session: null, panel: null })} />
             </SheetContent>
           </Sheet>
         </>
       ) : null}
-      <Dialog open={panel && expanded} onOpenChange={setExpanded}>
+      <Dialog open={expanded && feature !== null} onOpenChange={setExpanded}>
         <DialogContent showCloseButton={false} className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none" aria-describedby={undefined}>
-          <DialogTitle className="sr-only">Preview and details</DialogTitle>
-          <PanelSlot />
+          <DialogTitle className="sr-only">{feature?.title ?? "Feature"}</DialogTitle>
+          <TabContent />
         </DialogContent>
       </Dialog>
       {paletteLoaded ? (

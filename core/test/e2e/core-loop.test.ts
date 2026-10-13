@@ -103,7 +103,7 @@ describe("phase 1 core loop on fakes", () => {
         const result = await base(input, attempt);
         if (input.role === "backend" && first) {
           first = false;
-          return { changes: { ...result.changes, "features/home/index.ts": "export const hacked = true;\n" } };
+          return { changes: { ...result.changes, "features/other/index.ts": "export const hacked = true;\n" } };
         }
         return result;
       },
@@ -113,7 +113,7 @@ describe("phase 1 core loop on fakes", () => {
     const record = await w.orchestrator.run(sessionId as string);
     expect(record.machine.state).toBe("merged");
     const main = await w.repos.readCommit("demo", (await w.repos.resolveRef("demo", "main")) as string);
-    expect(main?.tree["features/home/index.ts"]).not.toContain("hacked");
+    expect(main?.tree["features/other/index.ts"]).toBeUndefined();
     expect(w.coder.turns.filter((t) => t.role === "backend").at(-1)?.prompt).toContain("outside your write scope");
   });
 

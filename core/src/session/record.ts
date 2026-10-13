@@ -25,6 +25,7 @@ export interface SessionRecord {
   readonly attempt: { readonly group: string; readonly index: number; readonly of: number };
   readonly kind?: "feature" | "chore";
   readonly hotfix?: boolean;
+  readonly ask?: string;
   heldBy?: string | null;
   previewKey: string;
   readonly parent: string | null;

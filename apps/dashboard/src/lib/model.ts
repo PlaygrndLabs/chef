@@ -30,6 +30,7 @@ export interface FeatureNode {
   readonly flow: string;
   readonly spec: FeatureSpec | null;
   readonly onMain: boolean;
+  readonly parent: string | null;
   readonly sessions: readonly SessionNode[];
   readonly preview: { readonly url: string; readonly commitId: string; readonly link?: string | undefined; readonly sessionId: string } | null;
   readonly updatedAt: number;
@@ -75,12 +76,65 @@ export function featureNodes(live: ProjectLive, records: readonly SessionRecord[
       flow: feature?.flow ?? id,
       spec: fromMain ?? planned,
       onMain: Boolean(fromMain),
+      parent: feature?.parent ?? null,
       sessions: own,
       preview,
       updatedAt: Math.max(0, ...own.map((s) => s.updatedAt)),
     });
   }
   return nodes;
+}
+
+export function currentSession(feature: FeatureNode, selected: string | null = null): SessionNode | null {
+  const chosen = selected ? feature.sessions.find((s) => s.id === selected) : undefined;
+  if (chosen) return chosen;
+  return [...feature.sessions].reverse().find((s) => s.state !== "dropped") ?? feature.sessions.at(-1) ?? null;
+}
+
+export interface TreeNode {
+  readonly feature: FeatureNode;
+  readonly session: SessionNode;
+  readonly group: SessionGroup;
+  readonly children: readonly TreeNode[];
+}
+
+const TREE_ORDER: Readonly<Record<SessionGroup, number>> = { working: 0, "needs-you": 1, live: 2, stopped: 3 };
+
+function rankOf(node: TreeNode): number {
+  return Math.min(TREE_ORDER[node.group], ...node.children.map(rankOf));
+}
+
+function latestOf(node: TreeNode): number {
+  return Math.max(node.feature.updatedAt, ...node.children.map(latestOf));
+}
+
+function sortTree(nodes: readonly TreeNode[]): TreeNode[] {
+  return [...nodes].sort((a, b) => rankOf(a) - rankOf(b) || latestOf(b) - latestOf(a) || a.feature.title.localeCompare(b.feature.title));
+}
+
+export function featureTree(features: readonly FeatureNode[]): TreeNode[] {
+  const built = features.filter((f) => f.sessions.length > 0);
+  const ids = new Set(built.map((f) => f.id));
+  const make = (feature: FeatureNode, seen: ReadonlySet<string>): TreeNode => {
+    const session = currentSession(feature) as SessionNode;
+    const path = new Set([...seen, feature.id]);
+    const children = built.filter((f) => f.parent === feature.id && !path.has(f.id)).map((f) => make(f, path));
+    return { feature, session, group: groupOf(session.state, session.needs), children: sortTree(children) };
+  };
+  const roots = built.filter((f) => !f.parent || !ids.has(f.parent) || f.parent === f.id).map((f) => make(f, new Set()));
+  const placed = new Set<string>();
+  const mark = (node: TreeNode): void => {
+    placed.add(node.feature.id);
+    node.children.forEach(mark);
+  };
+  roots.forEach(mark);
+  for (const f of built) {
+    if (placed.has(f.id)) continue;
+    const node = make(f, new Set());
+    mark(node);
+    roots.push(node);
+  }
+  return sortTree(roots);
 }
 
 const STATUS_ORDER: Readonly<Record<FeatureStatus, number>> = { stuck: 0, building: 1, proposed: 2, merged: 3, dropped: 4 };

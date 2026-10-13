@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { describe, expect, it } from "vitest";
-import { serve, TODO_PROMPT, TODO_CLOUD_PROMPT } from "../../src/serve.ts";
+import { serve, TODO_PROMPT, TODO_CLOUD_PROMPT, TODO_SPLIT_PROMPT } from "../../src/serve.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const DIST = join(REPO_ROOT, "apps", "dashboard", "dist");
@@ -69,29 +69,41 @@ describe("dashboard in a browser", () => {
       await card.waitFor({ timeout: 60_000 });
       expect(await card.innerText()).toContain("Live");
       expect(await page.locator("#chat").innerText()).toContain("On it. This is a new feature.");
-      await expect.poll(() => page.locator('#features [data-group="live"] [data-session="s1"]').getAttribute("data-state"), { timeout: 10_000 }).toBe("merged");
+      await expect.poll(() => page.locator('#features [data-session="s1"]').getAttribute("data-state"), { timeout: 10_000 }).toBe("merged");
+      await page.locator('#features [data-feature="todo-add"][data-status="merged"][data-group="live"]').waitFor();
       expect(await page.locator('#project-bar [data-chip="working"]').innerText()).toContain("Nothing running");
-      await page.getByRole("tab", { name: "By feature" }).click();
-      await page.locator('#features [data-feature="todo-add"][data-status="merged"]').waitFor();
-      await page.getByRole("tab", { name: "By status" }).click();
+      expect(await page.locator('[data-view="no-tab"]').count()).toBe(1);
       await card.click();
       const feature = page.locator('[data-view="feature"][data-state="merged"]');
       await feature.waitFor({ timeout: 10_000 });
+      expect(await page.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
+      expect(await page.locator('#sessions [data-tab="todo-add"]').getAttribute("aria-selected")).toBe("true");
+      expect(new URL(page.url()).searchParams.get("session")).toBe("s1");
+      await page.getByRole("tab", { name: "Messages" }).click();
       await feature.locator('[data-review="approved"]').waitFor();
       await feature.locator('[data-gate="passed"]').waitFor();
       expect(await feature.innerText()).toContain("Went live");
-      expect(new URL(page.url()).searchParams.get("session")).toBe("s1");
-      expect(await feature.locator('[data-artifact="checks"]').innerText()).toContain("passed");
-      await feature.locator('[data-artifact="checks"]').click();
+      expect(await feature.locator("textarea").count()).toBe(0);
+      await page.getByRole("tab", { name: "Checks" }).click();
       await page.getByRole("tabpanel", { name: "Checks" }).locator('[data-check][data-ok="true"]').first().waitFor({ timeout: 10_000 });
-      await page.getByRole("button", { name: "More" }).click();
-      await page.getByRole("menuitem", { name: "Show changes and details" }).click();
+      await page.getByRole("tab", { name: "Changes" }).click();
       await expect.poll(() => page.getByRole("tabpanel", { name: "Changes" }).innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");
-      expect(await page.getByRole("separator", { name: "Resize the preview" }).count()).toBe(1);
+      expect(await page.getByRole("separator", { name: "Resize the chat" }).count()).toBe(1);
       await page.getByRole("button", { name: "Open large" }).click();
       await page.getByRole("dialog").getByRole("tabpanel", { name: "Changes" }).waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "Make smaller" }).click();
-      await page.getByRole("separator", { name: "Resize the preview" }).waitFor({ timeout: 10_000 });
+      await page.locator("#sessions").getByRole("tabpanel", { name: "Changes" }).waitFor({ timeout: 10_000 });
+
+      await input.fill(TODO_SPLIT_PROMPT);
+      await input.press("Enter");
+      for (const id of ["shout", "reverse"]) await page.locator(`#features li:has([data-feature="todo-add"]) [data-feature="${id}"][data-status="merged"]`).waitFor({ timeout: 60_000 });
+      expect(await page.locator("#chat").innerText()).toContain("On it. This is 2 features");
+      await page.locator('#features [data-feature="shout"]').click();
+      await page.locator('[data-view="feature"][data-feature="shout"]').waitFor({ timeout: 10_000 });
+      expect(await page.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
+      expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual(["todo-add", "shout"]);
+      await page.getByRole("button", { name: "Close Shout a phrase" }).click();
+      await page.locator('[data-view="feature"][data-feature="todo-add"]').waitFor({ timeout: 10_000 });
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
@@ -240,7 +252,7 @@ describe("dashboard in a browser", () => {
       expect((await agents()).router.useJev).toBe(true);
       expect(new URL(page.url()).searchParams.get("settings")).toBe("project.router");
 
-      await page.goto(`${local.url}/?project=shop&session=s1`);
+      await page.goto(`${local.url}/?project=shop&session=s1&panel=messages`);
       const team = page.locator('[data-view="feature"] [data-team]');
       await team.waitFor({ timeout: 10_000 });
       for (const role of ["planner", "test", "backend", "reviewer"]) await expect.poll(() => team.locator(`[data-member="${role}"]`).getAttribute("data-member-state"), { timeout: 10_000 }).toBe("done");
@@ -270,7 +282,7 @@ describe("dashboard in a browser", () => {
       expect(await page.locator(`#features [data-session="${hotfix.sessionId}"] [data-hotfix]`).count()).toBe(1);
       expect(await page.locator(`#features [data-session="${chore.sessionId}"] [data-chore]`).count()).toBe(1);
 
-      await page.goto(`${local.url}/?project=shop&session=${chore.sessionId}`);
+      await page.goto(`${local.url}/?project=shop&session=${chore.sessionId}&panel=messages`);
       const feature = page.locator('[data-view="feature"]');
       await feature.locator("[data-team]").waitFor({ timeout: 10_000 });
       expect(await feature.locator("header [data-chore]").count()).toBe(1);
@@ -298,12 +310,13 @@ describe("dashboard in a browser", () => {
       const input = page.locator("#chat textarea");
       await input.fill(TODO_CLOUD_PROMPT);
       await input.press("Enter");
-      const waiting = page.locator('#features [data-group="needs-you"] [data-session="s1"]');
+      const waiting = page.locator('#features [data-session="s1"][data-group="needs-you"]');
       await waiting.waitFor({ timeout: 60_000 });
       await waiting.click();
       const prompt = page.locator('[data-view="feature"] [data-needs-keys]');
       await prompt.waitFor({ timeout: 10_000 });
       expect(await prompt.innerText()).toContain("TODOCLOUD_API_KEY");
+      await page.getByRole("tab", { name: "Messages" }).click();
       expect(await page.locator('[data-view="feature"]').innerText()).toContain("Waiting for TODOCLOUD_API_KEY");
       await prompt.getByLabel("Value of TODOCLOUD_API_KEY").fill("tc-secret-value-123");
       await prompt.getByRole("button", { name: "Save" }).click();
