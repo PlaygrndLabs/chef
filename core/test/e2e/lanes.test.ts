@@ -188,6 +188,26 @@ describe("roles working in parallel inside one feature", () => {
     expect(main[PARTS.frontend]).toBe(frontendRoutes);
   });
 
+  it("reruns only the role whose sandbox dropped its clone", async () => {
+    let dropped = false;
+    const { script } = laneScript((input) => {
+      if (input.role === "frontend" && !dropped) {
+        dropped = true;
+        throw new Error("coder runner failed with exit code 1: git clone failed: fatal: the remote end hung up unexpectedly");
+      }
+      return null;
+    });
+    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    const record = await w.orchestrator.run(sessionId as string);
+    expect(record.machine.state, record.machine.reason).toBe("merged");
+    expect(w.coder.turns.filter((t) => t.lane).map((t) => t.role)).toEqual(["backend", "frontend", "frontend"]);
+    const main = (await w.orchestrator.mainTree()).tree;
+    expect(main[PARTS.backend]).toBe(backendRoutes);
+    expect(main[PARTS.frontend]).toBe(frontendRoutes);
+  });
+
   it("merges a committed role branch on retry when merging it failed", async () => {
     const { script } = laneScript();
     const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });

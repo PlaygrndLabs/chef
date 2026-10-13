@@ -644,7 +644,10 @@ export class Orchestrator {
       } else await this.laneUpdate(record, lane, "unchanged");
     }
     if (committed.length) await this.mergeLanes(record, committed);
-    if (failure) throw failure;
+    if (failure) {
+      await this.save(record);
+      throw failure;
+    }
     if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(lanes)) await this.apply(record, { type: "coded" });
     return true;
   }
@@ -1544,7 +1547,7 @@ const TRANSIENT_RETRIES = 5;
 
 export function transient(error: unknown): boolean {
   if ((error as { retryable?: unknown } | null)?.retryable === true) return true;
-  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)|container service disconnected|sandbox container (stopped|did not start)|HTTP Error: (429|5\d\d)/i.test((error as Error | null)?.message ?? "");
+  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)|container service disconnected|sandbox container (stopped|did not start)|HTTP Error: (429|5\d\d)|git clone failed: .*(hung up|early EOF|RPC failed|returned error: (429|5\d\d)|connection reset|timed out)/i.test((error as Error | null)?.message ?? "");
 }
 
 export function runnable(record: SessionRecord): boolean {
