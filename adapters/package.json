@@ -8,6 +8,7 @@
     "./llm-planner": "./src/llm-planner.ts",
     "./llm-reviewer": "./src/llm-reviewer.ts",
     "./artifacts": "./src/artifacts.ts",
+    "./external-git": "./src/external-git.ts",
     "./anthropic": "./src/anthropic.ts",
     "./settings": "./src/settings.ts",
     "./project-settings": "./src/project-settings.ts",
