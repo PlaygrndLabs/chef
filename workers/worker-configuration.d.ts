@@ -10,7 +10,7 @@ interface __BaseEnv_Env {
 	REVIEWER_MODEL: "claude-opus-5-5";
 	CODER_MODEL: "claude-sonnet-5-5";
 	JEV_MODEL: "jev-1.13.0";
-	PREVIEW_WORKER: "chef-project";
+	PROJECT_WORKER_PREFIX: "";
 	ATTEMPTS: "2";
 	VOICE_MODEL: "gpt-live-1";
 	REALTIME_MODEL: "gpt-realtime";
@@ -33,7 +33,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "PLANNER_MODEL" | "REVIEWER_MODEL" | "CODER_MODEL" | "JEV_MODEL" | "PREVIEW_WORKER" | "ATTEMPTS" | "VOICE_MODEL" | "REALTIME_MODEL" | "VOICE" | "COPILOTKIT_TELEMETRY_DISABLED">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "PLANNER_MODEL" | "REVIEWER_MODEL" | "CODER_MODEL" | "JEV_MODEL" | "PROJECT_WORKER_PREFIX" | "ATTEMPTS" | "VOICE_MODEL" | "REALTIME_MODEL" | "VOICE" | "COPILOTKIT_TELEMETRY_DISABLED">> {}
 }
 declare module "*.txt" {
 	const value: string;

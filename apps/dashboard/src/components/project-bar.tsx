@@ -1,4 +1,4 @@
-import { AlertTriangle, GitCommitHorizontal, Lightbulb, Loader2, Rocket, Undo2, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, ExternalLink, GitCommitHorizontal, Globe, Lightbulb, Loader2, Rocket, Undo2, Wifi, WifiOff } from "lucide-react";
 import { BarSkeleton } from "@/components/loading";
 import { ago, short } from "@/lib/format";
 import { useNow } from "@/lib/live";
@@ -36,7 +36,6 @@ function StatusChips() {
   const working = groups.working;
   const starting = data.live.routes.filter((r) => r.decision.intent !== "question" && now - r.at < STARTING_MS && !sessions.some((s) => s.createdAt >= r.at)).length;
   const live = features.filter((f) => f.spec?.status === "merged" || f.sessions.some((s) => s.state === "merged")).length;
-  const lastMerge = data.live.merges.at(-1);
   const reverts = data.live.reverts.length;
   const external = data.live.external;
   return (
@@ -55,13 +54,7 @@ function StatusChips() {
         <Rocket className="size-3.5 text-ok" />
         {live} live
       </Chip>
-      <Chip id="main" label={lastMerge ? `The live app is at commit ${data.spec?.commitId ?? lastMerge.commitId}` : "The live app"}>
-        <GitCommitHorizontal className="size-3.5" />
-        <span>
-          App <span className="font-mono">{short(data.spec?.commitId ?? lastMerge?.commitId) || "not created"}</span>
-          {lastMerge ? ` · updated ${ago(lastMerge.at, now)}` : ""}
-        </span>
-      </Chip>
+      <LiveAppChip now={now} />
       {reverts ? (
         <Chip id="reverts" label="Changes chef took back because the live app broke" tone="text-bad">
           <Undo2 className="size-3.5" />
@@ -74,6 +67,46 @@ function StatusChips() {
         </Chip>
       ) : null}
     </>
+  );
+}
+
+function LiveAppChip({ now }: { readonly now: number }) {
+  const { data, api } = useWorkspace();
+  const live = data.spec?.live ?? null;
+  const lastMerge = data.live.merges.at(-1);
+  if (live?.status === "deploying") {
+    return (
+      <Chip id="live-app" label={`Putting commit ${short(live.commitId)} on the live address`} tone="text-run">
+        <Loader2 className="size-3.5 animate-spin" />
+        Updating the live app
+      </Chip>
+    );
+  }
+  if (live?.status === "failed") {
+    return (
+      <Chip id="live-app" label={`The live app could not be updated: ${live.error ?? "unknown error"}. Click to try again.`} tone="text-bad hover:text-bad" onClick={() => void api.redeployLive().catch(() => undefined)}>
+        <AlertTriangle className="size-3.5" />
+        Live app not updated · try again
+      </Chip>
+    );
+  }
+  if (live?.url) {
+    return (
+      <a href={live.url} target="_blank" rel="noreferrer" data-chip="live-app" title={`Open the live app, at commit ${short(live.commitId)}, updated ${ago(live.at, now)}`} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground">
+        <Globe className="size-3.5 text-ok" />
+        <span className="font-mono">{new URL(live.url).host}</span>
+        <ExternalLink className="size-3" />
+      </a>
+    );
+  }
+  return (
+    <Chip id="main" label={lastMerge ? `The live app is at commit ${data.spec?.commitId ?? lastMerge.commitId}` : "The live app"}>
+      <GitCommitHorizontal className="size-3.5" />
+      <span>
+        App <span className="font-mono">{short(data.spec?.commitId ?? lastMerge?.commitId) || "not created"}</span>
+        {lastMerge ? ` · updated ${ago(lastMerge.at, now)}` : ""}
+      </span>
+    </Chip>
   );
 }
 

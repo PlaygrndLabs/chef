@@ -103,7 +103,7 @@ Any secret from [Settings](#settings) that the repository has is passed to the W
 
 ## More than one chef in an account
 
-`pnpm run deploy --name <name>`, or the `deploy` workflow's `name` input, deploys a separate chef with its own Artifacts namespace (`<name>`), Workflow (`<name>-upstream-sync`), memory index (`<name>-memory`) and preview Workers (`<name>-project-*`). It is how changes to chef itself are tried on Cloudflare before they reach the main deploy. The `cleanup` workflow removes such a copy and everything it created.
+`pnpm run deploy --name <name>`, or the `deploy` workflow's `name` input, deploys a separate chef with its own Artifacts namespace (`<name>`), Workflow (`<name>-upstream-sync`), memory index (`<name>-memory`) and project Workers (`<name>-<project>`). It is how changes to chef itself are tried on Cloudflare before they reach the main deploy. The `cleanup` workflow removes such a copy and everything it created.
 
 ## Scripts and the API
 

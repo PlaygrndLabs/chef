@@ -11,6 +11,8 @@ describe("sandbox previews", () => {
     expect(previewName("preview/add-todo-item")).toBe("add-todo-item");
     expect(previewName("preview/Add_Todo--s1")).toBe("add-todo-s1");
     expect(previewName("preview/a-very-long-feature-name-that-goes-on-and-on")).toBe("a-very-long-feature-name-that");
+    expect(previewName("preview/a-very-long-feature-name-that-goes-on-and-on", "a-project-name-that-is-31-chars")).toBe("a-very-long-feature-name-that");
+    expect(previewName("preview/a-very-long-feature-name-that-goes-on-and-on", "trial-a-project-name-that-is-31-chars")).toBe("a-very-long-feature-name");
   });
 
   it("reads the Preview URL and deployment from wrangler preview --json", () => {
@@ -30,6 +32,8 @@ describe("sandbox previews", () => {
     expect(cloudflareAllowed(api("/workers/subdomain"), grant)).toBe(true);
     expect(cloudflareAllowed(api("/workers/workers/chef-project-demo/previews/add-todo-item/deployments"), grant)).toBe(true);
     expect(cloudflareAllowed(api("/workers/scripts/chef-project-demo/subdomain"), grant)).toBe(true);
+    expect(cloudflareAllowed(api("/workers/services/chef-project-demo"), grant)).toBe(true);
+    expect(cloudflareAllowed(api("/workers/services/chef"), grant)).toBe(false);
     expect(cloudflareAllowed(api("/workers/scripts/chef"), grant)).toBe(false);
     expect(cloudflareAllowed(api("/workers/workers/chef-project-demo-evil"), grant)).toBe(false);
     expect(cloudflareAllowed(api("/r2/buckets"), grant)).toBe(false);

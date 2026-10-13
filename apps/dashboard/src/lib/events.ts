@@ -134,6 +134,8 @@ export function summarize(event: ChefEvent): string {
       return event.ok ? `passed ${event.checks.length} checks` : `failed ${event.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}`;
     case "main.merged":
       return `main ${event.commitId.slice(0, 7)}`;
+    case "live.updated":
+      return event.status === "failed" ? `live app failed at ${event.commitId.slice(0, 7)}: ${event.error ?? ""}`.trim() : `live app ${event.status} ${event.commitId.slice(0, 7)}`;
     case "main.reverted":
       return `reverted ${event.revertedCommit.slice(0, 7)}`;
     case "sync.merged":
@@ -336,6 +338,7 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       return true;
     case "fork.deleted":
     case "fork.kept":
+    case "live.updated":
       return true;
     case "external.pulled":
     case "external.conflict":
