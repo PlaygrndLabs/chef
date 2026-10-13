@@ -26,8 +26,8 @@ jobs:
         env:
           SAY: ${{ inputs.say }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          VOICE_BASE_URL: ${{ secrets.VOICE_BASE_URL || (secrets.CPA_BASE_URL && format('{0}/v1', secrets.CPA_BASE_URL)) || '' }}
-          VOICE_API_KEY: ${{ secrets.VOICE_API_KEY || secrets.CPA_API_KEY }}
+          VOICE_BASE_URL: ${{ secrets.VOICE_BASE_URL || (secrets.LLM_BASE_URL && format('{0}/v1', secrets.LLM_BASE_URL)) || '' }}
+          VOICE_API_KEY: ${{ secrets.VOICE_API_KEY || secrets.LLM_API_KEY }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

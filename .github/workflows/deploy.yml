@@ -55,13 +55,13 @@ jobs:
         if: steps.creds.outputs.ready == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || secrets.CPA_BASE_URL }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY || secrets.CPA_API_KEY }}
-          VOICE_BASE_URL: ${{ secrets.VOICE_BASE_URL || (secrets.CPA_BASE_URL && format('{0}/v1', secrets.CPA_BASE_URL)) || '' }}
-          VOICE_API_KEY: ${{ secrets.VOICE_API_KEY || secrets.CPA_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          VOICE_BASE_URL: ${{ secrets.VOICE_BASE_URL || (secrets.LLM_BASE_URL && format('{0}/v1', secrets.LLM_BASE_URL)) || '' }}
+          VOICE_API_KEY: ${{ secrets.VOICE_API_KEY || secrets.LLM_API_KEY }}
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD || secrets.KARGAH_PASSWORD }}
+          CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
         run: |
           jq -n '{ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, LLM_BASE_URL: env.LLM_BASE_URL, LLM_API_KEY: env.LLM_API_KEY, VOICE_BASE_URL: env.VOICE_BASE_URL, VOICE_API_KEY: env.VOICE_API_KEY, TYPESAFE_API_KEY: env.TYPESAFE_API_KEY, CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, OPENAI_API_KEY: env.OPENAI_API_KEY, CHEF_PASSWORD: env.CHEF_PASSWORD} | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
           set -o pipefail
@@ -70,7 +70,7 @@ jobs:
       - name: Smoke test in the browser's place and through the local app
         if: steps.creds.outputs.ready == 'true'
         env:
-          CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD || secrets.KARGAH_PASSWORD }}
+          CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
         run: |
           url=$(cat "$RUNNER_TEMP/url")
           echo "chef is at $url"
