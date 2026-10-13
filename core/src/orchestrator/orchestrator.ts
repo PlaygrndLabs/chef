@@ -24,6 +24,7 @@ import { arrange, arrangedSpec, arrangementProblem, markRemoved, placed, subtree
 import { missingEnv, renderEnvironment, type EnvVar } from "../env/env.ts";
 import { Archiver, MainWriter, Mutex, PreviewPublisher } from "./capabilities.ts";
 import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderLesson, renderRecall, MEMORY_DIR } from "../memory/memory.ts";
+import { applyGuidanceEdit, projectGuidance, renderGuidance, withGuidance, type EditResult, type GuidanceEdit } from "../guidance/guidance.ts";
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
 import { projectRuleProblems, renderRule, rulePath } from "../checks/project-rules.ts";
 import { hashHex } from "../util/hash.ts";
@@ -68,6 +69,7 @@ export interface ProjectConfig {
   readonly tokenTtlSeconds?: number;
   readonly previewLink?: (key: string) => string;
   readonly environment?: () => Promise<readonly EnvVar[]>;
+  readonly instructions?: () => Promise<string>;
 }
 
 export interface SubmitResult {
@@ -309,7 +311,7 @@ export class Orchestrator {
       .filter((p) => p.plannable)
       .map((p) => ({ role: p.role, description: p.description }));
     const intent = decision.intent === "change_feature" ? "change_feature" : "new_feature";
-    const planned = await this.deps.planner.plan({ prompt: withoutCommand(prompt), intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), spec, roles, env: await this.environment() });
+    const planned = await this.deps.planner.plan({ prompt: withoutCommand(prompt), intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), spec, roles, env: await this.environment(), ...(await this.guidanceField()) });
     return this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
   }
 
@@ -580,7 +582,7 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     const base = await this.commitOf(this.canonical, record.baseMain);
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: "reviewer", kind: "review", model: this.deps.reviewer.model ?? "reviewer" });
-    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "", scope: this.reviewScope(record, head.tree), ...(record.kind === "chore" ? { chore: true } : {}) });
+    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "", scope: this.reviewScope(record, head.tree), ...(record.kind === "chore" ? { chore: true } : {}), ...(await this.guidanceField()) });
     record.verdict = { ...verdict, commitId: head.id };
     await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons, model: verdict.model, head: head.id, base: base.id });
     if (verdict.approve) await this.apply(record, { type: "review_approved" });
@@ -627,6 +629,34 @@ export class Orchestrator {
 
   private async environment(): Promise<readonly EnvVar[]> {
     return this.config.environment ? this.config.environment() : [];
+  }
+
+  async guidance(): Promise<string> {
+    const shared = this.config.instructions ? await this.config.instructions() : "";
+    return renderGuidance(shared, projectGuidance((await this.mainTree()).tree));
+  }
+
+  private async guidanceField(): Promise<{ guidance?: string }> {
+    const guidance = await this.guidance();
+    return guidance ? { guidance } : {};
+  }
+
+  async editGuidance(edit: GuidanceEdit): Promise<EditResult & { readonly commitId?: string }> {
+    const outcome = await this.mergeQueue.run(async () => {
+      const { commitId, tree } = await this.mainTree();
+      if (!commitId) return { ok: false as const, status: 409 as const, error: "the project has no main branch yet" };
+      const result = applyGuidanceEdit(tree, edit);
+      if (!result.ok || Object.keys(result.changes).length === 0) return { ...result, commitId };
+      const token = await this.deps.repos.createToken(this.canonical, "write", this.ttl);
+      try {
+        const commit = await this.deps.repos.commit(token, { ref: "main", parent: commitId, changes: result.changes, message: result.message, author: this.config.author });
+        return { ...result, commitId: commit.id };
+      } finally {
+        await this.deps.repos.revokeToken(token);
+      }
+    });
+    if (outcome.ok && Object.keys(outcome.changes).some((path) => path.startsWith(MEMORY_DIR))) await this.syncMemory();
+    return outcome;
   }
 
   private async gating(record: SessionRecord): Promise<void> {
@@ -849,7 +879,7 @@ export class Orchestrator {
 
   private async recall(record: SessionRecord, feature: FeatureSpec, item: WorkItem): Promise<MemoryHit[]> {
     const query = [feature.id, feature.title, ...feature.acceptance.map((c) => c.text), item.prompt].join("\n");
-    const hits = await this.deps.memory.query(query, 8, ["lesson", "feature"]);
+    const hits = await this.deps.memory.query(query, 8, ["lesson", "feature", "note"]);
     const ranked = [...hits].sort((a, b) => Number(b.doc.feature === record.featureId) - Number(a.doc.feature === record.featureId) || b.score - a.score);
     return ranked.slice(0, 3);
   }
@@ -1069,7 +1099,8 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
     const scope = scopeFor(profile, feature);
-    const agent = customAgent(profile, record.featureId, scope);
+    const guidance = await this.guidance();
+    const agent = customAgent(profile, record.featureId, scope, guidance);
     const readToken = await this.deps.repos.createToken(record.fork, "read", this.ttl);
     const info = await this.deps.repos.info(record.fork);
     const recalled = await this.recall(record, feature, item);
@@ -1087,7 +1118,7 @@ export class Orchestrator {
         role: item.role,
         model: profile.model,
         prompt,
-        instructions: profile.instructions.replaceAll("{feature}", record.featureId),
+        instructions: withGuidance(profile.instructions.replaceAll("{feature}", record.featureId), guidance),
         writeScope: scope,
         agent,
         attempt: { index: record.attempt.index, of: record.attempt.of },

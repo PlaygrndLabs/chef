@@ -4,6 +4,7 @@ import { copilotKitHandler } from "./copilotkit.ts";
 import { gitHubRequest, gitHubWebhook } from "./github.ts";
 import { projectsRequest } from "@chef/adapters/projects";
 import { agentsRequest } from "@chef/adapters/agents";
+import { sharedInstructionsRequest } from "@chef/adapters/guidance";
 import { loadProfiles } from "@chef/core";
 import { agentFiles } from "./embedded.gen.ts";
 import { agentStore, claimPassword, credential, currentSettings, settingsRequest, settingsStub, sharedEnvRequest } from "./settings.ts";
@@ -13,7 +14,7 @@ export { SandboxOutbound, SessionAgent } from "./session-agent.ts";
 export { Settings } from "./settings.ts";
 export { UpstreamSync } from "./upstream-sync.ts";
 
-const PROJECT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/(bootstrap|overview|prompts|route|sessions|events|cursor|voice|spec|live|settings|env|agents|agents\/restore|git|git\/sync|sessions\/[a-z0-9-]{1,40}(?:\/(?:drop|retry|steer|turns|changes|sandbox))?)$/;
+const PROJECT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/(bootstrap|overview|prompts|route|sessions|events|cursor|voice|spec|live|settings|env|instructions|memory|agents|agents\/restore|git|git\/sync|sessions\/[a-z0-9-]{1,40}(?:\/(?:drop|retry|steer|turns|changes|sandbox))?)$/;
 const PREVIEW = /^\/preview\/([a-z][a-z0-9-]{1,30})\/[a-z0-9-]{1,80}\/?$/;
 const WEBHOOK = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/git\/webhook$/;
 const COPILOTKIT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/copilotkit(\/|$)/;
@@ -29,6 +30,10 @@ export default {
     if (url.pathname === "/api/app" && request.method === "GET") return Response.json({ mode: "cloud", place: "cloud", engine: url.origin, fixed: true });
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/env") return sharedEnvRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).sharedEnvironmentChanged());
+    if (url.pathname === "/api/instructions") {
+      const settings = settingsStub(env);
+      return sharedInstructionsRequest(request, { get: () => settings.sharedInstructions(), put: (value) => settings.saveSharedInstructions(value) });
+    }
     if (url.pathname === "/api/agents" || url.pathname === "/api/agents/restore") {
       const settings = await currentSettings(env);
       return agentsRequest(request, { store: agentStore(env), defaults: loadProfiles(agentFiles), models: settings.models, jev: settings.jev !== null }).catch(() => Response.json({ error: "chef is finishing an update, so try again in a minute" }, { status: 503 }));
