@@ -23,6 +23,7 @@ export default {
     const blocked = await guard(request, await credential(env), claimPassword(env));
     if (blocked) return blocked;
     const url = new URL(request.url);
+    if (url.pathname === "/api/app" && request.method === "GET") return Response.json({ mode: "cloud", engine: url.origin, fixed: true });
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/projects") return projectsRequest(request, settingsStub(env), (project, path, init) => projectStub(env, project, new Request(`${url.origin}/api/projects/${project}/${path}`, init)));
     if (url.pathname === "/api/github" || url.pathname.startsWith("/api/github/")) return gitHubRequest(request, env);

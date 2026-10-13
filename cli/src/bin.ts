@@ -13,6 +13,9 @@ import { BENCH_ITEMS } from "./bench/items.ts";
 import { runVoice, VOICE_PROMPT } from "./voice.ts";
 import { exportTuneData } from "./tune/data.ts";
 import { serve } from "./serve.ts";
+import { startApp } from "./app.ts";
+import { deploy } from "./deploy.ts";
+import { spawn } from "node:child_process";
 import { tour } from "./tour.ts";
 import { renderReport, runBench, runReplay, type BenchMode, type BenchResult } from "./bench/run.ts";
 
@@ -235,6 +238,37 @@ async function serveCommand(args: readonly string[]): Promise<number> {
   return 0;
 }
 
+async function appCommand(args: readonly string[]): Promise<number> {
+  const app = await startApp({ port: Number(option(args, "port") ?? process.env["PORT"] ?? 4300) });
+  process.stdout.write(`chef is open at ${app.url}\nThe app runs here; sessions, sandboxes and previews run on your chef in Cloudflare. Press Ctrl+C to stop.\n`);
+  if (!args.includes("--no-open") && !process.env["CI"]) {
+    const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+    spawn(opener, [app.url], { stdio: "ignore", detached: true }).on("error", () => undefined).unref();
+  }
+  await new Promise<void>((resolve) => {
+    process.once("SIGINT", resolve);
+    process.once("SIGTERM", resolve);
+  });
+  await app.close();
+  return 0;
+}
+
+async function deployCommand(args: readonly string[]): Promise<number> {
+  const name = option(args, "name");
+  const passthrough: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === "deploy" || arg === "--dry-run" || arg === "--") continue;
+    if (arg === "--name") {
+      i++;
+      continue;
+    }
+    passthrough.push(arg);
+  }
+  const result = await deploy({ ...(name ? { name } : {}), dryRun: args.includes("--dry-run"), passthrough });
+  return result.code;
+}
+
 async function tourCommand(args: readonly string[]): Promise<number> {
   const url = option(args, "url") ?? process.env["CHEF_URL"];
   if (!url) {
@@ -271,7 +305,9 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "tune" && sub === "data") return tuneData(args);
   if (command === "serve") return serveCommand(args);
   if (command === "tour") return tourCommand(args);
-  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
+  if (command === "app") return appCommand(args);
+  if (command === "deploy") return deployCommand(args);
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef app [--port n] [--no-open] | chef deploy [--name n] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
   return 2;
 }
 

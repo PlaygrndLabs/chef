@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { guard, hashPassword, type Credential, type StoredPassword } from "../../src/access.ts";
+import { deploymentPassword, EXAMPLE_PASSWORD, guard, hashPassword, type Credential, type StoredPassword } from "../../src/access.ts";
 
 const at = (path: string, init?: RequestInit) => new Request(`https://chef.example${path}`, init);
 const form = (fields: Record<string, string>) => ({ method: "POST", body: new URLSearchParams(fields) });
@@ -18,6 +18,13 @@ async function signsInWith(credential: Credential, password: string) {
 }
 
 describe("dashboard access", () => {
+  it("ignores an empty or example CHEF_PASSWORD so a one-click deploy never ships a known password", () => {
+    expect(deploymentPassword({})).toBeNull();
+    expect(deploymentPassword({ CHEF_PASSWORD: "  " })).toBeNull();
+    expect(deploymentPassword({ CHEF_PASSWORD: EXAMPLE_PASSWORD })).toBeNull();
+    expect(deploymentPassword({ CHEF_PASSWORD: "a real password" })).toBe("a real password");
+  });
+
   it("asks the first visitor to set a password and refuses the API until then", async () => {
     expect((await guard(at("/api/projects/demo/sessions"), null, never))?.status).toBe(503);
     const setup = await guard(at("/"), null, never);
