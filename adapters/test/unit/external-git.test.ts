@@ -6,8 +6,8 @@ const control = {} as ArtifactsControl;
 
 describe("GitHub pull requests for the sync branch", () => {
   it("parses github.com repository URLs", () => {
-    expect(gitHubRepo("https://github.com/PlaygrndLabs/kargah")).toEqual({ owner: "PlaygrndLabs", repo: "kargah" });
-    expect(gitHubRepo("https://github.com/PlaygrndLabs/kargah.git")).toEqual({ owner: "PlaygrndLabs", repo: "kargah" });
+    expect(gitHubRepo("https://github.com/PlaygrndLabs/chef")).toEqual({ owner: "PlaygrndLabs", repo: "chef" });
+    expect(gitHubRepo("https://github.com/PlaygrndLabs/chef.git")).toEqual({ owner: "PlaygrndLabs", repo: "chef" });
     expect(gitHubRepo("https://gitlab.com/a/b")).toBeNull();
   });
 
