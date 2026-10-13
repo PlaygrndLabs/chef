@@ -37,7 +37,7 @@
     <div class="inner hero-inner">
       <div class="hero-copy">
         <p class="banner" id="notice" role="status" hidden></p>
-        <p class="crumbs"><span class="brand-text">Open source</span><span class="sep">/</span><span>Runs on your Cloudflare account</span></p>
+        <p class="crumbs"><span class="brand-text">Open source</span><span class="sep">/</span><span>Runs on your Cloudflare</span><span class="sep">/</span><span>Git on Artifacts</span></p>
         <h1>Build apps with AI, on your own Cloudflare.</h1>
         <p class="lead">Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass.</p>
         <div class="actions">
@@ -59,9 +59,9 @@
       <div class="story-steps">
         <ol>
           <li class="step" data-step="ask"><span class="num">01</span><div><h3>Ask</h3><p>Say what you want in plain words. chef turns it into a spec and writes the tests before any code.</p></div></li>
-          <li class="step" data-step="tree"><span class="num">02</span><div><h3>Split</h3><p>The router breaks the ask into features and places each one in your project's tree. Every feature is its own session, and sessions run side by side.</p></div></li>
+          <li class="step" data-step="tree"><span class="num">02</span><div><h3>Split</h3><p>The router breaks the ask into features and places each one in your project's tree. Every feature is its own session on its own fork in Cloudflare Artifacts, so sessions run side by side.</p></div></li>
           <li class="step" data-step="build"><span class="num">03</span><div><h3>Build</h3><p>Each session builds in its own sandbox with a live preview link. Previews sleep when idle and wake on the next click.</p></div></li>
-          <li class="step" data-step="check"><span class="num">04</span><div><h3>Check</h3><p>Tests, typecheck and an AI review must pass. chef keeps every session in sync with main and merges it for you, with no branches or conflicts to handle.</p></div></li>
+          <li class="step" data-step="check"><span class="num">04</span><div><h3>Check</h3><p>Tests, typecheck and an AI review must pass. chef keeps every fork in sync with main and merges it for you, with no branches or conflicts to handle.</p></div></li>
           <li class="step" data-step="live"><span class="num">05</span><div><h3>Live</h3><p>Your app's main is online at its own address. Connect GitHub only if you want a repository kept in sync.</p></div></li>
         </ol>
       </div>
@@ -79,6 +79,7 @@
       <h2 class="statement">Your account. Your code. <span class="brand-text">Your keys.</span></h2>
       <dl class="spec">
         <div><dt>Nothing to install</dt><dd>No terminal and no Docker. Sign in with Cloudflare, pick an account, and chef sets up its engine there. You use it right here.</dd></div>
+        <div><dt>Git built for agents</dt><dd>Every project is a git repository in Cloudflare Artifacts, Cloudflare's git storage made for agents. Each session works on its own fork, only checked work reaches main, and any git client can clone it.</dd></div>
         <div><dt>Everything stays there</dt><dd>Repositories, previews, project memory and keys live in your Cloudflare account. The access you grant is revoked as soon as setup is done.</dd></div>
         <div><dt>Bring your model</dt><dd>Use an Anthropic API key or any compatible provider. Keys never reach the browser or the sandbox.</dd></div>
         <div><dt>Many projects</dt><dd>One chef runs all your projects, each with its own address, previews and settings.</dd></div>
