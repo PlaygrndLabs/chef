@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { envProblem, FeatureFrontmatter, type AnswerInput, type BuilderRole, type FeatureSpec, type Plan, type PlanInput, type Planner, type SplitInput, type SplitPart, type Triage, type TriageInput, type WorkItem } from "@chef/core";
+import { envProblem, FeatureFrontmatter, renderTurn, type AnswerInput, type BuilderRole, type CompactInput, type FeatureSpec, type Plan, type PlanInput, type Planner, type SplitInput, type SplitPart, type Triage, type TriageInput, type WorkItem } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
 const TriageSchema = z.object({
@@ -44,6 +44,7 @@ function planSchema(roles: readonly string[]) {
 type PlanResult = z.infer<ReturnType<typeof planSchema>>;
 
 const AnswerSchema = z.object({ answer: z.string() });
+const CompactSchema = z.object({ summary: z.string() });
 
 export class LlmPlanner implements Planner {
   constructor(
@@ -108,6 +109,21 @@ export class LlmPlanner implements Planner {
       ].join("\n\n"),
     });
     return toPlan(result, existing, this.model);
+  }
+
+  async compact(input: CompactInput): Promise<string> {
+    const result = await structured(this.llm, {
+      model: this.model,
+      system: this.system,
+      effort: "low",
+      schema: CompactSchema,
+      prompt: [
+        `Summary so far:\n${input.summary || "(none)"}`,
+        `Messages to fold in, oldest first:\n${input.turns.map(renderTurn).join("\n\n")}`,
+        "Write the new running summary of this chat between a person and chef, the app builder. Keep what later requests may refer to: what they asked for, the feature ids chef made, decisions, names, preferences and anything still open. Drop greetings and repetition. Use short lines, at most 300 words.",
+      ].join("\n\n"),
+    });
+    return result.summary.trim();
   }
 
   async answer(input: AnswerInput): Promise<string> {
