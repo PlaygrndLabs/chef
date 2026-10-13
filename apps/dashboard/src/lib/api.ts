@@ -44,6 +44,21 @@ export interface SettingsView {
   readonly password: Source;
 }
 
+export interface AppMode {
+  readonly mode: "local" | "cloud";
+  readonly engine: string | null;
+  readonly fixed: boolean;
+  readonly claimed?: boolean;
+}
+
+const CLOUD: AppMode = { mode: "cloud", engine: null, fixed: true };
+
+export const appApi = {
+  get: () => call<AppMode>("/api/app").catch(() => CLOUD),
+  connect: (url: string, password: string) => call<AppMode>("/api/app/connection", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, password }) }),
+  disconnect: () => call<AppMode>("/api/app/connection", { method: "DELETE" }),
+};
+
 export type SettingsUpdate = Readonly<Record<string, unknown>>;
 
 export const settingsApi = {

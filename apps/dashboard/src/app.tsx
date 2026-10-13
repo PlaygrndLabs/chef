@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ResizeHandle, useStoredWidth } from "@/components/resize-handle";
 import { CommandPalette } from "@/components/command-palette";
+import { ConnectScreen } from "@/components/connect-screen";
 import { FeaturePage } from "@/components/feature-page";
 import { Home } from "@/components/home";
 import { NewProjectDialog, returningToNewProject, Setup } from "@/components/project-setup";
@@ -13,7 +14,7 @@ import { InsightsView } from "@/components/insights-view";
 import { Panel } from "@/components/panel";
 import { ProjectBar } from "@/components/project-bar";
 import { Sidebar } from "@/components/sidebar";
-import { projectApi } from "@/lib/api";
+import { appApi, projectApi, type AppMode } from "@/lib/api";
 import { useProject } from "@/lib/live";
 import { featureNodes, sessionNodes } from "@/lib/model";
 import { pickProject, rememberProject, useProjects } from "@/lib/projects";
@@ -54,6 +55,16 @@ function Center({ workspace }: { readonly workspace: Workspace }) {
 }
 
 export function App() {
+  const [mode, setMode] = useState<AppMode | null>(null);
+  useEffect(() => {
+    void appApi.get().then(setMode);
+  }, []);
+  if (mode === null) return <div className="grid h-dvh place-items-center text-muted-foreground">Loading</div>;
+  if (mode.mode === "local" && mode.engine === null) return <ConnectScreen onConnected={setMode} />;
+  return <ConnectedApp />;
+}
+
+function ConnectedApp() {
   const [selection, select] = useSelection();
   const { projects, failed, refresh } = useProjects();
   const opened = (name: string) => {

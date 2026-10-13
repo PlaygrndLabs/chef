@@ -19,4 +19,4 @@ cd workers
 npx wrangler ai finetune create @cf/google/gemma-2b-it-lora chef-reviewer ../tune/out/adapter
 ```
 
-Then set `REVIEWER_LORA` to `chef-reviewer` in `workers/wrangler.jsonc` vars.
+Then set `REVIEWER_LORA` to `chef-reviewer` in the root `wrangler.jsonc` vars.
