@@ -35,10 +35,13 @@ function serveEvents(total: number) {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+let ticks: (() => void)[] = [];
+
 describe("the live project feed", () => {
   beforeEach(() => {
     FakeSocket.opened = [];
-    vi.stubGlobal("window", { setInterval, clearInterval, setTimeout, clearTimeout });
+    ticks = [];
+    vi.stubGlobal("window", { setInterval: (tick: () => void) => ticks.push(tick), clearInterval: () => undefined, setTimeout, clearTimeout });
     vi.stubGlobal("location", { protocol: "https:", host: "chef.test" });
     vi.stubGlobal("WebSocket", FakeSocket);
     vi.stubGlobal("requestAnimationFrame", (run: () => void) => setTimeout(run, 0));
@@ -49,7 +52,7 @@ describe("the live project feed", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads the whole history in one go before it reports the project ready, then listens from where it stopped", async () => {
+  it("replays the history over the socket and reports the project ready once, at the end marker", async () => {
     const { fetch, calls } = serveEvents(1200);
     vi.stubGlobal("fetch", fetch);
     const store = new Store();
@@ -57,18 +60,27 @@ describe("the live project feed", () => {
     store.subscribe(() => seen.push(store.state.routes.length));
     const caughtUp = vi.fn();
     const stop = connectFeed({ project: "shop", store, onEvents: () => undefined, onConnection: () => undefined, onCaughtUp: caughtUp });
+    const socket = FakeSocket.opened[0] as FakeSocket;
+    expect(socket.url).toBe("wss://chef.test/agents/project/shop?after=0");
+    socket.emit("open");
+    for (let seq = 1; seq <= 1200; seq++) socket.emit("message", entry(seq));
     await settle();
-    await settle();
-    expect(calls).toEqual([0, 500, 1000]);
+    expect(caughtUp).not.toHaveBeenCalled();
+    expect(seen).toEqual([]);
+    socket.emit("message", { caughtUp: 1200 });
     expect(caughtUp).toHaveBeenCalledTimes(1);
-    expect(store.state.lastSeq).toBe(1200);
     expect(seen).toEqual([200]);
-    expect(FakeSocket.opened.map((s) => s.url)).toEqual(["wss://chef.test/agents/project/shop?after=1200"]);
+    expect(store.state.lastSeq).toBe(1200);
+    expect(calls).toEqual([]);
+    socket.emit("message", entry(1201));
+    await settle();
+    expect(seen).toEqual([200, 200]);
+    expect(store.state.lastSeq).toBe(1201);
     stop();
-    expect(FakeSocket.opened[0]?.closed).toBe(true);
+    expect(socket.closed).toBe(true);
   });
 
-  it("applies pushed events and catches up over HTTP when the socket skips some", async () => {
+  it("catches up over HTTP when the socket skips events or the end marker is ahead", async () => {
     let total = 3;
     const { fetch, calls } = serveEvents(Number.POSITIVE_INFINITY);
     vi.stubGlobal(
@@ -80,27 +92,32 @@ describe("the live project feed", () => {
       }),
     );
     const store = new Store();
+    const caughtUp = vi.fn();
     const connection: Connection[] = [];
-    const stop = connectFeed({ project: "shop", store, onEvents: () => undefined, onConnection: (c) => connection.push(c), onCaughtUp: () => undefined });
-    await settle();
-    await settle();
+    const stop = connectFeed({ project: "shop", store, onEvents: () => undefined, onConnection: (c) => connection.push(c), onCaughtUp: caughtUp });
     const socket = FakeSocket.opened[0] as FakeSocket;
     socket.emit("open");
+    socket.emit("message", entry(1));
+    socket.emit("message", { caughtUp: 3 });
+    await settle();
+    await settle();
+    expect(store.state.lastSeq).toBe(3);
+    expect(caughtUp).toHaveBeenCalledTimes(1);
+    total = 7;
     socket.emit("message", entry(4));
     expect(store.state.lastSeq).toBe(4);
-    total = 7;
     socket.emit("message", entry(7));
     await settle();
     await settle();
     expect(store.state.lastSeq).toBe(7);
-    expect(calls.at(-1)).toBe(4);
+    expect(calls).toEqual([1, 4]);
     expect(connection).toContain("live");
     stop();
   });
 
-  it("stays not ready while the server cannot be reached, and becomes ready once polling gets through", async () => {
+  it("falls back to HTTP when the socket fails, and stays not ready until the server answers", async () => {
     let up = false;
-    const { fetch } = serveEvents(2);
+    const { fetch } = serveEvents(1200);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => (up ? fetch(url) : ({ ok: false, status: 503 } as Response))),
@@ -109,15 +126,16 @@ describe("the live project feed", () => {
     const caughtUp = vi.fn();
     const connection: Connection[] = [];
     const stop = connectFeed({ project: "shop", store, onEvents: () => undefined, onConnection: (c) => connection.push(c), onCaughtUp: caughtUp });
+    (FakeSocket.opened[0] as FakeSocket).emit("error");
     await settle();
     expect(caughtUp).not.toHaveBeenCalled();
     expect(connection).toEqual(["offline"]);
     up = true;
-    (FakeSocket.opened[0] as FakeSocket).emit("open");
-    await settle();
-    await settle();
+    ticks.forEach((tick) => tick());
+    for (let i = 0; i < 6; i++) await settle();
     expect(caughtUp).toHaveBeenCalledTimes(1);
-    expect(store.state.lastSeq).toBe(2);
+    expect(store.state.lastSeq).toBe(1200);
+    expect(connection.at(-1)).toBe("polling");
     stop();
   });
 });
