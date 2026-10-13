@@ -61,6 +61,24 @@ export interface NewProject {
   readonly git?: GitLinkUpdate;
 }
 
+export interface Suggestion {
+  readonly title: string;
+  readonly why: string;
+  readonly prompt: string;
+}
+
+export interface Overview {
+  readonly summary: string;
+  readonly problems: readonly string[];
+  readonly suggestions: readonly Suggestion[];
+}
+
+export type OverviewState =
+  | { readonly status: "none" }
+  | { readonly status: "reading"; readonly since: number }
+  | { readonly status: "ready"; readonly commitId: string | null; readonly at: number; readonly overview: Overview }
+  | { readonly status: "failed"; readonly at: number; readonly error: string };
+
 export const projectsApi = {
   list: () => call<{ projects: ProjectEntry[] }>("/api/projects").then((r) => r.projects),
   create: (project: NewProject) => call<{ name: string; created: boolean; imported?: boolean }>("/api/projects", post(project)),
@@ -140,6 +158,8 @@ export function projectApi(project: string) {
     saveSettings: (update: ProjectSettingsUpdate) => call<ProjectSettingsView>(`${base}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
     git: () => call<{ settings: GitLinkView | null; state: SyncState | null }>(`${base}/git`),
     syncGit: () => call<{ ok: boolean }>(`${base}/git/sync`, { method: "POST" }),
+    overview: () => call<OverviewState>(`${base}/overview`),
+    readCode: () => call<OverviewState>(`${base}/overview`, { method: "POST" }),
   };
 }
 
