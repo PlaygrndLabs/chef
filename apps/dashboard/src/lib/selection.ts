@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type View = "project" | "feature" | "insights";
+export type View = "project" | "feature" | "insights" | "live";
 export type Panel = "preview" | "messages" | "changes" | "checks" | "details";
 export type SettingsScope = "app" | "project";
 
@@ -37,7 +37,8 @@ function read(): Selection {
   const session = params.get("session");
   const feature = params.get("feature");
   const panel = params.get("panel") as Panel | null;
-  const view: View = params.get("view") === "insights" ? "insights" : feature || session ? "feature" : "project";
+  const named = params.get("view");
+  const view: View = named === "insights" || named === "live" ? named : feature || session ? "feature" : "project";
   const settings = readSettings(params);
   return {
     project: PROJECT.test(project) ? project : "",
@@ -53,7 +54,7 @@ function read(): Selection {
 function write(selection: Selection) {
   const params = new URLSearchParams();
   if (selection.project) params.set("project", selection.project);
-  if (selection.view === "insights") params.set("view", "insights");
+  if (selection.view === "insights" || selection.view === "live") params.set("view", selection.view);
   if (selection.view === "feature") {
     if (selection.feature) params.set("feature", selection.feature);
     if (selection.session) params.set("session", selection.session);

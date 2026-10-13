@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, Budget, FeatureSpec, LiveStatus, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, Budget, FeatureArrangement, FeatureLayout, FeatureSpec, LiveStatus, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -267,6 +267,7 @@ export interface ProjectSpec {
   readonly commitId: string | null;
   readonly features: readonly FeatureSpec[];
   readonly live?: LiveApp | null;
+  readonly layout?: FeatureLayout;
 }
 
 export function projectApi(project: string) {
@@ -274,6 +275,8 @@ export function projectApi(project: string) {
   return {
     spec: () => call<ProjectSpec>(`${base}/spec`),
     redeployLive: () => call<{ ok: boolean }>(`${base}/live`, { method: "POST" }),
+    arrange: (id: string, change: FeatureArrangement) => call<{ layout: FeatureLayout }>(`${base}/features/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(change) }),
+    removeFeature: (id: string) => call<{ featureIds: string[]; commitId: string | null }>(`${base}/features/${id}`, { method: "DELETE" }),
     sessions: () => call<SessionRecord[]>(`${base}/sessions`),
     session: (id: string) => call<{ record: SessionRecord; budget: Budget }>(`${base}/sessions/${id}`),
     turns: (id: string) => call<SessionTurn[]>(`${base}/sessions/${id}/turns`),
