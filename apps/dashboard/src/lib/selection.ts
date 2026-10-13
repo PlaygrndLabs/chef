@@ -21,12 +21,12 @@ function read(): Selection {
   const feature = params.get("feature");
   const panel = params.get("panel") as Panel | null;
   const view: View = params.get("view") === "insights" ? "insights" : feature || session ? "feature" : "project";
-  return { project: PROJECT.test(project) ? project : "demo", view, feature, session, panel: view === "feature" && panel && PANELS.includes(panel) ? panel : null };
+  return { project: PROJECT.test(project) ? project : "", view, feature, session, panel: view === "feature" && panel && PANELS.includes(panel) ? panel : null };
 }
 
 function write(selection: Selection) {
   const params = new URLSearchParams();
-  params.set("project", selection.project);
+  if (selection.project) params.set("project", selection.project);
   if (selection.view === "insights") params.set("view", "insights");
   if (selection.view === "feature") {
     if (selection.feature) params.set("feature", selection.feature);

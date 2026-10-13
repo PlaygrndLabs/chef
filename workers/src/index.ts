@@ -1,7 +1,8 @@
 import { routeAgentRequest } from "agents";
 import { guard } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
-import { claimPassword, credential, settingsRequest } from "./settings.ts";
+import { projectsRequest } from "./projects.ts";
+import { claimPassword, credential, settingsRequest, settingsStub } from "./settings.ts";
 
 export { ProjectAgent } from "./project-agent.ts";
 export { SandboxOutbound, SessionAgent } from "./session-agent.ts";
@@ -21,6 +22,7 @@ export default {
     if (blocked) return blocked;
     const url = new URL(request.url);
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
+    if (url.pathname === "/api/projects") return projectsRequest(request, settingsStub(env), (project, path, init) => projectStub(env, project, new Request(`${url.origin}/api/projects/${project}/${path}`, init)));
     const copilotKit = COPILOTKIT.exec(url.pathname);
     if (copilotKit) return copilotKitHandler(request, env, copilotKit[1] as string);
     const match = PROJECT.exec(url.pathname) ?? PREVIEW.exec(url.pathname);
