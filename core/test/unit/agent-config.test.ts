@@ -98,9 +98,9 @@ describe("agent settings", () => {
   });
 
   it("turns router settings into the router's config", () => {
-    const saved = { ...DEFAULT_ROUTER_SETTINGS, useJev: false, thresholds: { new_feature: 0.7, change_feature: 0.8, question: 0.5, feature: 0.9 } } as unknown as RouterSettings;
+    const saved = { ...DEFAULT_ROUTER_SETTINGS, useJev: false, thresholds: { new_feature: 0.7, change_feature: 0.8, chore: 0.6, question: 0.5, feature: 0.9 } } satisfies RouterSettings;
     const router = routerConfigOf(saved);
-    expect(router).toMatchObject({ useClassifier: false, featureThreshold: 0.9, thresholds: { new_feature: 0.7, change_feature: 0.8, chore: 0.85, question: 0.5 } });
+    expect(router).toMatchObject({ useClassifier: false, featureThreshold: 0.9, thresholds: { new_feature: 0.7, change_feature: 0.8, chore: 0.6, question: 0.5 } });
     expect(router.wording?.intent.criteria.chore).toContain("maintenance");
   });
 

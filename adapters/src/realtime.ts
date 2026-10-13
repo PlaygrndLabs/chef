@@ -34,8 +34,13 @@ export function realtimeSession(options: { readonly model?: string; readonly voi
   };
 }
 
+export function endpoint(baseUrl: string, path: string): string {
+  const url = new URL(baseUrl);
+  return `${url.origin}${`${url.pathname}/${path}`.replace(/\/{2,}/g, "/")}`;
+}
+
 function wsUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/^http/, "ws").replace(/\/$/, "")}${path}`;
+  return endpoint(baseUrl, path).replace(/^http/, "ws");
 }
 
 function text(data: unknown): string {
@@ -131,7 +136,7 @@ export class RealtimeHost implements VoiceHost {
 
   async open(offer: VoiceOffer): Promise<{ sessionId: string; sdp: string }> {
     const session = realtimeSession({ model: this.model, instructions: offer.instructions, ...(this.options.voice ? { voice: this.options.voice } : {}) });
-    const response = await (this.options.fetchImpl ?? fetch)(`${this.options.baseUrl.replace(/\/$/, "")}/realtime/calls`, {
+    const response = await (this.options.fetchImpl ?? fetch)(endpoint(this.options.baseUrl, "/realtime/calls"), {
       method: "POST",
       headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({ sdp: offer.sdp, session }),

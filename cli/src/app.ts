@@ -32,7 +32,7 @@ export function chefHome(): string {
 
 function parsePlacement(stored: Partial<Connection> & { place?: unknown }): Placement | null {
   if (stored.place === "computer") return { place: "computer" };
-  return typeof stored.url === "string" && typeof stored.password === "string" ? { place: "cloud", url: stored.url, password: stored.password } : null;
+  return stored.place === "cloud" && typeof stored.url === "string" && typeof stored.password === "string" ? { place: "cloud", url: stored.url, password: stored.password } : null;
 }
 
 export function fileStore(home: string = chefHome(), env: NodeJS.ProcessEnv = process.env, forced: Placement | null = null): ConnectionStore {
