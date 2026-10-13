@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Check, CircleAlert, KeyRound, Loader2, Plus } from "lucide-react";
+import { Check, ChevronRight, CircleAlert, Folder, KeyRound, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,7 +8,7 @@ import { GitHubPicker } from "@/components/github-picker";
 import { missingSettings, SettingsDialog, useSettings } from "@/components/settings-dialog";
 import { githubApi, projectApi, projectsApi, type GitHubView, type GitLinkUpdate, type InstalledRepository } from "@/lib/api";
 import { useOverview } from "@/lib/overview";
-import { projectNameFrom } from "@/lib/projects";
+import { lastProject, projectNameFrom } from "@/lib/projects";
 import { isProjectName } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 import { Wordmark } from "@/components/logo";
@@ -253,12 +253,15 @@ export function NewProjectDialog(props: { readonly open: boolean; readonly onOpe
   );
 }
 
-export function Setup(props: { readonly onCreated: (name: string) => void }) {
+export function Setup(props: { readonly projects: readonly string[]; readonly onOpen: (name: string) => void; readonly onCreated: (name: string) => void }) {
   const { settings, setSettings, available } = useSettings();
   const [providers, setProviders] = useState(false);
   const [section, setSection] = useState("models");
   const [fromGitHub] = useState(returningToNewProject);
+  const [adding, setAdding] = useState(fromGitHub && props.projects.length > 0);
   const missing = available ? missingSettings(settings) : [];
+  const last = lastProject();
+  const projects = [...props.projects].sort((a, b) => Number(b === last) - Number(a === last));
   useEffect(() => {
     if (missing[0]) {
       setSection(missing[0]);
@@ -266,7 +269,7 @@ export function Setup(props: { readonly onCreated: (name: string) => void }) {
     }
   }, [missing.length > 0]);
   return (
-    <div className="flex h-dvh flex-col overflow-y-auto" data-view="setup">
+    <div className="flex h-dvh flex-col overflow-y-auto" data-view={projects.length ? "start" : "setup"}>
       <div className="flex justify-end p-3">
         {available ? (
           <Button variant="ghost" size="sm" onClick={() => setProviders(true)} className={missing.length ? "text-bad" : undefined}>
@@ -275,14 +278,39 @@ export function Setup(props: { readonly onCreated: (name: string) => void }) {
           </Button>
         ) : null}
       </div>
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-3 px-4 pt-10 pb-16 text-center sm:pt-20">
-        <Wordmark className="mb-2 h-9" />
-        <h1 className="text-2xl font-semibold tracking-tight">Create your first project</h1>
-        <p className="text-muted-foreground">Start fresh, or bring a repository you already have and chef reads it first.</p>
-        <div className="mt-4 w-full">
-          <NewProjectForm autoFocus fromGitHub={fromGitHub} onCreated={props.onCreated} />
+      {projects.length ? (
+        <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-4 pt-10 pb-16 sm:pt-20">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <Wordmark className="mb-2 h-9" />
+            <h1 className="text-2xl font-semibold tracking-tight">Your projects</h1>
+            <p className="text-muted-foreground">Open one to keep building, or start a new one.</p>
+          </div>
+          <div className="grid gap-1.5" id="project-list">
+            {projects.map((name) => (
+              <button key={name} type="button" data-project={name} onClick={() => props.onOpen(name)} className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left hover:bg-accent">
+                <Folder className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
+                {name === last ? <span className="text-xs text-muted-foreground">Last opened</span> : null}
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
+          <Button size="lg" variant="outline" onClick={() => setAdding(true)} id="start-new-project">
+            <Plus />
+            New project
+          </Button>
+          <NewProjectDialog open={adding} fromGitHub={fromGitHub} onOpenChange={setAdding} onCreated={props.onCreated} />
         </div>
-      </div>
+      ) : (
+        <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-3 px-4 pt-10 pb-16 text-center sm:pt-20">
+          <Wordmark className="mb-2 h-9" />
+          <h1 className="text-2xl font-semibold tracking-tight">Create your first project</h1>
+          <p className="text-muted-foreground">Start fresh, or bring a repository you already have and chef reads it first.</p>
+          <div className="mt-4 w-full">
+            <NewProjectForm autoFocus fromGitHub={fromGitHub} onCreated={props.onCreated} />
+          </div>
+        </div>
+      )}
       {available ? <SettingsDialog open={providers} onOpenChange={setProviders} settings={settings} available onChange={setSettings} section={section} item={null} nav={{ go: (next) => setSection(next), section: setSection }} returnTo="/?settings=app.github" withoutProject /> : null}
     </div>
   );
