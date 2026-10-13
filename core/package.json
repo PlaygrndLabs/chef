@@ -10,7 +10,8 @@
     "./tap": "./src/checks/tap.ts",
     "./env": "./src/env/env.ts",
     "./brand": "./src/brand/brand.ts",
-    "./replay": "./src/events/replay.ts"
+    "./replay": "./src/events/replay.ts",
+    "./setup": "./src/setup/progress.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
