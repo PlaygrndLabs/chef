@@ -8,8 +8,9 @@ import { LlmPlanner } from "@chef/adapters/llm-planner";
 import { LlmReviewer } from "@chef/adapters/llm-reviewer";
 import { GptLiveHost } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { applyAgentConfig, ControlError, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, resolveModel, routerConfigOf, runnable, startVoiceCall, withSkills, type AgentStore, type ExternalSync, type Profiles, type VoiceCall } from "@chef/core";
-import { applyEnvUpdate, envNames, revealEnv, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
+import { AgentSettings, applyAgentConfig, ControlError, mergeAgentConfig, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, resolveModel, routerConfigOf, runnable, startVoiceCall, withSkills, type AgentStore, type ExternalSync, type Profiles, type VoiceCall } from "@chef/core";
+import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
+import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
@@ -23,6 +24,7 @@ import { FileEventBus, FileMemoryIndex, FileStore, type LogEntry } from "./stora
 const PROJECT_SETTINGS = "project/settings";
 const OVERVIEW = "project/overview";
 const ENV = "project/env";
+const AGENTS = "project/agents/";
 const READING_TIMEOUT_MS = 10 * 60_000;
 const POLL_MS = 5 * 60_000;
 const BUSY_SWEEP_MS = 10 * 60_000;
@@ -34,6 +36,7 @@ export interface EngineContext {
   readonly settings: () => Resolved;
   readonly agents: AgentStore;
   readonly cipher: () => Promise<EnvCipher>;
+  readonly sharedEnv: () => Promise<StoredEnv>;
   readonly vars: Readonly<Record<string, string>>;
   readonly log: (line: string) => void;
 }
@@ -89,15 +92,17 @@ export class LocalProject {
   private async build() {
     const settings = this.ctx.settings();
     const project = await this.projectSettings();
-    const agents = await this.ctx.agents.current();
-    const fingerprint = JSON.stringify([settings, project.git, agents.version]);
+    const shared = await this.ctx.agents.current();
+    const own = await this.ownAgents().current();
+    const agents = { config: mergeAgentConfig(shared.config, own.config) };
+    const fingerprint = JSON.stringify([settings, project.git, project.attempts, shared.version, own.version]);
     if (this.built?.fingerprint === fingerprint) return this.built;
     this.built?.orchestrator.dispose();
     const { docker, control, vars } = this.ctx;
     const repos = new ArtifactsRepoHost(control);
     const llm = settings.llm ? llmFromProvider(settings.llm) : missingLlm;
     const clock = { now: () => Date.now() };
-    const host = new DockerPreviewHost(docker, this.name, async () => revealEnv(await this.storedEnv(), await this.ctx.cipher()));
+    const host = new DockerPreviewHost(docker, this.name, async () => revealEnv(await this.effectiveEnv(), await this.ctx.cipher()));
     const profiles = applyAgentConfig(repoProfiles(), agents.config);
     const reviewerRole = role(profiles, "reviewer");
     const plannerRole = role(profiles, "planner");
@@ -124,9 +129,9 @@ export class LocalProject {
         profiles,
         router: routerConfigOf(agents.config.router),
         generated,
-        specialization: { attempts: settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
+        specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
-        environment: async () => envNames(await this.storedEnv()),
+        environment: async () => envNames(await this.effectiveEnv()),
       },
     );
     const git = project.git;
@@ -157,6 +162,7 @@ export class LocalProject {
     if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
     if (action === "settings") return this.settingsRequest(request);
     if (action === "env") return this.envRequest(request);
+    if (action === "agents" || action === "agents/restore") return projectAgentsRequest(request, { project: this.name, store: this.ownAgents(), shared: this.ctx.agents, defaults: repoProfiles(), models: settings.models, jev: settings.jev !== null });
     if (action === "bootstrap" && request.method === "POST") return this.bootstrap();
     if (action === "git" && request.method === "GET") return json({ settings: viewProjectSettings(await this.projectSettings()).git, state: external ? await external.state() : null });
     if (action === "git/sync" && request.method === "POST") {
@@ -302,6 +308,22 @@ export class LocalProject {
     return (await this.store.get<StoredEnv>(ENV)) ?? {};
   }
 
+  private ownAgents(): AgentSettings {
+    return new AgentSettings(this.store, Date.now, AGENTS);
+  }
+
+  private async effectiveEnv(): Promise<StoredEnv> {
+    return mergeEnv(await this.ctx.sharedEnv(), await this.storedEnv());
+  }
+
+  async sharedEnvironmentChanged(): Promise<void> {
+    const { orchestrator, keeper } = await this.build();
+    const resumed = await orchestrator.environmentChanged();
+    if (resumed.length > 0) this.drive();
+    const busy = (await orchestrator.sessions()).some((s) => runnable(s) && !resumed.includes(s.id));
+    await keeper.sweep({ busy, idleMs: 0 });
+  }
+
   private async envRequest(request: Request): Promise<Response> {
     const stored = await this.storedEnv();
     if (request.method === "GET") return json(await this.envView(stored));
@@ -320,7 +342,8 @@ export class LocalProject {
   private async envView(stored: StoredEnv) {
     const { orchestrator } = await this.build();
     const features = [...readSpec((await orchestrator.mainTree()).tree), ...(await orchestrator.sessions()).filter((s) => !isTerminal(s.machine.state)).map((s) => s.plan.feature)];
-    return viewEnv(stored, await this.ctx.cipher(), envNeeds(features, envNames(stored)));
+    const shared = await this.ctx.sharedEnv();
+    return viewProjectEnv(stored, shared, await this.ctx.cipher(), envNeeds(features, envNames(mergeEnv(shared, stored))));
   }
 
   private async scheduleSweep(delayMs?: number): Promise<void> {

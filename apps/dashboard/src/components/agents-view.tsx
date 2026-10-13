@@ -1,18 +1,17 @@
-import { useState, type ReactNode } from "react";
-import { Bot, BookOpen, History, Plus, RotateCcw, Route, Trash2, Wrench } from "lucide-react";
+import { createContext, useContext, useState, type ReactNode } from "react";
+import { Bot, BookOpen, History, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { AgentConfig, AgentsView as View, RoleSetting, RoleView, Skill } from "@chef/core";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { RouterTab } from "@/components/router-tab";
 import { StatusDot, ToneBadge } from "@/components/status";
 import { agentsApi } from "@/lib/api";
-import { configOf, saveAgents, setAgents, settingOf, useAgents, workingRole } from "@/lib/agents";
+import { configOf, ownRole, ownSkill, saveAgents, setAgents, settingOf, useAgents, workingRole } from "@/lib/agents";
 import { ago } from "@/lib/format";
-import type { AgentTab } from "@/lib/selection";
+import type { SettingsScope } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -30,6 +29,32 @@ const RUNS: Readonly<Record<RoleView["runs"], { readonly badge: string; readonly
     text: "Runs as code rules after every merge. This prompt is not sent to a model yet.",
   },
 };
+
+export type AgentSection = "agents" | "skills" | "router";
+
+export interface AgentsNav {
+  readonly go: (section: AgentSection, item: string | null, scope?: SettingsScope) => void;
+}
+
+const Nav = createContext<AgentsNav>({ go: () => {} });
+
+function ScopeBadge({ view, own, changed }: { readonly view: View; readonly own: boolean; readonly changed: boolean }) {
+  if (!view.scope) return null;
+  if (own) return <ToneBadge tone="run">this project</ToneBadge>;
+  return changed ? <ToneBadge tone="idle">all projects</ToneBadge> : null;
+}
+
+function SharedNote({ view, what, onEdit }: { readonly view: View; readonly what: string; readonly onEdit: () => void }) {
+  if (!view.scope) return null;
+  return (
+    <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground" data-inherited>
+      This {what} uses the setting for all projects. Saving here changes it for this project only.{" "}
+      <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={onEdit}>
+        Edit it for all projects
+      </button>
+    </p>
+  );
+}
 
 function Field(props: { readonly label: string; readonly hint?: ReactNode; readonly children: ReactNode }) {
   return (
@@ -95,7 +120,7 @@ function RoleList({ view, selected, pick }: { readonly view: View; readonly sele
                     {busy}
                   </span>
                 ) : null}
-                {r.custom ? <ToneBadge tone="idle">yours</ToneBadge> : r.edited ? <ToneBadge tone="run">edited</ToneBadge> : null}
+                {view.scope ? <ScopeBadge view={view} own={ownRole(view, r.role)} changed={r.custom || r.edited} /> : r.custom ? <ToneBadge tone="idle">yours</ToneBadge> : r.edited ? <ToneBadge tone="run">edited</ToneBadge> : null}
               </>
             }
           />
@@ -110,12 +135,12 @@ function RoleList({ view, selected, pick }: { readonly view: View; readonly sele
 }
 
 function SkillPicker({ skills, value, onChange }: { readonly skills: readonly Skill[]; readonly value: readonly string[]; readonly onChange: (next: string[]) => void }) {
-  const { select } = useWorkspace();
+  const { go } = useContext(Nav);
   if (skills.length === 0)
     return (
       <p className="text-xs text-muted-foreground">
         No skills yet.{" "}
-        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => select({ tab: "skills", item: "new" })}>
+        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => go("skills", "new")}>
           Write the first one
         </button>
         .
@@ -149,7 +174,11 @@ const BLANK: RoleSetting = {
 };
 
 function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleView | null }) {
-  const { select, sessions, openSession, features } = useWorkspace();
+  const { sessions, openSession, features } = useWorkspace();
+  const { go } = useContext(Nav);
+  const select = ({ item }: { readonly item: string }) => go("agents", item || null);
+  const own = role ? ownRole(view, role.role) : true;
+  const sharedRole = role !== null && view.scope !== undefined && (!role.custom || view.scope.shared.roles.includes(role.role));
   const [draft, setDraft] = useState<RoleSetting>(role ? settingOf(role) : BLANK);
   const [id, setId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -182,7 +211,7 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
     if (!role) return;
     const current = configOf(view);
     const roles = Object.fromEntries(Object.entries(current.roles).filter(([key]) => key !== role.role));
-    void run({ ...current, roles }, role.custom ? `Removed ${role.label}` : `Reset ${role.label} to default`, role.custom ? "" : role.role);
+    void run({ ...current, roles }, view.scope && sharedRole ? `${role.label} uses the setting for all projects` : role.custom ? `Removed ${role.label}` : `Reset ${role.label} to default`, role.custom && !sharedRole ? "" : role.role);
   };
   const runs = RUNS[role?.runs ?? "agent"];
   return (
@@ -200,13 +229,19 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
         {role ? <span className="font-mono text-xs text-muted-foreground">{role.role}</span> : null}
         <ToneBadge tone="idle">{runs.badge}</ToneBadge>
         <span className="flex-1" />
-        {role && !role.custom && role.edited ? (
+        {view.scope && role && own && sharedRole ? (
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={remove}>
+            <RotateCcw />
+            Use the setting for all projects
+          </Button>
+        ) : null}
+        {!view.scope && role && !role.custom && role.edited ? (
           <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={remove}>
             <RotateCcw />
             Reset to default
           </Button>
         ) : null}
-        {role?.custom ? (
+        {role?.custom && own && !sharedRole ? (
           <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={remove}>
             <Trash2 />
             Remove role
@@ -214,6 +249,7 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
         ) : null}
       </div>
       <p className="text-sm text-muted-foreground">{runs.text}</p>
+      {role && !own ? <SharedNote view={view} what="role" onEdit={() => go("agents", role.role, "app")} /> : null}
       {working.length ? (
         <div className="flex flex-wrap items-center gap-1.5 text-sm" data-working-now>
           <span className="text-muted-foreground">Working now on</span>
@@ -250,7 +286,7 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
         <div className="grid gap-1.5 text-sm">
           <span className="font-medium">Skills</span>
           <SkillPicker skills={view.skills} value={draft.skills} onChange={(skills) => change({ skills })} />
-          <span className="text-xs text-muted-foreground">Skills marked for every role come from the Skills tab. Tick others to give this role its own.</span>
+          <span className="text-xs text-muted-foreground">Skills marked for every role come from Skills. Tick others to give this role its own.</span>
         </div>
       )}
       {role?.runs === "agent" || !role ? (
@@ -266,7 +302,7 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
         </div>
       ) : null}
       <div className="sticky bottom-0 -mx-1 flex items-center gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
-        <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : role?.edited ? "Saved. History can bring back any earlier version." : "Using chef's default."}</span>
+        <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : view.scope ? (own ? "Saved for this project. History can bring back any earlier version." : "Using the setting for all projects.") : role?.edited ? "Saved. History can bring back any earlier version." : "Using chef's default."}</span>
         <span className="flex-1" />
         {dirty ? (
           <Button type="button" variant="ghost" size="sm" onClick={() => setDraft(base)}>
@@ -290,7 +326,7 @@ function SkillList({ view, selected, pick }: { readonly view: View; readonly sel
   return (
     <>
       {view.skills.map((s) => (
-        <ListItem key={s.name} id={s.name} kind="skill" selected={selected === s.name} onClick={() => pick(s.name)} title={s.name} sub={s.everyone ? "Every role" : usedByText(view.roles.filter((r) => r.skills.includes(s.name)).length)} />
+        <ListItem key={s.name} id={s.name} kind="skill" selected={selected === s.name} onClick={() => pick(s.name)} title={s.name} sub={s.everyone ? "Every role" : usedByText(view.roles.filter((r) => r.skills.includes(s.name)).length)} badge={<ScopeBadge view={view} own={ownSkill(view, s.name)} changed />} />
       ))}
       <Button variant="ghost" size="sm" className="mt-1 justify-start text-muted-foreground" onClick={() => pick("new")}>
         <Plus />
@@ -301,7 +337,10 @@ function SkillList({ view, selected, pick }: { readonly view: View; readonly sel
 }
 
 function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Skill | null }) {
-  const { select } = useWorkspace();
+  const { go } = useContext(Nav);
+  const select = ({ item }: { readonly item: string }) => go("skills", item || null);
+  const own = skill ? ownSkill(view, skill.name) : true;
+  const shared = skill !== null && view.scope !== undefined && view.scope.shared.skills.includes(skill.name);
   const blank: Skill = { name: "", description: "", body: "", everyone: false };
   const [draft, setDraft] = useState<Skill>(skill ?? blank);
   const usedBy = (name: string) => view.roles.filter((r) => r.skills.includes(name)).map((r) => r.role);
@@ -331,7 +370,9 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
   };
   const save = () => {
     const name = draft.name.trim();
-    const skills = skill ? view.skills.map((s) => (s.name === skill.name ? draft : s)) : [...view.skills, { ...draft, name }];
+    const mine = configOf(view).skills;
+    const unchanged = skill !== null && JSON.stringify(draft) === JSON.stringify(skill);
+    const skills = mine.some((s) => s.name === name) ? mine.map((s) => (s.name === name ? { ...draft, name } : s)) : !own && unchanged ? mine : [...mine, { ...draft, name }];
     void write(
       withRoles(name, (r) => !draft.everyone && roles.includes(r.role), skills),
       skill ? `Edited skill ${name}` : `Added skill ${name}`,
@@ -340,6 +381,11 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
   };
   const remove = () => {
     if (!skill) return;
+    if (shared) {
+      const current = configOf(view);
+      void write({ ...current, skills: current.skills.filter((s) => s.name !== skill.name) }, `${skill.name} uses the version for all projects`, skill.name);
+      return;
+    }
     void write(
       withRoles(
         skill.name,
@@ -363,14 +409,15 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
         <BookOpen className="size-5 text-muted-foreground" />
         <h2 className="text-lg font-semibold">{skill ? skill.name : "New skill"}</h2>
         <span className="flex-1" />
-        {skill ? (
+        {skill && own ? (
           <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={remove}>
-            <Trash2 />
-            Remove skill
+            {shared ? <RotateCcw /> : <Trash2 />}
+            {shared ? "Use the version for all projects" : "Remove skill"}
           </Button>
         ) : null}
       </div>
-      <p className="text-sm text-muted-foreground">A skill is a short guide a role can follow, like a house style, a library's quirks or a checklist. Give it to every role to use it in all sessions of the project, or only to the roles that need it. Coding roles load it when its description fits the task; planner and reviewer always read it.</p>
+      <p className="text-sm text-muted-foreground">A skill is a short guide a role can follow, like a house style, a library's quirks or a checklist. Give it to every role to use it in all sessions, or only to the roles that need it. Coding roles load it when its description fits the task; planner and reviewer always read it.</p>
+      {skill && !own ? <SharedNote view={view} what="skill" onEdit={() => go("skills", skill.name, "app")} /> : null}
       {skill ? null : (
         <Field label="Name" hint="Lower case letters, digits and dashes, for example tidy-sql.">
           <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value.toLowerCase() })} placeholder="tidy-sql" aria-label="Skill name" pattern="[a-z][a-z0-9-]{0,63}" required />
@@ -387,7 +434,7 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Who uses it">
           {(
             [
-              [true, "Every role", "All roles in every session of this project"],
+              [true, "Every role", view.scope ? "All roles in every session of this project" : "All roles in every session of every project"],
               [false, "Chosen roles", "Only the roles you tick below"],
             ] as const
           ).map(([everyone, label, hint]) => (
@@ -416,7 +463,7 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
         </div>
       )}
       <div className="sticky bottom-0 -mx-1 flex items-center gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
-        <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : "Saved"}</span>
+        <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : view.scope && !own ? "Using the version for all projects" : view.scope ? "Saved for this project" : "Saved"}</span>
         <span className="flex-1" />
         <Button type="submit" size="sm" disabled={busy || !dirty}>
           Save
@@ -429,8 +476,8 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
 function HistoryMenu({ view }: { readonly view: View }) {
   const restore = async (version: number) => {
     try {
-      setAgents(await agentsApi.restore(version));
-      toast.success(version === 0 ? "Back to chef's defaults" : `Restored version ${version}`, { description: "The version you left is still in History." });
+      setAgents(await agentsApi(view.scope?.project ?? null).restore(version));
+      toast.success(version === 0 ? (view.scope ? "Back to the settings for all projects" : "Back to chef's defaults") : `Restored version ${version}`, { description: "The version you left is still in History." });
     } catch (error) {
       toast.error("Could not restore", {
         description: error instanceof Error ? error.message : String(error),
@@ -442,7 +489,7 @@ function HistoryMenu({ view }: { readonly view: View }) {
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" aria-label="History">
           <History />
-          <span className="max-sm:hidden">{view.version ? `Version ${view.version}` : "Defaults"}</span>
+          <span className="max-sm:hidden">{view.version ? `Version ${view.version}` : view.scope ? "No changes" : "Defaults"}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
@@ -457,67 +504,50 @@ function HistoryMenu({ view }: { readonly view: View }) {
         {view.history.length ? <DropdownMenuSeparator /> : null}
         <DropdownMenuItem disabled={view.version === 0} onClick={() => void restore(0)}>
           <RotateCcw />
-          Back to chef's defaults
+          {view.scope ? "Back to the settings for all projects" : "Back to chef's defaults"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-const TABS: readonly {
-  readonly value: AgentTab;
-  readonly label: string;
-  readonly icon: typeof Bot;
-}[] = [
-  { value: "roles", label: "Roles", icon: Bot },
-  { value: "skills", label: "Skills", icon: Wrench },
-  { value: "router", label: "Router", icon: Route },
-];
+const INTRO: Readonly<Record<AgentSection, { readonly app: string; readonly project: string }>> = {
+  agents: { app: "Every project starts with these roles. A project can change any of them for itself.", project: "The roles that plan, test, build and review this project. Change one here to change it for this project only." },
+  skills: { app: "Short guides roles follow in every project.", project: "Skills from all projects, plus this project's own. A skill with the same name here replaces the shared one." },
+  router: { app: "How chef decides whether a request is a new feature, a change, a chore or a question, in every project.", project: "How chef sorts requests in this project. It follows the setting for all projects until you save a change here." },
+};
 
-export function AgentsView() {
-  const { selection, select } = useWorkspace();
-  const view = useAgents();
-  const tab = selection.tab ?? "roles";
-  const pick = (item: string) => select({ item });
+export function AgentsSection(props: { readonly project: string | null; readonly section: AgentSection; readonly item: string | null; readonly nav: AgentsNav; readonly before?: ReactNode }) {
+  const { section, item, nav } = props;
+  const view = useAgents(props.project);
+  const pick = (next: string) => nav.go(section, next);
   if (!view) return <div className="grid h-full place-items-center text-muted-foreground">Loading</div>;
-  const roleId = selection.item && (selection.item === "new" || view.roles.some((r) => r.role === selection.item)) ? selection.item : (view.roles[0]?.role ?? "new");
+  const roleId = item && (item === "new" || view.roles.some((r) => r.role === item)) ? item : (view.roles[0]?.role ?? "new");
   const role = view.roles.find((r) => r.role === roleId) ?? null;
-  const skillId = selection.item && (selection.item === "new" || view.skills.some((s) => s.name === selection.item)) ? selection.item : (view.skills[0]?.name ?? "new");
+  const skillId = item && (item === "new" || view.skills.some((s) => s.name === item)) ? item : (view.skills[0]?.name ?? "new");
   const skill = view.skills.find((s) => s.name === skillId) ?? null;
   return (
-    <div className="flex h-full min-h-0 flex-col" data-view="agents">
-      <header className="flex h-15 shrink-0 items-center gap-2.5 border-b px-4 sm:px-6">
-        <h1 className="text-base font-semibold">Agents</h1>
-        <span className="hidden min-w-0 truncate text-sm text-muted-foreground md:inline">The roles that plan, test, build and review your features, for every project</span>
-        <span className="flex-1" />
-        <HistoryMenu view={view} />
-      </header>
-      <Tabs value={tab} onValueChange={(value) => select({ tab: value as AgentTab, item: null })} className="flex min-h-0 flex-1 flex-col gap-0">
-        <div className="border-b px-4 sm:px-6">
-          <TabsList variant="line" className="h-10">
-            {TABS.map((t) => (
-              <TabsTrigger key={t.value} value={t.value} className="px-2.5">
-                <t.icon />
-                {t.label}
-                {t.value === "roles" ? <span className="text-xs text-muted-foreground tabular-nums">{view.roles.length}</span> : t.value === "skills" ? <span className="text-xs text-muted-foreground tabular-nums">{view.skills.length}</span> : null}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+    <Nav.Provider value={nav}>
+      <div className="flex h-full min-h-0 flex-col" data-view="agents" data-scope={view.scope ? "project" : "app"}>
+        <div className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2 sm:px-6">
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground">{INTRO[section][view.scope ? "project" : "app"]}</span>
+          <HistoryMenu view={view} />
         </div>
-        <TabsContent value="roles" className="flex min-h-0 flex-1 flex-col">
+        {section === "agents" ? (
           <Pane list={<RoleList view={view} selected={roleId} pick={pick} />}>
             <RoleEditor key={`${roleId}:${view.version}`} view={view} role={role} />
           </Pane>
-        </TabsContent>
-        <TabsContent value="skills" className="flex min-h-0 flex-1 flex-col">
+        ) : section === "skills" ? (
           <Pane list={<SkillList view={view} selected={skillId} pick={pick} />}>
             <SkillEditor key={`${skillId}:${view.version}`} view={view} skill={skill} />
           </Pane>
-        </TabsContent>
-        <TabsContent value="router" className="min-h-0 flex-1 overflow-y-auto">
-          <RouterTab key={view.version} view={view} />
-        </TabsContent>
-      </Tabs>
-    </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {props.before}
+            <RouterTab key={view.version} view={view} />
+          </div>
+        )}
+      </div>
+    </Nav.Provider>
   );
 }

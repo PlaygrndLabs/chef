@@ -108,9 +108,11 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       return null;
     });
     if (routed) report.routed = { prompt: ROUTE_PROMPT, intent: routed.intent, via: routed.via, classifier: routed.classifier ? `${routed.classifier.model} ${routed.classifier.accepted ? "accepted" : "not sure"}` : null };
-    for (const tab of ["roles", "skills", "router"]) {
-      await go(`/?project=${project}&view=agents&tab=${tab}`);
-      await shot(`agents-${tab}`);
+    for (const scope of ["app", "project"]) {
+      for (const section of ["general", "agents", "skills", "router", "environment"]) {
+        await go(`/?project=${project}&settings=${scope}.${section}`);
+        await shot(`settings-${scope}-${section}`);
+      }
     }
     if (options.prompt) {
       await go(`/?project=${project}`);

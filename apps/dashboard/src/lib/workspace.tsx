@@ -1,8 +1,14 @@
 import { createContext, useContext } from "react";
-import type { ProjectApi } from "./api";
+import type { ProjectApi, SettingsView } from "./api";
 import type { ProjectData } from "./live";
 import type { FeatureNode, SessionNode } from "./model";
-import type { Selection } from "./selection";
+import type { Selection, SettingsScope } from "./selection";
+
+export interface AppSettings {
+  readonly settings: SettingsView | null;
+  readonly setSettings: (settings: SettingsView) => void;
+  readonly available: boolean;
+}
 
 export interface Workspace {
   readonly data: ProjectData;
@@ -20,6 +26,8 @@ export interface Workspace {
   readonly openSession: (id: string) => void;
   readonly openFeature: (id: string) => void;
   readonly focusComposer: () => void;
+  readonly openSettings: (scope: SettingsScope, section?: string, item?: string | null) => void;
+  readonly app: AppSettings;
 }
 
 export const WorkspaceContext = createContext<Workspace | null>(null);
