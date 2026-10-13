@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ChefEvent } from "@chef/core";
 import { LocalGitHost } from "@chef/adapters/local-git";
-import { startApp, type LocalApp } from "../../src/app.ts";
+import { memoryStore, startApp, type LocalApp } from "../../src/app.ts";
 import { Docker } from "../../src/engine/docker.ts";
 import { LocalEngine } from "../../src/engine/engine.ts";
 import { FileEventBus, FileMemoryIndex, FileStore } from "../../src/engine/storage.ts";
@@ -69,7 +69,9 @@ describe("chef running fully on this computer", () => {
   beforeAll(async () => {
     dir = temp();
     engine = await LocalEngine.start({ dir, env: {}, docker: new Docker({ repos: join(dir, "repos"), docker: "true" }) });
-    app = await startApp({ port: 0, engine });
+    const ready = engine;
+    app = await startApp({ port: 0, store: memoryStore({ place: "computer" }), dockerProblem: () => null, startEngine: async () => ready });
+    for (let i = 0; i < 50 && ((await (await fetch(`${app.url}/api/app`)).json()) as { computer: { status: string } }).computer.status !== "ready"; i++) await new Promise((resolve) => setTimeout(resolve, 20));
   });
 
   afterAll(async () => {
@@ -79,8 +81,7 @@ describe("chef running fully on this computer", () => {
   const api = (path: string, init?: RequestInit) => fetch(`${app.url}${path}`, { ...init, headers: { ...(init?.body ? { "content-type": "application/json", origin: app.url } : {}), ...init?.headers } });
 
   it("tells the dashboard it runs here and keeps keys in its own settings file", async () => {
-    expect(await (await api("/api/app")).json()).toEqual({ mode: "computer", engine: null, fixed: true });
-    expect((await api("/api/app/connection", { method: "PUT", body: "{}" })).status).toBe(409);
+    expect(await (await api("/api/app")).json()).toMatchObject({ mode: "local", place: "computer", engine: null, computer: { status: "ready" } });
     const before = (await (await api("/api/settings")).json()) as { llm: unknown; runsOn: string; password: string; dataDir: string };
     expect(before).toMatchObject({ llm: null, runsOn: "computer", password: "none", dataDir: dir });
     const saved = await api("/api/settings", { method: "PUT", body: JSON.stringify({ llm: { kind: "anthropic", apiKey: "sk-ant-test-1234567890" } }) });

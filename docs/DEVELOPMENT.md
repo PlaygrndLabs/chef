@@ -20,8 +20,8 @@ Requires Node 22.18 or later, pnpm 10 and git.
 
 ```
 pnpm install
-pnpm start                                           # the app on this computer, connected to a chef in Cloudflare (see docs/SELF_HOSTING.md)
-pnpm start --local                                   # everything on this computer: the engine runs in-process and agents, checks and previews run in Docker
+pnpm start                                           # the app on this computer; its first screen chooses Cloudflare or this computer (see docs/SELF_HOSTING.md)
+pnpm start --local                                   # everything on this computer without asking: the engine runs in-process and agents, checks and previews run in Docker
 pnpm run deploy [--name n] [--dry-run]               # build and deploy to Cloudflare; the Deploy button and the deploy workflow run the same script
 pnpm run verify                                      # typecheck, lint, spec lint, dashboard build, unit and e2e tests (the browser test needs Chromium: pnpm --filter @chef/cli exec playwright install chromium)
 node --import tsx cli/src/bin.ts serve               # dashboard and CopilotKit chat at http://127.0.0.1:8787, after pnpm build
