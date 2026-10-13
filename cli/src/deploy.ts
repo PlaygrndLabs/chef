@@ -70,8 +70,6 @@ export function movedConfig(base: Json, name: string, from: string): Json {
     name,
     migrations: [{ tag, transferred_classes: classes.map((cls) => ({ from: cls, from_script: script, to: cls })) }, ...migrations.slice(at + 1)],
     workflows: list(base["workflows"]).map((w) => ({ ...w, name: workflows.get(String(w["name"])) })),
-    // The sandbox container application moves with its Durable Object class, and Cloudflare only applies
-    // settings to it under the name it was created with on the old Worker.
     containers: list(base["containers"]).map((c) => ({ ...c, name: c["name"] ?? `${script}-${String(c["class_name"])}`.toLowerCase() })),
     ...(triggers
       ? { triggers: { ...triggers, events: list(triggers["events"]).map((e) => ({ ...e, targets: list(e["targets"]).map((t) => ({ ...t, workflow_name: workflows.get(String(t["workflow_name"])) ?? t["workflow_name"] })) })) } }
