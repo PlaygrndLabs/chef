@@ -3,7 +3,7 @@ import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSe
 import type { ProjectEntry } from "./projects.ts";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import { AgentSettings, type AgentConfig, type AgentVersion, type SaveResult, type StoredAgents } from "@chef/core";
-import { hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
+import { deploymentPassword, hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
 import { DurableStore } from "./do-store.ts";
 
 const SETTINGS = "providers";
@@ -117,7 +117,8 @@ export async function currentSettings(env: Env): Promise<Resolved> {
 }
 
 export async function credential(env: Env): Promise<Credential | null> {
-  if (env.CHEF_PASSWORD) return { kind: "deployment", password: env.CHEF_PASSWORD };
+  const password = deploymentPassword(env);
+  if (password) return { kind: "deployment", password };
   const stored = await settingsStub(env).password();
   return stored ? { kind: "app", ...stored } : null;
 }
@@ -127,7 +128,7 @@ export function claimPassword(env: Env): (password: StoredPassword) => Promise<b
 }
 
 async function view(env: Env, saved: AppSettings) {
-  return { ...describeSettings(saved, env), password: env.CHEF_PASSWORD ? "deployment" : "app" };
+  return { ...describeSettings(saved, env), password: deploymentPassword(env) ? "deployment" : "app" };
 }
 
 export async function settingsRequest(request: Request, env: Env): Promise<Response> {
@@ -138,7 +139,7 @@ export async function settingsRequest(request: Request, env: Env): Promise<Respo
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (body && "password" in body) {
     const { password, ...rest } = body;
-    if (env.CHEF_PASSWORD) return Response.json({ error: "the password is set by the deployment's CHEF_PASSWORD secret" }, { status: 409 });
+    if (deploymentPassword(env)) return Response.json({ error: "the password is set by the deployment's CHEF_PASSWORD secret" }, { status: 409 });
     const problem = typeof password === "string" ? passwordProblem(password) : "the password must be text";
     if (problem) return Response.json({ error: problem }, { status: 400 });
     if (Object.keys(rest).length > 0) return Response.json({ error: "change the password on its own" }, { status: 400 });

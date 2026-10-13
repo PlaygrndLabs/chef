@@ -636,7 +636,7 @@ export class Orchestrator {
   private async syncMemory(): Promise<void> {
     const { tree } = await this.mainTree();
     const docs = memoryDocs(tree);
-    const indexed = (await this.deps.store.get<Record<string, string>>("memory-index")) ?? {};
+    const indexed = (await this.deps.store.get<Record<string, string>>("memory-index/2")) ?? {};
     const next: Record<string, string> = {};
     const changed = docs.filter((doc) => {
       next[doc.path] = hashHex(`${doc.kind}\n${doc.feature ?? ""}\n${doc.text}`);
@@ -645,7 +645,7 @@ export class Orchestrator {
     const removed = Object.keys(indexed).filter((path) => !(path in next));
     if (changed.length) await this.deps.memory.upsert(changed);
     if (removed.length) await this.deps.memory.remove(removed);
-    await this.deps.store.put("memory-index", next);
+    await this.deps.store.put("memory-index/2", next);
   }
 
   private async recall(record: SessionRecord, feature: FeatureSpec, item: WorkItem): Promise<MemoryHit[]> {

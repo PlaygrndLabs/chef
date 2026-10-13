@@ -4,22 +4,21 @@ import { LlmPlanner } from "../../src/llm-planner.ts";
 import { EMBEDDING_MODEL, VectorizeIndex, type EmbedderLike, type VectorizeLike } from "../../src/vectorize.ts";
 
 class FakeVectorize implements VectorizeLike {
-  readonly vectors = new Map<string, { values: number[]; metadata: Record<string, string> }>();
-  readonly filters: Record<string, unknown>[] = [];
+  readonly vectors = new Map<string, { values: number[]; namespace: string; metadata: Record<string, string> }>();
+  readonly queries: { topK: number; namespace?: string; filter?: unknown }[] = [];
 
-  async upsert(vectors: { id: string; values: number[]; metadata?: Record<string, string> }[]): Promise<void> {
-    for (const v of vectors) this.vectors.set(v.id, { values: v.values, metadata: v.metadata ?? {} });
+  async upsert(vectors: { id: string; values: number[]; namespace?: string; metadata?: Record<string, string> }[]): Promise<void> {
+    for (const v of vectors) this.vectors.set(v.id, { values: v.values, namespace: v.namespace ?? "", metadata: v.metadata ?? {} });
   }
 
   async deleteByIds(ids: string[]): Promise<void> {
     for (const id of ids) this.vectors.delete(id);
   }
 
-  async query(vector: number[], options: { topK: number; filter?: Record<string, unknown> }) {
-    this.filters.push(options.filter ?? {});
-    const kinds = (options.filter?.["kind"] as { $in?: string[] } | undefined)?.$in;
+  async query(vector: number[], options: { topK: number; namespace?: string; filter?: unknown }) {
+    this.queries.push(options);
     const matches = [...this.vectors]
-      .filter(([, v]) => v.metadata["project"] === options.filter?.["project"] && (!kinds || kinds.includes(v.metadata["kind"] as string)))
+      .filter(([, v]) => v.namespace === (options.namespace ?? ""))
       .map(([id, v]) => ({ id, score: v.values.reduce((sum, x, i) => sum + x * (vector[i] ?? 0), 0), metadata: v.metadata }))
       .sort((a, b) => b.score - a.score)
       .slice(0, options.topK);
@@ -39,7 +38,7 @@ class WordEmbedder implements EmbedderLike {
 }
 
 describe("memory adapters", () => {
-  it("stores memory docs in Vectorize per project and filters queries by project and kind", async () => {
+  it("keeps each project's memory in its own Vectorize namespace and filters kinds without metadata indexes", async () => {
     const index = new FakeVectorize();
     const ai = new WordEmbedder();
     const demo = new VectorizeIndex(index, ai, "demo");
@@ -52,7 +51,8 @@ describe("memory adapters", () => {
 
     const hits = await demo.query("reverse emoji", 5, ["lesson", "feature"]);
     expect(hits.map((h) => [h.doc.path, h.doc.kind, h.doc.feature, h.doc.text])).toEqual([["memory/lessons/reverse-1.md", "lesson", "reverse", "emoji broke reverse"]]);
-    expect(index.filters.at(-1)).toEqual({ project: "demo", kind: { $in: ["lesson", "feature"] } });
+    expect(index.queries.at(-1)).toMatchObject({ namespace: "demo", topK: 50 });
+    expect(index.queries.every((q) => q.filter === undefined)).toBe(true);
     expect(ai.models.every((m) => m === EMBEDDING_MODEL)).toBe(true);
 
     await demo.remove(["memory/lessons/reverse-1.md"]);

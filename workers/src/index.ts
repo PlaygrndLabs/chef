@@ -26,6 +26,7 @@ export default {
     const blocked = await guard(request, await credential(env), claimPassword(env));
     if (blocked) return blocked;
     const url = new URL(request.url);
+    if (url.pathname === "/api/app" && request.method === "GET") return Response.json({ mode: "cloud", engine: url.origin, fixed: true });
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/agents" || url.pathname === "/api/agents/restore") {
       const settings = await currentSettings(env);
