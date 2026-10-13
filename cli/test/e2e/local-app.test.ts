@@ -52,6 +52,13 @@ describe("local app in a browser", () => {
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await page.goto(app.url);
+      const place = page.locator('[data-view="place"]');
+      await place.waitFor({ timeout: 10_000 });
+      expect(await place.locator('[data-place="cloud"]').innerText()).toContain("Recommended");
+      await place.locator('[data-place="cloud"]').getByRole("tab", { name: "Set it up" }).click();
+      expect(await place.locator('[data-view="cloudflare-setup"]').innerText()).toContain("Check my account");
+      await place.locator('[data-place="cloud"]').getByRole("tab", { name: "I have chef there" }).click();
+      expect(await place.locator('[data-place="computer"]').getByRole("button", { name: "Use this computer" }).isDisabled()).toBe(true);
       const connect = page.locator('[data-view="connect"]');
       await connect.waitFor({ timeout: 10_000 });
       await connect.getByLabel("Address of your chef").fill(engine.url);
@@ -63,7 +70,7 @@ describe("local app in a browser", () => {
       await connect.getByRole("button", { name: "Connect" }).click();
       const setup = page.locator('[data-view="setup"]');
       await setup.waitFor({ timeout: 10_000 });
-      expect(store.read()).toEqual({ url: engine.url, password: PASSWORD });
+      expect(store.read()).toEqual({ place: "cloud", url: engine.url, password: PASSWORD });
       await setup.getByRole("button", { name: "Settings" }).click();
       const settings = page.locator('[data-dialog="settings"]');
       await settings.waitFor({ timeout: 10_000 });

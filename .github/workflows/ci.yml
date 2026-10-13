@@ -3,6 +3,13 @@ name: ci
 on:
   push:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      live:
+        description: Also build a real feature fully on the runner with a real model
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,3 +33,26 @@ jobs:
       - run: pnpm --filter @chef/cli exec playwright install --with-deps chromium
       - run: pnpm test
       - run: pnpm test:e2e
+
+  local:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: git config --global user.email ci@chef.invalid && git config --global user.name ci
+      - name: Checks, previews and proofs in Docker, as chef runs fully on a computer
+        run: CHEF_DOCKER_E2E=1 pnpm exec vitest run --project e2e cli/test/e2e/local-sandbox.test.ts
+      - name: A real feature built fully on this machine (pull requests labelled live-local, or a manual run with live)
+        if: (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'live-local')) || (github.event_name == 'workflow_dispatch' && inputs.live)
+        env:
+          CHEF_LIVE_LOCAL: "1"
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || secrets.CPA_BASE_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY || secrets.CPA_API_KEY }}
+        run: pnpm exec vitest run --project e2e cli/test/e2e/local-live.test.ts

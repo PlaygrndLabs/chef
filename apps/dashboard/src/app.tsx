@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ResizeHandle, useStoredWidth } from "@/components/resize-handle";
 import { CommandPalette } from "@/components/command-palette";
-import { ConnectScreen } from "@/components/connect-screen";
+import { PlaceScreen } from "@/components/place-screen";
 import { FeaturePage } from "@/components/feature-page";
 import { Home } from "@/components/home";
 import { NewProjectDialog, returningToNewProject, Setup } from "@/components/project-setup";
@@ -63,7 +63,7 @@ export function App() {
     void appApi.get().then(setMode);
   }, []);
   if (mode === null) return <div className="grid h-dvh place-items-center text-muted-foreground">Loading</div>;
-  if (mode.mode === "local" && mode.engine === null) return <ConnectScreen onConnected={setMode} />;
+  if (mode.mode === "local" && (mode.place === null || (mode.place === "computer" && mode.computer?.status !== "ready"))) return <PlaceScreen mode={mode} onChange={setMode} />;
   return <ConnectedApp />;
 }
 

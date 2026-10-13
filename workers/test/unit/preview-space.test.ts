@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildingPage, CloudflareWorkerSpace } from "../../src/preview-space.ts";
+import { buildingPage } from "@chef/adapters/preview-page";
+import { CloudflareWorkerSpace } from "../../src/preview-space.ts";
 
 describe("preview Worker space", () => {
   it("deletes the project Worker and treats a missing one as deleted", async () => {
