@@ -12,8 +12,6 @@
 
 **Build apps with AI, in your own Cloudflare account.** Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass.
 
-Like ChatGPT or Claude Code, you talk to it. Unlike them, you own every part: the app, the code, the keys and the infrastructure.
-
 <p align="center"><strong><a href="https://chef.playgrndlabs.com">Sign in with Cloudflare and start building →</a></strong></p>
 
 ## Why chef
@@ -32,33 +30,25 @@ chef takes that work off your plate, so you spend your time on what to build, no
 - **Your keys stay yours.** Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.
 - **GitHub when you want it.** Projects live in your Cloudflare account. Connect GitHub only if you want a repo kept in sync.
 
-## Set up in a few clicks
+## Under the hood
 
-No terminal, no Docker and nothing to install.
+chef is a TypeScript monorepo that runs entirely on Cloudflare's developer platform.
 
-1. **Sign in with Cloudflare** at [chef.playgrndlabs.com](https://chef.playgrndlabs.com). Cloudflare shows exactly what chef asks for.
-2. **Pick an account.** chef adds its engine there: the agents, sandboxes, previews and your projects. Then it hands the access back.
-3. **Start building.** Add your model key in Settings, create a project and watch each feature come together with its own live preview.
+- **Engine.** One Worker with Durable Objects: a `ProjectAgent` per project and a `SessionAgent` per session hold state and drive work, so nothing stops when the browser closes.
+- **Repos.** Every project is a git repository in Cloudflare Artifacts. Each session works on its own fork, and only the merge gate can write `main`.
+- **Routing.** Rules first, then Jev (TypeSafe's System One) answers typed choice questions with calibrated confidence. When it is unsure, a Claude planner writes the spec and splits the work into parallel sessions.
+- **Coding.** The Claude Agent SDK runs inside a Cloudflare Sandbox (Containers) with role-scoped subagents for tests, code and review. The sandbox gets a read-only token, and its outbound proxy swaps in real keys only on approved hosts.
+- **History.** Each agent turn is one commit, with its prompt, model and role stored in git notes (`refs/notes/chef`).
+- **Gate.** Typecheck, lint, tests, spec lint, write-scope checks per role, locked tests, an independent AI review and a proof run against the live preview. Merges are serialized; if `main` moved, the session syncs and is gated again.
+- **Previews.** `wrangler preview` publishes each feature branch as a Worker preview. Idle previews are removed and rebuilt on the next visit.
+- **Memory.** Lessons and feature summaries are indexed in Vectorize with Workers AI embeddings and recalled before each turn.
+- **Live UI.** Sessions stream to a React dashboard over AG-UI with CopilotKit: coder output, tool calls, steps, preview, review and merge.
 
-## Pricing
-
-| | Cost | What it covers |
-| --- | --- | --- |
-| **chef** | Free | Open source under the MIT license. Every feature, no seat or project limits. |
-| **Cloudflare Workers Paid** | $5 / month, from Cloudflare | Runs chef's agents, sandboxes and previews, with a monthly allowance. Heavier use is billed by Cloudflare. |
-| **Your model provider** | Pay as you go | Your Anthropic API key or any compatible provider. You pay them for what the agents use. |
-
-## Questions
-
-**Where do my code and data live?** In your Cloudflare account. Projects are git repositories in Cloudflare Artifacts, and your model keys, settings and previews stay with your chef engine there.
-
-**Does chef keep access to my Cloudflare account?** No. The access you grant at sign-in is used only while chef sets up or updates its engine, and it is revoked right after.
-
-**Which Cloudflare plan do I need?** Workers Paid, because chef uses Containers and Artifacts. If your account is on the free plan, the setup page links you to the upgrade.
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Develop
 
-Run `pnpm install` and `pnpm run verify`. Repository layout and the CLI: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Run `pnpm install` and `pnpm run verify`. Repository layout and the CLI: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License
 
