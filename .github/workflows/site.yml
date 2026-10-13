@@ -46,7 +46,7 @@ jobs:
           ENGINE_VERSION: ${{ steps.image.outputs.version }}
         run: |
           jq -n '{CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID}' > "$RUNNER_TEMP/secrets.json"
-          npx wrangler deploy --config site/wrangler.jsonc --var "SANDBOX_IMAGE:$SANDBOX_IMAGE" --var "ENGINE_VERSION:$ENGINE_VERSION" --secrets-file "$RUNNER_TEMP/secrets.json"
+          (cd site && npx wrangler deploy --var "SANDBOX_IMAGE:$SANDBOX_IMAGE" --var "ENGINE_VERSION:$ENGINE_VERSION" --secrets-file "$RUNNER_TEMP/secrets.json")
           rm "$RUNNER_TEMP/secrets.json"
       - name: Create the Sign in with Cloudflare app once
         run: |
