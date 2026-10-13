@@ -13,7 +13,7 @@ import { configOf, ownRole, ownSkill, saveAgents, setAgents, settingOf, useAgent
 import { ago } from "@/lib/format";
 import type { SettingsScope } from "@/lib/selection";
 import { cn } from "@/lib/utils";
-import { useWorkspace } from "@/lib/workspace";
+import { useOptionalWorkspace } from "@/lib/workspace";
 
 const RUNS: Readonly<Record<RoleView["runs"], { readonly badge: string; readonly text: string }>> = {
   agent: {
@@ -90,7 +90,7 @@ function ListItem(props: { readonly selected: boolean; readonly onClick: () => v
 }
 
 function RoleList({ view, selected, pick }: { readonly view: View; readonly selected: string; readonly pick: (item: string) => void }) {
-  const { sessions } = useWorkspace();
+  const sessions = useOptionalWorkspace()?.sessions ?? [];
   const shared = view.skills.filter((s) => s.everyone).length;
   return (
     <>
@@ -174,7 +174,10 @@ const BLANK: RoleSetting = {
 };
 
 function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleView | null }) {
-  const { sessions, openSession, features } = useWorkspace();
+  const workspace = useOptionalWorkspace();
+  const sessions = workspace?.sessions ?? [];
+  const features = workspace?.features ?? [];
+  const openSession = (id: string) => workspace?.openSession(id);
   const { go } = useContext(Nav);
   const select = ({ item }: { readonly item: string }) => go("agents", item || null);
   const own = role ? ownRole(view, role.role) : true;

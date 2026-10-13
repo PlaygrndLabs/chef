@@ -361,7 +361,6 @@ export function SettingsDialog(props: {
   readonly item: string | null;
   readonly nav: AgentsNav & { readonly section: (section: string) => void };
   readonly returnTo: string;
-  readonly withoutProject?: boolean;
 }) {
   const { settings, onChange, nav } = props;
   const missing = missingSettings(settings);
@@ -431,9 +430,8 @@ export function SettingsDialog(props: {
       id: "router",
       label: "Router",
       icon: Route,
-      fill: !props.withoutProject,
-      ...(props.withoutProject ? { note: "How chef decides whether a request is a new feature, a change, a chore or a question." } : {}),
-      render: props.withoutProject ? () => jev : agents("router", <div className="mx-auto max-w-3xl px-4 pt-5 sm:px-6"><div className="rounded-xl border p-4">{jev}</div></div>),
+      fill: true,
+      render: agents("router", <div className="mx-auto max-w-3xl px-4 pt-5 sm:px-6"><div className="rounded-xl border p-4">{jev}</div></div>),
     },
     {
       id: "environment",
@@ -477,8 +475,7 @@ export function SettingsDialog(props: {
     },
     { id: "github", label: "GitHub", icon: GitBranch, note: "One connection for every project that links a GitHub repository.", render: () => <GitHubSection returnTo={props.returnTo} /> },
   ];
-  const projectless = new Set(["agents", "skills"]);
-  const sections = all.filter((s) => (props.available || !needsSettings.has(s.id)) && !(props.withoutProject && projectless.has(s.id)));
+  const sections = all.filter((s) => props.available || !needsSettings.has(s.id));
   return (
     <SettingsShell
       open={props.open}
