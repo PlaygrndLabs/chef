@@ -45,18 +45,28 @@ export function LivePanel() {
   const label = talk.phase === "starting" ? "Starting live talk" : talk.phase === "connecting" ? "Connecting" : talking ? "chef is talking" : talk.muted ? "Muted. chef can't hear you." : "Listening";
   return (
     <div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-5" id="live-talk" data-phase={talk.phase} data-muted={talk.muted}>
-      <div className="mx-auto flex max-w-3xl flex-col items-center gap-2 rounded-2xl border bg-card px-4 pt-3 pb-4 shadow-xs">
+      <div className="mx-auto flex max-w-3xl flex-col items-center gap-2 px-4 pt-3 pb-1">
         <PixelOrb size={132} waiting={waiting} muted={talk.muted} levels={levels} />
         <p className={cn("text-sm", talking ? "text-foreground" : "text-muted-foreground")} aria-live="polite" id="live-status">
           {label}
         </p>
-        <div className="mt-1 flex items-center gap-3">
-          <Button variant="secondary" size="icon" className="size-11 rounded-full" onClick={() => setMuted(!talk.muted)} disabled={waiting} aria-pressed={talk.muted} aria-label={talk.muted ? "Unmute" : "Mute"} title={talk.muted ? "Unmute" : "Mute"} id="live-mute">
-            {talk.muted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
-          </Button>
-          <Button variant="secondary" size="icon" className="size-11 rounded-full" onClick={() => void endLive()} aria-label="End live talk" title="End live talk (Esc)" id="live-end">
-            <X className="size-5" />
-          </Button>
+        <div className="mt-1 flex items-start gap-6">
+          <div className="flex flex-col items-center gap-1">
+            <Button variant="secondary" size="icon" className={cn("size-11 rounded-full", talk.muted && "bg-bad/15 text-bad hover:bg-bad/20")} onClick={() => setMuted(!talk.muted)} disabled={waiting} aria-pressed={talk.muted} aria-label={talk.muted ? "Unmute" : "Mute"} title={talk.muted ? "Turn your microphone back on" : "Turn your microphone off"} id="live-mute">
+              {talk.muted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
+            </Button>
+            <span className="text-xs text-muted-foreground" aria-hidden>
+              {talk.muted ? "Unmute" : "Mute"}
+            </span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <Button variant="secondary" size="icon" className="size-11 rounded-full" onClick={() => void endLive()} aria-label="End live talk" title="End live talk (Esc)" id="live-end">
+              <X className="size-5" />
+            </Button>
+            <span className="text-xs text-muted-foreground" aria-hidden>
+              End
+            </span>
+          </div>
         </div>
       </div>
     </div>
