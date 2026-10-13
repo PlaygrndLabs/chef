@@ -1,52 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
-import { ChevronsUpDown, FolderGit2, Hammer, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, ChevronsUpDown, FolderGit2, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FEATURE_LABEL, FEATURE_TONE, StatusDot } from "@/components/status";
 import { missingSettings, SettingsDialog, useSettings } from "@/components/settings-dialog";
 import { ProjectSettingsDialog } from "@/components/project-settings-dialog";
 import { VoiceButton } from "@/components/voice-button";
 import { sortFeatures } from "@/lib/model";
-import { isProjectName } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
-
-const RECENT = "chef:projects";
-
-function recentProjects(current: string): string[] {
-  try {
-    const list = JSON.parse(localStorage.getItem(RECENT) ?? "[]") as string[];
-    const next = [current, ...list.filter((p) => p !== current)].slice(0, 8);
-    localStorage.setItem(RECENT, JSON.stringify(next));
-    return next;
-  } catch {
-    return [current];
-  }
-}
 
 const CONNECTION = { live: ["ok", "Live"], polling: ["run", "Reconnecting, updates every few seconds"], connecting: ["idle", "Connecting"], offline: ["bad", "Offline"] } as const;
 
 function ProjectSwitcher() {
-  const { selection, select, data } = useWorkspace();
-  const [name, setName] = useState("");
-  const [open, setOpen] = useState(false);
-  const recent = useMemo(() => recentProjects(selection.project), [selection.project]);
+  const { selection, select, data, projects, addProject } = useWorkspace();
   const [tone, label] = CONNECTION[data.connection];
-  const go = (project: string) => {
-    if (!isProjectName(project)) {
-      toast.error("Project names use lower case letters, digits and dashes");
-      return;
-    }
-    setOpen(false);
-    setName("");
-    select({ project, view: "project", feature: null, session: null, panel: null });
-  };
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <button type="button" className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-foreground" aria-label="Switch project">
           <span className="truncate">{selection.project}</span>
           <span id="connection" data-connection={data.connection} title={label}>
@@ -54,24 +26,22 @@ function ProjectSwitcher() {
           </span>
           <ChevronsUpDown className="size-3.5 shrink-0" />
         </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            go(name.trim());
-          }}
-          className="mb-2"
-        >
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Open or create a project" aria-label="Project name" className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring/40" />
-        </form>
-        {recent.map((p) => (
-          <button key={p} type="button" onClick={() => go(p)} className="flex h-8 w-full items-center rounded-md px-2 text-left text-sm hover:bg-muted">
-            {p}
-          </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-60">
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Projects</DropdownMenuLabel>
+        {projects.map((p) => (
+          <DropdownMenuItem key={p} onClick={() => select({ project: p, view: "project", feature: null, session: null, panel: null })}>
+            <span className="min-w-0 flex-1 truncate">{p}</span>
+            {p === selection.project ? <Check /> : null}
+          </DropdownMenuItem>
         ))}
-      </PopoverContent>
-    </Popover>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={addProject}>
+          <Plus />
+          Add project
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -92,15 +62,7 @@ function SettingsMenu() {
   useEffect(() => {
     if (missing) setProviders(true);
   }, [missing]);
-  const { select, api, data, selection } = useWorkspace();
-  const bootstrap = () =>
-    api.bootstrap().then(
-      (r) => {
-        toast.success(r.imported ? `Imported ${selection.project} from its repository` : r.created ? `Created ${selection.project}` : `${selection.project} already exists`);
-        data.refresh();
-      },
-      (e: unknown) => toast.error("Could not create the project", { description: e instanceof Error ? e.message : String(e) }),
-    );
+  const { select, api, data, selection, addProject } = useWorkspace();
   return (
     <>
       <DropdownMenu>
@@ -124,12 +86,10 @@ function SettingsMenu() {
             <Lightbulb />
             Health and memory
           </DropdownMenuItem>
-          {data.spec && !data.spec.commitId ? (
-            <DropdownMenuItem onClick={() => void bootstrap()}>
-              <Hammer />
-              Create {selection.project} from the template
-            </DropdownMenuItem>
-          ) : null}
+          <DropdownMenuItem onClick={addProject}>
+            <Plus />
+            Add project
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
           <DropdownMenuItem onClick={() => setTheme("light")}>

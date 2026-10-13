@@ -226,8 +226,9 @@ async function llmCheck(args: readonly string[]): Promise<number> {
 }
 
 async function serveCommand(args: readonly string[]): Promise<number> {
-  const local = await serve({ port: Number(option(args, "port") ?? 8787), project: option(args, "project") ?? "demo", real: !args.includes("--fake-checks"), log: (line) => process.stderr.write(`${line}\n`) });
-  process.stdout.write(`chef is serving ${local.url}/?project=${option(args, "project") ?? "demo"}\n`);
+  const project = option(args, "project");
+  const local = await serve({ port: Number(option(args, "port") ?? 8787), ...(project ? { project } : {}), real: !args.includes("--fake-checks"), log: (line) => process.stderr.write(`${line}\n`) });
+  process.stdout.write(`chef is serving ${local.url}/\n`);
   await new Promise<void>((resolve) => process.once("SIGINT", resolve));
   await local.close();
   return 0;

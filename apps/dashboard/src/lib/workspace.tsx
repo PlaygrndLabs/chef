@@ -13,6 +13,8 @@ export interface Workspace {
   readonly sessions: readonly SessionNode[];
   readonly feature: FeatureNode | null;
   readonly session: SessionNode | null;
+  readonly projects: readonly string[];
+  readonly addProject: () => void;
   readonly openSession: (id: string) => void;
   readonly openFeature: (id: string) => void;
   readonly focusComposer: () => void;

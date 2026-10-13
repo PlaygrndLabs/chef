@@ -51,6 +51,21 @@ export const settingsApi = {
   save: (update: SettingsUpdate) => call<SettingsView>("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
 };
 
+export interface ProjectEntry {
+  readonly name: string;
+  readonly createdAt: number;
+}
+
+export interface NewProject {
+  readonly name: string;
+  readonly git?: GitLinkUpdate;
+}
+
+export const projectsApi = {
+  list: () => call<{ projects: ProjectEntry[] }>("/api/projects").then((r) => r.projects),
+  create: (project: NewProject) => call<{ name: string; created: boolean; imported?: boolean }>("/api/projects", post(project)),
+};
+
 export interface GitHubAppView {
   readonly slug: string;
   readonly name: string;
@@ -121,7 +136,6 @@ export function projectApi(project: string) {
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
-    bootstrap: () => call<{ commitId: string; created: boolean; imported?: boolean }>(`${base}/bootstrap`, { method: "POST" }),
     settings: () => call<ProjectSettingsView>(`${base}/settings`),
     saveSettings: (update: ProjectSettingsUpdate) => call<ProjectSettingsView>(`${base}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
     git: () => call<{ settings: GitLinkView | null; state: SyncState | null }>(`${base}/git`),

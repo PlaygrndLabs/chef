@@ -1,10 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
+import type { ProjectEntry } from "./projects.ts";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import { hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
 
 const SETTINGS = "providers";
 const PASSWORD = "password";
+const PROJECTS = "projects";
 const GITHUB_APP = "github/app";
 const GITHUB_LINKS = "github/links";
 const GITHUB_PENDING = "github/pending";
@@ -37,6 +39,17 @@ export class Settings extends DurableObject<Env> {
 
   async replacePassword(password: StoredPassword): Promise<void> {
     await this.ctx.storage.put(PASSWORD, password);
+  }
+
+  async projects(): Promise<readonly ProjectEntry[]> {
+    return (await this.ctx.storage.get<ProjectEntry[]>(PROJECTS)) ?? [];
+  }
+
+  async addProject(entry: ProjectEntry): Promise<boolean> {
+    const list = await this.projects();
+    if (list.some((p) => p.name === entry.name)) return false;
+    await this.ctx.storage.put(PROJECTS, [...list, entry]);
+    return true;
   }
 
   async githubApp(): Promise<GitHubAppCredentials | null> {
