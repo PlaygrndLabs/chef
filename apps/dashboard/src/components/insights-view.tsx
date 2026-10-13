@@ -5,7 +5,7 @@ import { ago, short } from "@/lib/format";
 function Stat({ label, value, hint }: { readonly label: string; readonly value: string | number; readonly hint?: string }) {
   return (
     <div className="flex flex-col gap-0.5 rounded-xl border bg-card px-4 py-3">
-      <span className="text-2xl font-semibold tabular-nums">{value}</span>
+      <span className="text-2xl font-medium tabular-nums">{value}</span>
       <span className="text-sm">{label}</span>
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </div>
@@ -21,7 +21,7 @@ export function InsightsView() {
     <div className="flex h-full min-h-0 flex-col" data-view="insights">
       <header className="border-b bg-card px-5 py-3">
         <div className="text-xs text-muted-foreground">Project</div>
-        <h1 className="text-base font-semibold">Memory and learning</h1>
+        <h1 className="text-base font-medium">Memory and learning</h1>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6">

@@ -24,7 +24,7 @@ function Avatar() {
 }
 
 function You({ children }: { readonly children: React.ReactNode }) {
-  return <div className="max-w-[80%] self-end rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-[15px] whitespace-pre-wrap">{children}</div>;
+  return <div className="max-w-[80%] self-end rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">{children}</div>;
 }
 
 export function FeatureCard({ node }: { readonly node: SessionNode }) {
@@ -71,7 +71,7 @@ function Reply({ text, sessions }: { readonly text: string; readonly sessions: r
     <div className="flex gap-3">
       <Avatar />
       <div className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5">
-        <p className="text-[15px] whitespace-pre-wrap">{text}</p>
+        <p className="text-sm whitespace-pre-wrap">{text}</p>
         {shown.map((s) => (
           <FeatureCard key={s.id} node={s} />
         ))}
@@ -84,7 +84,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
   return (
     <div className="flex flex-col items-center gap-3 pt-12 pb-4 text-center @lg:pt-20" data-view="welcome">
       <Wordmark className="mb-2 h-11" />
-      <h2 className="text-2xl font-semibold tracking-tight">What should we build?</h2>
+      <h2 className="text-xl font-medium tracking-tight">What should we build?</h2>
       <p className="max-w-md text-muted-foreground">Describe a feature in plain words. chef plans it, writes the tests and the code, checks it, and puts it live.</p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
         {EXAMPLES.map((e) => (
@@ -100,7 +100,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
           ["Try it live", "Every feature gets its own preview link."],
         ].map(([title, text], i) => (
           <li key={title} className="rounded-xl border p-4">
-            <span className="mb-2.5 grid size-6 place-items-center rounded-full bg-muted text-xs font-semibold">{i + 1}</span>
+            <span className="mb-2.5 grid size-6 place-items-center rounded-full bg-muted text-xs font-medium">{i + 1}</span>
             <span className="block font-medium">{title}</span>
             <span className="text-sm text-muted-foreground">{text}</span>
           </li>
@@ -126,7 +126,7 @@ function OverviewMessage(props: { readonly state: OverviewState; readonly starte
       <div className="flex gap-3" data-overview="failed">
         <Avatar />
         <div className="flex flex-col items-start gap-2 pt-0.5">
-          <p className="text-[15px]">I could not read the code: {state.error}</p>
+          <p className="text-sm">I could not read the code: {state.error}</p>
           <Button size="sm" variant="outline" onClick={props.onReadAgain}>
             Try again
           </Button>
@@ -138,7 +138,7 @@ function OverviewMessage(props: { readonly state: OverviewState; readonly starte
   return (
     <div className="flex gap-3" data-overview="ready">
       <Avatar />
-      <div className="flex min-w-0 flex-1 flex-col gap-3 pt-0.5 text-[15px]">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 pt-0.5 text-sm">
         <p className="whitespace-pre-wrap">{overview.summary}</p>
         {overview.problems.length > 0 ? (
           <div className="grid gap-1">
