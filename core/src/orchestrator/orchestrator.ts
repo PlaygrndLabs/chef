@@ -332,6 +332,10 @@ export class Orchestrator {
     return result;
   }
 
+  async recordSpoken(turn: { readonly voiceSessionId: string; readonly speaker: "you" | "chef"; readonly text: string; readonly startedAt: number }): Promise<void> {
+    await this.emit({ type: "voice.turn", voiceSessionId: turn.voiceSessionId, speaker: turn.speaker, text: turn.text.slice(0, 4000), startedAt: turn.startedAt });
+  }
+
   async session(id: string): Promise<SessionRecord> {
     const record = await this.deps.store.get<SessionRecord>(`session/${id}`);
     if (!record) throw new Error(`unknown session ${id}`);

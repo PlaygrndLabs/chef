@@ -8,7 +8,6 @@ import { ContextMeter } from "@/components/context-meter";
 import { ProjectBar } from "@/components/project-bar";
 import { InsightsView, SessionTabs, SessionView, TabContent } from "@/components/session-tabs";
 import { ProjectHeader, TreePane } from "@/components/sidebar";
-import { TalkButton } from "@/components/voice-button";
 import { projectApi } from "@/lib/api";
 import { preloadable, useOpenedOnce, whenIdle } from "@/lib/lazy";
 import { useProject } from "@/lib/live";
@@ -201,7 +200,6 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
         {compact ? (
           <div className="relative flex min-h-0 flex-1 flex-col">
             <ChatPane onMenu={() => setTreeSheet(true)} />
-            <TalkButton />
           </div>
         ) : (
           <div className="flex min-h-0 flex-1">
@@ -211,7 +209,6 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
             </aside>
             <main className="relative min-w-0 flex-1" aria-label="Open features">
               {showTabs ? <SessionTabs /> : null}
-              <TalkButton />
             </main>
             <section className="relative shrink-0 border-l" style={{ width: chat }} aria-label="Chat">
               <ChatPane />

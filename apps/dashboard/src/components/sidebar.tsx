@@ -1,10 +1,9 @@
-import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, Globe, KeyRound, ListTree, Mic, Monitor, Moon, Settings, Sun } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, Globe, KeyRound, ListTree, Monitor, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/status";
 import { FeatureTree, useDropTarget } from "@/components/feature-tree";
-import { useTalkButton } from "@/lib/talk";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { LIVE_TAB } from "@/lib/tabs";
@@ -42,7 +41,6 @@ function ProjectSwitcher() {
 
 export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readonly onSettings: (section?: string) => void }) {
   const { setTheme } = useTheme();
-  const [talk, setTalk] = useTalkButton();
   const missing = app.available && missingSettings(app.settings).length > 0;
   const host = location.host;
   return (
@@ -77,10 +75,6 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
           <KeyRound />
           Shared environment
         </DropdownMenuItem>
-        <DropdownMenuCheckboxItem checked={talk} onCheckedChange={(checked) => setTalk(checked === true)} id="talk-button-toggle">
-          <Mic />
-          Talk button
-        </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
         <DropdownMenuItem onClick={() => setTheme("light")}>

@@ -84,6 +84,7 @@ export interface ProjectLive {
   readonly corrections: { readonly sessionId: string; readonly featureId: string; readonly role: string; readonly signature: string; readonly at: number }[];
   readonly rules: { readonly id: string; readonly message: string; readonly sessions: readonly string[]; readonly featureId: string; readonly at: number }[];
   readonly voice: { readonly prompt: string; readonly intent: string; readonly sessionId: string | null; readonly featureId: string | null; readonly at: number }[];
+  readonly spoken: { readonly voiceSessionId: string; readonly speaker: "you" | "chef"; readonly text: string; readonly startedAt: number; readonly at: number }[];
   readonly log: { readonly seq: number; readonly at: number; readonly type: string; readonly sessionId: string; readonly featureId: string; readonly summary: string }[];
   readonly previews: Record<string, { readonly url: string; readonly commitId: string; readonly link?: string | undefined; readonly sessionId: string; readonly at: number }>;
   external: { readonly type: string; readonly summary: string; readonly at: number; readonly pullRequest?: string | undefined } | null;
@@ -91,7 +92,7 @@ export interface ProjectLive {
 }
 
 export function emptyProject(): ProjectLive {
-  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], answers: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], log: [], previews: {}, external: null, context: null };
+  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], answers: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], spoken: [], log: [], previews: {}, external: null, context: null };
 }
 
 const TIMELINE_LIMIT = 600;
@@ -191,6 +192,8 @@ export function summarize(event: ChefEvent): string {
       return `${event.role} ${event.rule} ${event.paths.join(", ")}`;
     case "voice.request":
       return `"${event.prompt}"`;
+    case "voice.turn":
+      return `${event.speaker}: ${event.text}`;
     case "memory.recorded":
       return `${event.kind} ${event.path}`;
     case "memory.recalled":
@@ -354,6 +357,9 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
     }
     case "voice.request":
       keep(state.voice, { prompt: event.prompt, intent: event.intent, sessionId: event.sessionId, featureId: event.featureId, at }, 100);
+      return true;
+    case "voice.turn":
+      keep(state.spoken, { voiceSessionId: event.voiceSessionId, speaker: event.speaker, text: event.text, startedAt: event.startedAt, at }, 400);
       return true;
     case "memory.recorded":
       if (event.kind === "lesson") keep(state.lessons, { featureId: event.featureId, path: event.path, at }, 500);

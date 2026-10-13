@@ -8,7 +8,7 @@ import { LlmPlanner } from "@chef/adapters/llm-planner";
 import { LlmReviewer } from "@chef/adapters/llm-reviewer";
 import { GptLiveHost } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, ControlError, mergeAgentConfig, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, resolveModel, SetupError, setupResponse, routerConfigOf, runnable, startVoiceCall, withSkills, type AgentStore, type ExternalSync, type Profiles, type VoiceCall } from "@chef/core";
+import { AgentSettings, applyAgentConfig, ControlError, mergeAgentConfig, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, resolveModel, SetupError, setupResponse, routerConfigOf, runnable, startVoiceCall, withSkills, type AgentStore, type ExternalSync, type Profiles, type SpokenTurn, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
@@ -268,6 +268,7 @@ export class LocalProject {
         if (result.sessionId) this.drive();
         return result;
       },
+      recordSpoken: (turn: SpokenTurn & { voiceSessionId: string }) => orchestrator.recordSpoken(turn),
     };
     const call = await startVoiceCall({
       host,

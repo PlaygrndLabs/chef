@@ -9,7 +9,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { AgentSettings, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -234,18 +234,25 @@ export class ProjectAgent extends Agent<Env> {
           if (result.sessionId) await this.schedule(1, "drive");
           return result;
         },
+        recordSpoken: (turn: SpokenTurn & { voiceSessionId: string }) => orchestrator.recordSpoken(turn),
       };
-      const call = await startVoiceCall({
-        host,
-        target,
-        spec: readSpec((await orchestrator.mainTree()).tree),
-        sdp,
-        ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
-        settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
-        onEvent: (event) => {
-          if (event.type === "session.closed") this.calls.delete(call.sessionId);
-        },
-      });
+      let call: VoiceCall;
+      try {
+        call = await startVoiceCall({
+          host,
+          target,
+          spec: readSpec((await orchestrator.mainTree()).tree),
+          sdp,
+          ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
+          settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
+          onEvent: (event) => {
+            if (event.type === "session.closed") this.calls.delete(call.sessionId);
+          },
+        });
+      } catch (error) {
+        console.error("starting a voice call failed", error);
+        return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 502 });
+      }
       this.calls.set(call.sessionId, call);
       return Response.json({ sessionId: call.sessionId, sdp: call.sdp }, { status: 201 });
     }

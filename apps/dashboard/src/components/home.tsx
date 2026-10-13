@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { useAgent, useCopilotKit, UseAgentUpdate } from "@copilotkit/react-core/v2";
 import type { RouteDecision } from "@chef/core";
-import { Check, ChevronRight, Loader2, Play } from "lucide-react";
+import { AudioLines, Check, ChevronRight, Loader2, Play } from "lucide-react";
 import { toast } from "sonner";
 import { Composer } from "@/components/composer";
+import { LivePanel } from "@/components/live-talk";
 import { ChatSkeleton } from "@/components/loading";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/status";
@@ -12,6 +13,7 @@ import { activity, stripFeatureTag } from "@/lib/progress";
 import { isActive } from "@/lib/events";
 import type { OverviewState, Suggestion } from "@/lib/api";
 import { useOverview } from "@/lib/overview";
+import { plainVoiceError, startLive, useTalk, type TalkState } from "@/lib/live-talk";
 import { useWorkspace } from "@/lib/workspace";
 import { Mark, Wordmark } from "@/components/logo";
 
@@ -25,6 +27,26 @@ function Avatar() {
 
 function You({ children }: { readonly children: React.ReactNode }) {
   return <div className="max-w-[80%] self-end rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">{children}</div>;
+}
+
+function Said({ speaker, text, live }: { readonly speaker: "you" | "chef"; readonly text: string; readonly live: boolean }) {
+  const mark = <AudioLines className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-label="spoken" />;
+  if (speaker === "you")
+    return (
+      <div className="flex max-w-[80%] items-start gap-2 self-end rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm" data-spoken="you" data-live={live}>
+        {mark}
+        <span className="whitespace-pre-wrap">{text}</span>
+      </div>
+    );
+  return (
+    <div className="flex gap-3" data-spoken="chef" data-live={live}>
+      <Avatar />
+      <p className="flex min-w-0 flex-1 items-start gap-2 pt-1 text-sm">
+        {mark}
+        <span className="whitespace-pre-wrap">{text}</span>
+      </p>
+    </div>
+  );
 }
 
 export function FeatureCard({ node }: { readonly node: SessionNode }) {
@@ -71,7 +93,7 @@ function Reply({ text, sessions }: { readonly text: string; readonly sessions: r
     <div className="flex gap-3">
       <Avatar />
       <div className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5">
-        <p className="text-sm whitespace-pre-wrap">{text}</p>
+        {text ? <p className="text-sm whitespace-pre-wrap">{text}</p> : null}
         {shown.map((s) => (
           <FeatureCard key={s.id} node={s} />
         ))}
@@ -184,6 +206,25 @@ function OverviewMessage(props: { readonly state: OverviewState; readonly starte
   );
 }
 
+const VOICE_MATCH_MS = 120_000;
+
+interface SaidTurn {
+  readonly key: string;
+  readonly speaker: "you" | "chef";
+  readonly text: string;
+  readonly at: number;
+  readonly live: boolean;
+}
+
+export function spokenTurns(saved: readonly { readonly voiceSessionId: string; readonly speaker: "you" | "chef"; readonly text: string; readonly startedAt: number }[], talk: TalkState, project: string): SaidTurn[] {
+  const mine = talk.project === project ? talk.sessionId : null;
+  const on = talk.phase !== "off" && talk.project === project;
+  const local = mine !== null && (on || !saved.some((t) => t.voiceSessionId === mine));
+  const kept = saved.filter((t) => !(local && t.voiceSessionId === mine)).map((t, i) => ({ key: `${t.voiceSessionId}-${i}`, speaker: t.speaker, text: t.text, at: t.startedAt, live: false }));
+  const heard = talk.project === project && (local || (on && mine === null)) ? talk.heard.filter((h) => h.text.trim()).map((h, i) => ({ key: `live-${i}`, speaker: h.speaker, text: h.text.trim(), at: h.at, live: on })) : [];
+  return [...kept, ...heard];
+}
+
 interface ChatMessage {
   readonly id: string;
   readonly role: string;
@@ -212,7 +253,8 @@ function textOf(content: unknown): string {
 }
 
 export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaElement> }) {
-  const { data, sessions, features, api, selection } = useWorkspace();
+  const { data, sessions, features, api, selection, app, openSettings } = useWorkspace();
+  const talk = useTalk();
   const { state: overview, readAgain } = useOverview(api, selection.project);
   const [starting, setStarting] = useState<readonly string[]>([]);
   useEffect(() => {
@@ -234,14 +276,17 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
         const stored = data.live.answers.find((a) => a.prompt === route.prompt && a.at >= route.at && a.at < next)?.answer ?? "";
         const answer = route.decision.intent === "question" ? stored || answerFor(messages, route.prompt) : "";
         const parts = new Set(own.map((s) => s.featureId)).size;
-        return { ...route, sessions: own, reply: answer || replyFor(route.decision, title, parts > 1 ? own.length / parts : own.length, parts) };
+        const voiced = data.live.voice.some((v) => v.prompt === route.prompt && v.at >= route.at && v.at - route.at < VOICE_MATCH_MS);
+        return { ...route, sessions: own, voiced, reply: answer || replyFor(route.decision, title, parts > 1 ? own.length / parts : own.length, parts) };
       });
+  const said = spokenTurns(data.live.spoken, talk, selection.project);
+  const timeline = [...history.map((item) => ({ at: item.at, item, turn: null })), ...said.map((turn) => ({ at: turn.at, item: null, turn }))].sort((a, b) => a.at - b.at);
   const pending = [...sentHere].filter(([prompt, seen]) => routes.filter((r) => r.prompt === prompt).length <= seen).map(([prompt]) => prompt);
 
   const loading = !data.ready || overview === null;
   useLayoutEffect(() => {
-    if (!loading && (history.length || pending.length)) end.current?.scrollIntoView({ block: "end" });
-  }, [loading, messages.length, history.length, pending.length]);
+    if (!loading && (history.length || pending.length || said.length)) end.current?.scrollIntoView({ block: "end" });
+  }, [loading, messages.length, history.length, pending.length, said.length, said[said.length - 1]?.text]);
 
   const send = async (text: string) => {
     sentHere.delete(text);
@@ -262,7 +307,15 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
       });
   };
   const introduced = overview !== null && overview.status !== "none";
-  const welcome = !loading && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0;
+  const welcome = !loading && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0 && said.length === 0;
+  const live = talk.phase !== "off" && talk.project === selection.project;
+  const goLive = () => {
+    if (app.available && app.settings && !app.settings.voice) {
+      toast.error("Live talk needs a voice key", { description: "Add an OpenAI key under Settings, Voice.", action: { label: "Open", onClick: () => openSettings("app", "voice") } });
+      return;
+    }
+    startLive(selection.project).catch((error: unknown) => toast.error("Live talk did not start", { description: plainVoiceError(error) }));
+  };
   const busy = agent.isRunning || sessions.some((s) => isActive(s.state));
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-view="project" id="chat">
@@ -274,13 +327,19 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
             <>
               {welcome ? <Welcome onExample={(text) => setDraft((d) => ({ text, n: (d?.n ?? 0) + 1 }))} /> : null}
               {overview && introduced ? <OverviewMessage state={overview} started={started} onStart={start} onReadAgain={() => void readAgain().catch((error: unknown) => toast.error("Could not start reading", { description: error instanceof Error ? error.message : String(error) }))} /> : null}
-              {!welcome && !introduced && history.length === 0 && pending.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature in the list, or describe a new one below.</p> : null}
-              {history.map((item) => (
-                <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
-                  <You>{stripFeatureTag(item.prompt).text}</You>
-                  <Reply text={item.reply} sessions={item.sessions} />
-                </div>
-              ))}
+              {!welcome && !introduced && history.length === 0 && pending.length === 0 && said.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature in the list, or describe a new one below.</p> : null}
+              {timeline.map(({ item, turn }) =>
+                turn ? (
+                  <Said key={turn.key} speaker={turn.speaker} text={turn.text} live={turn.live} />
+                ) : item && item.voiced ? (
+                  item.sessions.length > 0 ? <Reply key={`${item.at}-${item.prompt}`} text="" sessions={item.sessions} /> : null
+                ) : item ? (
+                  <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
+                    <You>{stripFeatureTag(item.prompt).text}</You>
+                    <Reply text={item.reply} sessions={item.sessions} />
+                  </div>
+                ) : null,
+              )}
               {pending.map((prompt) => (
                 <div key={`pending-${prompt}`} className="flex flex-col gap-4">
                   <You>{prompt}</You>
@@ -296,7 +355,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
           <div ref={end} />
         </div>
       </div>
-      <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} />
+      {live ? <LivePanel /> : <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} onLive={goLive} />}
     </div>
   );
 }
