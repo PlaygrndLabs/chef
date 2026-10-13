@@ -49,6 +49,7 @@ jobs:
           (cd site && npx wrangler deploy --var "SANDBOX_IMAGE:$SANDBOX_IMAGE" --var "ENGINE_VERSION:$ENGINE_VERSION" --secrets-file "$RUNNER_TEMP/secrets.json")
           rm "$RUNNER_TEMP/secrets.json"
       - name: Create the Sign in with Cloudflare app once
+        if: ${{ !cancelled() && steps.image.outcome == 'success' }}
         run: |
           set -euo pipefail
           if npx wrangler secret list --config site/wrangler.jsonc --format json | jq -e 'map(.name) | index("OAUTH_CLIENT_ID")' > /dev/null; then

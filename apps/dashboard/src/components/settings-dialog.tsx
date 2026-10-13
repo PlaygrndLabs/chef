@@ -252,7 +252,7 @@ function ComputerSection(props: { readonly settings: SettingsView }) {
   );
 }
 
-function AccountSection(props: { readonly account: string | null }) {
+function AccountSection(props: { readonly account: string | null; readonly admin: boolean }) {
   return (
     <Group title="Account" note="You signed in with Cloudflare. chef works in your Cloudflare account, and this site keeps only its address.">
       <form method="post" action="/auth/signout" className="flex items-center gap-3">
@@ -262,6 +262,11 @@ function AccountSection(props: { readonly account: string | null }) {
         <Button type="submit" size="sm" variant="outline">
           Sign out
         </Button>
+        {props.admin ? (
+          <Button asChild size="sm" variant="outline">
+            <a href="/admin">Members</a>
+          </Button>
+        ) : null}
       </form>
     </Group>
   );
@@ -397,7 +402,7 @@ export function SettingsDialog(props: {
             <ThemeChoice />
           </Group>
           {settings && computer ? <ComputerSection settings={settings} /> : null}
-          {hosted ? <AccountSection account={mode?.account ?? null} /> : null}
+          {hosted ? <AccountSection account={mode?.account ?? null} admin={mode?.admin === true} /> : null}
           {settings && !computer && !hosted ? (
             <Group title="Password" note="Changing it signs out every other browser and script.">
               <PasswordForm settings={settings} save={save} />
