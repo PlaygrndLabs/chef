@@ -56,7 +56,6 @@ interface Job {
 }
 
 const PROFILE = "profile";
-const ENGINE = "engine";
 const TOKEN = "token";
 const JOB = "job";
 const STATUS = "status";
@@ -98,10 +97,6 @@ export class Member extends DurableObject<Env> {
 
   async admin(): Promise<boolean> {
     return (await this.ctx.storage.get<boolean>(ADMIN)) === true;
-  }
-
-  async legacyEngine(): Promise<Engine | null> {
-    return (await this.ctx.storage.get<Engine>(ENGINE)) ?? null;
   }
 
   async accounts(): Promise<AccountView[] | null> {
