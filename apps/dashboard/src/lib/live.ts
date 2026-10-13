@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
+import { isCaughtUp } from "@chef/core/replay";
 import { projectApi } from "./api";
 import { apply, emptyProject, type LogEntry, type ProjectLive } from "./events";
 
@@ -7,6 +8,7 @@ const EVENT_PAGE = 500;
 const PAGES_PER_POLL = 20;
 const POLL_MS = 2500;
 const REFRESH_DEBOUNCE_MS = 600;
+const REPLAY_WAIT_MS = 4000;
 const NO_RECORDS: readonly SessionRecord[] = [];
 
 export type Connection = "connecting" | "live" | "polling" | "offline";
@@ -19,6 +21,7 @@ export class Store {
   version = 0;
   private readonly listeners = new Set<() => void>();
   private frame: number | null = null;
+  private held = true;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -37,6 +40,7 @@ export class Store {
   }
 
   flush() {
+    this.held = false;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = null;
     this.version++;
@@ -44,7 +48,7 @@ export class Store {
   }
 
   private schedule() {
-    if (this.frame !== null) return;
+    if (this.held || this.frame !== null) return;
     this.frame = requestAnimationFrame(() => this.flush());
   }
 }
@@ -62,9 +66,18 @@ export function connectFeed({ project, store, onEvents, onConnection, onCaughtUp
   let caughtUp = false;
   let socket: WebSocket | null = null;
   let poller: number | undefined;
+  let replayWait: number | undefined;
   let polling = false;
   let again = false;
   let live = false;
+
+  const markCaughtUp = () => {
+    if (closed || caughtUp) return;
+    caughtUp = true;
+    window.clearTimeout(replayWait);
+    store.flush();
+    onCaughtUp();
+  };
 
   const catchUp = async () => {
     for (let page = 0; page < PAGES_PER_POLL && !closed; page++) {
@@ -74,10 +87,7 @@ export function connectFeed({ project, store, onEvents, onConnection, onCaughtUp
       onEvents(store.receive(entries));
       if (entries.length < EVENT_PAGE) break;
     }
-    if (closed || caughtUp) return;
-    caughtUp = true;
-    store.flush();
-    onCaughtUp();
+    markCaughtUp();
   };
 
   const poll = async (): Promise<void> => {
@@ -118,11 +128,17 @@ export function connectFeed({ project, store, onEvents, onConnection, onCaughtUp
     socket.addEventListener("open", () => {
       live = true;
       onConnection("live");
-      if (!caughtUp) void poll();
+      if (!caughtUp) replayWait = window.setTimeout(() => void poll(), REPLAY_WAIT_MS);
     });
     socket.addEventListener("message", (message) => {
       try {
-        const entry = JSON.parse(String(message.data)) as LogEntry;
+        const data: unknown = JSON.parse(String(message.data));
+        if (isCaughtUp(data)) {
+          if (data.caughtUp > store.state.lastSeq) void poll();
+          else markCaughtUp();
+          return;
+        }
+        const entry = data as LogEntry;
         if (typeof entry?.seq !== "number") return;
         if (entry.seq > store.state.lastSeq + 1) void poll();
         else onEvents(store.receive([entry]));
@@ -138,12 +154,13 @@ export function connectFeed({ project, store, onEvents, onConnection, onCaughtUp
     socket.addEventListener("error", fallBack);
   };
 
-  void poll().then(openSocket);
+  openSocket();
 
   return () => {
     closed = true;
     socket?.close();
     window.clearInterval(poller);
+    window.clearTimeout(replayWait);
   };
 }
 
