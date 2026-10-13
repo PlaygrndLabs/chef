@@ -36,6 +36,7 @@ describe("deploy", () => {
       vars: { PROJECT_WORKER_PREFIX: "" },
       workflows: [{ binding: "UPSTREAM_SYNC", name: "chef-dev-upstream-sync" }],
       triggers: { events: [{ filter: { namespace: "chef" }, targets: [{ workflow_name: "chef-dev-upstream-sync" }] }] },
+      containers: [{ class_name: "SessionAgent", name: "chef-sessionagent" }],
     });
     expect(moved["migrations"]).toEqual([
       {
