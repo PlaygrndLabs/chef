@@ -43,7 +43,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
-      CHEF_URL: https://chef.playgrndlabs.workers.dev
+      CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
       PROJECT: ${{ inputs.project }}
       PROMPT: ${{ inputs.prompt }}
       MINUTES: ${{ inputs.minutes }}
