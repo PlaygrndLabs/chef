@@ -10,6 +10,7 @@ import { FeaturePage } from "@/components/feature-page";
 import { Home } from "@/components/home";
 import { NewProjectDialog, returningToNewProject, Setup } from "@/components/project-setup";
 import { InsightsView } from "@/components/insights-view";
+import { AgentsView } from "@/components/agents-view";
 import { Panel } from "@/components/panel";
 import { ProjectBar } from "@/components/project-bar";
 import { Sidebar } from "@/components/sidebar";
@@ -50,6 +51,7 @@ function Center({ workspace }: { readonly workspace: Workspace }) {
   if (selection.view === "feature" && feature) return <FeaturePage feature={feature} composerRef={composer} />;
   if (selection.view === "feature") return <div className="grid h-full place-items-center text-muted-foreground">Loading</div>;
   if (selection.view === "insights") return <InsightsView />;
+  if (selection.view === "agents") return <AgentsView />;
   return <Home composerRef={composer} />;
 }
 
@@ -138,7 +140,7 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
   useEffect(() => rememberProject(selection.project), [selection.project]);
 
   useEffect(() => {
-    document.title = feature && selection.view === "feature" ? `${feature.title} · chef` : `${selection.project} · chef`;
+    document.title = feature && selection.view === "feature" ? `${feature.title} · chef` : selection.view === "agents" ? "Agents · chef" : `${selection.project} · chef`;
   }, [feature, selection.view, selection.project]);
 
   return (

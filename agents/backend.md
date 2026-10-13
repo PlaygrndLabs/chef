@@ -1,7 +1,10 @@
 ---
 role: backend
+label: Backend builder
 model: coder-default
 description: Implements a feature's server code inside its vertical slice.
+runs: agent
+plannable: true
 sharedAccess: true
 writeScope:
   - features/{feature}/**

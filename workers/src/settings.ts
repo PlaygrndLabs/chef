@@ -2,7 +2,9 @@ import { DurableObject } from "cloudflare:workers";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
 import type { ProjectEntry } from "./projects.ts";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
+import { AgentSettings, type AgentConfig, type AgentVersion, type SaveResult, type StoredAgents } from "@chef/core";
 import { hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
+import { DurableStore } from "./do-store.ts";
 
 const SETTINGS = "providers";
 const PASSWORD = "password";
@@ -81,6 +83,26 @@ export class Settings extends DurableObject<Env> {
     await this.ctx.storage.put(GITHUB_LINKS, links);
   }
 
+  async agentsCurrent(): Promise<StoredAgents> {
+    return this.agentSettings().current();
+  }
+
+  async agentsHistory(): Promise<AgentVersion[]> {
+    return this.agentSettings().history();
+  }
+
+  async agentsSave(config: AgentConfig, summary: string, expected: number | null): Promise<SaveResult> {
+    return this.agentSettings().save(config, summary, expected);
+  }
+
+  async agentsRestore(version: number): Promise<SaveResult> {
+    return this.agentSettings().restore(version);
+  }
+
+  private agentSettings(): AgentSettings {
+    return new AgentSettings(new DurableStore(this.ctx.storage));
+  }
+
   async linkedProjects(repository: string): Promise<string[]> {
     return (await this.ctx.storage.get<Record<string, string[]>>(GITHUB_LINKS))?.[repository.toLowerCase()] ?? [];
   }
@@ -128,4 +150,14 @@ export async function settingsRequest(request: Request, env: Env): Promise<Respo
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
   await settings.write(result.settings);
   return Response.json(await view(env, result.settings));
+}
+
+export function agentStore(env: Env) {
+  const stub = settingsStub(env);
+  return {
+    current: () => stub.agentsCurrent(),
+    history: () => stub.agentsHistory(),
+    save: (config: AgentConfig, summary: string, expected: number | null) => stub.agentsSave(config, summary, expected),
+    restore: (version: number) => stub.agentsRestore(version),
+  };
 }

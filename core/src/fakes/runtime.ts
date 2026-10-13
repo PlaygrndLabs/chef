@@ -43,4 +43,7 @@ export class MemoryStore implements KeyValueStore {
     for (const [key, value] of this.data) if (key.startsWith(prefix)) out.set(key, structuredClone(value) as T);
     return out;
   }
+  async delete(key: string): Promise<void> {
+    this.data.delete(key);
+  }
 }

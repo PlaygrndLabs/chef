@@ -15,6 +15,7 @@ export type ChefEvent = Base &
     | { readonly type: "question.answered"; readonly prompt: string; readonly answer: string; readonly sources: readonly string[] }
     | { readonly type: "session.created"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly reason: string; readonly attempt: { readonly group: string; readonly index: number; readonly of: number }; readonly parent: string | null }
     | { readonly type: "session.state"; readonly sessionId: string; readonly featureId: string; readonly from: SessionState; readonly to: SessionState; readonly reason: string }
+    | { readonly type: "agent.started"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly kind: string; readonly model: string }
     | { readonly type: "coder.event"; readonly sessionId: string; readonly featureId: string; readonly event: CoderEvent }
     | { readonly type: "commit.created"; readonly sessionId: string; readonly featureId: string; readonly repo: string; readonly commitId: string; readonly role: string; readonly message: string }
     | { readonly type: "preview.updated"; readonly sessionId: string; readonly featureId: string; readonly url: string; readonly commitId: string; readonly link?: string }

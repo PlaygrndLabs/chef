@@ -2,6 +2,7 @@ export * from "./git/tree.ts";
 export * from "./spec/index.ts";
 export * from "./notes/notes.ts";
 export * from "./profiles/profile.ts";
+export * from "./profiles/agent-config.ts";
 export * from "./router/decision.ts";
 export * from "./router/router.ts";
 export * from "./router/no-classifier.ts";
