@@ -90,7 +90,7 @@
     <div class="wrap">
       <h2>Questions</h2>
       <details><summary>Where do my code and data live?</summary><p>In your Cloudflare account. Projects are git repositories in Cloudflare Artifacts, and your model keys, settings and previews stay with your chef engine there. GitHub sync is optional.</p></details>
-      <details><summary>What does this site keep?</summary><p>Your Cloudflare user id and email, and the address of your chef engine with the key this site uses to reach it. Nothing else.</p></details>
+      <details><summary>What does this site keep?</summary><p>Your Cloudflare user id and email, when you joined and last signed in, and where your chef engine runs with the key this site uses to reach it. Nothing else.</p></details>
       <details><summary>Does chef keep access to my Cloudflare account?</summary><p>No. The access you grant at sign-in is used only while chef sets up or updates its engine, and it is revoked right after. You can review or remove apps any time in Cloudflare under My Profile, Access Management.</p></details>
       <details><summary>What does setup create in my account?</summary><p>A Worker named chef with its Durable Objects, a container image for its sandboxes, a Vectorize index for project memory, an Artifacts namespace for your repositories, and one API token limited to Workers scripts so chef can publish previews. Everything is yours to inspect or remove.</p></details>
       <details><summary>Which Cloudflare plan do I need?</summary><p>Workers Paid, because chef uses Containers and Artifacts. If your account is on the free plan, the setup page links you to the upgrade.</p></details>

@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { oauthClient, type Env } from "./env.ts";
+import { directory, oauthClient, type Env } from "./env.ts";
 import { API, planFrom, randomToken, revokeRequest, type Granted, type InstallRequest, type Plan, type Profile } from "./oauth.ts";
 
 export interface Engine {
@@ -30,6 +30,7 @@ export interface InstallStatus {
 
 export interface MemberView {
   readonly email: string | null;
+  readonly admin: boolean;
   readonly engine: string | null;
   readonly canSetUp: boolean;
   readonly install: InstallStatus | null;
@@ -46,6 +47,7 @@ const ENGINE = "engine";
 const TOKEN = "token";
 const JOB = "job";
 const STATUS = "status";
+const ADMIN = "admin";
 const MAX_LOG = 400;
 const INSTANCE = "standard-2";
 
@@ -60,9 +62,11 @@ export class Member extends DurableObject<Env> {
   async signIn(profile: Profile, grant: Granted): Promise<void> {
     await this.ctx.storage.put(PROFILE, profile);
     await this.ctx.storage.put(TOKEN, grant);
+    await this.ctx.storage.put(ADMIN, await this.ownsSite(grant.token));
     const engine = await this.ctx.storage.get<Engine>(ENGINE);
     const running = (await this.status()).status === "running";
     if (!running) await this.ctx.storage.delete(STATUS);
+    await this.report(true);
     if (engine && !running && this.env.ENGINE_VERSION && engine.version !== this.env.ENGINE_VERSION && this.ready()) {
       await this.start({ accountId: engine.accountId, secret: engine.secret, update: true });
       return;
@@ -78,7 +82,11 @@ export class Member extends DurableObject<Env> {
     const profile = await this.ctx.storage.get<Profile>(PROFILE);
     const engine = await this.ctx.storage.get<Engine>(ENGINE);
     const install = await this.status();
-    return { email: profile?.email ?? null, engine: engine?.url ?? null, canSetUp: (await this.grant()) !== null, install: install.status === "idle" ? null : install };
+    return { email: profile?.email ?? null, admin: await this.admin(), engine: engine?.url ?? null, canSetUp: (await this.grant()) !== null, install: install.status === "idle" ? null : install };
+  }
+
+  async admin(): Promise<boolean> {
+    return (await this.ctx.storage.get<boolean>(ADMIN)) === true;
   }
 
   async engine(): Promise<Engine | null> {
@@ -135,6 +143,7 @@ export class Member extends DurableObject<Env> {
       } catch (error) {
         await this.update((s) => ({ ...s, status: "failed", error: s.error ?? (error instanceof Error ? error.message : String(error)) }));
       }
+      await this.report(false, job.accountId);
     }
     await this.forgetToken();
   }
@@ -148,7 +157,38 @@ export class Member extends DurableObject<Env> {
     await this.ctx.storage.put(JOB, job);
     await this.ctx.storage.put(STATUS, status);
     await this.ctx.storage.setAlarm(Date.now());
+    await this.report(false);
     return status;
+  }
+
+  private async ownsSite(token: string): Promise<boolean> {
+    const site = this.env.CF_ACCOUNT_ID;
+    if (!site) return false;
+    const accounts = await this.cf<readonly { id: string }[]>(token, "/accounts?per_page=50");
+    return (accounts.result ?? []).some((account) => account.id === site);
+  }
+
+  private async report(signedIn: boolean, accountId?: string): Promise<void> {
+    const profile = await this.ctx.storage.get<Profile>(PROFILE);
+    if (!profile) return;
+    const engine = await this.ctx.storage.get<Engine>(ENGINE);
+    const status = await this.status();
+    const job = await this.ctx.storage.get<Job>(JOB);
+    await directory(this.env)
+      .record(
+        {
+          id: profile.id,
+          email: profile.email,
+          admin: await this.admin(),
+          accountId: accountId ?? job?.accountId ?? engine?.accountId ?? null,
+          engine: engine?.url ?? null,
+          version: engine?.version ?? null,
+          install: status.status === "idle" && engine ? "done" : status.status,
+          error: status.status === "failed" ? status.error : null,
+        },
+        signedIn,
+      )
+      .catch(() => undefined);
   }
 
   private async run(job: Job): Promise<void> {
