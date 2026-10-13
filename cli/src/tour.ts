@@ -113,6 +113,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       await shot(`agents-${tab}`);
     }
     if (options.prompt) {
+      await go(`/?project=${project}`);
       const input = page.locator("#chat textarea");
       await input.fill(options.prompt);
       await input.press("Enter");
