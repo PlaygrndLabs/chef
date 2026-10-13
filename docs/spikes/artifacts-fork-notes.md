@@ -31,7 +31,7 @@ Can chef create a canonical repo, fork it per session, issue a token scoped to t
 ## Decision
 
 - Fork per session with a write token for that fork only, held by the orchestrator. The coder gets a read token and its sandbox cannot push (see [coder-sandbox.md](coder-sandbox.md)).
-- Push events go to the `upstream-sync` Workflow through `triggers.events` in `workers/wrangler.jsonc`, not a Queue. The Workflow ignores fork repos (names with `--`) and non-`main` refs, since the event cannot be filtered by ref.
+- Push events go to the `upstream-sync` Workflow through `triggers.events` in `wrangler.jsonc`, not a Queue. The Workflow ignores fork repos (names with `--`) and non-`main` refs, since the event cannot be filtered by ref.
 - Wrangler 4.149 requires the trigger as `targets: [{ type: "workflow", workflow_name }]`; the guide's single `target` object is rejected.
 
 ## Open
