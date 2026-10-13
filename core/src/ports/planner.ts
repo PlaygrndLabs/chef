@@ -27,6 +27,11 @@ export interface Triage {
   readonly reason: string;
 }
 
+export interface BuilderRole {
+  readonly role: string;
+  readonly description: string;
+}
+
 export interface PlanInput {
   readonly prompt: string;
   readonly intent: "new_feature" | "change_feature";
@@ -34,6 +39,7 @@ export interface PlanInput {
   readonly featureId: string | null;
   readonly spec: readonly FeatureSpec[];
   readonly env?: readonly EnvVar[];
+  readonly roles?: readonly BuilderRole[];
 }
 
 export interface Plan {

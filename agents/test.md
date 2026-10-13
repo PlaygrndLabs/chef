@@ -1,7 +1,9 @@
 ---
 role: test
+label: Test writer
 model: coder-default
 description: Writes failing tests and the drive flow for a feature before any implementation exists.
+runs: agent
 writeScope:
   - features/{feature}/**/*.test.ts
   - features/{feature}/flow.ts

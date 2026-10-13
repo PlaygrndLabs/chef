@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { ControlError, DEFAULT_BUDGET, DEFAULT_PREVIEW_IDLE_MINUTES, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec } from "@chef/core";
-import type { Script } from "@chef/core/fakes";
+import { AgentSettings, ControlError, DEFAULT_BUDGET, DEFAULT_PREVIEW_IDLE_MINUTES, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec } from "@chef/core";
+import { MemoryStore, type Script } from "@chef/core/fakes";
+import { agentsRequest } from "@chef/adapters/agents";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
-import { applyUpdate, describeSettings, NO_SETTINGS, type AppSettings, type SettingsEnv } from "@chef/adapters/settings";
+import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type SettingsEnv } from "@chef/adapters/settings";
 import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, newEnvKey, viewEnv, type StoredEnv } from "@chef/adapters/project-env";
 import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { createNodeFetchHandler } from "@copilotkit/runtime/v2/node";
@@ -12,7 +13,7 @@ import { benchScript } from "./bench/agent.ts";
 import { BENCH_ITEMS, promptFor, specFor } from "./bench/items.ts";
 import { demoScript } from "./demo.ts";
 import { readTree } from "./fs.ts";
-import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
+import { localWorld, REPO_ROOT, repoProfiles, templateTree } from "./world.ts";
 
 export const TODO_PROMPT = "Add an item to a todo list";
 export const TODO_CLOUD_PROMPT = "Add an item to a todo list that also syncs to TodoCloud";
@@ -136,9 +137,14 @@ export async function serve(options: { readonly port: number; readonly project?:
     return Response.json(describeSettings(saved, env));
   };
 
+  const agents = new AgentSettings(new MemoryStore());
   const api = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (url.pathname === "/api/settings" && options.settings) return settings(request, options.settings);
+    if (url.pathname === "/api/agents" || url.pathname === "/api/agents/restore") {
+      const resolved = resolveSettings(saved, options.settings ?? {});
+      return agentsRequest(request, { store: agents, defaults: repoProfiles(), models: resolved.models, jev: resolved.jev !== null });
+    }
     if (url.pathname === "/api/projects") return projects(request);
     const base = project ? `/api/projects/${project.name}` : null;
     if (base && copilot && url.pathname.startsWith(`${base}/copilotkit`)) return copilot(request);
@@ -148,6 +154,11 @@ export async function serve(options: { readonly port: number; readonly project?:
         const { prompt } = (await request.json()) as { prompt?: string };
         if (!prompt?.trim()) return Response.json({ error: "prompt is required" }, { status: 400 });
         return Response.json(await link.submit(prompt.trim()), { status: 202 });
+      }
+      if (request.method === "POST" && action === "route") {
+        const { prompt } = (await request.json().catch(() => ({}))) as { prompt?: string };
+        if (!prompt?.trim()) return Response.json({ error: "prompt is required" }, { status: 400 });
+        return Response.json(await w.orchestrator.route(prompt.trim()));
       }
       if (request.method === "GET" && action === "sessions") return Response.json(await w.orchestrator.sessions());
       if (request.method === "GET" && action === "settings") return Response.json({ previewIdleMinutes: DEFAULT_PREVIEW_IDLE_MINUTES, git: null });

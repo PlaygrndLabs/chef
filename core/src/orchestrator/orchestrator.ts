@@ -194,7 +194,10 @@ export class Orchestrator {
       await this.emit({ type: "question.answered", prompt, answer: answer.text, sources: answer.sources });
       return { decision, sessionId: null, sessionIds: [], answer };
     }
-    const planned = await this.deps.planner.plan({ prompt, intent: decision.intent, changeKind: decision.changeKind, featureId: decision.featureId, spec, env: await this.environment() });
+    const roles = Object.values(this.config.profiles)
+      .filter((p) => p.plannable)
+      .map((p) => ({ role: p.role, description: p.description }));
+    const planned = await this.deps.planner.plan({ prompt, intent: decision.intent, changeKind: decision.changeKind, featureId: decision.featureId, spec, roles, env: await this.environment() });
     const plan = this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
     const attempts = Math.max(1, Math.floor(options.attempts ?? this.specialization.attempts));
     const ids = Array.from({ length: attempts }, () => this.deps.ids.next("s"));
@@ -232,6 +235,11 @@ export class Orchestrator {
       await this.emit({ type: "session.created", sessionId, featureId: record.featureId, fork: record.fork, reason: decision.reason, attempt: record.attempt, parent });
     }
     return { decision, sessionId: group, sessionIds: ids, featureId: plan.feature.id };
+  }
+
+  async route(prompt: string): Promise<RouteDecision> {
+    const { tree } = await this.mainTree();
+    return this.router.route(prompt, readSpec(tree));
   }
 
   async submitSpoken(prompt: string, call: { readonly voiceSessionId: string; readonly delegationId: string }): Promise<SubmitResult> {
@@ -382,6 +390,7 @@ export class Orchestrator {
     const item = this.nextItem(record, ["spec_change"]);
     if (item) {
       const runId = this.deps.ids.next("run");
+      await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: "planner", kind: "spec_change", model: record.plan.model });
       await this.commitTurn(record, {
         changes: { [specPath(record.plan.feature.id)]: renderFeature(record.plan.feature) },
         role: "planner",
@@ -426,6 +435,7 @@ export class Orchestrator {
   private async reviewing(record: SessionRecord): Promise<void> {
     const head = await this.commitOf(record.fork, record.head);
     const base = await this.commitOf(this.canonical, record.baseMain);
+    await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: "reviewer", kind: "review", model: this.deps.reviewer.model ?? "reviewer" });
     const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "" });
     record.verdict = { ...verdict, commitId: head.id };
     await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons, model: verdict.model, head: head.id, base: base.id });
@@ -891,6 +901,7 @@ export class Orchestrator {
     if (steering.length) await this.deps.store.put(`steer/${record.id}`, []);
     const notes = steering.length ? `A person added notes for this turn:\n${steering.map((n) => `- ${n}`).join("\n")}` : null;
     const prompt = [item.prompt, feedback, notes, renderEnvironment(await this.environment(), feature), renderRecall(recalled)].filter(Boolean).join("\n\n");
+    await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: item.role, kind: item.kind, model: profile.model });
     let result;
     try {
       result = await this.deps.coder.runTurn({

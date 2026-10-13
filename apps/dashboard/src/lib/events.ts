@@ -28,7 +28,8 @@ export type TimelineItem =
   | { readonly kind: "merged"; readonly at: number; readonly commitId: string }
   | { readonly kind: "picked"; readonly at: number; readonly won: boolean; readonly winner: string; readonly reasons: readonly string[]; readonly candidates: readonly { readonly sessionId: string; readonly passed: number; readonly total: number }[] }
   | { readonly kind: "steered"; readonly at: number; readonly message: string }
-  | { readonly kind: "needs"; readonly at: number; readonly names: readonly string[] };
+  | { readonly kind: "needs"; readonly at: number; readonly names: readonly string[] }
+  | { readonly kind: "agent"; readonly at: number; readonly role: string; readonly model: string; readonly work: string };
 
 export interface SessionLive {
   readonly id: string;
@@ -46,6 +47,8 @@ export interface SessionLive {
   needs: readonly string[];
   merged: string | null;
   recalled: readonly string[];
+  agent: { readonly role: string; readonly model: string; readonly at: number } | null;
+  readonly agents: { readonly role: string; readonly model: string; readonly at: number }[];
   readonly timeline: TimelineItem[];
   createdAt: number;
   updatedAt: number;
@@ -88,7 +91,7 @@ function sessionOf(state: ProjectLive, sessionId: string, featureId: string, at:
     existing.updatedAt = at;
     return existing;
   }
-  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], merged: null, recalled: [], timeline: [], createdAt: at, updatedAt: at };
+  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], merged: null, recalled: [], agent: null, agents: [], timeline: [], createdAt: at, updatedAt: at };
   state.sessions[sessionId] = created;
   state.order.push(sessionId);
   return created;
@@ -108,6 +111,8 @@ export function summarize(event: ChefEvent): string {
       return `fork ${event.fork} attempt ${event.attempt.index}/${event.attempt.of}`;
     case "session.state":
       return `${event.from} → ${event.to} (${event.reason})`;
+    case "agent.started":
+      return `${event.role} ${event.kind} on ${event.model}`;
     case "coder.event":
       if (event.event.type === "tool.execution_start") return `tool ${event.event.tool} ${event.event.detail ?? ""}`.trim();
       if (event.event.type === "assistant.message_delta") return "text";
@@ -201,6 +206,14 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       s.reason = event.reason;
       if (event.to !== "stuck") s.stuck = null;
       keep(s.timeline, { kind: "state", at, from: event.from, to: event.to, reason: event.reason }, TIMELINE_LIMIT);
+      return true;
+    }
+    case "agent.started": {
+      const s = sessionOf(state, event.sessionId, event.featureId, at);
+      const agent = { role: event.role, model: event.model, at };
+      s.agent = agent;
+      keep(s.agents, agent, 100);
+      keep(s.timeline, { kind: "agent", at, role: event.role, model: event.model, work: event.kind }, TIMELINE_LIMIT);
       return true;
     }
     case "coder.event": {
