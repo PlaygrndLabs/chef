@@ -24,15 +24,15 @@ Both ways need a Cloudflare account on the [Workers Paid plan](https://developer
 
 ### In the cloud
 
-1. Press **Deploy to Cloudflare** above.
-2. Open the URL Cloudflare gives you and choose a password.
-3. In Settings, add your model provider. Then create your first project.
+1. Press **Deploy to Cloudflare** above and set `CHEF_PASSWORD`, the password you will sign in with.
+2. Open `https://chef.<your-subdomain>.workers.dev` and sign in.
+3. In Settings, add your model provider and the Cloudflare account for previews. Then create your first project.
 
 ### On your computer
 
-1. Install Node 22.18+ and pnpm 10, then clone this repository and run `pnpm install`.
-2. Run `pnpm start` and open the address it prints.
-3. Connect your Cloudflare account and add your model provider in Settings.
+1. Deploy chef to Cloudflare first (above). Your computer runs the app; the work runs there.
+2. Install Node 22.18+ and pnpm 10, clone this repository, then run `pnpm install` and `pnpm start`.
+3. Open `http://localhost:4300` and enter your chef's address and password.
 
 The app and project management run locally. Sessions, sandboxes and previews run in your Cloudflare account, so closing your laptop does not stop the work.
 
