@@ -171,7 +171,7 @@ function NeededKey(props: { readonly name: string; readonly features: readonly s
 export function KeyPrompt(props: { readonly names: readonly string[]; readonly api: EnvApi; readonly onSaved?: () => void }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-run/30 bg-run/5 p-4" data-needs-keys>
-      <div className="flex items-center gap-2 font-semibold">
+      <div className="flex items-center gap-2 font-medium">
         <KeyRound className="size-4" />
         {props.names.length === 1 ? "This feature needs a key" : "This feature needs keys"}
       </div>

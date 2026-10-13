@@ -336,7 +336,7 @@ export function LiveApp() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-view="live">
       <div className="flex items-center gap-2">
-        <h2 className="truncate text-[15px] font-semibold">{selection.project}</h2>
+        <h2 className="truncate text-sm font-medium">{selection.project}</h2>
         <span className="font-mono text-xs text-muted-foreground">main {short(live?.commitId ?? data.spec?.commitId) || ""}</span>
       </div>
       {live?.url ? (

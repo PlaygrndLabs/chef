@@ -228,7 +228,7 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
     >
       <div className="flex flex-wrap items-center gap-2">
         <Bot className="size-5 text-muted-foreground" />
-        <h2 className="text-lg font-semibold">{role ? role.label : "New role"}</h2>
+        <h2 className="text-lg font-medium">{role ? role.label : "New role"}</h2>
         {role ? <span className="font-mono text-xs text-muted-foreground">{role.role}</span> : null}
         <ToneBadge tone="idle">{runs.badge}</ToneBadge>
         <span className="flex-1" />
@@ -410,7 +410,7 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
     >
       <div className="flex items-center gap-2">
         <BookOpen className="size-5 text-muted-foreground" />
-        <h2 className="text-lg font-semibold">{skill ? skill.name : "New skill"}</h2>
+        <h2 className="text-lg font-medium">{skill ? skill.name : "New skill"}</h2>
         <span className="flex-1" />
         {skill && own ? (
           <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={remove}>

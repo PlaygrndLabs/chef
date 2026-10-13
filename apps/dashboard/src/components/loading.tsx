@@ -82,7 +82,7 @@ export function ChatViewSkeleton() {
       </div>
       <div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-5" aria-hidden>
         <div className="mx-auto max-w-3xl rounded-2xl border bg-card shadow-xs">
-          <div className="min-h-12 px-4 pt-3.5 text-[15px] text-muted-foreground">Describe a feature or a change</div>
+          <div className="min-h-12 px-4 pt-3.5 text-sm text-muted-foreground">Describe a feature or a change</div>
           <div className="h-11" />
         </div>
       </div>
