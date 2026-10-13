@@ -1,12 +1,13 @@
-import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, FolderPlus, KeyRound, ListTree, Mic, Monitor, Moon, Settings, Settings2, Sun } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, Globe, KeyRound, ListTree, Mic, Monitor, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/status";
-import { FeatureTree } from "@/components/feature-tree";
+import { FeatureTree, useDropTarget } from "@/components/feature-tree";
 import { useTalkButton } from "@/lib/talk";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { LIVE_TAB } from "@/lib/tabs";
 import { useWorkspace, type AppSettings } from "@/lib/workspace";
 import { Mark, Wordmark } from "@/components/logo";
 
@@ -107,7 +108,7 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
 }
 
 export function ProjectHeader({ onMenu }: { readonly onMenu?: () => void }) {
-  const { addProject, openSettings, selection } = useWorkspace();
+  const { openSettings, selection } = useWorkspace();
   return (
     <div className="flex h-11 shrink-0 items-center gap-1 border-b px-3">
       {onMenu ? (
@@ -120,31 +121,48 @@ export function ProjectHeader({ onMenu }: { readonly onMenu?: () => void }) {
       </a>
       <span className="pl-0.5 text-muted-foreground/60">/</span>
       <ProjectSwitcher />
-      <Button variant="ghost" size="icon-sm" className={cn("shrink-0 text-muted-foreground", selection.settings?.scope === "project" && "bg-sidebar-accent text-foreground")} onClick={() => openSettings("project")} id="project-settings-button" aria-label="Project settings" title={`Settings for ${selection.project}`}>
-        <Settings2 />
-      </Button>
       <span className="flex-1" />
-      <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground" onClick={addProject} id="new-project-button" aria-label="New project" title="New project">
-        <FolderPlus />
+      <Button variant="ghost" size="icon-sm" className={cn("shrink-0 text-muted-foreground", selection.settings?.scope === "project" && "bg-sidebar-accent text-foreground")} onClick={() => openSettings("project")} id="project-settings-button" aria-label="Project settings" title={`Settings for ${selection.project}`}>
+        <Settings />
       </Button>
     </div>
   );
 }
 
 export function TreePane({ header = false }: { readonly header?: boolean }) {
-  const { openSettings, app, features } = useWorkspace();
-  const count = features.filter((f) => f.sessions.length > 0).length;
+  const { openSettings, app } = useWorkspace();
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       {header ? <ProjectHeader /> : null}
-      <div className={cn("flex shrink-0 items-center gap-1.5 px-3.5 text-xs font-medium text-muted-foreground", header ? "h-9" : "h-11 border-b")}>
-        Features
-        {count ? <span className="tabular-nums">{count}</span> : null}
-      </div>
-      <FeatureTree />
+      <FeatureTree>
+        <AppRow />
+      </FeatureTree>
       <div className="flex items-center gap-1 border-t px-2.5 py-2">
         <AppMenu app={app} onSettings={(section) => openSettings("app", section)} />
       </div>
+    </div>
+  );
+}
+
+function AppRow() {
+  const { selection, data, activeTab, openLive } = useWorkspace();
+  const live = data.spec?.live ?? null;
+  const active = activeTab === LIVE_TAB;
+  const drop = useDropTarget(null);
+  return (
+    <div className="shrink-0 px-1.5 pt-1.5" {...drop.props}>
+      <button
+        type="button"
+        id="live-app-row"
+        onClick={openLive}
+        aria-current={active ? "page" : undefined}
+        title={live?.url ? `Open main, live at ${new URL(live.url).host}` : "Open main"}
+        className={cn("flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-sidebar-accent", active && "bg-sidebar-accent", drop.active && "bg-sidebar-accent ring-1 ring-ring ring-inset")}
+      >
+        <Globe className={cn("size-4 shrink-0", live?.url ? "text-ok" : "text-muted-foreground")} />
+        <span className="min-w-0 flex-1 truncate">{selection.project}</span>
+        <span className="shrink-0 font-mono text-[11px] font-normal text-muted-foreground">main</span>
+      </button>
     </div>
   );
 }

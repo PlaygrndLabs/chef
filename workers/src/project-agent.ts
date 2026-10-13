@@ -9,7 +9,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { AgentSettings, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
@@ -142,6 +142,12 @@ export class ProjectAgent extends Agent<Env> {
     const { orchestrator, bus, settings, external, space } = await this.build();
     const session = SESSION_ROUTE.exec(url.pathname);
     if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
+    const feature = FEATURE_ROUTE.exec(url.pathname);
+    if (feature) {
+      const { response, mainChanged } = await featureRequest(request, orchestrator, feature[1] as string);
+      if (mainChanged) await this.schedule(0, "deployLive", undefined, { idempotent: true });
+      return response;
+    }
     const preview = PREVIEW_ROUTE.exec(url.pathname);
     if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")));
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
@@ -160,7 +166,7 @@ export class ProjectAgent extends Agent<Env> {
       const main = await orchestrator.mainTree();
       if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
       if (main.commitId && !(await this.ctx.storage.get<boolean>(UI_KIT))) await this.schedule(0, "addUiKit", undefined, { idempotent: true });
-      return Response.json({ commitId: main.commitId, features: readSpec(main.tree), live: (await this.ctx.storage.get<LiveState>(LIVE)) ?? null });
+      return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await orchestrator.layout(), live: (await this.ctx.storage.get<LiveState>(LIVE)) ?? null });
     }
     if (request.method === "POST" && action === "live") {
       if (!space) return Response.json({ error: NO_CLOUDFLARE }, { status: 409 });
