@@ -514,7 +514,7 @@ function HistoryMenu({ view }: { readonly view: View }) {
 const INTRO: Readonly<Record<AgentSection, { readonly app: string; readonly project: string }>> = {
   agents: { app: "Every project starts with these roles. A project can change any of them for itself.", project: "The roles that plan, test, build and review this project. Change one here to change it for this project only." },
   skills: { app: "Short guides roles follow in every project.", project: "Skills from all projects, plus this project's own. A skill with the same name here replaces the shared one." },
-  router: { app: "How chef sorts each request in every project.", project: "How chef sorts requests in this project." },
+  router: { app: "How chef decides whether a request is a new feature, a change, a chore or a question, in every project.", project: "How chef sorts requests in this project. It follows the setting for all projects until you save a change here." },
 };
 
 export function AgentsSection(props: { readonly project: string | null; readonly section: AgentSection; readonly item: string | null; readonly nav: AgentsNav; readonly before?: ReactNode }) {

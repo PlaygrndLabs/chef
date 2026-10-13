@@ -43,8 +43,8 @@ export function SettingsShell(props: {
   const section = props.sections.find((s) => s.id === props.active) ?? (props.sections[0] as SettingsSection);
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="flex h-[min(52rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl md:flex-row" data-dialog={props.name} data-section={section.id}>
-        <nav className="flex shrink-0 flex-col gap-0.5 border-b bg-sidebar p-2 md:w-56 md:border-r md:border-b-0 md:p-3" aria-label={`${props.heading} sections`}>
+      <DialogContent className="flex h-[min(52rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl md:flex-row" data-dialog={props.name} data-section={section.id} onOpenAutoFocus={(e) => e.preventDefault()}>
+        <nav className="flex shrink-0 flex-col gap-0.5 border-b bg-sidebar p-2 pr-11 md:w-56 md:pr-3 md:border-r md:border-b-0 md:p-3" aria-label={`${props.heading} sections`}>
           <div className="hidden px-2 pt-1 pb-3 md:block">
             <div className="text-[11px] tracking-wide text-muted-foreground uppercase">{props.kicker}</div>
             <DialogTitle className="truncate text-sm font-semibold">{props.heading}</DialogTitle>

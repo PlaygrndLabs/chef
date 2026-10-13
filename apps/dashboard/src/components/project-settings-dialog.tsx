@@ -314,9 +314,9 @@ export function ProjectSettingsDialog(props: {
           loading()
         ),
     },
-    { id: "agents", label: "Agents", icon: Bot, fill: true, note: "The roles working on this project. They follow Settings for every project until you change one here.", render: agents("agents") },
-    { id: "skills", label: "Skills", icon: BookOpen, fill: true, note: "Skills from every project plus this project's own.", render: agents("skills") },
-    { id: "router", label: "Router", icon: Route, fill: true, note: "How chef sorts requests in this project.", render: agents("router") },
+    { id: "agents", label: "Agents", icon: Bot, fill: true, render: agents("agents") },
+    { id: "skills", label: "Skills", icon: BookOpen, fill: true, render: agents("skills") },
+    { id: "router", label: "Router", icon: Route, fill: true, render: agents("router") },
     {
       id: "environment",
       label: "Environment",

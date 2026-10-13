@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../../src/fakes/runtime.ts";
-import { AgentSettings, agentsView, applyAgentConfig, EMPTY_AGENT_CONFIG, parseAgentConfig, routerConfigOf, DEFAULT_ROUTER_SETTINGS, type AgentConfig, type RoleSetting, type RouterSettings } from "../../src/profiles/agent-config.ts";
+import { AgentSettings, agentsView, applyAgentConfig, EMPTY_AGENT_CONFIG, mergeAgentConfig, parseAgentConfig, parseProjectAgentConfig, projectAgentsView, routerConfigOf, DEFAULT_ROUTER_SETTINGS, type AgentConfig, type RoleSetting, type RouterSettings } from "../../src/profiles/agent-config.ts";
 import { customAgent, parseProfile, withSkills } from "../../src/profiles/profile.ts";
 
 const backend = parseProfile(`---
@@ -102,5 +102,42 @@ describe("agent settings", () => {
     const router = routerConfigOf(saved);
     expect(router).toMatchObject({ useClassifier: false, featureThreshold: 0.9, thresholds: { new_feature: 0.7, change_feature: 0.8, chore: 0.85, question: 0.5 } });
     expect(router.wording?.intent.criteria.chore).toContain("maintenance");
+  });
+
+  it("lets a project override roles, add skills and set its own router on top of the shared settings", () => {
+    const role = (instructions: string, skills: string[] = []): RoleSetting => ({ label: "Backend builder", description: "Implements server code.", instructions, model: null, skills });
+    const shared: AgentConfig = { roles: { backend: role("Shared prompt.", ["tidy-sql"]) }, skills: [skill, house], router: null };
+    const own: AgentConfig = { roles: { planner: { label: "Planner", description: "Plans.", instructions: "Plan for shop.", model: null, skills: ["shop-api"] } }, skills: [{ ...house, body: "Shop style." }, { name: "shop-api", description: "Use for the shop API", body: "Call /v2.", everyone: false }], router: { ...DEFAULT_ROUTER_SETTINGS, useJev: false } };
+    const merged = mergeAgentConfig(shared, own);
+    expect(Object.keys(merged.roles).sort()).toEqual(["backend", "planner"]);
+    expect(merged.skills.map((s) => [s.name, s.body])).toEqual([
+      ["tidy-sql", "Keep queries short."],
+      ["house-style", "Shop style."],
+      ["shop-api", "Call /v2."],
+    ]);
+    expect(merged.router?.useJev).toBe(false);
+    expect(mergeAgentConfig(shared, EMPTY_AGENT_CONFIG)).toEqual(shared);
+
+    expect(parseProjectAgentConfig({ ...EMPTY_AGENT_CONFIG, roles: { backend: role("Mine.", ["tidy-sql"]) } }, defaults, shared)).toMatchObject({ ok: true });
+    const missing = parseProjectAgentConfig({ ...EMPTY_AGENT_CONFIG, roles: { backend: role("Mine.", ["nope"]) } }, defaults, shared);
+    expect(missing.ok).toBe(false);
+
+    const view = projectAgentsView("shop", defaults, { version: 4, at: 1, summary: "s", config: shared }, { version: 2, at: 2, summary: "p", config: own }, [], models, false);
+    expect(view.version).toBe(2);
+    expect(view.scope).toEqual({ project: "shop", roles: ["planner"], skills: ["house-style", "shop-api"], router: true, shared: { version: 4, roles: ["backend"], skills: ["tidy-sql", "house-style"], router: false } });
+    expect(view.roles.find((r) => r.role === "backend")).toMatchObject({ instructions: "Shared prompt.", skills: ["tidy-sql"] });
+    expect(view.roles.find((r) => r.role === "planner")).toMatchObject({ instructions: "Plan for shop.", skills: ["shop-api"] });
+    expect(view.router.useJev).toBe(false);
+  });
+
+  it("keeps project agent settings apart from the shared ones in one store", async () => {
+    const store = new MemoryStore();
+    const shared = new AgentSettings(store);
+    const own = new AgentSettings(store, () => 1, "project/agents/");
+    await shared.save(config, "shared", null);
+    await own.save(EMPTY_AGENT_CONFIG, "own", null);
+    expect((await shared.current()).summary).toBe("shared");
+    expect((await own.current()).summary).toBe("own");
+    expect(await own.history()).toHaveLength(1);
   });
 });
