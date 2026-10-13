@@ -601,7 +601,7 @@ function build(ctx, width, height) {
   return (ms) => {
     const { t, fade } = clock(ms, 12, 6);
     k.clear();
-    k.text("3 sessions, 3 sandboxes", 0, 0, fade * 0.7, k.muted);
+    k.text("3 sessions, 3 forks, 3 sandboxes", 0, 0, fade * 0.7, k.muted);
     boxes.forEach((box, index) => {
       const x = index * (bw + gap);
       const progress = Math.min(1, Math.max(0, (t - box.start) / box.build));
@@ -662,7 +662,7 @@ function check(ctx, width, height) {
       }
     });
     const after = [
-      { at: 5.4, mark: "\u21bb", label: "synced with main", note: "no conflicts" },
+      { at: 5.4, mark: "\u21bb", label: "fork synced with main", note: "no conflicts" },
       { at: 6.2, mark: "\u25cf", label: "merged into main", note: "a41c9e2" },
     ];
     after.forEach((item, index) => {
@@ -670,7 +670,7 @@ function check(ctx, width, height) {
       const a = fade * Math.min(1, (t - item.at) * 3);
       k.text(item.mark, 1, 9 + index * 2, a, index ? k.green : k.brand);
       k.text(item.label, 4, 9 + index * 2, a);
-      k.text(item.note, 4 + wide + 6, 9 + index * 2, a * 0.6, k.muted);
+      k.text(item.note, 4 + wide + 12, 9 + index * 2, a * 0.6, k.muted);
     });
     ctx.globalAlpha = 1;
   };
