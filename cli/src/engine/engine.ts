@@ -7,7 +7,7 @@ import type { Duplex } from "node:stream";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
 import { agentsRequest } from "@chef/adapters/agents";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
-import { AgentSettings } from "@chef/core";
+import { AgentSettings, replayFrom } from "@chef/core";
 import { LocalGitHost } from "@chef/adapters/local-git";
 import { buildingPage, previewPath } from "@chef/adapters/preview-page";
 import { projectsRequest, type ProjectEntry } from "@chef/adapters/projects";
@@ -286,7 +286,7 @@ export class LocalEngine {
       }
     });
     void this.project(match[1] as string).then(async (project) => {
-      let sent = 0;
+      let sent = replayFrom(incoming.url ?? "/");
       let replaying = true;
       const queued: LogEntry[] = [];
       const send = (entry: LogEntry) => {
@@ -295,7 +295,7 @@ export class LocalEngine {
         socket.write(frame(JSON.stringify(entry)));
       };
       stop = project.watch((entry) => (replaying ? queued.push(entry) : send(entry)));
-      for (let after = 0; ; ) {
+      for (let after = sent; ; ) {
         const entries = await project.bus.since(after);
         entries.forEach(send);
         const last = entries.at(-1);

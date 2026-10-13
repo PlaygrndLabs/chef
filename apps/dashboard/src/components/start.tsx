@@ -3,10 +3,11 @@ import { ChevronRight, Folder, Menu, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Wordmark } from "@/components/logo";
-import { NewProjectDialog, NewProjectForm, returningToNewProject } from "@/components/project-setup";
-import { missingSettings, SettingsDialog, useSettings } from "@/components/settings-dialog";
+import { NewProjectDialog, NewProjectForm } from "@/components/project-setup";
+import { SettingsDialog } from "@/components/settings-dialog";
+import { missingSettings, useSettings } from "@/lib/settings";
 import { AppMenu } from "@/components/sidebar";
-import { lastProject } from "@/lib/projects";
+import { lastProject, returningToNewProject } from "@/lib/projects";
 import type { Selection, SettingsScope } from "@/lib/selection";
 import type { AppSettings } from "@/lib/workspace";
 
