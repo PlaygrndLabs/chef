@@ -1,4 +1,5 @@
 import { AlertTriangle, GitCommitHorizontal, Lightbulb, Loader2, Rocket, Undo2, Wifi, WifiOff } from "lucide-react";
+import { BarSkeleton } from "@/components/loading";
 import { ago, short } from "@/lib/format";
 import { useNow } from "@/lib/live";
 import { groupSessions } from "@/lib/model";
@@ -27,8 +28,8 @@ function Chip({ children, onClick, tone, label, id }: { readonly children: React
   );
 }
 
-export function ProjectBar() {
-  const { data, sessions, features, openSession, select } = useWorkspace();
+function StatusChips() {
+  const { data, sessions, features, openSession } = useWorkspace();
   const now = useNow(5000);
   const groups = groupSessions(sessions);
   const stuck = groups["needs-you"];
@@ -37,11 +38,9 @@ export function ProjectBar() {
   const live = features.filter((f) => f.spec?.status === "merged" || f.sessions.some((s) => s.state === "merged")).length;
   const lastMerge = data.live.merges.at(-1);
   const reverts = data.live.reverts.length;
-  const learned = data.live.lessons.length + data.live.rules.length;
-  const connection = CONNECTION[data.connection];
   const external = data.live.external;
   return (
-    <div className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2 sm:px-3" id="project-bar" aria-label="Project status">
+    <>
       {stuck.length ? (
         <Chip id="needs-you" label="Builds that stopped and wait for you" tone="font-medium text-bad hover:text-bad" onClick={() => openSession(stuck[0]?.id ?? "")}>
           <AlertTriangle className="size-3.5" />
@@ -74,6 +73,17 @@ export function ProjectBar() {
           Repo {external.type.replace("external.", "").replace("-", " ")} {ago(external.at, now)}
         </Chip>
       ) : null}
+    </>
+  );
+}
+
+export function ProjectBar() {
+  const { data, select } = useWorkspace();
+  const learned = data.live.lessons.length + data.live.rules.length;
+  const connection = CONNECTION[data.connection];
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2 sm:px-3" id="project-bar" aria-label="Project status">
+      {data.ready ? <StatusChips /> : <BarSkeleton />}
       <span className="flex-1" />
       <Chip id="memory" label="Lessons and rules chef learned in this project" onClick={() => select({ view: "insights", feature: null, session: null, panel: null })}>
         <Lightbulb className="size-3.5" />
