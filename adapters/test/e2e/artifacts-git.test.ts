@@ -132,7 +132,7 @@ describe("ArtifactsRepoHost with the Artifacts read API and a small cache", () =
 
 describe("ArtifactsRepoHost when the git server has a bad moment", () => {
   const author = { name: "t", email: "ma.karimi76@gmail.com" };
-  const failure = (request: GitHttpRequest): GitHttpResponse => ({ url: request.url, method: request.method, headers: {}, statusCode: 500, statusMessage: "Internal Server Error", body: [new TextEncoder().encode("oops")] as unknown as GitHttpResponse["body"] });
+  const failure = (request: GitHttpRequest): GitHttpResponse => ({ url: request.url, ...(request.method ? { method: request.method } : {}), headers: {}, statusCode: 500, statusMessage: "Internal Server Error", body: [new TextEncoder().encode("oops")] as unknown as NonNullable<GitHttpResponse["body"]> });
   const flaky = (plan: (request: GitHttpRequest) => "pass" | "fail" | "fail-after"): HttpClient => ({
     async request(request) {
       const step = plan(request);
