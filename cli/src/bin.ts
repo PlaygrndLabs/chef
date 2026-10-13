@@ -2,11 +2,11 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { checkTree, formatProblems, type CodeRule } from "@chef/core/checks";
-import { lintSpecFiles, parseFeature, Router, readSpec, type Deps, type ChefEvent } from "@chef/core";
+import { lintSpecFiles, parseFeature, Router, readSpec, withSkills, type Deps, type ChefEvent } from "@chef/core";
 import { KeywordClassifier, TemplatePlanner } from "@chef/core/fakes";
 import { readTree } from "./fs.ts";
 import { demoScript } from "./demo.ts";
-import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
+import { localWorld, REPO_ROOT, repoProfiles, templateTree } from "./world.ts";
 import { RunnerCoder } from "./local/runner-coder.ts";
 import { report, runSpike, type SpikeDataset, type SpikeMode } from "./spike/jev.ts";
 import { BENCH_ITEMS } from "./bench/items.ts";
@@ -92,6 +92,12 @@ function describe(event: ChefEvent): string | null {
   }
 }
 
+function promptOf(role: string): string {
+  const profile = repoProfiles()[role];
+  if (!profile) throw new Error(`agents/${role}.md is missing`);
+  return withSkills(profile.instructions, profile.skills);
+}
+
 async function liveDeps(): Promise<Partial<Deps>> {
   const { llmFromProvider, providerBaseUrl, providerFromEnv } = await import("@chef/adapters/anthropic");
   const { LlmPlanner } = await import("@chef/adapters/llm-planner");
@@ -104,8 +110,8 @@ async function liveDeps(): Promise<Partial<Deps>> {
   const classifier = process.env["TYPESAFE_API_KEY"] ? (await import("@chef/adapters/jev")).JevClassifier.fromEnv() : new KeywordClassifier();
   return {
     classifier,
-    planner: new LlmPlanner(llm, process.env["PLANNER_MODEL"] ?? "claude-opus-5-5"),
-    reviewer: new LlmReviewer(llm, process.env["REVIEWER_MODEL"] ?? "claude-opus-5-5"),
+    planner: new LlmPlanner(llm, process.env["PLANNER_MODEL"] ?? "claude-opus-5-5", promptOf("planner")),
+    reviewer: new LlmReviewer(llm, process.env["REVIEWER_MODEL"] ?? "claude-opus-5-5", promptOf("reviewer")),
     coder: new RunnerCoder({ runner: join(REPO_ROOT, "workers", "sandbox", "runner.mjs"), baseUrl, apiKey, model: process.env["CODER_MODEL"] ?? "claude-sonnet-5-5", nodeModules: join(REPO_ROOT, "template", "node_modules"), lint: join(REPO_ROOT, "workers", "sandbox", "lint.mjs") }),
   };
 }
@@ -215,7 +221,7 @@ async function llmCheck(args: readonly string[]): Promise<number> {
   const { LlmReviewer } = await import("@chef/adapters/llm-reviewer");
   const llm = llmFromEnv(process.env);
   const model = option(args, "model") ?? process.env["PLANNER_MODEL"] ?? "claude-opus-5-5";
-  const planner = new LlmPlanner(llm, model);
+  const planner = new LlmPlanner(llm, model, promptOf("planner"));
   const started = Date.now();
   const triage = await planner.triage({ prompt, spec: [] });
   process.stdout.write(`triage via ${llm.via} ${model}: ${triage.intent} (${triage.confidence.toFixed(2)}) ${triage.reason}\n`);
@@ -224,7 +230,7 @@ async function llmCheck(args: readonly string[]): Promise<number> {
   const fixture = readTree(join(REPO_ROOT, "core", "test", "fixtures", "todo"));
   const spec = parseFeature(readFileSync(join(REPO_ROOT, "core", "test", "fixtures", "todo-add.md"), "utf8"));
   if (!spec.ok) throw new Error(spec.errors.join("\n"));
-  const verdict = await new LlmReviewer(llm, option(args, "model") ?? process.env["REVIEWER_MODEL"] ?? model).review({ feature: spec.spec, diff: fixture, checksLog: "" });
+  const verdict = await new LlmReviewer(llm, option(args, "model") ?? process.env["REVIEWER_MODEL"] ?? model, promptOf("reviewer")).review({ feature: spec.spec, diff: fixture, checksLog: "" });
   process.stdout.write(`review of the todo fixture: ${verdict.approve ? "approved" : `rejected: ${verdict.reasons.join("; ")}`}\n`);
   process.stdout.write(`done in ${((Date.now() - started) / 1000).toFixed(1)}s\n`);
   return 0;

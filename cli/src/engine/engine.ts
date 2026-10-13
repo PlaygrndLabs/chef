@@ -5,16 +5,19 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
+import { agentsRequest } from "@chef/adapters/agents";
+import { aesCipher, envKeyBytes, newEnvKey, type EnvCipher } from "@chef/adapters/project-env";
+import { AgentSettings } from "@chef/core";
 import { LocalGitHost } from "@chef/adapters/local-git";
 import { buildingPage, previewPath } from "@chef/adapters/preview-page";
 import { projectsRequest, type ProjectEntry } from "@chef/adapters/projects";
 import { applyUpdate, describeSettings, NO_LLM, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved, type SettingsEnv } from "@chef/adapters/settings";
 import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { parseJsonc } from "../deploy.ts";
-import { REPO_ROOT } from "../world.ts";
+import { repoProfiles, REPO_ROOT } from "../world.ts";
 import { Docker, type Network } from "./docker.ts";
 import { LocalProject } from "./project.ts";
-import { writeAtomic, type LogEntry } from "./storage.ts";
+import { FileStore, writeAtomic, type LogEntry } from "./storage.ts";
 
 const PROJECT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/(.+)$/;
 const COPILOTKIT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/copilotkit(\/|$)/;
@@ -77,6 +80,8 @@ export class LocalEngine {
   private readonly sockets = new Set<Duplex>();
   private readonly vars: Record<string, string>;
   private readonly log: (line: string) => void;
+  private readonly agents: AgentSettings;
+  private cipher: Promise<EnvCipher> | null = null;
   private saved: AppSettings;
 
   private constructor(options: EngineOptions) {
@@ -86,6 +91,17 @@ export class LocalEngine {
     this.git = new LocalGitHost(join(this.dir, "repos"));
     this.docker = options.docker ?? new Docker({ repos: this.git.root, network: options.network ?? (this.vars["CHEF_SANDBOX_NETWORK"] === "host" ? "host" : "bridge") });
     this.saved = { ...NO_SETTINGS, ...readJson<Partial<AppSettings>>(join(this.dir, "settings.json"), {}) };
+    this.agents = new AgentSettings(new FileStore(join(this.dir, "agents.jsonl")));
+  }
+
+  private envCipher(): Promise<EnvCipher> {
+    this.cipher ??= (async () => {
+      const file = join(this.dir, "env.key");
+      if (!existsSync(file)) writeAtomic(file, newEnvKey());
+      return aesCipher(envKeyBytes(readFileSync(file, "utf8").trim()));
+    })();
+    this.cipher.catch(() => (this.cipher = null));
+    return this.cipher;
   }
 
   static async start(options: EngineOptions = {}): Promise<LocalEngine> {
@@ -110,7 +126,7 @@ export class LocalEngine {
     let project = this.projects.get(name);
     if (!project) {
       project = (async () => {
-        const created = new LocalProject(name, { dir: this.dir, docker: this.docker, control: this.git.control({ read: true }), settings: () => this.settings(), vars: this.vars, log: this.log });
+        const created = new LocalProject(name, { dir: this.dir, docker: this.docker, control: this.git.control({ read: true }), settings: () => this.settings(), agents: this.agents, cipher: () => this.envCipher(), vars: this.vars, log: this.log });
         await created.open();
         return created;
       })();
@@ -131,6 +147,10 @@ export class LocalEngine {
   async handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/settings") return this.settingsRequest(request);
+    if (url.pathname === "/api/agents" || url.pathname === "/api/agents/restore") {
+      const settings = this.settings();
+      return agentsRequest(request, { store: this.agents, defaults: repoProfiles(), models: settings.models, jev: settings.jev !== null });
+    }
     if (url.pathname === "/api/projects") {
       return projectsRequest(
         request,

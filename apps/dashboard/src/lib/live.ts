@@ -8,7 +8,7 @@ const PAGES_PER_POLL = 20;
 
 export type Connection = "connecting" | "live" | "polling" | "offline";
 
-const REFRESH_RECORDS: ReadonlySet<ChefEvent["type"]> = new Set(["session.created", "session.state", "session.stuck", "main.merged", "main.reverted", "commit.created", "sync.merged", "attempt.picked"]);
+const REFRESH_RECORDS: ReadonlySet<ChefEvent["type"]> = new Set(["session.created", "session.state", "session.stuck", "session.needs", "main.merged", "main.reverted", "commit.created", "sync.merged", "attempt.picked"]);
 const REFRESH_SPEC: ReadonlySet<ChefEvent["type"]> = new Set(["main.merged", "main.reverted"]);
 
 class Store {

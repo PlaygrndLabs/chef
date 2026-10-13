@@ -8,7 +8,8 @@ import { LlmPlanner } from "@chef/adapters/llm-planner";
 import { LlmReviewer } from "@chef/adapters/llm-reviewer";
 import { GptLiveHost } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, startVoiceCall, type ExternalSync, type VoiceCall } from "@chef/core";
+import { applyAgentConfig, ControlError, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, resolveModel, routerConfigOf, runnable, startVoiceCall, withSkills, type AgentStore, type ExternalSync, type Profiles, type VoiceCall } from "@chef/core";
+import { applyEnvUpdate, envNames, revealEnv, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
@@ -21,6 +22,7 @@ import { FileEventBus, FileMemoryIndex, FileStore, type LogEntry } from "./stora
 
 const PROJECT_SETTINGS = "project/settings";
 const OVERVIEW = "project/overview";
+const ENV = "project/env";
 const READING_TIMEOUT_MS = 10 * 60_000;
 const POLL_MS = 5 * 60_000;
 const BUSY_SWEEP_MS = 10 * 60_000;
@@ -30,11 +32,19 @@ export interface EngineContext {
   readonly docker: Docker;
   readonly control: ArtifactsControl;
   readonly settings: () => Resolved;
+  readonly agents: AgentStore;
+  readonly cipher: () => Promise<EnvCipher>;
   readonly vars: Readonly<Record<string, string>>;
   readonly log: (line: string) => void;
 }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
+
+function role(profiles: Profiles, name: string) {
+  const profile = profiles[name];
+  if (!profile) throw new Error(`agents/${name}.md is missing`);
+  return profile;
+}
 
 export class LocalProject {
   readonly bus: FileEventBus;
@@ -61,7 +71,7 @@ export class LocalProject {
     const { keeper, orchestrator } = await this.build();
     await keeper.sweep({ busy: false, idleMs: 0 });
     if ((await this.projectSettings()).git) this.startPolling();
-    if ((await orchestrator.sessions()).some((s) => !isTerminal(s.machine.state))) this.drive();
+    if ((await orchestrator.sessions()).some(runnable)) this.drive();
   }
 
   async close(): Promise<void> {
@@ -79,22 +89,26 @@ export class LocalProject {
   private async build() {
     const settings = this.ctx.settings();
     const project = await this.projectSettings();
-    const fingerprint = JSON.stringify([settings, project.git]);
+    const agents = await this.ctx.agents.current();
+    const fingerprint = JSON.stringify([settings, project.git, agents.version]);
     if (this.built?.fingerprint === fingerprint) return this.built;
     this.built?.orchestrator.dispose();
     const { docker, control, vars } = this.ctx;
     const repos = new ArtifactsRepoHost(control);
     const llm = settings.llm ? llmFromProvider(settings.llm) : missingLlm;
     const clock = { now: () => Date.now() };
-    const host = new DockerPreviewHost(docker, this.name);
+    const host = new DockerPreviewHost(docker, this.name, async () => revealEnv(await this.storedEnv(), await this.ctx.cipher()));
+    const profiles = applyAgentConfig(repoProfiles(), agents.config);
+    const reviewerRole = role(profiles, "reviewer");
+    const plannerRole = role(profiles, "planner");
     const keeper = new PreviewKeeper(host, host, { repos, store: this.store, clock, canonical: this.name, onActivity: () => void this.scheduleSweep() });
     const orchestrator = new Orchestrator(
       {
         repos,
         coder: new DockerCoder(docker, { model: settings.models.coder, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
         classifier: settings.jev ? JevClassifier.fromEnv({ apiKey: settings.jev.apiKey, defaultModel: vars["JEV_MODEL"] as string }) : NO_CLASSIFIER,
-        planner: new LlmPlanner(llm, settings.models.planner),
-        reviewer: new LlmReviewer(llm, settings.models.reviewer),
+        planner: new LlmPlanner(llm, resolveModel(plannerRole.model, settings.models), withSkills(plannerRole.instructions, plannerRole.skills)),
+        reviewer: new LlmReviewer(llm, resolveModel(reviewerRole.model, settings.models), withSkills(reviewerRole.instructions, reviewerRole.skills)),
         previews: keeper,
         checks: new DockerCheckRunner(docker, repos),
         proofs: new DockerProofRunner(docker, repos, host),
@@ -107,10 +121,12 @@ export class LocalProject {
       {
         name: this.name,
         author: { name: "chef", email: "ma.karimi76@gmail.com" },
-        profiles: repoProfiles(),
+        profiles,
+        router: routerConfigOf(agents.config.router),
         generated,
         specialization: { attempts: settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
+        environment: async () => envNames(await this.storedEnv()),
       },
     );
     const git = project.git;
@@ -140,6 +156,7 @@ export class LocalProject {
     const session = /^sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/.exec(action);
     if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
     if (action === "settings") return this.settingsRequest(request);
+    if (action === "env") return this.envRequest(request);
     if (action === "bootstrap" && request.method === "POST") return this.bootstrap();
     if (action === "git" && request.method === "GET") return json({ settings: viewProjectSettings(await this.projectSettings()).git, state: external ? await external.state() : null });
     if (action === "git/sync" && request.method === "POST") {
@@ -162,6 +179,11 @@ export class LocalProject {
       if (!prompt?.trim()) return json({ error: "prompt is required" }, 400);
       if (!settings.llm) return json({ error: NO_LLM }, 409);
       return json(await this.submit(prompt.trim()), 202);
+    }
+    if (action === "route" && request.method === "POST") {
+      const { prompt } = (await request.json().catch(() => ({}))) as { prompt?: string };
+      if (!prompt?.trim()) return json({ error: "prompt is required" }, 400);
+      return json(await orchestrator.route(prompt.trim()));
     }
     if (action === "voice" && request.method === "POST") return this.voice(request);
     if (action === "sessions" && request.method === "GET") return json(await orchestrator.sessions());
@@ -276,6 +298,31 @@ export class LocalProject {
     return json(viewProjectSettings(saved));
   }
 
+  private async storedEnv(): Promise<StoredEnv> {
+    return (await this.store.get<StoredEnv>(ENV)) ?? {};
+  }
+
+  private async envRequest(request: Request): Promise<Response> {
+    const stored = await this.storedEnv();
+    if (request.method === "GET") return json(await this.envView(stored));
+    if (request.method !== "PUT") return json({ error: "method not allowed" }, 405);
+    const result = await applyEnvUpdate(stored, await request.json().catch(() => null), await this.ctx.cipher(), Date.now());
+    if (!result.ok) return json({ error: result.error }, 400);
+    await this.store.put(ENV, result.env);
+    const { orchestrator, keeper } = await this.build();
+    const resumed = await orchestrator.environmentChanged();
+    if (resumed.length > 0) this.drive();
+    const busy = (await orchestrator.sessions()).some((s) => runnable(s) && !resumed.includes(s.id));
+    await keeper.sweep({ busy, idleMs: 0 });
+    return json(await this.envView(result.env));
+  }
+
+  private async envView(stored: StoredEnv) {
+    const { orchestrator } = await this.build();
+    const features = [...readSpec((await orchestrator.mainTree()).tree), ...(await orchestrator.sessions()).filter((s) => !isTerminal(s.machine.state)).map((s) => s.plan.feature)];
+    return viewEnv(stored, await this.ctx.cipher(), envNeeds(features, envNames(stored)));
+  }
+
   private async scheduleSweep(delayMs?: number): Promise<void> {
     if (this.closed) return;
     const { previewIdleMinutes } = await this.projectSettings();
@@ -358,7 +405,7 @@ export class LocalProject {
     void (async () => {
       const { orchestrator } = await this.build();
       await orchestrator.reclaim();
-      for (const session of await orchestrator.sessions()) if (!isTerminal(session.machine.state) && !this.loops.has(session.id)) this.loops.set(session.id, this.loop(session.id));
+      for (const session of await orchestrator.sessions()) if (runnable(session) && !this.loops.has(session.id)) this.loops.set(session.id, this.loop(session.id));
     })().catch((error: unknown) => this.ctx.log(`driving ${this.name} failed: ${describe(error)}`));
   }
 
@@ -374,6 +421,7 @@ export class LocalProject {
           await orchestrator.reclaim();
           break;
         }
+        if (!runnable(record)) break;
         if (JSON.stringify(record.machine) === before) await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     } catch (error) {

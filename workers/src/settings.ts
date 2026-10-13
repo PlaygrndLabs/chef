@@ -2,7 +2,10 @@ import { DurableObject } from "cloudflare:workers";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
 import type { ProjectEntry } from "@chef/adapters/projects";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
+import { AgentSettings, type AgentConfig, type AgentVersion, type SaveResult, type StoredAgents } from "@chef/core";
+import { newEnvKey } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
+import { DurableStore } from "./do-store.ts";
 
 const SETTINGS = "providers";
 const PASSWORD = "password";
@@ -10,6 +13,7 @@ const PROJECTS = "projects";
 const GITHUB_APP = "github/app";
 const GITHUB_LINKS = "github/links";
 const GITHUB_PENDING = "github/pending";
+const ENV_KEY = "env/key";
 const PENDING_MS = 60 * 60_000;
 
 export interface PendingConnect {
@@ -52,6 +56,14 @@ export class Settings extends DurableObject<Env> {
     return true;
   }
 
+  async envKey(): Promise<string> {
+    const existing = await this.ctx.storage.get<string>(ENV_KEY);
+    if (existing) return existing;
+    const key = newEnvKey();
+    await this.ctx.storage.put(ENV_KEY, key);
+    return key;
+  }
+
   async githubApp(): Promise<GitHubAppCredentials | null> {
     return (await this.ctx.storage.get<GitHubAppCredentials>(GITHUB_APP)) ?? null;
   }
@@ -79,6 +91,26 @@ export class Settings extends DurableObject<Env> {
     );
     if (repository) links[repository.toLowerCase()] = [...(links[repository.toLowerCase()] ?? []), project];
     await this.ctx.storage.put(GITHUB_LINKS, links);
+  }
+
+  async agentsCurrent(): Promise<StoredAgents> {
+    return this.agentSettings().current();
+  }
+
+  async agentsHistory(): Promise<AgentVersion[]> {
+    return this.agentSettings().history();
+  }
+
+  async agentsSave(config: AgentConfig, summary: string, expected: number | null): Promise<SaveResult> {
+    return this.agentSettings().save(config, summary, expected);
+  }
+
+  async agentsRestore(version: number): Promise<SaveResult> {
+    return this.agentSettings().restore(version);
+  }
+
+  private agentSettings(): AgentSettings {
+    return new AgentSettings(new DurableStore(this.ctx.storage));
   }
 
   async linkedProjects(repository: string): Promise<string[]> {
@@ -129,4 +161,14 @@ export async function settingsRequest(request: Request, env: Env): Promise<Respo
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
   await settings.write(result.settings);
   return Response.json(await view(env, result.settings));
+}
+
+export function agentStore(env: Env) {
+  const stub = settingsStub(env);
+  return {
+    current: () => stub.agentsCurrent(),
+    history: () => stub.agentsHistory(),
+    save: (config: AgentConfig, summary: string, expected: number | null) => stub.agentsSave(config, summary, expected),
+    restore: (version: number) => stub.agentsRestore(version),
+  };
 }

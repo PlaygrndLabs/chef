@@ -14,6 +14,7 @@
     "./anthropic": "./src/anthropic.ts",
     "./settings": "./src/settings.ts",
     "./project-settings": "./src/project-settings.ts",
+    "./project-env": "./src/project-env.ts",
     "./vectorize": "./src/vectorize.ts",
     "./gpt-live": "./src/gpt-live.ts",
     "./realtime": "./src/realtime.ts",
@@ -21,7 +22,8 @@
     "./agui": "./src/agui.ts",
     "./local-git": "./src/local-git.ts",
     "./preview-page": "./src/preview-page.ts",
-    "./projects": "./src/projects.ts"
+    "./projects": "./src/projects.ts",
+    "./agents": "./src/agents.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

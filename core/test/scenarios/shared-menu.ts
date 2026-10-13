@@ -20,6 +20,7 @@ export function specFor(id: string): FeatureSpec {
     entrypoint: `GET /${id}`,
     revision: 1,
     shared: [MENU_PATH],
+    env: [],
     acceptance: [
       { id: "AC1", text: `GET /${id} answers with the page name` },
       { id: "AC2", text: `the menu links to ${id}` },

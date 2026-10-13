@@ -1,5 +1,6 @@
 import type { ChangeKind, RouteIntent } from "../router/decision.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
+import type { EnvVar } from "../env/env.ts";
 import type { MemoryHit } from "./memory-index.ts";
 
 export type WorkKind = "spec_change" | "test" | "code" | "fix" | "refactor" | "conflict";
@@ -26,12 +27,19 @@ export interface Triage {
   readonly reason: string;
 }
 
+export interface BuilderRole {
+  readonly role: string;
+  readonly description: string;
+}
+
 export interface PlanInput {
   readonly prompt: string;
   readonly intent: "new_feature" | "change_feature";
   readonly changeKind: ChangeKind | null;
   readonly featureId: string | null;
   readonly spec: readonly FeatureSpec[];
+  readonly env?: readonly EnvVar[];
+  readonly roles?: readonly BuilderRole[];
 }
 
 export interface Plan {

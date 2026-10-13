@@ -12,6 +12,7 @@ interface Seen {
   readonly key: string;
   readonly model: string;
   readonly tools: readonly string[];
+  readonly system: string;
 }
 
 type Block = { readonly type: "text"; readonly text: string } | { readonly type: "tool_use"; readonly id: string; readonly name: string; readonly input: object };
@@ -45,10 +46,10 @@ function fakeClaude(call: Call | ((conversation: string) => Call | null)) {
     let raw = "";
     req.on("data", (chunk: Buffer) => (raw += chunk.toString("utf8")));
     req.on("end", () => {
-      const body = (raw ? JSON.parse(raw) : {}) as { model?: string; stream?: boolean; tools?: { name: string }[]; messages?: { content: unknown }[] };
+      const body = (raw ? JSON.parse(raw) : {}) as { model?: string; stream?: boolean; tools?: { name: string }[]; messages?: { content: unknown }[]; system?: unknown };
       const path = (req.url ?? "").split("?")[0] ?? "";
       const tools = (body.tools ?? []).map((t) => t.name);
-      seen.push({ path, key: String(req.headers["x-api-key"] ?? req.headers["authorization"] ?? ""), model: body.model ?? "", tools });
+      seen.push({ path, key: String(req.headers["x-api-key"] ?? req.headers["authorization"] ?? ""), model: body.model ?? "", tools, system: `${JSON.stringify(body.system ?? "")}${JSON.stringify(body.messages ?? [])}` });
       if (path.endsWith("/count_tokens")) return void res.end(JSON.stringify({ input_tokens: 12 }));
       if (!path.endsWith("/v1/messages")) return void res.writeHead(404).end();
       const model = body.model ?? "claude";
@@ -90,7 +91,7 @@ describe("coder runner on the Claude Agent SDK", () => {
       role: "backend",
       model: "claude-sonnet-5-5",
       prompt: "Add features/hello/index.ts exporting hello().",
-      agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
+      agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default", skills: [{ name: "greeting-style", description: "Use when writing a greeting function", body: "Greetings are lower case." }] },
       writeScope: ["features/hello/**"],
       remote,
       ref: "main",
@@ -119,6 +120,9 @@ describe("coder runner on the Claude Agent SDK", () => {
       const turns = seen.filter((s) => s.tools.includes("Write"));
       expect(turns.length).toBe(2);
       expect(turns.every((s) => s.model === "claude-sonnet-5-5")).toBe(true);
+      expect(turns.every((s) => s.tools.includes("Skill"))).toBe(true);
+      expect(turns[0]?.system).toContain("greeting-style");
+      expect(turns[0]?.system).toContain("Use when writing a greeting function");
       expect(seen.filter((s) => s.path.startsWith("/v1/") && s.key !== "chef-placeholder").map((s) => s.path)).toEqual([]);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -141,7 +145,7 @@ describe("coder runner on the Claude Agent SDK", () => {
         prompt: "Add features/hello/index.ts exporting hello().",
         instructions: "",
         writeScope: ["features/hello/**"],
-        agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
+        agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default", skills: [] },
         attempt: { index: 1, of: 1 },
         workspace: { repo: "demo", remote: "", ref: "main", commitId: "", readToken: "", tree: { "README.md": "# demo\n" } },
         onEvent: (event) => events.push(event.type),
@@ -179,7 +183,7 @@ describe("coder runner on the Claude Agent SDK", () => {
         prompt: "Add features/hello/index.ts exporting hello().",
         instructions: "",
         writeScope: ["features/hello/**"],
-        agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default" },
+        agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default", skills: [] },
         attempt: { index: 1, of: 1 },
         workspace: { repo: "demo", remote: "", ref: "main", commitId: "", readToken: "", tree: { "README.md": "# demo\n" } },
         onEvent: (event) => events.push(event),

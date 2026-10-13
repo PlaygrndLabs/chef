@@ -1,7 +1,9 @@
 ---
 role: conflict-resolver
+label: Conflict fixer
 model: coder-default
 description: Resolves merge conflicts between main and a session fork.
+runs: agent
 sharedAccess: true
 writeScope:
   - features/{feature}/**

@@ -1,5 +1,5 @@
 import { chromium, type Browser, type Page } from "playwright";
-import { createApp, type Feature } from "../shared/http.ts";
+import { createApp, type Env, type Feature } from "../shared/http.ts";
 import { MemoryStore, type Store } from "../shared/storage.ts";
 
 export const ORIGIN = "http://app.test";
@@ -17,8 +17,8 @@ function browser(): Promise<Browser> {
   return shared;
 }
 
-export async function openPage(features: readonly Feature[], path: string, store: Store = new MemoryStore()): Promise<OpenPage> {
-  const app = createApp(features, store);
+export async function openPage(features: readonly Feature[], path: string, store: Store = new MemoryStore(), env: Env = {}): Promise<OpenPage> {
+  const app = createApp(features, store, env);
   const context = await (await browser()).newContext({ baseURL: ORIGIN });
   await context.route("**/*", async (route) => {
     const request = route.request();

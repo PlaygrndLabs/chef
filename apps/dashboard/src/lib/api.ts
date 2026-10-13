@@ -1,4 +1,4 @@
-import type { Budget, FeatureSpec, OutboundMode, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, Budget, FeatureSpec, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -94,6 +94,12 @@ export const settingsApi = {
   save: (update: SettingsUpdate) => call<SettingsView>("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
 };
 
+export const agentsApi = {
+  get: () => call<AgentsView>("/api/agents"),
+  save: (config: AgentConfig, summary: string, version: number) => call<AgentsView>("/api/agents", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ config, summary, version }) }),
+  restore: (version: number) => call<AgentsView>("/api/agents/restore", post({ version })),
+};
+
 export interface ProjectEntry {
   readonly name: string;
   readonly createdAt: number;
@@ -185,6 +191,28 @@ export interface ProjectSettingsUpdate {
   readonly git?: GitLinkUpdate | null;
 }
 
+export interface EnvVarView {
+  readonly name: string;
+  readonly secret: boolean;
+  readonly value: string | null;
+  readonly updatedAt: number;
+}
+
+export interface EnvNeedView {
+  readonly name: string;
+  readonly features: readonly string[];
+}
+
+export interface ProjectEnvView {
+  readonly vars: readonly EnvVarView[];
+  readonly needs: readonly EnvNeedView[];
+}
+
+export interface EnvUpdate {
+  readonly set?: Readonly<Record<string, { readonly value: string; readonly secret: boolean }>>;
+  readonly remove?: readonly string[];
+}
+
 export function projectApi(project: string) {
   const base = `/api/projects/${project}`;
   return {
@@ -198,10 +226,13 @@ export function projectApi(project: string) {
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
+    route: (prompt: string) => call<RouteDecision>(`${base}/route`, post({ prompt })),
     settings: () => call<ProjectSettingsView>(`${base}/settings`),
     saveSettings: (update: ProjectSettingsUpdate) => call<ProjectSettingsView>(`${base}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
     git: () => call<{ settings: GitLinkView | null; state: SyncState | null }>(`${base}/git`),
     syncGit: () => call<{ ok: boolean }>(`${base}/git/sync`, { method: "POST" }),
+    env: () => call<ProjectEnvView>(`${base}/env`),
+    saveEnv: (update: EnvUpdate) => call<ProjectEnvView>(`${base}/env`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
     overview: () => call<OverviewState>(`${base}/overview`),
     readCode: () => call<OverviewState>(`${base}/overview`, { method: "POST" }),
   };

@@ -14,4 +14,8 @@ export class DurableStore implements KeyValueStore {
   async list<T>(prefix: string): Promise<Map<string, T>> {
     return this.storage.list<T>({ prefix });
   }
+
+  async delete(key: string): Promise<void> {
+    await this.storage.delete(key);
+  }
 }
