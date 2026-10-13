@@ -74,7 +74,7 @@ describe("local app in a browser", () => {
       await setup.getByRole("button", { name: "Settings" }).click();
       const settings = page.locator('[data-dialog="settings"]');
       await settings.waitFor({ timeout: 10_000 });
-      await settings.getByRole("tab", { name: "Password" }).click();
+      await settings.locator('[data-settings-nav="general"]').click();
       expect(await settings.locator('[data-current="engine"]').innerText()).toBe(`Connected to ${engine.url}`);
       await page.keyboard.press("Escape");
       await settings.waitFor({ state: "hidden" });

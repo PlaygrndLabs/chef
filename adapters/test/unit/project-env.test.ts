@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, newEnvKey, revealEnv, viewEnv, type StoredEnv } from "../../src/project-env.ts";
+import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, mergeEnv, newEnvKey, revealEnv, viewEnv, viewProjectEnv, type StoredEnv } from "../../src/project-env.ts";
 import { toPlan } from "../../src/llm-planner.ts";
 
 async function cipher() {
@@ -24,6 +24,24 @@ describe("project environment", () => {
     ]);
     expect(view.needs).toEqual([{ name: "MAPS_KEY", features: ["map"] }]);
     expect((await revealEnv(result.env, c)).find((v) => v.name === "STRIPE_SECRET_KEY")?.value).toBe("sk_live_1");
+  });
+
+  it("gives a project the shared values and lets it override any of them", async () => {
+    const c = await cipher();
+    const shared = await applyEnvUpdate({}, { set: { SUPPORT_EMAIL: { value: "help@example.com", secret: false }, API_URL: { value: "https://shared.example", secret: false } } }, c, 1);
+    const own = await applyEnvUpdate({}, { set: { API_URL: { value: "https://shop.example", secret: false }, STRIPE_KEY: { value: "sk_1" } } }, c, 2);
+    if (!shared.ok || !own.ok) throw new Error("update failed");
+    expect((await revealEnv(mergeEnv(shared.env, own.env), c)).map((v) => [v.name, v.value])).toEqual([
+      ["API_URL", "https://shop.example"],
+      ["STRIPE_KEY", "sk_1"],
+      ["SUPPORT_EMAIL", "help@example.com"],
+    ]);
+    const view = await viewProjectEnv(own.env, shared.env, c, []);
+    expect(view.vars.map((v) => [v.name, v.value, v.scope ?? "project"])).toEqual([
+      ["API_URL", "https://shop.example", "overrides"],
+      ["STRIPE_KEY", null, "project"],
+      ["SUPPORT_EMAIL", "help@example.com", "shared"],
+    ]);
   });
 
   it("replaces and removes values and refuses bad names", async () => {

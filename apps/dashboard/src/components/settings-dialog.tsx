@@ -425,15 +425,15 @@ export function SettingsDialog(props: {
           loading()
         ),
     },
-    { id: "agents", label: "Agents", icon: Bot, fill: true, note: "Roles, their system prompts and models, for every project.", render: agents("agents") },
-    { id: "skills", label: "Skills", icon: BookOpen, fill: true, note: "Guides the roles follow in every project.", render: agents("skills") },
+    { id: "agents", label: "Agents", icon: Bot, fill: true, render: agents("agents") },
+    { id: "skills", label: "Skills", icon: BookOpen, fill: true, render: agents("skills") },
     {
       id: "router",
       label: "Router",
       icon: Route,
       fill: !props.withoutProject,
-      note: "How chef decides whether a request is a new feature, a change, a chore or a question.",
-      render: props.withoutProject ? () => jev : agents("router", <div className="mx-auto max-w-3xl px-4 pt-5 sm:px-6">{jev}</div>),
+      ...(props.withoutProject ? { note: "How chef decides whether a request is a new feature, a change, a chore or a question." } : {}),
+      render: props.withoutProject ? () => jev : agents("router", <div className="mx-auto max-w-3xl px-4 pt-5 sm:px-6"><div className="rounded-xl border p-4">{jev}</div></div>),
     },
     {
       id: "environment",
