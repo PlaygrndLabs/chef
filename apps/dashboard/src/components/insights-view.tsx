@@ -85,7 +85,7 @@ export function InsightsView() {
                   </span>
                 </li>
               ))}
-              {data.live.voice.length === 0 ? <li className="text-sm text-muted-foreground">Nothing said yet. Use Talk in the top bar.</li> : null}
+              {data.live.voice.length === 0 ? <li className="text-sm text-muted-foreground">Nothing said yet. Use the Talk button.</li> : null}
             </ul>
           </section>
         </div>

@@ -16,6 +16,7 @@ import { useSettings } from "@/components/settings-dialog";
 import { Panel } from "@/components/panel";
 import { ProjectBar } from "@/components/project-bar";
 import { Sidebar } from "@/components/sidebar";
+import { TalkButton } from "@/components/voice-button";
 import { appApi, projectApi, type AppMode } from "@/lib/api";
 import { useProject } from "@/lib/live";
 import { featureNodes, sessionNodes } from "@/lib/model";
@@ -77,7 +78,13 @@ function ConnectedApp() {
   };
   if (projects === null) return <div className="grid h-dvh place-items-center text-muted-foreground">{failed ? `Could not load your projects: ${failed}` : "Loading"}</div>;
   const project = pickProject(projects, selection.project);
-  if (project === null) return <Setup onCreated={opened} />;
+  if (project === null) {
+    const open = (name: string) => {
+      rememberProject(name);
+      select({ project: name, view: "project", feature: null, session: null, panel: null, settings: null, item: null });
+    };
+    return <Setup projects={projects} onOpen={open} onCreated={opened} />;
+  }
   return <ProjectWorkspace key={project} selection={project === selection.project ? selection : { ...selection, project }} select={select} projects={projects} onCreated={opened} />;
 }
 
@@ -172,13 +179,15 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
               <ResizeHandle edge="right" width={sideWidth} min={SIDEBAR.min} max={SIDEBAR.max} initial={SIDEBAR.initial} onResize={setSideWidth} label="Resize the work list" />
             </aside>
           )}
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative flex min-w-0 flex-1 flex-col">
             {compact ? (
               <div className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
                 <Button variant="ghost" size="icon" onClick={() => setSidebar(true)} aria-label="Show features">
                   <Menu />
                 </Button>
-                <Wordmark className="h-[14px]" />
+                <a href="/" aria-label="All projects" title="All projects">
+                  <Wordmark className="h-[14px]" />
+                </a>
                 <span className="text-muted-foreground/60">/</span>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{selection.project}</span>
               </div>
@@ -187,6 +196,7 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
             <main className="min-h-0 min-w-0 flex-1">
               <Center workspace={workspace} />
             </main>
+            <TalkButton />
           </div>
           {panel && !compact && !expanded ? (
             <aside className="relative shrink-0 border-l" style={{ width: Math.min(Math.max(panelWidth, PANEL.min), panelMax) }} aria-label="Preview and details">
