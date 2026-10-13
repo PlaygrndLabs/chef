@@ -40,6 +40,18 @@ export function defaultOrgName(email: string | null): string {
   return local ? `${local}'s org` : "My org";
 }
 
+const NAME_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+export function engineName(orgName: string, taken: ReadonlySet<string>, random: () => number = Math.random): string {
+  const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+/, "").slice(0, 20).replace(/-+$/, "") || "org";
+  for (;;) {
+    let suffix = "";
+    for (let i = 0; i < 4; i++) suffix += NAME_ALPHABET[Math.floor(random() * NAME_ALPHABET.length)];
+    const name = `chef-${slug}-${suffix}`;
+    if (!taken.has(name)) return name;
+  }
+}
+
 export function readOrgName(body: unknown): string | null {
   const name = ((body ?? {}) as { name?: unknown }).name;
   if (typeof name !== "string") return null;
