@@ -14,21 +14,20 @@ interface Fake {
   orgs: Record<string, OrgState>;
   admins: string[];
   legacy: Record<string, { url: string; secret: string; accountId: string; version: string }>;
-  taken: string | null;
   calls: { name: string; method: string; arg?: unknown }[];
 }
 
 const ENGINE = { url: "https://chef.sam.workers.dev", secret: "engine-secret" };
 
 function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Role } = {}, withClient = true) {
-  const fake: Fake = { orgs: { org1: { name: "sam's org", engine: state.engine ?? null, members: { user1: state.role ?? "owner", boss: "owner" } } }, admins: [], legacy: {}, taken: null, calls: [], ...state };
+  const fake: Fake = { orgs: { org1: { name: "sam's org", engine: state.engine ?? null, members: { user1: state.role ?? "owner", boss: "owner" } } }, admins: [], legacy: {}, calls: [], ...state };
   const summaries = (userId: string) => Object.entries(fake.orgs).flatMap(([id, org]) => (org.members[userId] ? [{ id, name: org.name, role: org.members[userId] }] : []));
   const member = (name: string) => ({
     signIn: async (profile: unknown, grant: unknown, admin: unknown, org: unknown) => void fake.calls.push({ name, method: "signIn", arg: { profile, grant, admin, org } }),
     admin: async () => fake.admins.includes(name),
     legacyEngine: async () => fake.legacy[name] ?? null,
     view: async () => ({ email: "sam@example.com", admin: fake.admins.includes(name), canSetUp: true, install: null }),
-    accounts: async () => [{ id: "a1", name: "Mine", plan: "paid", hasChef: false, subdomain: "mine" }],
+    accounts: async () => [{ id: "a1", name: "Mine", plan: "paid", subdomain: "mine" }],
     status: async () => ({ status: "idle" }),
     install: async (arg: unknown) => (fake.calls.push({ name, method: "install", arg }), { status: "running" }),
     dismiss: async () => undefined,
@@ -56,7 +55,6 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
     use: async (userId: string, orgId: string) => summaries(userId).find((o) => o.id === orgId) ?? null,
     renameOrg: async (orgId: string, name: string) => void fake.calls.push({ name: "directory", method: "renameOrg", arg: { orgId, name } }),
     recordSetup: async (orgId: string, setup: unknown) => void fake.calls.push({ name: "directory", method: "recordSetup", arg: { orgId, setup } }),
-    accountTakenBy: async () => fake.taken,
     list: async () => ({ latest: "v2", users: [{ id: "user1", email: "sam@example.com" }], orgs: [] }),
   };
   const env = {
@@ -142,13 +140,9 @@ describe("chef site", () => {
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: forged } }), env)).status).toBe(401);
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session("user1", "someone-elses") } }), env)).status).toBe(401);
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session() } }), env)).status).toBe(202);
-    expect(fake.calls).toEqual([{ name: "user1", method: "install", arg: { orgId: "org1", accountId: "0123456789abcdef0123456789abcdef", engine: null } }]);
+    expect(fake.calls).toEqual([{ name: "user1", method: "install", arg: { orgId: "org1", orgName: "sam's org", accountId: "0123456789abcdef0123456789abcdef", engine: null } }]);
     const plain = fakeEnv({ role: "member" });
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session() } }), plain.env)).status).toBe(403);
-    const taken = fakeEnv({ taken: "Acme" });
-    const refused = await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session() } }), taken.env);
-    expect(refused.status).toBe(409);
-    expect(((await refused.json()) as { error: string }).error).toContain("Acme");
   });
 
   it("sends chef's API to the organization's engine and tells the app who is signed in where", async () => {

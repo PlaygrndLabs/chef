@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Members } from "../../src/directory.ts";
 import type { Env } from "../../src/env.ts";
 import { Organization } from "../../src/organization.ts";
+import { engineName } from "../../src/orgs.ts";
 import { FakeStorage } from "../support/durable-object.ts";
 
 const directory = () => new Members({ storage: new FakeStorage() } as unknown as DurableObjectState, { ENGINE_VERSION: "v2" } as unknown as Env);
@@ -39,8 +40,6 @@ describe("directory", () => {
     expect(dir.use(a.userId, b.org.id)).toBeNull();
     dir.renameOrg(a.org.id, "Sam and co");
     dir.recordSetup(a.org.id, { accountId: "acct", engine: "https://chef.sam.workers.dev", version: "v1", install: "done", error: null });
-    expect(dir.accountTakenBy("acct", b.org.id)).toBe("Sam and co");
-    expect(dir.accountTakenBy("acct", a.org.id)).toBeNull();
     const list = dir.list();
     expect(list.latest).toBe("v2");
     expect(list.orgs.find((o) => o.id === a.org.id)).toMatchObject({ name: "Sam and co", owner: "sam@example.com", members: 1, accountId: "acct", install: "done" });
@@ -54,11 +53,22 @@ describe("organization", () => {
     await org.setup({ id: "org1", name: "ignored" }, { userId: "usr2", email: null, role: "member" });
     expect(await org.access("usr3")).toBeNull();
     expect(await org.access("usr2")).toEqual({ role: "member", engine: null });
-    const engine = { url: "https://chef.acme.workers.dev", accountId: "acct", secret: "s", version: "v1" };
+    const engine = { name: "chef-acme-ab12", url: "https://chef.acme.workers.dev", accountId: "acct", secret: "s", version: "v1" };
     await org.setEngine(engine);
     expect(await org.access("usr1")).toEqual({ role: "owner", engine });
     await org.rename("Acme Labs");
     expect(await org.view("usr1")).toEqual({ id: "org1", name: "Acme Labs", role: "owner", engine: engine.url, members: 2 });
     expect((await org.members()).map((m) => [m.userId, m.role])).toEqual([["usr1", "owner"], ["usr2", "member"]]);
+  });
+});
+
+describe("engine names", () => {
+  it("gives each organization's chef its own Worker name on a shared Cloudflare account", () => {
+    const rolls = [0, 0, 0, 0, 0.99, 0.99, 0.99, 0.99];
+    const random = () => rolls.shift() ?? 0.5;
+    expect(engineName("Sam's Org!", new Set(), () => 0)).toBe("chef-sam-s-org-aaaa");
+    expect(engineName("Sam's Org!", new Set(["chef-sam-s-org-aaaa"]), random)).toBe("chef-sam-s-org-9999");
+    expect(engineName("   ", new Set(), () => 0)).toBe("chef-org-aaaa");
+    expect(engineName("A very long organization name indeed", new Set(), () => 0)).toBe("chef-a-very-long-organiza-aaaa");
   });
 });
