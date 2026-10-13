@@ -66,57 +66,223 @@ function animate(canvas, setup) {
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", size);
 }
 
-function tiles(ctx, width, height) {
-  const color = brand();
-  const shades = [color, "#2f6bff", "#5b8cff", "#93b4ff"];
-  const tile = width < 600 ? 40 : 56;
-  const gap = width < 600 ? 6 : 10;
-  const step = tile + gap;
-  const cols = Math.max(1, Math.floor((width + gap) / step));
-  const rows = Math.max(1, Math.floor((height + gap) / step));
-  const left = width - cols * step + gap;
-  const rand = random(7);
-  const heights = Array.from({ length: cols }, (_, c) => Math.max(1, Math.round(rows * (0.35 + 0.65 * rand()) * (0.55 + 0.45 * c / cols))));
-  const cells = [];
-  for (let c = 0; c < cols; c++) {
-    for (let r = 0; r < rows; r++) {
-      cells.push({ c, r, seed: rand() * 1000, hollow: rand() < 0.16, alpha: 0, shade: Math.floor(rand() * shades.length) });
-    }
-  }
-  const bars = width < 600 ? 7 : 9;
-  const bar = tile / (bars * 2 - 1);
-  let changed = 0;
+function css(name, fallback) {
+  return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback;
+}
+
+const prompts = [
+  { text: "Build a todo app with sign-in", lanes: ["Layout", "Todo list", "Sign-in"] },
+  { text: "Add edit and delete to each item", lanes: ["Header", "Edit items", "Delete items"] },
+  { text: "Make it work offline", lanes: ["Status bar", "Local store", "Sync on reconnect"] },
+];
+
+const appCols = 14;
+const appRows = 15;
+const regions = [
+  (c, r) => r < 2 || (r === 3 && c > 1 && c < 9),
+  (c, r) => r >= 5 && r <= 9 && r !== 7 && (c < 1 || (c > 1 && c < 11 - (r % 3) * 2)),
+  (c, r) => r >= 11 && r <= 13 && ((c >= 0 && c < 6) || (c >= 7 && c < 13)) && r !== 12 || (r === 12 && (c === 0 || c === 5 || c === 7 || c === 12)),
+];
+
+function shape(r) {
+  return Array.from({ length: appCols * appRows }, (_, i) => regions[r](i % appCols, Math.floor(i / appCols))).map((on, i) => (on ? i : -1)).filter((i) => i >= 0);
+}
+
+function build(ctx, width, height) {
+  const blue = brand();
+  const fg = css("--foreground", "#111");
+  const muted = css("--muted-foreground", "#777");
+  const line = css("--border", "#e5e5e5");
+  const card = css("--card", "#fff");
+  const green = css("--success", "#16a34a");
+  const W = 560;
+  const H = 400;
+  const scale = Math.min(width / W, height / H);
+  const ox = (width - W * scale) / 2;
+  const oy = (height - H * scale) / 2;
+  const lanes = [120, 205, 290];
+  const cycle = 11.5;
+  const cell = 14;
+  const app = { x: 334, y: 60, w: 222, h: 266 };
+  const grid = { x: app.x + 12, y: app.y + 36 };
+  const cells = regions.map((_, r) => shape(r));
+  const order = [0, 1, 2].map((i) => {
+    const rand = random(i + 21);
+    return Array.from({ length: 30 }, (_, k) => k).sort(() => rand() - 0.5);
+  });
+  const timing = [2.6, 3.4, 2.3].map((dur, i) => {
+    const start = 2.3 + i * 0.25;
+    const built = start + dur;
+    return { start, built, merged: built + 0.7, landed: built + 1.6 };
+  });
+  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(1 - x, 3));
+  const round = (x, y, w, h, r) => {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+  };
+  const mark = (x, y, s) => {
+    ctx.fillStyle = blue;
+    ctx.fillRect(x + s * 0.4, y, s * 0.6, s * 0.26);
+    ctx.fillRect(x, y + s * 0.26, s * 0.4, s * 0.48);
+    ctx.fillRect(x + s * 0.4, y + s * 0.74, s * 0.6, s * 0.26);
+  };
+  const chip = (x, y, label, tone) => {
+    ctx.font = "500 10px ui-sans-serif, system-ui, sans-serif";
+    const w = ctx.measureText(label).width + 14;
+    ctx.globalAlpha = 0.14;
+    ctx.fillStyle = tone;
+    round(x, y - 8, w, 16, 8);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = tone;
+    ctx.fillText(label, x + 7, y + 3.5);
+  };
   return (now) => {
-    const t = now / 1000;
-    if (now - changed > 900) {
-      changed = now;
-      const c = Math.floor(rand() * cols);
-      heights[c] = Math.min(rows, Math.max(1, heights[c] + (rand() < 0.5 ? -1 : 1)));
-      const cell = cells[Math.floor(rand() * cells.length)];
-      cell.hollow = !cell.hollow;
-    }
-    ctx.clearRect(0, 0, width, height);
-    for (const cell of cells) {
-      const on = rows - cell.r <= heights[cell.c];
-      cell.alpha += ((on ? 1 : 0) - cell.alpha) * (still ? 1 : 0.06);
-      if (cell.alpha < 0.02) continue;
-      const x = left + cell.c * step;
-      const y = cell.r * step;
-      ctx.globalAlpha = cell.alpha;
-      for (let i = 0; i < bars; i++) {
-        const bx = x + i * bar * 2;
-        const edge = i === 0 || i === bars - 1;
-        ctx.fillStyle = shades[(cell.shade + i) % shades.length];
-        if (cell.hollow && !edge) {
-          ctx.fillRect(bx, y, bar, tile * 0.16);
-          ctx.fillRect(bx, y + tile * 0.84, bar, tile * 0.16);
-          continue;
-        }
-        const wave = Math.sin(t * 1.4 + cell.seed + i * 0.9) * 0.5 + 0.5;
-        const hole = y + tile * (0.15 + 0.6 * wave);
-        ctx.fillRect(bx, y, bar, hole - y);
-        ctx.fillRect(bx, hole + tile * 0.08, bar, y + tile - hole - tile * 0.08);
+    const total = still ? 9.5 : (now / 1000) % (cycle * prompts.length);
+    const round_ = Math.floor(total / cycle);
+    const t = total - round_ * cycle;
+    const prompt = prompts[round_];
+    const fade = t > cycle - 0.6 ? (cycle - t) / 0.6 : t < 0.3 ? t / 0.3 : 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const ratio = ctx.canvas.width / width;
+    ctx.setTransform(ratio * scale, 0, 0, ratio * scale, ratio * ox, ratio * oy);
+    ctx.globalAlpha = 1;
+    ctx.textBaseline = "alphabetic";
+
+    ctx.strokeStyle = blue;
+    ctx.lineWidth = 1.2;
+    round(0.5, 8.5, 318, 38, 19);
+    ctx.fillStyle = card;
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = "13px ui-sans-serif, system-ui, sans-serif";
+    ctx.fillStyle = fg;
+    const typed = prompt.text.slice(0, Math.floor(prompt.text.length * ease(t / 1.6)));
+    ctx.globalAlpha = fade;
+    ctx.fillText(typed, 18, 32);
+    if (t < 2 && Math.floor(now / 450) % 2 === 0) ctx.fillRect(18 + ctx.measureText(typed).width + 2, 21, 1.5, 15);
+    ctx.globalAlpha = 1;
+
+    mark(8, lanes[1] - 14, 28);
+    ctx.strokeStyle = line;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(22, 47);
+    ctx.lineTo(22, lanes[1] - 18);
+    ctx.stroke();
+    const split = ease((t - 1.6) / 0.6);
+    lanes.forEach((y, i) => {
+      ctx.strokeStyle = split > 0 ? blue : line;
+      ctx.globalAlpha = 0.25 + 0.5 * split;
+      ctx.beginPath();
+      ctx.moveTo(38, lanes[1]);
+      ctx.bezierCurveTo(70, lanes[1], 70, y, 104, y);
+      ctx.moveTo(232, y);
+      ctx.lineTo(app.x, y);
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+
+    lanes.forEach((y, i) => {
+      const { start, built, merged, landed } = timing[i];
+      const progress = (t - start) / (built - start);
+      const box = { x: 104, y: y - 22, w: 128, h: 44 };
+      ctx.fillStyle = card;
+      ctx.strokeStyle = t > start ? blue : line;
+      ctx.lineWidth = 1;
+      round(box.x + 0.5, box.y + 0.5, box.w, box.h, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = "500 11px ui-sans-serif, system-ui, sans-serif";
+      ctx.fillStyle = fade < 1 ? muted : fg;
+      ctx.globalAlpha = split * fade;
+      ctx.fillText(prompt.lanes[i], box.x, box.y - 8);
+      const label = ctx.measureText(prompt.lanes[i]).width;
+      if (t > start) chip(box.x + label + 8, box.y - 12, t < built ? "building" : t < merged ? "checking" : "merged", t < merged ? blue : green);
+      ctx.globalAlpha = fade;
+      const filled = Math.floor(30 * Math.max(0, Math.min(1, progress)));
+      for (let k = 0; k < 30; k++) {
+        const c = order[i][k];
+        const cx = box.x + 9 + (c % 10) * 11;
+        const cy = box.y + 7 + Math.floor(c / 10) * 11;
+        const on = k < filled && t < landed;
+        ctx.fillStyle = on ? blue : line;
+        ctx.globalAlpha = fade * (on ? 0.55 + 0.45 * ((c * 7) % 5) / 4 : 0.6);
+        ctx.fillRect(cx, cy, 8, 8);
       }
+      if (t > built && t < merged) {
+        ctx.globalAlpha = fade;
+        ctx.strokeStyle = blue;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const a = (now / 160) % (Math.PI * 2);
+        ctx.arc(box.x + box.w - 12, box.y + 12, 6, a, a + Math.PI * 1.4);
+        ctx.stroke();
+      }
+      if (t > merged && t < landed + 0.4) {
+        const targets = cells[i];
+        for (let k = 0; k < 14; k++) {
+          const p = ease((t - merged - k * 0.04) / 0.8);
+          if (p <= 0 || p >= 1) continue;
+          const dest = targets[(k * 5) % targets.length];
+          const tx = grid.x + (dest % appCols) * cell;
+          const ty = grid.y + Math.floor(dest / appCols) * cell;
+          const sx = box.x + box.w - 10;
+          const sy = y - 4 + (k % 3) * 4;
+          ctx.globalAlpha = fade * (1 - p * 0.3);
+          ctx.fillStyle = blue;
+          ctx.fillRect(sx + (tx - sx) * p, sy + (ty - sy) * p, 7, 7);
+        }
+      }
+      ctx.globalAlpha = 1;
+    });
+
+    ctx.fillStyle = card;
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1;
+    round(app.x + 0.5, app.y + 0.5, app.w, app.h, 12);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(app.x, app.y + 24.5);
+    ctx.lineTo(app.x + app.w, app.y + 24.5);
+    ctx.stroke();
+    ctx.fillStyle = line;
+    for (let d = 0; d < 3; d++) {
+      ctx.beginPath();
+      ctx.arc(app.x + 12 + d * 10, app.y + 12.5, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+    ctx.fillStyle = muted;
+    ctx.fillText("todo.workers.dev", app.x + 46, app.y + 16);
+    for (let k = 0; k < appCols * appRows; k++) {
+      const region = cells.findIndex((list) => list.includes(k));
+      const x = grid.x + (k % appCols) * cell;
+      const y = grid.y + Math.floor(k / appCols) * cell;
+      let on = 0;
+      if (region >= 0) on = ease((t - timing[region].merged - 0.5 - ((k * 13) % 9) * 0.04) / 0.4);
+      ctx.fillStyle = line;
+      ctx.globalAlpha = 0.45;
+      ctx.fillRect(x, y, cell - 3, cell - 3);
+      if (on > 0) {
+        ctx.fillStyle = blue;
+        ctx.globalAlpha = on * fade * (region === 0 ? 1 : region === 1 ? 0.75 : 0.9);
+        ctx.fillRect(x, y, cell - 3, cell - 3);
+      }
+    }
+    ctx.globalAlpha = 1;
+    const live = t - timing[2].landed;
+    if (live > 0.3) {
+      ctx.globalAlpha = fade;
+      chip(app.x + app.w - 52, app.y + 12.5, "● live", green);
+      const pulse = (live * 0.8) % 1;
+      ctx.globalAlpha = fade * (1 - pulse) * 0.5;
+      ctx.strokeStyle = green;
+      round(app.x - pulse * 8 + 0.5, app.y - pulse * 8 + 0.5, app.w + pulse * 16, app.h + pulse * 16, 12 + pulse * 8);
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
   };
@@ -194,7 +360,7 @@ function dots(ctx, width, height) {
   };
 }
 
-const scenes = { tiles, ascii, dots };
+const scenes = { build, ascii, dots };
 for (const [name, setup] of Object.entries(scenes)) {
   document.querySelectorAll(`[data-${name}]`).forEach((canvas) => animate(canvas, setup));
 }
