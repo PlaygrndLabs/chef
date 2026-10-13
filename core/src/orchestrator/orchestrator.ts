@@ -367,7 +367,13 @@ export class Orchestrator {
           if (synced === "conflict") return await this.save(record);
         }
         await this.advance(record);
+        if (await this.deps.store.get<number | null>(`retry/${id}`)) await this.deps.store.put(`retry/${id}`, null);
       } catch (error) {
+        const retries = (await this.deps.store.get<number | null>(`retry/${id}`)) ?? 0;
+        if (transient(error) && retries < TRANSIENT_RETRIES) {
+          await this.deps.store.put(`retry/${id}`, retries + 1);
+          return;
+        }
         await this.apply(record, { type: "fail", reason: `orchestrator error: ${(error as Error).message}` });
       }
       await this.save(record);
@@ -1194,6 +1200,13 @@ export function specProblems(tree: Tree): string[] {
   const files: Record<string, string> = {};
   for (const [path, content] of Object.entries(tree)) if (path.startsWith("spec/features/")) files[path] = content;
   return lintSpecFiles(files).problems.map((p) => `${p.path}: ${p.message}`);
+}
+
+const TRANSIENT_RETRIES = 5;
+
+export function transient(error: unknown): boolean {
+  if ((error as { retryable?: unknown } | null)?.retryable === true) return true;
+  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)/i.test((error as Error | null)?.message ?? "");
 }
 
 export function runnable(record: SessionRecord): boolean {
