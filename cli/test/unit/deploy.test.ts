@@ -21,7 +21,7 @@ describe("deploy", () => {
       workflows: [{ binding: "UPSTREAM_SYNC", name: "trial-upstream-sync" }],
       vectorize: [{ binding: "MEMORY", index_name: "trial-memory" }],
       triggers: { events: [{ filter: { namespace: "trial" }, targets: [{ workflow_name: "trial-upstream-sync" }] }] },
-      vars: { PREVIEW_WORKER: "trial-project", CODER_MODEL: (base["vars"] as Record<string, string>)["CODER_MODEL"] },
+      vars: { PROJECT_WORKER_PREFIX: "trial-", CODER_MODEL: (base["vars"] as Record<string, string>)["CODER_MODEL"] },
     });
     expect(copy["durable_objects"]).toEqual(base["durable_objects"]);
   });

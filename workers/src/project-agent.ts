@@ -9,7 +9,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { AgentSettings, applyAgentConfig, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
@@ -20,10 +20,10 @@ import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
-import { previewName, SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
+import { previewName, SandboxCheckRunner, SandboxLiveHost, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder } from "./sandbox-coder.ts";
 import { buildingPage, previewPath } from "@chef/adapters/preview-page";
-import { CloudflareWorkerSpace } from "./preview-space.ts";
+import { CloudflareWorkerSpace, WorkerTakenError } from "./preview-space.ts";
 import { gitHubApp } from "./github.ts";
 import { agentStore, currentSettings, envCipher, settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
@@ -36,6 +36,17 @@ const ORIGIN = "project/origin";
 const OVERVIEW = "project/overview";
 const ENV = "project/env";
 const AGENTS = "project/agents/";
+const LIVE = "project/live";
+const LEGACY_REMOVED = "project/legacy-worker-removed";
+const LEGACY_WORKER_PREFIX = "chef-project-";
+
+export interface LiveState {
+  readonly status: LiveStatus;
+  readonly commitId: string;
+  readonly url: string | null;
+  readonly error?: string;
+  readonly at: number;
+}
 const READING_TIMEOUT_MS = 10 * 60_000;
 const POLL_SECONDS = 300;
 const BUSY_SWEEP_SECONDS = 600;
@@ -50,8 +61,10 @@ function role(profiles: Profiles, name: string) {
 
 export class ProjectAgent extends Agent<Env> {
   private readonly calls = new Map<string, VoiceCall>();
-  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; space: CloudflareWorkerSpace | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
+  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; space: CloudflareWorkerSpace | null; live: SandboxLiveHost | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
   private cipher: EnvCipher | null = null;
+  private deploying = false;
+  private deployAgain = false;
 
   private async build() {
     const settings = await currentSettings(this.env);
@@ -77,8 +90,9 @@ export class ProjectAgent extends Agent<Env> {
     const llmReviewer = new LlmReviewer(llm, resolveModel(reviewerRole.model, settings.models), withSkills(reviewerRole.instructions, reviewerRole.skills));
     const store = new DurableStore(this.ctx.storage);
     const clock = { now: () => Date.now() };
-    const grant = settings.cloudflare ? { accountId: settings.cloudflare.accountId, worker: `${env.PREVIEW_WORKER}-${this.name}` } : null;
+    const grant = settings.cloudflare ? { accountId: settings.cloudflare.accountId, worker: `${env.PROJECT_WORKER_PREFIX}${this.name}` } : null;
     const space = settings.cloudflare && grant ? new CloudflareWorkerSpace(grant, settings.cloudflare.apiToken) : null;
+    const live = settings.cloudflare && grant ? new SandboxLiveHost(env.SESSION, repos, grant, settings.cloudflare.apiToken) : null;
     const keeper =
       settings.cloudflare && grant && space
         ? new PreviewKeeper(new SandboxPreviewHost(env.SESSION, repos, grant, settings.cloudflare.apiToken, () => this.prepareEnvironment(space)), space, { repos, store, clock, canonical: this.name, onActivity: () => void this.scheduleSweep() })
@@ -114,7 +128,7 @@ export class ProjectAgent extends Agent<Env> {
     const installation = git?.installation;
     const tokenSource = app && installation !== undefined ? () => app.installationToken(installation) : undefined;
     const external = git ? orchestrator.external(new GitRemote({ url: git.url, branch: git.branch, token: git.token, ...(tokenSource ? { tokenSource } : {}) }, control), { mode: git.mode, syncBranch: git.syncBranch, ...(origin ? { previewLink: (key: string) => `${origin}/preview/${this.name}/${key}` } : {}) }) : null;
-    this.built = { orchestrator, bus, repos, keeper, space, external, settings, fingerprint };
+    this.built = { orchestrator, bus, repos, keeper, space, live, external, settings, fingerprint };
     return this.built;
   }
 
@@ -123,7 +137,7 @@ export class ProjectAgent extends Agent<Env> {
     const action = url.pathname.split("/").filter(Boolean).at(-1);
     if (url.pathname.endsWith("/git/webhook")) return this.webhook(request);
     if ((await this.ctx.storage.get<string>(ORIGIN)) !== url.origin) await this.ctx.storage.put(ORIGIN, url.origin);
-    const { orchestrator, bus, settings, external } = await this.build();
+    const { orchestrator, bus, settings, external, space } = await this.build();
     const session = SESSION_ROUTE.exec(url.pathname);
     if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
     const preview = PREVIEW_ROUTE.exec(url.pathname);
@@ -142,12 +156,31 @@ export class ProjectAgent extends Agent<Env> {
     }
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
-      return Response.json({ commitId: main.commitId, features: readSpec(main.tree) });
+      if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
+      return Response.json({ commitId: main.commitId, features: readSpec(main.tree), live: (await this.ctx.storage.get<LiveState>(LIVE)) ?? null });
+    }
+    if (request.method === "POST" && action === "live") {
+      if (!space) return Response.json({ error: NO_CLOUDFLARE }, { status: 409 });
+      const current = await this.ctx.storage.get<LiveState>(LIVE);
+      if (current?.status === "failed") await this.ctx.storage.put<LiveState>(LIVE, { ...current, commitId: "" });
+      await this.schedule(0, "deployLive", undefined, { idempotent: true });
+      return Response.json({ ok: true }, { status: 202 });
     }
     if (request.method === "POST" && action === "bootstrap") {
       return setupResponse(request, async (progress) => {
         const existing = (await orchestrator.mainTree()).commitId;
         if (existing) return { commitId: existing, created: false };
+        if (space) {
+          progress.step("Reserve the live address");
+          try {
+            await space.ensure();
+            progress.log(`The live app will be at ${await space.liveUrl()}`);
+          } catch (error) {
+            if (error instanceof WorkerTakenError) throw new SetupError(error.message, 409);
+            throw error;
+          }
+        }
+        await this.schedule(5, "deployLive", undefined, { idempotent: true });
         if (external) {
           const pulled = await external.pull(progress);
           if (pulled.status !== "imported") throw new SetupError(`importing the linked repository did not finish: ${pulled.status}`, 409);
@@ -349,6 +382,7 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<void> {
+    await space.ensure();
     const vars = await revealEnv(await this.effectiveEnv(), this.envCipher());
     if (vars.length === 0) return;
     try {
@@ -360,11 +394,14 @@ export class ProjectAgent extends Agent<Env> {
 
   async pushEnvironment(): Promise<void> {
     const { keeper, space } = await this.build();
+    if (space && (await this.ctx.storage.get<LiveState>(LIVE))?.status === "ready") {
+      await space.applyLiveEnvironment(await revealEnv(await this.effectiveEnv(), this.envCipher())).catch((error: unknown) => console.error(`updating ${this.name}'s live environment failed`, error));
+    }
     if (!keeper || !space || !(await keeper.live())) return;
     try {
       const patch = await space.applyEnvironment(await revealEnv(await this.effectiveEnv(), this.envCipher()), { create: false });
       if (!patch || Object.keys(patch).length === 0) return;
-      for (const branch of await keeper.liveBranches()) await space.refreshPreview(previewName(branch), patch).catch((error: unknown) => console.error(`updating the environment of preview ${branch} failed`, error));
+      for (const branch of await keeper.liveBranches()) await space.refreshPreview(previewName(branch, `${this.env.PROJECT_WORKER_PREFIX}${this.name}`), patch).catch((error: unknown) => console.error(`updating the environment of preview ${branch} failed`, error));
     } catch (error) {
       console.error(`updating ${this.name}'s preview environment failed`, error);
     }
@@ -479,12 +516,67 @@ export class ProjectAgent extends Agent<Env> {
     const sessions = await orchestrator.drain(1);
     await this.pushExternal();
     if (sessions.some(runnable)) await this.schedule(1, "drive");
+    if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
   }
 
   async onMainPushed(event: PushedEvent): Promise<void> {
     const { repos } = await this.build();
     repos.emitPush(event);
     await this.schedule(1, "drive");
+    await this.schedule(0, "deployLive", undefined, { idempotent: true });
+  }
+
+  private async liveBehind(): Promise<boolean> {
+    const { repos, space } = await this.build();
+    if (!space) return false;
+    const head = await repos.resolveRef(this.name, "main");
+    const live = await this.ctx.storage.get<LiveState>(LIVE);
+    return head !== null && head !== live?.commitId;
+  }
+
+  async deployLive(): Promise<void> {
+    if (this.deploying) {
+      this.deployAgain = true;
+      return;
+    }
+    this.deploying = true;
+    try {
+      do {
+        this.deployAgain = false;
+        await this.deployLiveOnce();
+      } while (this.deployAgain);
+    } finally {
+      this.deploying = false;
+    }
+  }
+
+  private async deployLiveOnce(): Promise<void> {
+    const { repos, space, live, bus } = await this.build();
+    if (!space || !live) return;
+    const commitId = await repos.resolveRef(this.name, "main");
+    const current = await this.ctx.storage.get<LiveState>(LIVE);
+    if (!commitId || (current?.commitId === commitId && current.status !== "deploying")) return;
+    const record = async (state: Omit<LiveState, "at">) => {
+      await this.ctx.storage.put<LiveState>(LIVE, { ...state, at: Date.now() });
+      await bus.publish({ type: "live.updated", project: this.name, at: Date.now(), ...state });
+    };
+    await record({ status: "deploying", commitId, url: current?.url ?? null });
+    try {
+      await space.ensure();
+      await this.removeLegacyWorker(space);
+      await live.deploy({ repo: this.name, commitId });
+      await space.applyLiveEnvironment(await revealEnv(await this.effectiveEnv(), this.envCipher()));
+      await record({ status: "ready", commitId, url: await space.liveUrl() });
+    } catch (error) {
+      console.error(`deploying ${this.name}'s live app failed`, error);
+      await record({ status: "failed", commitId, url: current?.url ?? null, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  private async removeLegacyWorker(space: CloudflareWorkerSpace): Promise<void> {
+    if (this.env.PROJECT_WORKER_PREFIX !== "" || (await this.ctx.storage.get<boolean>(LEGACY_REMOVED))) return;
+    await space.removeWorker(`${LEGACY_WORKER_PREFIX}${this.name}`);
+    await this.ctx.storage.put(LEGACY_REMOVED, true);
   }
 }
 

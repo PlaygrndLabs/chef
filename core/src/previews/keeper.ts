@@ -3,7 +3,7 @@ import type { RepoHost } from "../ports/repo-host.ts";
 import type { Clock, KeyValueStore } from "../ports/runtime.ts";
 
 export interface PreviewSpace {
-  remove(): Promise<void>;
+  remove(branches: readonly string[]): Promise<void>;
 }
 
 export interface PreviewEntry extends PreviewDeployment {
@@ -104,11 +104,12 @@ export class PreviewKeeper implements PreviewHost {
     if (input.busy) return { status: "busy" };
     const idleForMs = this.deps.clock.now() - state.lastActivity;
     if (idleForMs < input.idleMs) return { status: "awake", idleForMs };
-    await this.space.remove();
     const entries = await this.deps.store.list<PreviewEntry | null>(ENTRY);
+    const removed = [...entries.values()].filter((entry): entry is PreviewEntry => entry !== null);
+    await this.space.remove(removed.map((entry) => entry.branch));
     for (const key of entries.keys()) await this.deps.store.put(key, null);
     await this.deps.store.put<SpaceState>(SPACE, { live: false, lastActivity: state.lastActivity });
-    return { status: "removed", previews: [...entries.values()].filter(Boolean).length };
+    return { status: "removed", previews: removed.length };
   }
 
   async liveBranches(): Promise<string[]> {

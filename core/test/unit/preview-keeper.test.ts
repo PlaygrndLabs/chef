@@ -12,9 +12,9 @@ async function setup() {
   const first = await repos.commit(token, { ref: "main", parent: null, changes: { "a.txt": "a" }, message: "init", author: { name: "t", email: "ma.karimi76@gmail.com" } });
   await repos.pushRef(token, { ref: "preview/todo-add", commitId: first.id });
   const host = new MemoryPreviewHost();
-  const removed: number[] = [];
+  const removed: (readonly string[])[] = [];
   let failNext: string | null = null;
-  const space: PreviewSpace = { remove: async () => void removed.push(clock.now()) };
+  const space: PreviewSpace = { remove: async (branches) => void removed.push(branches) };
   const flaky = {
     deploy: async (input: { repo: string; branch: string; commitId: string }) => {
       if (failNext) {
@@ -32,7 +32,7 @@ async function setup() {
 }
 
 describe("preview keeper", () => {
-  it("serves a deployed preview, removes the Worker after idle, and rebuilds it on the next visit", async () => {
+  it("serves a deployed preview, removes its previews after idle, and rebuilds it on the next visit", async () => {
     const t = await setup();
     await t.keeper.deploy({ repo: "demo", branch: "preview/todo-add", commitId: t.commit });
     expect(await t.keeper.visit("todo-add")).toMatchObject({ status: "ready", commitId: t.commit });
@@ -44,7 +44,7 @@ describe("preview keeper", () => {
     expect(await t.keeper.sweep({ busy: true, idleMs: HOUR })).toEqual({ status: "busy" });
     expect(t.removed).toHaveLength(0);
     expect(await t.keeper.sweep({ busy: false, idleMs: HOUR })).toEqual({ status: "removed", previews: 1 });
-    expect(t.removed).toHaveLength(1);
+    expect(t.removed).toEqual([["preview/todo-add"]]);
     expect(await t.keeper.sweep({ busy: false, idleMs: HOUR })).toEqual({ status: "asleep" });
     expect(await t.keeper.current({ repo: "demo", branch: "preview/todo-add" })).toBeNull();
 
