@@ -59,16 +59,27 @@ jobs:
           api="https://api.cloudflare.com/client/v4"
           auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
           host=$(curl -fsS -H "$auth" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r .result.subdomain)
-          site="https://chef.playgrndlabs.com"
           dev="https://chef-site.$host.workers.dev"
-          wanted=$(jq -c . site/oauth-scopes.json)
-          scopes=$(curl -sS -H "$auth" "$api/oauth/scopes" | jq -c --argjson wanted "$wanted" '[.result[]? | select((.name | ascii_downcase) as $n | $wanted | map(ascii_downcase) | index($n)) | .id]')
-          if [ "$scopes" = "[]" ] || [ "$scopes" = "" ]; then
+          site="https://chef.playgrndlabs.com"
+          if ! curl -fsS -o /dev/null "$site/logo.png"; then
+            echo "::notice::$site is not reachable yet, so the sign-in app uses $dev as its home page."
+            site="$dev"
+          fi
+          wanted=$(jq -c 'map(ascii_downcase)' site/oauth-scopes.json)
+          available=$(curl -sS -H "$auth" "$api/oauth/scopes" | jq -c '[.result[]? | {id, name}]')
+          echo "$available" | jq -r '.[] | "available scope: \(.id) (\(.name))"'
+          scopes=$(echo "$available" | jq -c --argjson wanted "$wanted" '[.[] | select(((.name | ascii_downcase) as $n | $wanted | index($n)) or ((.id | ascii_downcase) as $i | $wanted | index($i))) | .id]')
+          if [ "$scopes" = "[]" ]; then
             echo "::notice::Cloudflare did not list OAuth scopes for this token. Give CLOUDFLARE_API_TOKEN the OAuth Clients Write permission, then run this workflow again."
             exit 0
           fi
+          missing=$(echo "$available" | jq -c --argjson wanted "$wanted" '[$wanted[] as $w | select([.[] | (.name | ascii_downcase), (.id | ascii_downcase)] | index($w) | not) | $w]')
+          if [ "$missing" != "[]" ]; then
+            echo "::notice::These sign-in scopes did not match any Cloudflare OAuth scope: $missing. Fix site/oauth-scopes.json using the available scopes listed above."
+            exit 0
+          fi
           echo "scopes: $scopes"
-          body=$(jq -n --arg site "$site" --arg dev "$dev" --argjson scopes "$scopes" '{client_name: "chef", client_uri: $site, logo_uri: ($site + "/favicon.svg"), redirect_uris: [$site + "/auth/callback", $dev + "/auth/callback"], grant_types: ["authorization_code"], response_types: ["code"], token_endpoint_auth_method: "client_secret_basic", scopes: $scopes}')
+          body=$(jq -n --arg site "$site" --arg dev "$dev" --argjson scopes "$scopes" '{client_name: "chef", client_uri: $site, logo_uri: ($dev + "/logo.png"), redirect_uris: (["https://chef.playgrndlabs.com/auth/callback", $dev + "/auth/callback"] | unique), grant_types: ["authorization_code"], response_types: ["code"], token_endpoint_auth_method: "client_secret_basic", scopes: $scopes}')
           created=$(curl -sS -X POST -H "$auth" -H "content-type: application/json" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/oauth_clients" -d "$body")
           if [ "$(echo "$created" | jq -r .success)" != "true" ]; then
             echo "::notice::Cloudflare did not create the sign-in app: $(echo "$created" | jq -c .errors)"

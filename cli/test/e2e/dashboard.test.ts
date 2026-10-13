@@ -25,7 +25,7 @@ describe("dashboard in a browser", () => {
       await page.getByRole("button", { name: "Switch project" }).click();
       await page.getByRole("menuitem", { name: "shop" }).waitFor();
       await page.keyboard.press("Escape");
-      await page.locator("#new-project-button").waitFor();
+      expect(await page.locator("#new-project-button").count()).toBe(0);
       await page.locator("#project-settings-button").waitFor();
       await page.locator("#talk-button").waitFor();
       await page.locator("#app-menu").click();
@@ -104,6 +104,31 @@ describe("dashboard in a browser", () => {
       expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual(["todo-add", "shout"]);
       await page.getByRole("button", { name: "Close Shout a phrase" }).click();
       await page.locator('[data-view="feature"][data-feature="todo-add"]').waitFor({ timeout: 10_000 });
+
+      await page.locator("#live-app-row").click();
+      await page.locator('[data-view="live"]').waitFor({ timeout: 10_000 });
+      expect(await page.locator('[data-tab=":live"]').innerText()).toContain("main");
+
+      await page.locator('#features [data-feature="reverse"]').dblclick();
+      const title = page.getByRole("textbox", { name: /^New name for/ });
+      await title.fill("Flip the list");
+      await title.press("Enter");
+      await page.locator('#features [data-feature="reverse"]', { hasText: "Flip the list" }).waitFor({ timeout: 10_000 });
+
+      await page.locator('#features [data-feature="reverse"]').dragTo(page.locator("#live-app-row"));
+      await page.locator('#features > ul > li > div [data-feature="reverse"]').waitFor({ timeout: 10_000 });
+      await page.getByRole("button", { name: "More for Flip the list" }).click();
+      await page.getByRole("menuitem", { name: "Move under" }).hover();
+      await page.getByRole("menuitem", { name: "Shout a phrase" }).click();
+      await page.locator('#features li:has([data-feature="shout"]) [data-feature="reverse"]').waitFor({ timeout: 10_000 });
+
+      await page.getByRole("button", { name: "More for Shout a phrase" }).click();
+      await page.getByRole("menuitem", { name: "Delete" }).click();
+      expect(await page.getByRole("alertdialog").innerText()).toContain("Flip the list goes too");
+      await page.getByRole("button", { name: "Delete", exact: true }).click();
+      await page.locator('#features [data-feature="shout"]').waitFor({ state: "detached", timeout: 30_000 });
+      await page.locator('#features [data-feature="reverse"]').waitFor({ state: "detached", timeout: 10_000 });
+      await page.locator('#features [data-feature="todo-add"]').waitFor();
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
