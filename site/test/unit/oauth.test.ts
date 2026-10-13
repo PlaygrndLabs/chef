@@ -40,10 +40,12 @@ describe("Cloudflare sign-in", () => {
   });
 
   it("signs sessions so only this site can mint them, and lets them expire", async () => {
-    const cookie = await signSession("secret", "user1", 0);
-    expect(await readSession("secret", cookie, 1000)).toBe("user1");
+    const cookie = await signSession("secret", { userId: "user1", orgId: "org1" }, 0);
+    expect(await readSession("secret", cookie, 1000)).toEqual({ userId: "user1", orgId: "org1" });
     expect(await readSession("other", cookie, 1000)).toBeNull();
     expect(await readSession("secret", cookie.replace("user1", "user2"), 1000)).toBeNull();
+    expect(await readSession("secret", cookie.replace("org1", "org2"), 1000)).toBeNull();
+    expect(await readSession("secret", `user1.${cookie.split(".").slice(2).join(".")}`, 1000)).toBeNull();
     expect(await readSession("secret", cookie, 31 * 24 * 3600 * 1000)).toBeNull();
     expect(await readSession("secret", undefined, 0)).toBeNull();
   });

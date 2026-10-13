@@ -6,7 +6,7 @@ chef turns a prompt or a spec entry into a merged feature on its own. The spec i
 
 chef has two halves, and both run on Cloudflare.
 
-The site (`site/`, the `chef-site` Worker behind chef.playgrndlabs.com) is where people start. It shows the landing page, signs people in with Cloudflare (OAuth), and on setup installs a chef engine on the Cloudflare account they pick, through `chef deploy` in an installer container. It keeps only each member's email, their engine's address and the key it uses to reach that engine; the Cloudflare access used for setup is revoked when setup ends. Signed-in members get the dashboard from the site, which forwards `/api/*`, `/agents/*` (the live WebSocket) and `/preview/*` to their engine with that key. See `site/README.md`.
+The site (`site/`, the `chef-site` Worker behind chef.playgrndlabs.com) is where people start. It shows the landing page, signs people in with Cloudflare (OAuth), and on setup installs a chef engine on the Cloudflare account they pick, through `chef deploy` in an installer container. Every person who signs up gets a default organization they own, the way Cloudflare gives each sign-up an account; an engine belongs to an organization, not to a person, and people reach it through their role there (owner, admin or member). The site keeps only each person's email, their organizations, each organization's engine address and the key it uses to reach that engine; the Cloudflare access used for setup is revoked when setup ends. Signed-in people get the dashboard from the site, which forwards `/api/*`, `/agents/*` (the live WebSocket) and `/preview/*` to their current organization's engine with that key. See `site/README.md`.
 
 The engine is the chef Worker in the person's own account: the HTTP API, the project and session Durable Objects, sandboxes, previews, Artifacts repos, memory and settings. Everything that does work or keeps state lives there, so work goes on when no client is open. The engine also serves the same dashboard itself, behind its password. A terminal or desktop app would be another client of the same API.
 
@@ -20,7 +20,7 @@ Every deploy goes through `chef deploy` (`pnpm run deploy`, `cli/src/deploy.ts`)
 | --- | --- |
 | `core` | Spec format and lint, router, session state machine, orchestrator, merge, ports and their in-memory fakes, code rules. No I/O. |
 | `adapters` | Real implementations of the ports: Artifacts over isomorphic-git, Jev classifier, Claude planner and reviewer, and `ChefAgent`, the AG-UI agent CopilotKit streams sessions through. |
-| `site` | The hosted site: landing page, Sign in with Cloudflare, setup on the person's account (`Member` Durable Object and installer container), the admin members list, and the proxy to each member's engine. |
+| `site` | The hosted site: landing page, Sign in with Cloudflare, users and organizations (`Members` directory, `Organization` and `Member` Durable Objects), setup on the person's Cloudflare account (installer container), the admin members list, and the proxy to each organization's engine. |
 | `workers` | The engine, the chef Worker: `ProjectAgent` and `SessionAgent` Durable Objects, the coder sandbox, the `upstream-sync` Workflow, the HTTP API. |
 | `template` | The vertical-slice template every project chef builds starts from, with its own `app` CLI (`gen`, `drive`, `proof`). |
 | `cli` | `chef` CLI: spec lint, code rules, routing, `chef deploy`, the local demo with real checks, benchmarks, the Jev spike, and `chef serve` (the dashboard on the in-memory world, used by the browser tests). |

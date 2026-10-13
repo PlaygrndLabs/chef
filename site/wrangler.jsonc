@@ -8,8 +8,8 @@
   "workers_dev": true,
   "build": { "command": "node scripts/build.mjs" },
   "assets": { "directory": "dist", "binding": "ASSETS", "run_worker_first": true },
-  "durable_objects": { "bindings": [{ "name": "MEMBER", "class_name": "Member" }, { "name": "MEMBERS", "class_name": "Members" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Member"] }, { "tag": "v2", "new_sqlite_classes": ["Members"] }],
+  "durable_objects": { "bindings": [{ "name": "MEMBER", "class_name": "Member" }, { "name": "MEMBERS", "class_name": "Members" }, { "name": "ORG", "class_name": "Organization" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Member"] }, { "tag": "v2", "new_sqlite_classes": ["Members"] }, { "tag": "v3", "new_sqlite_classes": ["Organization"] }],
   "containers": [
     {
       "class_name": "Member",

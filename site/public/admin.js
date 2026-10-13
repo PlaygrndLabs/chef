@@ -15,14 +15,22 @@ function stat(label, value) {
   return el("div", { className: "stat" }, el("strong", { textContent: String(value) }), el("span", { className: "muted", textContent: label }));
 }
 
-function row(member, latest) {
-  const who = el("td", {}, el("div", {}, member.email ?? member.id, member.admin ? badge("admin", "ok") : null), el("div", { className: "muted small", textContent: member.accountId ? `Account ${member.accountId}` : "No account chosen" }));
-  const chef = el("td", {}, member.engine ? el("a", { href: member.engine, target: "_blank", rel: "noopener", textContent: new URL(member.engine).host }) : el("span", { className: "muted", textContent: "None" }));
-  if (member.version) chef.append(el("div", { className: "muted small" }, `Version ${member.version}`, latest && member.version !== latest ? badge("update on next sign-in", "warn") : null));
-  const [label, kind] = SETUP[member.install] ?? SETUP.idle;
-  const setup = el("td", {}, badge(label, kind), member.error ? el("div", { className: "error small", textContent: member.error }) : null);
-  return el("tr", {}, who, chef, setup, el("td", { textContent: when(member.firstSeen) }), el("td", { textContent: when(member.lastSeen) }));
+function orgRow(org, latest) {
+  const who = el("td", {}, el("div", {}, org.name), el("div", { className: "muted small", textContent: `${org.owner ?? "No owner"} · ${org.members} ${org.members === 1 ? "member" : "members"}` }));
+  const chef = el("td", {}, org.engine ? el("a", { href: org.engine, target: "_blank", rel: "noopener", textContent: new URL(org.engine).host }) : el("span", { className: "muted", textContent: "None" }));
+  if (org.accountId) chef.append(el("div", { className: "muted small", textContent: `Account ${org.accountId}` }));
+  if (org.version) chef.append(el("div", { className: "muted small" }, `Version ${org.version}`, latest && org.version !== latest ? badge("update on next sign-in", "warn") : null));
+  const [label, kind] = SETUP[org.install] ?? SETUP.idle;
+  const setup = el("td", {}, badge(label, kind), org.error ? el("div", { className: "error small", textContent: org.error }) : null);
+  return el("tr", {}, who, chef, setup, el("td", { textContent: when(org.createdAt) }));
 }
+
+function userRow(user) {
+  const who = el("td", {}, el("div", {}, user.email ?? user.id, user.admin ? badge("admin", "ok") : null));
+  return el("tr", {}, who, el("td", { textContent: String(user.orgs) }), el("td", { textContent: when(user.firstSeen) }), el("td", { textContent: when(user.lastSeen) }));
+}
+
+const empty = (text) => [el("tr", {}, el("td", { colSpan: 4, className: "muted", textContent: text }))];
 
 async function load() {
   const response = await fetch("/site/api/admin/members", { headers: { accept: "application/json" } });
@@ -32,14 +40,16 @@ async function load() {
     $("error").textContent = body?.error ?? "Could not load members. Refresh to try again.";
     return;
   }
-  const members = body.members;
+  const { orgs, users } = body;
   $("stats").replaceChildren(
-    stat("members", members.length),
-    stat("with chef", members.filter((m) => m.engine).length),
-    stat("setting up", members.filter((m) => m.install === "running").length),
-    stat("failed setups", members.filter((m) => m.install === "failed").length),
+    stat("people", users.length),
+    stat("organizations", orgs.length),
+    stat("with chef", orgs.filter((o) => o.engine).length),
+    stat("setting up", orgs.filter((o) => o.install === "running").length),
+    stat("failed setups", orgs.filter((o) => o.install === "failed").length),
   );
-  $("rows").replaceChildren(...(members.length ? members.map((m) => row(m, body.latest)) : [el("tr", {}, el("td", { colSpan: 5, className: "muted", textContent: "No one has signed in yet." }))]));
+  $("orgs").replaceChildren(...(orgs.length ? orgs.map((o) => orgRow(o, body.latest)) : empty("No organizations yet.")));
+  $("users").replaceChildren(...(users.length ? users.map(userRow) : empty("No one has signed in yet.")));
 }
 
 load();

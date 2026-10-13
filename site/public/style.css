@@ -194,6 +194,7 @@ pre.log { max-height: 320px; overflow: auto; background: var(--muted); border-ra
 .admin { padding-top: 40px; padding-bottom: 64px; }
 .admin h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 8px; }
 .admin .sub { margin-bottom: 24px; }
+.admin h2 { font-size: 18px; margin: 28px 0 12px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .stat { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
 .stat strong { font-size: 24px; }

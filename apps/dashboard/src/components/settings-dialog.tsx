@@ -8,7 +8,7 @@ import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/a
 import { EnvironmentForm } from "@/components/environment";
 import { SharedInstructionsForm } from "@/components/guidance";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
-import { appApi, githubApi, settingsApi, sharedEnvApi, type AppMode, type GitHubView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
+import { appApi, githubApi, orgApi, settingsApi, sharedEnvApi, type AppMode, type GitHubView, type OrgSummary, type OrgView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -273,6 +273,66 @@ function AccountSection(props: { readonly account: string | null; readonly admin
   );
 }
 
+const ROLE_LABEL = { owner: "an owner", admin: "an admin", member: "a member" } as const;
+
+function OrgSection(props: { readonly org: OrgView; readonly orgs: readonly OrgSummary[] }) {
+  const [name, setName] = useState(props.org.name);
+  const [fresh, setFresh] = useState("");
+  const [busy, setBusy] = useState(false);
+  const act = async (work: () => Promise<unknown>, after: () => void) => {
+    setBusy(true);
+    try {
+      await work();
+      after();
+    } catch (e) {
+      toast.error("Could not save", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const others = props.orgs.filter((org) => org.id !== props.org.id);
+  return (
+    <Group title="Organization" note={`Your chef, its projects and the Cloudflare account it runs on belong to this organization. You are ${ROLE_LABEL[props.org.role]} of it.`}>
+      {props.org.role === "member" ? (
+        <p className="text-sm" data-current="org">
+          {props.org.name}
+        </p>
+      ) : (
+        <form
+          className="grid gap-2.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void act(() => orgApi.rename(name), () => toast.success("Organization renamed"));
+          }}
+        >
+          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Organization name" maxLength={60} required data-current="org" />
+          <Actions busy={busy} />
+        </form>
+      )}
+      {others.map((org) => (
+        <div key={org.id} className="flex items-center gap-3">
+          <p className="flex-1 text-xs text-muted-foreground">{org.name}</p>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void act(() => orgApi.use(org.id), () => location.assign("/"))}>
+            Switch
+          </Button>
+        </div>
+      ))}
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void act(() => orgApi.create(fresh), () => location.assign("/setup"));
+        }}
+      >
+        <Input value={fresh} onChange={(e) => setFresh(e.target.value)} placeholder="New organization name" aria-label="New organization name" maxLength={60} required />
+        <Button type="submit" size="sm" variant="outline" disabled={busy}>
+          Create
+        </Button>
+      </form>
+    </Group>
+  );
+}
+
 function ConnectionForm() {
   const mode = useAppMode();
   if (!mode || mode.mode !== "local" || mode.place !== "cloud") return null;
@@ -404,6 +464,7 @@ export function SettingsDialog(props: {
           </Group>
           {settings && computer ? <ComputerSection settings={settings} /> : null}
           {hosted ? <AccountSection account={mode?.account ?? null} admin={mode?.admin === true} /> : null}
+          {hosted && mode?.org ? <OrgSection org={mode.org} orgs={mode.orgs ?? []} /> : null}
           {settings && !computer && !hosted ? (
             <Group title="Password" note="Changing it signs out every other browser and script.">
               <PasswordForm settings={settings} save={save} />

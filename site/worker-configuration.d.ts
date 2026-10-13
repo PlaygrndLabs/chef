@@ -7,11 +7,12 @@ interface __BaseEnv_Env {
 	ENGINE_VERSION: "";
 	MEMBER: DurableObjectNamespace<import("./src/index").Member>;
 	MEMBERS: DurableObjectNamespace<import("./src/index").Members>;
+	ORG: DurableObjectNamespace<import("./src/index").Organization>;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./src/index");
-		durableNamespaces: "Member" | "Members";
+		durableNamespaces: "Member" | "Members" | "Organization";
 	}
 	interface Env extends __BaseEnv_Env {}
 }
