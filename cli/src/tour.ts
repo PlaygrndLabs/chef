@@ -30,6 +30,7 @@ export interface TourReport {
   routed: { readonly prompt: string; readonly intent: string; readonly via: string; readonly classifier: string | null } | null;
   readonly setup: string[];
   finished: boolean;
+  featureRoute?: number;
 }
 
 const SETTLE_MS = 15_000;
@@ -184,6 +185,12 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         break;
       }
       await page.waitForTimeout(options.everySeconds * 1000);
+    }
+    const feature = (await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[])).at(-1)?.featureId;
+    if (feature) {
+      const probe = await page.request.patch(`/api/projects/${project}/features/${feature}`, { data: {} });
+      report.featureRoute = probe.status();
+      if (probe.status() !== 400) report.errors.push(`feature route: PATCH ${feature} answered ${probe.status()} instead of 400`);
     }
     const events: unknown[] = [];
     for (let after = 0; ; ) {
