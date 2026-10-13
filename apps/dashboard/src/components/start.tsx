@@ -18,7 +18,7 @@ function StartSidebar(props: { readonly app: AppSettings; readonly onSettings: (
     <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex h-7 items-center px-1.5">
         <a href="/" aria-label="All projects" title="All projects">
-          <Wordmark className="h-[15px] translate-y-px" />
+          <Wordmark />
         </a>
       </div>
       {props.onNew ? (
@@ -131,7 +131,7 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
           <Button variant="ghost" size="icon" onClick={() => setSidebar(true)} aria-label="Show menu">
             <Menu />
           </Button>
-          <Wordmark className="h-[14px]" />
+          <Wordmark className="h-[17px]" />
         </div>
         <main className="min-h-0 flex-1 overflow-y-auto">{any ? <ProjectList projects={props.projects} onOpen={props.onOpen} onNew={() => setAdding(true)} /> : <FirstProject fromGitHub={fromGitHub} onCreated={props.onCreated} />}</main>
       </div>

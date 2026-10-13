@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/chef-logo-dark.svg">
-    <img src="docs/assets/chef-logo.svg" alt="chef" width="193">
+    <img src="docs/assets/chef-logo.svg" alt="chef" width="227">
   </picture>
 </p>
 

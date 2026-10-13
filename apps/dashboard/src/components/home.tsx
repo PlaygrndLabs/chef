@@ -83,7 +83,7 @@ function Reply({ text, sessions }: { readonly text: string; readonly sessions: r
 function Welcome({ onExample }: { readonly onExample: (text: string) => void }) {
   return (
     <div className="flex flex-col items-center gap-3 pt-12 pb-4 text-center @lg:pt-20" data-view="welcome">
-      <Wordmark className="mb-2 h-9" />
+      <Wordmark className="mb-2 h-11" />
       <h2 className="text-2xl font-semibold tracking-tight">What should we build?</h2>
       <p className="max-w-md text-muted-foreground">Describe a feature in plain words. chef plans it, writes the tests and the code, checks it, and puts it live.</p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
