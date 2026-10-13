@@ -1,9 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
+import type { ProjectEntry } from "./projects.ts";
 import { hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
 
 const SETTINGS = "providers";
 const PASSWORD = "password";
+const PROJECTS = "projects";
 
 export class Settings extends DurableObject<Env> {
   async read(): Promise<AppSettings> {
@@ -27,24 +29,35 @@ export class Settings extends DurableObject<Env> {
   async replacePassword(password: StoredPassword): Promise<void> {
     await this.ctx.storage.put(PASSWORD, password);
   }
+
+  async projects(): Promise<readonly ProjectEntry[]> {
+    return (await this.ctx.storage.get<ProjectEntry[]>(PROJECTS)) ?? [];
+  }
+
+  async addProject(entry: ProjectEntry): Promise<boolean> {
+    const list = await this.projects();
+    if (list.some((p) => p.name === entry.name)) return false;
+    await this.ctx.storage.put(PROJECTS, [...list, entry]);
+    return true;
+  }
 }
 
-function stub(env: Env): DurableObjectStub<Settings> {
+export function settingsStub(env: Env): DurableObjectStub<Settings> {
   return env.SETTINGS.get(env.SETTINGS.idFromName("global"));
 }
 
 export async function currentSettings(env: Env): Promise<Resolved> {
-  return resolveSettings(await stub(env).read(), env);
+  return resolveSettings(await settingsStub(env).read(), env);
 }
 
 export async function credential(env: Env): Promise<Credential | null> {
   if (env.CHEF_PASSWORD) return { kind: "deployment", password: env.CHEF_PASSWORD };
-  const stored = await stub(env).password();
+  const stored = await settingsStub(env).password();
   return stored ? { kind: "app", ...stored } : null;
 }
 
 export function claimPassword(env: Env): (password: StoredPassword) => Promise<boolean> {
-  return (password) => stub(env).claimPassword(password);
+  return (password) => settingsStub(env).claimPassword(password);
 }
 
 async function view(env: Env, saved: AppSettings) {
@@ -52,7 +65,7 @@ async function view(env: Env, saved: AppSettings) {
 }
 
 export async function settingsRequest(request: Request, env: Env): Promise<Response> {
-  const settings = stub(env);
+  const settings = settingsStub(env);
   const saved = await settings.read();
   if (request.method === "GET") return Response.json(await view(env, saved));
   if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
