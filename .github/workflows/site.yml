@@ -55,7 +55,14 @@ jobs:
           auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
           zone=$(curl -sS -H "$auth" "$api/zones?name=playgrndlabs.com&account.id=$CLOUDFLARE_ACCOUNT_ID" | jq -r '.result[0].id // empty')
           if [ -z "$zone" ]; then
-            echo "::notice::playgrndlabs.com is not in this Cloudflare account, so the site stays on workers.dev. Set SITE_CLOUDFLARE_API_TOKEN and SITE_CLOUDFLARE_ACCOUNT_ID for the account that has the domain."
+            echo "playgrndlabs.com is in another account, so chef.playgrndlabs.com reaches the site through the chef-gateway Pages project"
+            curl -sS -o /dev/null -H "$auth" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/chef-gateway" -w "%{http_code}" | grep -q 200 \
+              || curl -sS -X POST -H "$auth" -H "content-type: application/json" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects" -d '{"name":"chef-gateway","production_branch":"main"}' | jq -c '{success, errors}'
+            (cd site/gateway && npx wrangler pages deploy --branch main --commit-dirty=true)
+            curl -sS -X POST -H "$auth" -H "content-type: application/json" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/chef-gateway/domains" -d '{"name":"chef.playgrndlabs.com"}' | jq -c '{success, errors}'
+            target=$(curl -sS -H "$auth" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/chef-gateway" | jq -r .result.subdomain)
+            status=$(curl -sS -H "$auth" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/chef-gateway/domains/chef.playgrndlabs.com" | jq -r '.result.status // "unknown"')
+            echo "::notice::chef.playgrndlabs.com is $status. In the account that has playgrndlabs.com, add a CNAME record: chef -> $target"
             exit 0
           fi
           body=$(jq -n --arg zone "$zone" '{hostname: "chef.playgrndlabs.com", service: "chef-site", zone_id: $zone, environment: "production"}')
