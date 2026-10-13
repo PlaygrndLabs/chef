@@ -31,7 +31,7 @@ export function CommandPalette({ open, onOpenChange }: { readonly open: boolean;
           <CommandItem onSelect={() => run(() => setTheme(resolvedTheme === "dark" ? "light" : "dark"))}>Switch to {resolvedTheme === "dark" ? "light" : "dark"} theme</CommandItem>
           <CommandItem onSelect={() => run(addProject)}>
             <Plus />
-            Add project
+            New project
           </CommandItem>
         </CommandGroup>
         {projects.length > 1 ? (
