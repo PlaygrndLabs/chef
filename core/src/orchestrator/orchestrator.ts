@@ -19,6 +19,7 @@ import type { SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
+import { arrange, arrangedSpec, arrangementProblem, markRemoved, placed, subtreeOf, type FeatureArrangement, type FeatureLayout, type KnownFeature } from "../spec/layout.ts";
 import { missingEnv, renderEnvironment, type EnvVar } from "../env/env.ts";
 import { Archiver, MainWriter, Mutex, PreviewPublisher } from "./capabilities.ts";
 import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderLesson, renderRecall, MEMORY_DIR } from "../memory/memory.ts";
@@ -84,6 +85,8 @@ export interface GateOutcome {
 }
 
 export class ControlError extends Error {}
+
+const LAYOUT_KEY = "layout/features";
 
 interface Control {
   readonly type: "drop";
@@ -197,7 +200,7 @@ export class Orchestrator {
 
   async submit(prompt: string, options: { readonly attempts?: number } = {}): Promise<SubmitResult> {
     const { tree } = await this.mainTree();
-    const spec = readSpec(tree);
+    const spec = arrangedSpec(readSpec(tree), await this.layout());
     const decision = await this.router.route(prompt, spec);
     await this.emit({ type: "route.decided", prompt, decision });
     if (decision.intent === "question") {
@@ -291,7 +294,7 @@ export class Orchestrator {
 
   async route(prompt: string): Promise<RouteDecision> {
     const { tree } = await this.mainTree();
-    return this.router.route(prompt, readSpec(tree));
+    return this.router.route(prompt, arrangedSpec(readSpec(tree), await this.layout()));
   }
 
   async submitSpoken(prompt: string, call: { readonly voiceSessionId: string; readonly delegationId: string }): Promise<SubmitResult> {
@@ -337,6 +340,60 @@ export class Orchestrator {
     const notes = (await this.deps.store.get<string[]>(`steer/${id}`)) ?? [];
     await this.deps.store.put(`steer/${id}`, [...notes, message].slice(-10));
     await this.emit({ type: "session.steered", sessionId: id, featureId: record.featureId, message });
+  }
+
+  async layout(): Promise<FeatureLayout> {
+    return (await this.deps.store.get<FeatureLayout>(LAYOUT_KEY)) ?? {};
+  }
+
+  async arrange(featureId: string, change: FeatureArrangement): Promise<FeatureLayout> {
+    const layout = await this.layout();
+    const problem = arrangementProblem(featureId, change, await this.knownFeatures(layout));
+    if (problem) throw new ControlError(problem);
+    const next = arrange(layout, featureId, change);
+    await this.deps.store.put(LAYOUT_KEY, next);
+    const place = placed({ id: featureId, title: "", parent: null }, next);
+    await this.emit({ type: "feature.arranged", featureId, title: next[featureId]?.title ?? null, parent: place.parent });
+    return next;
+  }
+
+  async removeFeature(featureId: string): Promise<{ readonly featureIds: readonly string[]; readonly commitId: string | null; readonly reverted: boolean }> {
+    const layout = await this.layout();
+    const known = await this.knownFeatures(layout);
+    if (!known.some((f) => f.id === featureId)) throw new ControlError(`unknown feature ${featureId}`);
+    const featureIds = subtreeOf(featureId, known);
+    for (const record of await this.sessions()) if (featureIds.includes(record.featureId) && !isTerminal(record.machine.state)) await this.drop(record.id, "the feature was deleted");
+    const outcome = await this.mergeQueue.run(async () => {
+      const head = await this.deps.repos.resolveRef(this.canonical, "main");
+      if (!head) return { commitId: null, reverted: false };
+      const tree = (await this.commitOf(this.canonical, head)).tree;
+      const doomed = Object.keys(tree).filter((path) => featureIds.some((id) => path === specPath(id) || path.startsWith(`features/${id}/`)));
+      if (doomed.length === 0) return { commitId: null, reverted: false };
+      const removed = this.regenerate(applyChanges(tree, Object.fromEntries(doomed.map((path) => [path, null]))));
+      const changes = diffTrees(tree, applyChanges(removed, gardenFeatureMap(removed)));
+      const token = await this.deps.repos.createToken(this.canonical, "write", this.ttl);
+      try {
+        const commit = await this.deps.repos.commit(token, { ref: "main", parent: head, changes, message: `Remove ${featureIds.join(", ")}`, author: this.config.author });
+        const verified = await this.verifyMain(commit.id);
+        if (verified.ok) return { commitId: commit.id, reverted: false };
+        await this.revertLocked(featureId, commit.id, head, verified.log, [`Delete ${featureId}`]);
+        return { commitId: commit.id, reverted: true };
+      } finally {
+        await this.deps.repos.revokeToken(token);
+      }
+    });
+    await this.syncMemory();
+    if (outcome.reverted) return { featureIds, ...outcome };
+    await this.deps.store.put(LAYOUT_KEY, markRemoved(await this.layout(), featureIds, this.deps.clock.now()));
+    await this.emit({ type: "features.removed", featureIds, commitId: outcome.commitId });
+    return { featureIds, ...outcome };
+  }
+
+  private async knownFeatures(layout: FeatureLayout): Promise<KnownFeature[]> {
+    const known = new Map<string, KnownFeature>();
+    for (const record of await this.sessions()) known.set(record.featureId, { id: record.featureId, title: record.plan.feature.title, parent: record.plan.feature.parent ?? null });
+    for (const f of readSpec((await this.mainTree()).tree)) known.set(f.id, { id: f.id, title: f.title, parent: f.parent ?? null });
+    return [...known.values()].filter((f) => layout[f.id]?.removedAt === undefined).map((f) => placed(f, layout));
   }
 
   async turns(id: string, limit = 30): Promise<SessionTurn[]> {
