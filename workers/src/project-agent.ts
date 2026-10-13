@@ -10,8 +10,8 @@ import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/ada
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
 import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, PreviewKeeper, readSpec, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
-import { applyProjectUpdate, readProjectSettings, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
-import { GitRemote } from "@chef/adapters/external-git";
+import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
+import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
 import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
@@ -20,7 +20,8 @@ import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder } from "./sandbox-coder.ts";
 import { buildingPage, CloudflareWorkerSpace } from "./preview-space.ts";
-import { currentSettings } from "./settings.ts";
+import { gitHubApp } from "./github.ts";
+import { currentSettings, settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
 import type { SandboxStatus } from "./session-agent.ts";
 
@@ -41,7 +42,8 @@ export class ProjectAgent extends Agent<Env> {
     const settings = await currentSettings(this.env);
     const project = await this.projectSettings();
     const origin = (await this.ctx.storage.get<string>(ORIGIN)) ?? null;
-    const fingerprint = JSON.stringify([settings, project.git, origin]);
+    const app = project.git?.installation !== undefined ? await gitHubApp(this.env) : null;
+    const fingerprint = JSON.stringify([settings, project.git, origin, app?.credentials.id ?? null]);
     if (this.built?.fingerprint === fingerprint) return this.built;
     this.built?.orchestrator.dispose();
     const env = this.env;
@@ -83,7 +85,9 @@ export class ProjectAgent extends Agent<Env> {
       },
     );
     const git = project.git;
-    const external = git ? orchestrator.external(new GitRemote({ url: git.url, branch: git.branch, token: git.token }, control), { mode: git.mode, syncBranch: git.syncBranch, ...(origin ? { previewLink: (key: string) => `${origin}/preview/${this.name}/${key}` } : {}) }) : null;
+    const installation = git?.installation;
+    const tokenSource = app && installation !== undefined ? () => app.installationToken(installation) : undefined;
+    const external = git ? orchestrator.external(new GitRemote({ url: git.url, branch: git.branch, token: git.token, ...(tokenSource ? { tokenSource } : {}) }, control), { mode: git.mode, syncBranch: git.syncBranch, ...(origin ? { previewLink: (key: string) => `${origin}/preview/${this.name}/${key}` } : {}) }) : null;
     this.built = { orchestrator, bus, repos, keeper, external, settings, fingerprint };
     return this.built;
   }
@@ -230,9 +234,25 @@ export class ProjectAgent extends Agent<Env> {
     const stored = await this.ctx.storage.get<Partial<ProjectSettings>>(PROJECT_SETTINGS);
     if (request.method === "GET") return Response.json(viewProjectSettings(readProjectSettings(stored)));
     if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
-    const result = applyProjectUpdate(stored, await request.json().catch(() => null), () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll("-", ""));
+    const body: unknown = await request.json().catch(() => null);
+    const viaApp = requestsGitHubApp(body);
+    const repo = viaApp ? gitHubRepo(viaApp) : null;
+    let installation: number | null = null;
+    if (repo) {
+      const app = await gitHubApp(this.env);
+      if (!app) return Response.json({ error: "connect GitHub first" }, { status: 409 });
+      try {
+        installation = await app.installationFor(repo.owner, repo.repo);
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 502 });
+      }
+    }
+    const result = applyProjectUpdate(stored, body, () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll("-", ""), installation);
     if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
     await this.ctx.storage.put(PROJECT_SETTINGS, result.settings);
+    const linked = result.settings.git;
+    const linkedRepo = linked?.installation !== undefined ? gitHubRepo(linked.url) : null;
+    await settingsStub(this.env).linkRepository(this.name, linkedRepo ? `${linkedRepo.owner}/${linkedRepo.repo}` : null);
     await this.scheduleSweep();
     const saved = readProjectSettings(result.settings);
     if (saved.git) {
@@ -304,6 +324,11 @@ export class ProjectAgent extends Agent<Env> {
     const ref = (JSON.parse(body) as { ref?: string }).ref;
     if (event === "push" && ref === `refs/heads/${git.branch}`) await this.schedule(0, "syncExternal");
     return Response.json({ ok: true }, { status: 202 });
+  }
+
+  async gitPushed(ref: string): Promise<void> {
+    const git = (await this.projectSettings()).git;
+    if (git && ref === `refs/heads/${git.branch}`) await this.schedule(0, "syncExternal");
   }
 
   async drive(): Promise<void> {

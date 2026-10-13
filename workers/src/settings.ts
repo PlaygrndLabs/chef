@@ -1,11 +1,22 @@
 import { DurableObject } from "cloudflare:workers";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
 import type { ProjectEntry } from "./projects.ts";
+import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import { hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
 
 const SETTINGS = "providers";
 const PASSWORD = "password";
 const PROJECTS = "projects";
+const GITHUB_APP = "github/app";
+const GITHUB_LINKS = "github/links";
+const GITHUB_PENDING = "github/pending";
+const PENDING_MS = 60 * 60_000;
+
+export interface PendingConnect {
+  readonly state: string;
+  readonly returnTo: string;
+  readonly at: number;
+}
 
 export class Settings extends DurableObject<Env> {
   async read(): Promise<AppSettings> {
@@ -39,6 +50,39 @@ export class Settings extends DurableObject<Env> {
     if (list.some((p) => p.name === entry.name)) return false;
     await this.ctx.storage.put(PROJECTS, [...list, entry]);
     return true;
+  }
+
+  async githubApp(): Promise<GitHubAppCredentials | null> {
+    return (await this.ctx.storage.get<GitHubAppCredentials>(GITHUB_APP)) ?? null;
+  }
+
+  async saveGitHubApp(app: GitHubAppCredentials | null): Promise<void> {
+    if (app) await this.ctx.storage.put(GITHUB_APP, app);
+    else await this.ctx.storage.delete(GITHUB_APP);
+  }
+
+  async beginConnect(pending: PendingConnect): Promise<void> {
+    await this.ctx.storage.put(GITHUB_PENDING, pending);
+  }
+
+  async pendingConnect(state: string, now: number): Promise<PendingConnect | null> {
+    const pending = await this.ctx.storage.get<PendingConnect>(GITHUB_PENDING);
+    return pending && pending.state === state && now - pending.at < PENDING_MS ? pending : null;
+  }
+
+  async linkRepository(project: string, repository: string | null): Promise<void> {
+    const stored = (await this.ctx.storage.get<Record<string, string[]>>(GITHUB_LINKS)) ?? {};
+    const links = Object.fromEntries(
+      Object.entries(stored)
+        .map(([name, projects]) => [name, projects.filter((p) => p !== project)] as const)
+        .filter(([, projects]) => projects.length > 0),
+    );
+    if (repository) links[repository.toLowerCase()] = [...(links[repository.toLowerCase()] ?? []), project];
+    await this.ctx.storage.put(GITHUB_LINKS, links);
+  }
+
+  async linkedProjects(repository: string): Promise<string[]> {
+    return (await this.ctx.storage.get<Record<string, string[]>>(GITHUB_LINKS))?.[repository.toLowerCase()] ?? [];
   }
 }
 

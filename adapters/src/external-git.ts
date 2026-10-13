@@ -10,6 +10,7 @@ export interface ExternalLinkConfig {
   readonly url: string;
   readonly branch: string;
   readonly token: string | null;
+  readonly tokenSource?: () => Promise<string>;
   readonly username?: string;
 }
 
@@ -26,7 +27,6 @@ export function gitHubRepo(url: string): GitHubRepo | null {
 export class GitRemote implements ExternalRemote {
   readonly url: string;
   readonly branch: string;
-  readonly importSource: { readonly url: string; readonly branch: string; readonly token?: string };
 
   constructor(
     private readonly link: ExternalLinkConfig,
@@ -35,20 +35,28 @@ export class GitRemote implements ExternalRemote {
   ) {
     this.url = link.url;
     this.branch = link.branch;
-    this.importSource = { url: link.url, branch: link.branch, ...(link.token ? { token: link.token } : {}) };
+  }
+
+  async importSource(): Promise<{ readonly url: string; readonly branch: string; readonly token?: string }> {
+    const token = await this.token();
+    return { url: this.url, branch: this.branch, ...(token ? { token } : {}) };
   }
 
   private get http(): HttpClient {
     return this.options.http ?? webHttp;
   }
 
-  private auth() {
-    const token = this.link.token;
+  private async token(): Promise<string | null> {
+    return this.link.tokenSource ? await this.link.tokenSource() : this.link.token;
+  }
+
+  private async auth() {
+    const token = await this.token();
     return token ? () => ({ username: this.link.username ?? "x-access-token", password: token }) : undefined;
   }
 
   async head(branch = this.branch): Promise<string | null> {
-    const onAuth = this.auth();
+    const onAuth = await this.auth();
     const refs = await git.listServerRefs({ http: this.http, url: this.url, prefix: `refs/heads/${branch}`, ...(onAuth ? { onAuth } : {}) });
     return refs.find((r) => r.ref === `refs/heads/${branch}`)?.oid ?? null;
   }
@@ -61,7 +69,7 @@ export class GitRemote implements ExternalRemote {
     const artifactsAuth = () => ({ username: "x", password: secret });
     const known = await git.listServerRefs({ http: this.http, url: target.remote, prefix: `refs/heads/${input.ref}`, onAuth: artifactsAuth });
     if (known.some((r) => r.ref === `refs/heads/${input.ref}`)) await git.fetch({ fs, http: this.http, gitdir: GITDIR, url: target.remote, ref: input.ref, remoteRef: `refs/heads/${input.ref}`, remote: "artifacts", singleBranch: true, tags: false, onAuth: artifactsAuth });
-    const onAuth = this.auth();
+    const onAuth = await this.auth();
     const fetched = await git.fetch({ fs, http: this.http, gitdir: GITDIR, url: this.url, ref: this.branch, remoteRef: `refs/heads/${this.branch}`, remote: "external", singleBranch: true, tags: false, ...(onAuth ? { onAuth } : {}) });
     const head = fetched.fetchHead;
     if (!head) return null;
@@ -73,7 +81,7 @@ export class GitRemote implements ExternalRemote {
 
   async push(input: { readonly repo: string; readonly ref: string; readonly commitId: string; readonly branch: string; readonly force: boolean }): Promise<void> {
     if (input.branch === this.branch) throw new Error(`chef never pushes to ${this.branch} of ${this.url}`);
-    const onAuth = this.auth();
+    const onAuth = await this.auth();
     if (!onAuth) throw new Error(`pushing to ${this.url} needs an access token`);
     const source = await this.artifacts.info(input.repo);
     if (!source) throw new Error(`unknown repo ${input.repo}`);
@@ -97,10 +105,11 @@ export class GitRemote implements ExternalRemote {
   async pullRequest(input: { readonly head: string; readonly title: string; readonly body: string }): Promise<PullRequestRef> {
     const repo = gitHubRepo(this.url);
     if (!repo) throw new Error(`pull requests need a github.com repository, not ${this.url}`);
-    if (!this.link.token) throw new Error("opening pull requests needs an access token");
+    const token = await this.token();
+    if (!token) throw new Error("opening pull requests needs an access token");
     const api = this.options.api ?? "https://api.github.com";
     const fetcher = this.options.fetcher ?? fetch;
-    const headers = { authorization: `Bearer ${this.link.token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "chef", "content-type": "application/json" };
+    const headers = { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "chef", "content-type": "application/json" };
     const base = `${api}/repos/${repo.owner}/${repo.repo}/pulls`;
     const listed = await fetcher(`${base}?state=open&head=${encodeURIComponent(`${repo.owner}:${input.head}`)}&base=${encodeURIComponent(this.branch)}`, { headers });
     if (!listed.ok) throw new Error(`listing pull requests failed with ${listed.status}: ${(await listed.text()).slice(0, 300)}`);

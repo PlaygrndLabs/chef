@@ -45,11 +45,19 @@ function ProjectSwitcher() {
   );
 }
 
+function returningFromGitHub(): boolean {
+  const params = new URLSearchParams(location.search);
+  if (params.get("connect") !== "github") return false;
+  params.delete("connect");
+  history.replaceState(null, "", `?${params.toString()}`);
+  return true;
+}
+
 function SettingsMenu() {
   const { setTheme } = useTheme();
   const { settings, setSettings, available } = useSettings();
   const [providers, setProviders] = useState(false);
-  const [projectSettings, setProjectSettings] = useState(false);
+  const [projectSettings, setProjectSettings] = useState(returningFromGitHub);
   const missing = available && missingSettings(settings).length > 0;
   useEffect(() => {
     if (missing) setProviders(true);
