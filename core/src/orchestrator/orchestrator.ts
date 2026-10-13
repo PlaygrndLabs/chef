@@ -19,6 +19,7 @@ import type { SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
+import { missingEnv, renderEnvironment, type EnvVar } from "../env/env.ts";
 import { Archiver, MainWriter, Mutex, PreviewPublisher } from "./capabilities.ts";
 import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderLesson, renderRecall, MEMORY_DIR } from "../memory/memory.ts";
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
@@ -63,6 +64,7 @@ export interface ProjectConfig {
   readonly router?: RouterConfig;
   readonly tokenTtlSeconds?: number;
   readonly previewLink?: (key: string) => string;
+  readonly environment?: () => Promise<readonly EnvVar[]>;
 }
 
 export interface SubmitResult {
@@ -195,7 +197,7 @@ export class Orchestrator {
     const roles = Object.values(this.config.profiles)
       .filter((p) => p.plannable)
       .map((p) => ({ role: p.role, description: p.description }));
-    const planned = await this.deps.planner.plan({ prompt, intent: decision.intent, changeKind: decision.changeKind, featureId: decision.featureId, spec, roles });
+    const planned = await this.deps.planner.plan({ prompt, intent: decision.intent, changeKind: decision.changeKind, featureId: decision.featureId, spec, roles, env: await this.environment() });
     const plan = this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
     const attempts = Math.max(1, Math.floor(options.attempts ?? this.specialization.attempts));
     const ids = Array.from({ length: attempts }, () => this.deps.ids.next("s"));
@@ -311,7 +313,7 @@ export class Orchestrator {
 
   async drain(maxRounds = 200): Promise<SessionRecord[]> {
     for (let round = 0; round < maxRounds; round++) {
-      const active = (await this.sessions()).filter((s) => !isTerminal(s.machine.state));
+      const active = (await this.sessions()).filter(runnable);
       if (active.length === 0) break;
       await Promise.all(active.map((s) => this.step(s.id)));
     }
@@ -441,7 +443,40 @@ export class Orchestrator {
     else await this.apply(record, { type: "review_rejected", reasons: verdict.reasons, retest: this.specialization.lockTests && verdict.retest === true && record.plan.items.some((i) => i.kind === "test") });
   }
 
+  async environmentChanged(): Promise<string[]> {
+    const env = await this.environment();
+    const resumed: string[] = [];
+    for (const record of await this.sessions()) {
+      if (isTerminal(record.machine.state) || !record.needs?.length) continue;
+      const missing = missingEnv(await this.featureOf(record), env);
+      if (sameNames(missing, record.needs)) continue;
+      record.needs = missing;
+      await this.emit({ type: "session.needs", sessionId: record.id, featureId: record.featureId, names: missing });
+      await this.save(record);
+      if (missing.length === 0) resumed.push(record.id);
+    }
+    return resumed;
+  }
+
+  private async waitForEnvironment(record: SessionRecord): Promise<boolean> {
+    const missing = missingEnv(await this.featureOf(record), await this.environment());
+    if (sameNames(missing, record.needs ?? [])) return missing.length > 0;
+    record.needs = missing;
+    await this.emit({ type: "session.needs", sessionId: record.id, featureId: record.featureId, names: missing });
+    return missing.length > 0;
+  }
+
+  private async featureOf(record: SessionRecord): Promise<FeatureSpec> {
+    const head = record.head ? await this.deps.repos.readCommit(record.fork, record.head) : null;
+    return (head ? readSpec(head.tree).find((f) => f.id === record.featureId) : undefined) ?? record.plan.feature;
+  }
+
+  private async environment(): Promise<readonly EnvVar[]> {
+    return this.config.environment ? this.config.environment() : [];
+  }
+
   private async gating(record: SessionRecord): Promise<void> {
+    if (await this.waitForEnvironment(record)) return;
     if (record.attempt.of > 1) {
       const winner = await this.pickAttempt(record);
       if (winner !== record.id) {
@@ -865,7 +900,7 @@ export class Orchestrator {
     const steering = (await this.deps.store.get<string[]>(`steer/${record.id}`)) ?? [];
     if (steering.length) await this.deps.store.put(`steer/${record.id}`, []);
     const notes = steering.length ? `A person added notes for this turn:\n${steering.map((n) => `- ${n}`).join("\n")}` : null;
-    const prompt = [item.prompt, feedback, notes, renderRecall(recalled)].filter(Boolean).join("\n\n");
+    const prompt = [item.prompt, feedback, notes, renderEnvironment(await this.environment(), feature), renderRecall(recalled)].filter(Boolean).join("\n\n");
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: item.role, kind: item.kind, model: profile.model });
     let result;
     try {
@@ -1116,4 +1151,12 @@ export function specProblems(tree: Tree): string[] {
   const files: Record<string, string> = {};
   for (const [path, content] of Object.entries(tree)) if (path.startsWith("spec/features/")) files[path] = content;
   return lintSpecFiles(files).problems.map((p) => `${p.path}: ${p.message}`);
+}
+
+export function runnable(record: SessionRecord): boolean {
+  return !isTerminal(record.machine.state) && !record.needs?.length;
+}
+
+function sameNames(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((name, i) => name === b[i]);
 }

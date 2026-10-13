@@ -84,7 +84,7 @@ function SettingsMenu() {
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setProjectSettings(true)}>
             <FolderGit2 />
-            Project and repository
+            Project settings
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => select({ view: "insights", feature: null, session: null, panel: null })}>
             <Lightbulb />

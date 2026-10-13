@@ -7,11 +7,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Composer } from "@/components/composer";
+import { KeyPrompt } from "@/components/environment";
 import { StatusDot, StatusPill } from "@/components/status";
 import { statusOf } from "@/components/home";
 import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, previewHost, stateTone } from "@/lib/format";
-import { relationsOf, type FeatureNode, type SessionNode } from "@/lib/model";
+import { relationsOf, waitsForKey, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
 import { isTestFile } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
@@ -486,7 +487,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
               <TryTabs node={node} />
               <Steps node={node} />
               <Team node={node} />
-              <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : active ? activity(node.state, timeline, null) : p.now}</p>
+              <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : active ? activity(node.state, timeline, null) : p.now}</p>
               <Artifacts node={node} preview={preview} />
             </div>
           </div>
@@ -500,6 +501,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
             </div>
           )}
           {node?.state === "stuck" ? <NeedsYou node={node} /> : null}
+          {node && waitsForKey(node) ? <KeyPrompt names={node.needs} api={api} onSaved={data.refresh} /> : null}
           {node ? <PickReasons node={node} /> : null}
           {node ? <Related node={node} /> : null}
           {criteria.length ? (

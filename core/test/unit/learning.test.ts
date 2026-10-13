@@ -11,6 +11,7 @@ const feature: FeatureSpec = {
   entrypoint: "POST /shout",
   revision: 1,
   shared: [],
+  env: [],
   acceptance: [
     { id: "AC1", text: "POST /shout uppercases the value" },
     { id: "AC2", text: "surrounding whitespace is trimmed" },
