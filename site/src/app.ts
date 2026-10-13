@@ -1,5 +1,7 @@
-import { directory, oauthClient, type Env } from "./env.ts";
-import { API, authorizeUrl, cookies, decodePending, encodePending, OAUTH_COOKIE, randomToken, readGrant, readInstall, readProfile, readSession, SESSION_COOKIE, SESSION_SECONDS, setCookie, signSession, tokenRequest } from "./oauth.ts";
+import { directory, member as memberOf, oauthClient, organization, type Env } from "./env.ts";
+import { API, authorizeUrl, canSeeAccount, cookies, decodePending, encodePending, OAUTH_COOKIE, randomToken, readGrant, readInstall, readProfile, readSession, SESSION_COOKIE, SESSION_SECONDS, setCookie, signSession, tokenRequest, type OAuthClient, type Session } from "./oauth.ts";
+import type { OrgAccess } from "./organization.ts";
+import { can, isId, readOrgName, type OrgSummary } from "./orgs.ts";
 import { ENGINE_PATH, proxy } from "./proxy.ts";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(body, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -9,6 +11,14 @@ const redirect = (location: string, setCookies: readonly string[] = []) => {
   return new Response(null, { status: 302, headers });
 };
 const page = (env: Env, request: Request, path: string) => env.ASSETS.fetch(new Request(new URL(path, request.url), { headers: request.headers }));
+const sessionCookie = async (client: OAuthClient, session: Session) => setCookie(SESSION_COOKIE, await signSession(client.clientSecret, session, Date.now()), SESSION_SECONDS);
+
+async function adoptLegacyEngine(env: Env, cloudflareId: string, orgId: string): Promise<void> {
+  const engine = await memberOf(env, cloudflareId).legacyEngine().catch(() => null);
+  if (!engine) return;
+  await organization(env, orgId).setEngine(engine);
+  await directory(env).recordSetup(orgId, { accountId: engine.accountId, engine: engine.url, version: engine.version, install: "done", error: null });
+}
 
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -34,10 +44,14 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     const user = await fetch(`${API}/user`, { headers: { authorization: `Bearer ${grant.token}` } }).catch(() => null);
     const profile = readProfile(user?.ok ? await user.json().catch(() => null) : null);
     if (!profile) return redirect("/?signin=failed#get-started", [clear]);
-    const member = env.MEMBER.get(env.MEMBER.idFromName(profile.id));
-    await member.signIn(profile, grant);
-    const session = setCookie(SESSION_COOKIE, await signSession(client.clientSecret, profile.id, Date.now()), SESSION_SECONDS);
-    return redirect((await member.engine()) ? "/" : "/setup", [clear, session]);
+    const admin = await canSeeAccount(grant.token, env.CF_ACCOUNT_ID);
+    const signed = await directory(env).signIn({ provider: "cloudflare", subject: profile.id, email: profile.email }, admin);
+    const org = organization(env, signed.org.id);
+    await org.setup({ id: signed.org.id, name: signed.org.name }, { userId: signed.userId, email: profile.email, role: signed.org.role });
+    if (signed.created) await adoptLegacyEngine(env, profile.id, signed.org.id);
+    const engine = await org.engine();
+    await memberOf(env, signed.userId).signIn(profile, grant, admin, { id: signed.org.id, canSetUp: can(signed.org.role, "setup"), engine });
+    return redirect(engine ? "/" : "/setup", [clear, await sessionCookie(client, { userId: signed.userId, orgId: signed.org.id })]);
   }
 
   if (path === "/auth/signout") {
@@ -45,15 +59,21 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     return redirect("/", [setCookie(SESSION_COOKIE, "", 0)]);
   }
 
-  const userId = client ? await readSession(client.clientSecret, jar[SESSION_COOKIE], Date.now()) : null;
-  const member = userId ? env.MEMBER.get(env.MEMBER.idFromName(userId)) : null;
+  const session = client ? await readSession(client.clientSecret, jar[SESSION_COOKIE], Date.now()) : null;
+  const org = session ? organization(env, session.orgId) : null;
+  let checked: Promise<OrgAccess | null> | null = null;
+  const access = () => (checked ??= session && org ? org.access(session.userId).catch(() => null) : Promise.resolve(null));
+  const member = session ? memberOf(env, session.userId) : null;
 
   if (path.startsWith("/site/api/")) {
     if (!sameSite) return json({ error: "cross-site request refused" }, 403);
-    if (!member) return json({ error: "sign in with Cloudflare first" }, 401);
+    const role = (await access())?.role ?? null;
+    if (!client || !session || !org || !member || !role) return json({ error: "sign in with Cloudflare first" }, 401);
+    const switchTo = async (summary: OrgSummary) => json({ org: summary }, 200, { "set-cookie": await sessionCookie(client, { userId: session.userId, orgId: summary.id }) });
     if (path === "/site/api/me" && request.method === "GET") {
-      const view = await member.view();
-      return json({ ...view, accounts: view.canSetUp && !view.install ? await member.accounts() : [] });
+      const [view, current, orgs] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId)]);
+      const canSetUp = view.canSetUp && can(role, "setup");
+      return json({ ...view, canSetUp, engine: current?.engine ?? null, org: current, orgs, accounts: canSetUp && !view.install ? await member.accounts() : [] });
     }
     if (path === "/site/api/install" && request.method === "GET") return json(await member.status());
     if (path === "/site/api/admin/members" && request.method === "GET") {
@@ -61,37 +81,66 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       return json(await directory(env).list());
     }
     if (path === "/site/api/install" && request.method === "POST") {
+      if (!can(role, "setup")) return json({ error: "only owners and admins of this organization can set up chef" }, 403);
       const input = readInstall(await request.json().catch(() => null));
       if (typeof input === "string") return json({ error: input }, 400);
-      const started = await member.install(input);
+      const taken = await directory(env).accountTakenBy(input.accountId, session.orgId);
+      if (taken) return json({ error: `this Cloudflare account already runs chef for ${taken}; choose another account` }, 409);
+      const started = await member.install({ orgId: session.orgId, accountId: input.accountId, engine: await org.engine() });
       return typeof started === "string" ? json({ error: started }, 409) : json(started, 202);
     }
     if (path === "/site/api/install" && request.method === "DELETE") {
       await member.dismiss();
       return json({ ok: true });
     }
+    if (path === "/site/api/orgs" && request.method === "GET") return json({ current: session.orgId, orgs: await directory(env).orgs(session.userId) });
+    if (path === "/site/api/orgs" && request.method === "POST") {
+      const name = readOrgName(await request.json().catch(() => null));
+      if (!name) return json({ error: "give the organization a name of up to 60 characters" }, 400);
+      const created = await directory(env).createOrg(session.userId, name);
+      const view = await member.view(session.orgId);
+      await organization(env, created.id).setup({ id: created.id, name }, { userId: session.userId, email: view.email, role: "owner" });
+      await directory(env).use(session.userId, created.id);
+      return switchTo(created);
+    }
+    if (path === "/site/api/orgs/switch" && request.method === "POST") {
+      const orgId = ((await request.json().catch(() => null)) as { orgId?: unknown } | null)?.orgId;
+      const target = isId(orgId, "org") ? await directory(env).use(session.userId, orgId) : null;
+      if (!target || !(await organization(env, target.id).access(session.userId))) return json({ error: "you are not a member of that organization" }, 404);
+      return switchTo(target);
+    }
+    if (path === "/site/api/org" && request.method === "PATCH") {
+      if (!can(role, "rename")) return json({ error: "only owners and admins can rename this organization" }, 403);
+      const name = readOrgName(await request.json().catch(() => null));
+      if (!name) return json({ error: "give the organization a name of up to 60 characters" }, 400);
+      await org.rename(name);
+      await directory(env).renameOrg(session.orgId, name);
+      return json({ org: await org.view(session.userId) });
+    }
+    if (path === "/site/api/org/members" && request.method === "GET") return json({ members: await org.members() });
     return json({ error: "not found" }, 404);
   }
 
-  if (path === "/api/app" && request.method === "GET" && member) {
-    const view = await member.view();
-    return json({ mode: "cloud", place: "cloud", engine: url.origin, fixed: true, account: view.email, ...(view.admin ? { admin: true } : {}) });
+  if (path === "/api/app" && request.method === "GET" && session && org && member && (await access())) {
+    const [view, current, orgs] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId)]);
+    return json({ mode: "cloud", place: "cloud", engine: url.origin, fixed: true, account: view.email, org: current, orgs, ...(view.admin ? { admin: true } : {}) });
   }
 
   if (ENGINE_PATH.test(path)) {
     if (!sameSite) return json({ error: "cross-site request refused" }, 403);
-    const engine = member ? await member.engine() : null;
-    if (!engine) return json({ error: member ? "your chef is not set up yet" : "sign in with Cloudflare first" }, 401);
-    return proxy(request, engine, url.origin);
+    const signedIn = await access();
+    if (!signedIn?.engine) return json({ error: signedIn ? "chef is not set up for this organization yet" : "sign in with Cloudflare first" }, 401);
+    return proxy(request, signedIn.engine, url.origin);
   }
 
   if (path === "/" || path === "/index.html") {
-    if (!member) return page(env, request, "/");
-    return (await member.engine()) ? page(env, request, "/app") : redirect("/setup");
+    const signedIn = await access();
+    if (!signedIn) return page(env, request, "/");
+    return signedIn.engine ? page(env, request, "/app") : redirect("/setup");
   }
 
-  if (path === "/setup") return member ? page(env, request, "/setup") : redirect("/");
-  if (path === "/admin") return member && (await member.admin()) ? page(env, request, "/admin") : redirect("/");
+  if (path === "/setup") return (await access()) ? page(env, request, "/setup") : redirect("/");
+  if (path === "/admin") return member && (await access()) && (await member.admin()) ? page(env, request, "/admin") : redirect("/");
   if (path === "/app" || path === "/app.html") return redirect("/");
 
   return env.ASSETS.fetch(request);

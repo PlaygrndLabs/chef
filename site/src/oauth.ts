@@ -101,20 +101,32 @@ async function hmac(secret: string, text: string): Promise<string> {
 
 const USER_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
-export async function signSession(secret: string, userId: string, now: number): Promise<string> {
-  const body = `${userId}.${Math.floor(now / 1000) + SESSION_SECONDS}`;
+export interface Session {
+  readonly userId: string;
+  readonly orgId: string;
+}
+
+export async function signSession(secret: string, session: Session, now: number): Promise<string> {
+  const body = `${session.userId}.${session.orgId}.${Math.floor(now / 1000) + SESSION_SECONDS}`;
   return `${body}.${await hmac(secret, body)}`;
 }
 
-export async function readSession(secret: string, value: string | undefined, now: number): Promise<string | null> {
-  const [userId, expires, signature] = (value ?? "").split(".");
-  if (!userId || !expires || !signature || !USER_ID.test(userId)) return null;
+export async function readSession(secret: string, value: string | undefined, now: number): Promise<Session | null> {
+  const [userId, orgId, expires, signature, extra] = (value ?? "").split(".");
+  if (!userId || !orgId || !expires || !signature || extra !== undefined || !USER_ID.test(userId) || !USER_ID.test(orgId)) return null;
   if (Number(expires) * 1000 <= now) return null;
-  const expected = await hmac(secret, `${userId}.${expires}`);
+  const expected = await hmac(secret, `${userId}.${orgId}.${expires}`);
   if (expected.length !== signature.length) return null;
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
-  return diff === 0 ? userId : null;
+  return diff === 0 ? { userId, orgId } : null;
+}
+
+export async function canSeeAccount(token: string, accountId: string | undefined, fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  if (!accountId) return false;
+  const response = await fetchImpl(`${API}/accounts?per_page=50`, { headers: { authorization: `Bearer ${token}` } }).catch(() => null);
+  const body = (response?.ok ? await response.json().catch(() => null) : null) as { result?: readonly { id?: string }[] } | null;
+  return (body?.result ?? []).some((account) => account.id === accountId);
 }
 
 export interface Profile {

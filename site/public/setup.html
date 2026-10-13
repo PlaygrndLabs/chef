@@ -26,8 +26,13 @@
       <a class="btn btn-cf" href="/auth/start">Sign in with Cloudflare</a>
     </div>
 
+    <div id="ask-owner" hidden>
+      <h1>Waiting for setup</h1>
+      <p class="sub muted" id="ask-owner-sub"></p>
+    </div>
+
     <form id="choose" hidden>
-      <h1>Set up chef</h1>
+      <h1 id="choose-title">Set up chef</h1>
       <p class="sub muted">Choose the Cloudflare account where chef does its work. Your projects, keys and previews stay there, and you use chef right here.</p>
       <div class="accounts" id="accounts" role="radiogroup" aria-label="Cloudflare accounts"></div>
       <p class="error" id="form-error" role="alert"></p>
