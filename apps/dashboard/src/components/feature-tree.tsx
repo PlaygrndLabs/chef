@@ -133,6 +133,17 @@ export function useDropTarget(parent: string | null) {
   };
 }
 
+function TopLevelDrop() {
+  const { dragging, nodeOf } = useActions();
+  const drop = useDropTarget(null);
+  if (!dragging || !nodeOf(dragging)?.feature.parent) return null;
+  return (
+    <div {...drop.props} data-drop="top-level" className={cn("mt-1 flex h-8 items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground", drop.active && "border-ring bg-sidebar-accent text-foreground")}>
+      Drop here to move to the top level
+    </div>
+  );
+}
+
 function TitleField({ node }: { readonly node: TreeNode }) {
   const { saveTitle, rename } = useActions();
   const [value, setValue] = useState(node.feature.title);
@@ -177,7 +188,7 @@ function RowMenu({ node }: { readonly node: TreeNode }) {
             Move under
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="max-h-80 w-56 overflow-y-auto">
-            {feature.parent ? <DropdownMenuItem onSelect={() => move(feature.id, null)}>The app itself</DropdownMenuItem> : null}
+            {feature.parent ? <DropdownMenuItem onSelect={() => move(feature.id, null)}>Top level</DropdownMenuItem> : null}
             {places.map((t) => (
               <DropdownMenuItem key={t.feature.id} disabled={t.feature.id === feature.parent} onSelect={() => move(feature.id, t.feature.id)}>
                 <span className="truncate">{t.feature.title}</span>
@@ -381,11 +392,14 @@ export function FeatureTree({ children }: { readonly children?: React.ReactNode 
         {!data.ready ? (
           <ListSkeleton />
         ) : tree.length ? (
-          <ul role="tree" aria-label="Features" className="flex flex-col">
-            {tree.map((node) => (
-              <Row key={node.feature.id} node={node} depth={0} closed={closed} toggle={toggle} />
-            ))}
-          </ul>
+          <>
+            <ul role="tree" aria-label="Features" className="flex flex-col">
+              {tree.map((node) => (
+                <Row key={node.feature.id} node={node} depth={0} closed={closed} toggle={toggle} />
+              ))}
+            </ul>
+            <TopLevelDrop />
+          </>
         ) : (
           <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Each thing you ask for in the chat shows up here, and new parts sit under the feature they add to.</p>
         )}
