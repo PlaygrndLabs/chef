@@ -7,6 +7,7 @@ import { agentsRequest } from "@chef/adapters/agents";
 import { sharedInstructionsRequest } from "@chef/adapters/guidance";
 import { loadProfiles } from "@chef/core";
 import { agentFiles } from "./embedded.gen.ts";
+import { projectOf } from "./routes.ts";
 import { agentStore, claimPassword, credential, currentSettings, settingsRequest, settingsStub, sharedEnvRequest } from "./settings.ts";
 
 export { ProjectAgent } from "./project-agent.ts";
@@ -14,8 +15,6 @@ export { SandboxOutbound, SessionAgent } from "./session-agent.ts";
 export { Settings } from "./settings.ts";
 export { UpstreamSync } from "./upstream-sync.ts";
 
-const PROJECT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/(bootstrap|overview|prompts|route|sessions|events|cursor|voice|spec|live|settings|env|instructions|memory|agents|agents\/restore|git|git\/sync|sessions\/[a-z0-9-]{1,40}(?:\/(?:drop|retry|steer|turns|changes|sandbox))?)$/;
-const PREVIEW = /^\/preview\/([a-z][a-z0-9-]{1,30})\/[a-z0-9-]{1,80}\/?$/;
 const WEBHOOK = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/git\/webhook$/;
 const COPILOTKIT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/copilotkit(\/|$)/;
 
@@ -42,8 +41,8 @@ export default {
     if (url.pathname === "/api/github" || url.pathname.startsWith("/api/github/")) return gitHubRequest(request, env);
     const copilotKit = COPILOTKIT.exec(url.pathname);
     if (copilotKit) return copilotKitHandler(request, env, copilotKit[1] as string);
-    const match = PROJECT.exec(url.pathname) ?? PREVIEW.exec(url.pathname);
-    if (match) return projectStub(env, match[1] as string, request);
+    const project = projectOf(url.pathname);
+    if (project) return projectStub(env, project, request);
     const routed = await routeAgentRequest(request, env);
     if (routed) return routed;
     return env.ASSETS.fetch(request);

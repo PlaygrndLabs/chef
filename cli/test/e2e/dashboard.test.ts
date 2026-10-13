@@ -121,6 +121,12 @@ describe("dashboard in a browser", () => {
       await page.getByRole("menuitem", { name: "Move under" }).hover();
       await page.getByRole("menuitem", { name: "Shout a phrase" }).click();
       await page.locator('#features li:has([data-feature="shout"]) [data-feature="reverse"]').waitFor({ timeout: 10_000 });
+      await page.getByRole("button", { name: "More for Flip the list" }).click();
+      await page.getByRole("menuitem", { name: "Move under" }).hover();
+      await page.getByRole("menuitem", { name: "Top level" }).click();
+      await page.locator('#features > ul > li > div [data-feature="reverse"]').waitFor({ timeout: 10_000 });
+      await page.locator('#features [data-feature="reverse"]').dragTo(page.locator('#features [data-feature="shout"]'));
+      await page.locator('#features li:has([data-feature="shout"]) [data-feature="reverse"]').waitFor({ timeout: 10_000 });
 
       await page.getByRole("button", { name: "More for Shout a phrase" }).click();
       await page.getByRole("menuitem", { name: "Delete" }).click();
