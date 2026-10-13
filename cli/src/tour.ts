@@ -28,6 +28,7 @@ export interface TourReport {
   readonly states: Record<string, string>;
   agents: { readonly version: number; readonly roles: string[]; readonly skills: number } | null;
   routed: { readonly prompt: string; readonly intent: string; readonly via: string; readonly classifier: string | null } | null;
+  readonly setup: string[];
   finished: boolean;
 }
 
@@ -50,11 +51,32 @@ async function json<T>(page: Page, path: string, init?: { method: string; data?:
   return (await response.json()) as T;
 }
 
+async function createInDialog(page: Page, project: string, report: TourReport, shot: (name: string) => Promise<void>): Promise<void> {
+  await page.goto("/");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /new project/i }).first().click();
+  await page.getByLabel("Project name").fill(project);
+  await page.getByRole("button", { name: "Create project" }).click();
+  const dialog = page.locator('[data-dialog="new-project"]');
+  await page.locator("[data-setup-log-toggle]").click({ timeout: 5000 }).catch(() => undefined);
+  const shotTaken = shot("new-project-setup");
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    const steps = await dialog.locator("[data-step]").allInnerTexts().catch(() => [] as string[]);
+    for (const step of steps.map((s) => s.split("\n")[0]?.trim() ?? "")) if (step && !report.setup.includes(step)) report.setup.push(step);
+    const state = await dialog.locator("[data-setup]").getAttribute("data-setup", { timeout: 500 }).catch(() => null);
+    if (state === "failed") throw new Error(`setup failed: ${(await dialog.locator("[data-setup-log]").innerText().catch(() => "")).slice(-500)}`);
+    if (!(await dialog.count())) break;
+    await page.waitForTimeout(150);
+  }
+  await shotTaken;
+}
+
 export async function tour(options: TourOptions): Promise<TourReport> {
   const { chromium } = await import("playwright");
   mkdirSync(options.out, { recursive: true });
   const base = options.url.replace(/\/$/, "");
-  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, finished: false };
+  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false };
   const browser: Browser = await chromium.launch();
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
@@ -98,8 +120,11 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     const project = options.project ?? report.projects[0];
     if (!project) return report;
     if (!report.projects.includes(project)) {
-      await json(page, "/api/projects", { method: "POST", data: { name: project } }).catch(() => json(page, `/api/projects/${project}/bootstrap`, { method: "POST" }));
-      options.log(`created ${project}`);
+      await createInDialog(page, project, report, shot).catch(async (error: unknown) => {
+        report.errors.push(`new project dialog ${error instanceof Error ? error.message : String(error)}`);
+        await json(page, "/api/projects", { method: "POST", data: { name: project } }).catch(() => json(page, `/api/projects/${project}/bootstrap`, { method: "POST" }));
+      });
+      options.log(`created ${project}: ${report.setup.join(" | ")}`);
     }
     await go(`/?project=${project}`);
     await shot(`open-${project}`);
