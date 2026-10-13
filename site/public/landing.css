@@ -1,6 +1,7 @@
 .landing {
   --inner: 1200px;
   --line: color-mix(in oklch, var(--foreground) 10%, transparent);
+  --dash: color-mix(in oklch, var(--foreground) 16%, transparent);
   --ink-2: oklch(0.42 0 0);
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   background: var(--background);
@@ -11,13 +12,41 @@
 }
 
 .landing * { border-radius: 0 !important; }
-.landing header.top { border-bottom: 1px solid var(--line); background: color-mix(in oklch, var(--background) 88%, transparent); }
+.landing header.top { border-bottom: 1px dashed var(--dash); background: color-mix(in oklch, var(--background) 88%, transparent); }
 .landing header.top .wrap { max-width: var(--inner); height: 68px; padding: 0 40px; }
 .landing nav.links { margin-left: auto; gap: 28px; font-size: 14px; font-family: var(--mono); color: var(--muted-foreground); }
 .landing nav.links a:hover { color: var(--brand); }
 
 main { overflow-x: clip; }
 .landing section { position: relative; padding: 0; border: 0; }
+.landing section:not(.hero) { border-top: 1px dashed var(--dash) !important; }
+.landing section:not(.hero)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: min(var(--inner), 100%);
+  transform: translateX(-50%);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  pointer-events: none;
+}
+.landing section:not(.hero)::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: calc(min(var(--inner), 100%) + 5px);
+  height: 5px;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(circle, var(--brand) 1.5px, transparent 2px) left / 5px 5px no-repeat,
+    radial-gradient(circle, var(--brand) 1.5px, transparent 2px) right / 5px 5px no-repeat;
+  pointer-events: none;
+}
+.landing section > * { position: relative; z-index: 1; }
+.landing section > canvas { position: absolute; z-index: 0; }
 .inner { position: relative; max-width: var(--inner); margin: 0 auto; padding: 0 40px; }
 .landing h1, .landing h2, .landing h3 { font-weight: 500; color: var(--foreground); }
 .landing h2 { font-size: clamp(30px, 4vw, 48px); letter-spacing: -0.035em; line-height: 1.05; margin: 0 0 16px; }
@@ -41,7 +70,6 @@ main { overflow-x: clip; }
 .landing .btn-pill { background: transparent; border-color: var(--line); }
 .landing .btn-pill:hover { border-color: var(--brand); color: var(--brand); }
 
-.story { border-top: 1px solid var(--line); }
 .story-inner { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; }
 .story-head { padding-top: 120px; }
 .story-steps { padding: 48px 0 30vh; }
@@ -58,14 +86,14 @@ main { overflow-x: clip; }
 .term-bar span:first-child { color: var(--brand); }
 .term canvas { display: block; width: 100%; height: 400px; }
 
-.yours { border-top: 1px solid var(--line); padding: 140px 0 !important; }
+.yours { padding: 140px 0 !important; }
 .statement { font-size: clamp(40px, 6.4vw, 88px) !important; letter-spacing: -0.045em !important; line-height: 1 !important; max-width: 980px; margin: 0 0 88px !important; }
 .spec { margin: 0; border-top: 1px solid var(--line); }
 .spec div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 40px; padding: 26px 0; border-bottom: 1px solid var(--line); }
 .spec dt { font: 13px/1.8 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--foreground); }
 .spec dd { margin: 0; color: var(--ink-2); max-width: 620px; }
 
-.pricing { border-top: 1px solid var(--line); padding: 140px 0 !important; }
+.pricing { padding: 140px 0 !important; }
 .pricing-inner { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 72px; align-items: end; }
 .big { font-size: clamp(96px, 14vw, 180px); line-height: 0.9; letter-spacing: -0.06em; color: var(--brand); margin: 0 0 32px; font-weight: 500; }
 .ledger { font: 14px/1.6 var(--mono); border-top: 1px solid var(--foreground); padding-top: 8px; }
@@ -75,20 +103,20 @@ main { overflow-x: clip; }
 .ledger .note { margin: 0 0 6px; color: var(--muted-foreground); font-size: 12px; }
 .ledger .total { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--foreground); }
 
-.faq { border-top: 1px solid var(--line); padding: 120px 0 !important; }
+.faq { padding: 120px 0 !important; }
 .faq-inner { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 40px; }
 .faq details { border-bottom: 1px solid var(--line); padding: 20px 0; }
 .faq details:first-child { border-top: 1px solid var(--line); }
 .faq summary { font-size: 16px; }
 .faq summary::after { color: var(--brand); font: 16px/1 var(--mono); }
 
-.cta { border-top: 1px solid var(--line); min-height: 520px; display: flex; align-items: center; text-align: left; }
+.cta { min-height: 520px; display: flex; align-items: center; text-align: left; }
 .dots { position: absolute; top: 0; left: calc(50% - 50vw); width: 100vw; height: 100%; display: block; pointer-events: none; }
 .cta-copy { width: 100%; }
 .cta-copy h2 { font-size: clamp(40px, 6vw, 80px) !important; letter-spacing: -0.045em !important; line-height: 1 !important; max-width: 760px; margin: 0 0 20px !important; }
 .cta-copy .sub { margin: 0 0 36px; }
 
-.landing footer { border-top: 1px solid var(--line); font-family: var(--mono); font-size: 13px; }
+.landing footer { border-top: 1px dashed var(--dash); font-family: var(--mono); font-size: 13px; }
 .landing footer .wrap { max-width: var(--inner); padding: 0 40px; }
 .landing footer .logo img { height: 22px; }
 
@@ -101,6 +129,7 @@ main { overflow-x: clip; }
 }
 
 @media (max-width: 960px) {
+  .landing section:not(.hero)::before, .landing section:not(.hero)::after { display: none; }
   .inner, .landing header.top .wrap, .landing footer .wrap { padding: 0 20px; }
   .hero { min-height: 0; }
   .hero-inner { grid-template-columns: 1fr; padding-top: 64px; padding-bottom: 48px; }
