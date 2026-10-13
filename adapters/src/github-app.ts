@@ -37,14 +37,14 @@ const API = "https://api.github.com";
 const TOKEN_MARGIN_MS = 5 * 60_000;
 const NAME_LIMIT = 34;
 
-export function appManifest(origin: string, name: string) {
+export function appManifest(origin: string, name: string, publicOrigin: string = origin) {
   return {
     name,
-    url: origin,
-    description: `Lets chef at ${new URL(origin).host} take in pushes from your repositories and send finished work back as branches and pull requests.`,
+    url: publicOrigin,
+    description: `Lets chef at ${new URL(publicOrigin).host} take in pushes from your repositories and send finished work back as branches and pull requests.`,
     hook_attributes: { url: `${origin}/api/github/webhook`, active: true },
-    redirect_url: `${origin}/api/github/created`,
-    setup_url: `${origin}/api/github/installed`,
+    redirect_url: `${publicOrigin}/api/github/created`,
+    setup_url: `${publicOrigin}/api/github/installed`,
     setup_on_update: true,
     public: false,
     default_permissions: { contents: "write", pull_requests: "write", metadata: "read" },

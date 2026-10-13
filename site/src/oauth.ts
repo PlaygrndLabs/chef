@@ -2,8 +2,9 @@ export const DASH = "https://dash.cloudflare.com";
 export const API = "https://api.cloudflare.com/client/v4";
 
 export const OAUTH_COOKIE = "chef_oauth";
-export const SESSION_COOKIE = "chef_setup";
-export const SESSION_SECONDS = 3600;
+export const SESSION_COOKIE = "chef_session";
+export const SESSION_SECONDS = 30 * 24 * 3600;
+export const GRANT_SECONDS = 3600;
 
 export interface OAuthClient {
   readonly clientId: string;
@@ -66,7 +67,7 @@ export interface Granted {
 export function readGrant(body: unknown, now: number): Granted | null {
   const input = (body ?? {}) as { access_token?: unknown; expires_in?: unknown };
   if (typeof input.access_token !== "string" || !input.access_token) return null;
-  const seconds = typeof input.expires_in === "number" && input.expires_in > 0 ? Math.min(input.expires_in, SESSION_SECONDS) : SESSION_SECONDS;
+  const seconds = typeof input.expires_in === "number" && input.expires_in > 0 ? Math.min(input.expires_in, GRANT_SECONDS) : GRANT_SECONDS;
   return { token: input.access_token, expiresAt: now + seconds * 1000 };
 }
 
@@ -93,29 +94,47 @@ export function decodePending(value: string | undefined): Pending | null {
   return state && verifier ? { state, verifier } : null;
 }
 
-const SESSION_ID = /^[A-Za-z0-9_-]{43}$/;
-
-export function sessionId(value: string | undefined): string | null {
-  return value && SESSION_ID.test(value) ? value : null;
+async function hmac(secret: string, text: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(`chef session ${secret}`), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text))));
 }
 
-export const WORKER_NAME = /^[a-z][a-z0-9-]{0,40}$/;
+const USER_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+export async function signSession(secret: string, userId: string, now: number): Promise<string> {
+  const body = `${userId}.${Math.floor(now / 1000) + SESSION_SECONDS}`;
+  return `${body}.${await hmac(secret, body)}`;
+}
+
+export async function readSession(secret: string, value: string | undefined, now: number): Promise<string | null> {
+  const [userId, expires, signature] = (value ?? "").split(".");
+  if (!userId || !expires || !signature || !USER_ID.test(userId)) return null;
+  if (Number(expires) * 1000 <= now) return null;
+  const expected = await hmac(secret, `${userId}.${expires}`);
+  if (expected.length !== signature.length) return null;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  return diff === 0 ? userId : null;
+}
+
+export interface Profile {
+  readonly id: string;
+  readonly email: string | null;
+}
+
+export function readProfile(body: unknown): Profile | null {
+  const result = ((body ?? {}) as { result?: { id?: unknown; email?: unknown } }).result;
+  if (!result || typeof result.id !== "string" || !USER_ID.test(result.id)) return null;
+  return { id: result.id, email: typeof result.email === "string" ? result.email : null };
+}
 
 export interface InstallRequest {
   readonly accountId: string;
-  readonly password: string | null;
-  readonly name: string;
 }
 
 export function readInstall(body: unknown): InstallRequest | string {
-  const input = (body ?? {}) as { accountId?: unknown; password?: unknown; name?: unknown };
-  const accountId = typeof input.accountId === "string" ? input.accountId : "";
-  if (!/^[0-9a-f]{32}$/.test(accountId)) return "choose a Cloudflare account";
-  const name = typeof input.name === "string" && input.name ? input.name : "chef";
-  if (!WORKER_NAME.test(name)) return "the name uses lowercase letters, digits and dashes";
-  const password = typeof input.password === "string" && input.password ? input.password : null;
-  if (password !== null && password.length < 8) return "use a password of at least 8 characters";
-  return { accountId, password, name };
+  const accountId = ((body ?? {}) as { accountId?: unknown }).accountId;
+  return typeof accountId === "string" && /^[0-9a-f]{32}$/.test(accountId) ? { accountId } : "choose a Cloudflare account";
 }
 
 export type Plan = "paid" | "free" | "unknown";
