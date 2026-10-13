@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChoiceAnswers, ChoiceQuestions, Classifier } from "../../src/ports/classifier.ts";
-import { Router } from "../../src/router/router.ts";
+import { DEFAULT_ROUTER_CONFIG, DEFAULT_WORDING, Router } from "../../src/router/router.ts";
 import { TemplatePlanner } from "../../src/fakes/template-planner.ts";
 import { KeywordClassifier } from "../../src/fakes/keyword-classifier.ts";
 import { todoSpec } from "../harness.ts";
@@ -38,5 +38,29 @@ describe("router", () => {
     const decision = await router.route("Add an item to a todo list faster", spec);
     expect(decision.via).toBe("planner");
     expect(planner.triaged).toHaveLength(1);
+  });
+
+  it("keeps what the classifier said even when the planner decides", async () => {
+    const classifier = new FixedClassifier({ intent: { choice: "change_feature", confidence: 0.4 } });
+    const decision = await new Router({ classifier, planner: new TemplatePlanner() }).route("Add an item to a todo list faster", spec);
+    expect(decision.classifier).toMatchObject({ model: "fixed", accepted: false, answers: { intent: { choice: "change_feature", confidence: 0.4 } } });
+  });
+
+  it("asks the classifier the configured wording and skips it when turned off", async () => {
+    const asked: unknown[] = [];
+    const classifier: Classifier = {
+      model: "spy",
+      async choose(state, questions) {
+        asked.push(questions);
+        return new FixedClassifier({ intent: { choice: "new_feature", confidence: 0.99 } }).choose(state, questions);
+      },
+    };
+    const wording = { ...DEFAULT_WORDING, intent: { ...DEFAULT_WORDING.intent, instructions: "Is this new work?" } };
+    const decision = await new Router({ classifier, planner: new TemplatePlanner() }, { ...DEFAULT_ROUTER_CONFIG, wording }).route("dark mode please", spec);
+    expect(decision).toMatchObject({ intent: "new_feature", via: "classifier", classifier: { accepted: true } });
+    expect(asked[0]).toMatchObject({ intent: { instructions: "Is this new work?" } });
+    const off = await new Router({ classifier, planner: new TemplatePlanner() }, { ...DEFAULT_ROUTER_CONFIG, useClassifier: false }).route("dark mode please", spec);
+    expect(off.via).toBe("planner");
+    expect(asked).toHaveLength(1);
   });
 });
