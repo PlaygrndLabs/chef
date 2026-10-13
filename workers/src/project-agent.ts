@@ -241,17 +241,23 @@ export class ProjectAgent extends Agent<Env> {
         },
         recordSpoken: (turn: SpokenTurn & { voiceSessionId: string }) => orchestrator.recordSpoken(turn),
       };
-      const call = await startVoiceCall({
-        host,
-        target,
-        spec: readSpec((await orchestrator.mainTree()).tree),
-        sdp,
-        ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
-        settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
-        onEvent: (event) => {
-          if (event.type === "session.closed") this.calls.delete(call.sessionId);
-        },
-      });
+      let call: VoiceCall;
+      try {
+        call = await startVoiceCall({
+          host,
+          target,
+          spec: readSpec((await orchestrator.mainTree()).tree),
+          sdp,
+          ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
+          settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
+          onEvent: (event) => {
+            if (event.type === "session.closed") this.calls.delete(call.sessionId);
+          },
+        });
+      } catch (error) {
+        console.error("starting a voice call failed", error);
+        return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 502 });
+      }
       this.calls.set(call.sessionId, call);
       return Response.json({ sessionId: call.sessionId, sdp: call.sdp }, { status: 201 });
     }
