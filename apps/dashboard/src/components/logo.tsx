@@ -12,7 +12,7 @@ export function Wordmark({ className }: { readonly className?: string }) {
 
 export function Mark({ className }: { readonly className?: string }) {
   return (
-    <svg viewBox="-75 -30 330 330" className={cn("size-7 shrink-0", className)} aria-hidden>
+    <svg viewBox="-45 -30 330 330" className={cn("size-7 shrink-0", className)} aria-hidden>
       <path fill={BLUE} d={MARK.d} />
     </svg>
   );
