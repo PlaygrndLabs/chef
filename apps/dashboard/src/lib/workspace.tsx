@@ -25,6 +25,11 @@ export interface Workspace {
   readonly addProject: () => void;
   readonly openSession: (id: string) => void;
   readonly openFeature: (id: string) => void;
+  readonly openMemory: () => void;
+  readonly tabs: readonly string[];
+  readonly activeTab: string | null;
+  readonly selectTab: (id: string) => void;
+  readonly closeTab: (id: string) => void;
   readonly focusComposer: () => void;
   readonly openSettings: (scope: SettingsScope, section?: string, item?: string | null) => void;
   readonly app: AppSettings;

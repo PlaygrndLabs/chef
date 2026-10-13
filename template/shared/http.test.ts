@@ -3,8 +3,6 @@ import { test } from "node:test";
 import { createApp, json, type Feature } from "./http.ts";
 import { MemoryStore } from "./storage.ts";
 
-const home: Feature = { id: "home", title: "Home", routes: [{ method: "GET", path: "/", handle: () => json({ ok: true, app: "chef-project" }) }] };
-
 const notes: Feature = {
   id: "notes",
   title: "Notes",
@@ -16,7 +14,7 @@ const notes: Feature = {
 };
 
 test("a browser opening / gets a page that links every feature page", async () => {
-  const app = createApp([home, notes], new MemoryStore());
+  const app = createApp([notes], new MemoryStore());
   const response = await app(new Request("http://app.test/", { headers: { accept: "text/html,application/xhtml+xml" } }));
   assert.match(response.headers.get("content-type") ?? "", /text\/html/);
   const html = await response.text();
@@ -24,10 +22,17 @@ test("a browser opening / gets a page that links every feature page", async () =
   assert.doesNotMatch(html, /\/api\/notes|:id/);
 });
 
-test("API clients opening / still get the home JSON", async () => {
-  const app = createApp([home, notes], new MemoryStore());
+test("API clients opening / get the list of pages", async () => {
+  const app = createApp([notes], new MemoryStore());
   const response = await app(new Request("http://app.test/"));
-  assert.deepEqual(await response.json(), { ok: true, app: "chef-project" });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true, pages: ["/notes"] });
+});
+
+test("an app with no features still answers on /", async () => {
+  const app = createApp([], new MemoryStore());
+  assert.equal((await app(new Request("http://app.test/"))).status, 200);
+  assert.match(await (await app(new Request("http://app.test/", { headers: { accept: "text/html" } }))).text(), /No pages yet/);
 });
 
 test("a feature that serves its own / page keeps it", async () => {

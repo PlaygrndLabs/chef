@@ -55,8 +55,9 @@ export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
   return [...best.values()];
 }
 
-function replyFor(decision: RouteDecision, title: string | null, attempts: number): string {
+function replyFor(decision: RouteDecision, title: string | null, attempts: number, parts: number): string {
   if (decision.intent === "question") return "chef answered this before answers were saved, so the answer is not shown here.";
+  if (parts > 1) return `On it. This is ${parts} features, so chef builds them at the same time.`;
   const parallel = attempts > 1 ? ` I'm trying ${attempts} approaches at once and will keep the best one.` : "";
   const hotfix = decision.hotfix ? " It's a hotfix, so it goes live before other builds." : "";
   if (decision.intent === "chore") return `On it. This is a chore outside any one feature, so every live feature gets checked again before it goes live.${hotfix}`;
@@ -81,7 +82,7 @@ function Reply({ text, sessions }: { readonly text: string; readonly sessions: r
 
 function Welcome({ onExample }: { readonly onExample: (text: string) => void }) {
   return (
-    <div className="flex flex-col items-center gap-3 pt-16 pb-4 text-center sm:pt-24" data-view="welcome">
+    <div className="flex flex-col items-center gap-3 pt-12 pb-4 text-center @lg:pt-20" data-view="welcome">
       <Wordmark className="mb-2 h-9" />
       <h2 className="text-2xl font-semibold tracking-tight">What should we build?</h2>
       <p className="max-w-md text-muted-foreground">Describe a feature in plain words. chef plans it, writes the tests and the code, checks it, and puts it live.</p>
@@ -92,7 +93,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
           </button>
         ))}
       </div>
-      <ol className="mt-8 grid w-full gap-3 text-left sm:grid-cols-3">
+      <ol className="mt-8 grid w-full gap-3 text-left @2xl:grid-cols-3">
         {[
           ["Describe it", "Type or talk. One sentence is enough."],
           ["chef builds it", "In its own sandbox, with tests and a review."],
@@ -232,7 +233,8 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
         const title = features.find((f) => f.id === (own[0]?.featureId ?? route.decision.featureId))?.title ?? null;
         const stored = data.live.answers.find((a) => a.prompt === route.prompt && a.at >= route.at && a.at < next)?.answer ?? "";
         const answer = route.decision.intent === "question" ? stored || answerFor(messages, route.prompt) : "";
-        return { ...route, sessions: own, reply: answer || replyFor(route.decision, title, own.length) };
+        const parts = new Set(own.map((s) => s.featureId)).size;
+        return { ...route, sessions: own, reply: answer || replyFor(route.decision, title, parts > 1 ? own.length / parts : own.length, parts) };
       });
   const pending = [...sentHere].filter(([prompt, seen]) => routes.filter((r) => r.prompt === prompt).length <= seen).map(([prompt]) => prompt);
 
@@ -263,7 +265,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const welcome = !loading && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0;
   const busy = agent.isRunning || sessions.some((s) => isActive(s.state));
   return (
-    <div className="flex h-full min-h-0 flex-col" data-view="project" id="chat">
+    <div className="@container flex h-full min-h-0 flex-col" data-view="project" id="chat">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 sm:px-6">
           {loading ? (
@@ -272,7 +274,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
             <>
               {welcome ? <Welcome onExample={(text) => setDraft((d) => ({ text, n: (d?.n ?? 0) + 1 }))} /> : null}
               {overview && introduced ? <OverviewMessage state={overview} started={started} onStart={start} onReadAgain={() => void readAgain().catch((error: unknown) => toast.error("Could not start reading", { description: error instanceof Error ? error.message : String(error) }))} /> : null}
-              {!welcome && !introduced && history.length === 0 && pending.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature on the left, or describe a new one below.</p> : null}
+              {!welcome && !introduced && history.length === 0 && pending.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature in the list, or describe a new one below.</p> : null}
               {history.map((item) => (
                 <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
                   <You>{stripFeatureTag(item.prompt).text}</You>

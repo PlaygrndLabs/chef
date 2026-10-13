@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
-import { featureNodes, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
+import { featureNodes, featureTree, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
 import { activity, plainReason, progress, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
 import { entryRoute, pagesFor, routesIn } from "../../src/lib/routes.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
@@ -86,6 +86,28 @@ describe("feature map", () => {
     expect(byId["todo-add"]?.status).toBe("stuck");
     expect(byId["todo-done"]).toMatchObject({ status: "building", title: "Mark done", onMain: false });
     expect(sortFeatures(nodes).map((n) => n.id)).toEqual(["todo-add", "todo-done", "home"]);
+  });
+
+  it("builds a tree of features that have a session, with child features under their parent and working ones first", () => {
+    const state = run([
+      { type: "session.created", sessionId: "s1", featureId: "todo", fork: "f1", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s1", featureId: "todo", from: "gating", to: "merged", reason: "merged" },
+      { type: "session.created", sessionId: "s2", featureId: "todo-delete", fork: "f2", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s2", featureId: "todo-delete", from: "gating", to: "merged", reason: "merged" },
+      { type: "session.created", sessionId: "s3", featureId: "todo-edit", fork: "f3", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s3", featureId: "todo-edit", from: "queued", to: "coding", reason: "planned" },
+      { type: "session.created", sessionId: "s4", featureId: "notes", fork: "f4", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s4", featureId: "notes", from: "gating", to: "merged", reason: "merged" },
+    ]);
+    const records = [{ id: "s3", featureId: "todo-edit", createdAt: 3, updatedAt: 3, attempt: attempt(), parent: null, machine: { state: "coding" }, plan: { feature: { ...spec("todo-edit"), parent: "todo" } } }] as unknown as SessionRecord[];
+    const nodes = featureNodes(state, records, [spec("home"), spec("todo"), spec("notes"), { ...spec("todo-delete"), parent: "todo" }]);
+    const tree = featureTree(nodes);
+    expect(tree.map((n) => n.feature.id)).toEqual(["todo", "notes"]);
+    expect(tree[0]?.children.map((n) => [n.feature.id, n.group])).toEqual([
+      ["todo-edit", "working"],
+      ["todo-delete", "live"],
+    ]);
+    expect(featureTree([{ ...(nodes.find((n) => n.id === "todo") as (typeof nodes)[number]), parent: "todo-delete" }, ...nodes.filter((n) => n.id !== "todo")]).map((n) => n.feature.id).sort()).toEqual(["notes", "todo"]);
   });
 });
 

@@ -16,7 +16,7 @@ const CONNECTION = {
 } as const;
 
 function Chip({ children, onClick, tone, label, id }: { readonly children: React.ReactNode; readonly onClick?: () => void; readonly tone?: string | undefined; readonly label: string; readonly id?: string }) {
-  const className = cn("inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs whitespace-nowrap text-muted-foreground", onClick && "hover:bg-muted hover:text-foreground", tone);
+  const className = cn("inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs whitespace-nowrap text-muted-foreground", onClick && "hover:bg-muted hover:text-foreground", tone);
   return onClick ? (
     <button type="button" onClick={onClick} className={className} title={label} data-chip={id}>
       {children}
@@ -78,14 +78,14 @@ function StatusChips() {
 }
 
 export function ProjectBar() {
-  const { data, select } = useWorkspace();
+  const { data, openMemory } = useWorkspace();
   const learned = data.live.lessons.length + data.live.rules.length;
   const connection = CONNECTION[data.connection];
   return (
-    <div className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2 sm:px-3" id="project-bar" aria-label="Project status">
+    <div className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-t bg-sidebar px-1.5" id="project-bar" aria-label="Project status">
       {data.ready ? <StatusChips /> : <BarSkeleton />}
       <span className="flex-1" />
-      <Chip id="memory" label="Lessons and rules chef learned in this project" onClick={() => select({ view: "insights", feature: null, session: null, panel: null })}>
+      <Chip id="memory" label="Lessons and rules chef learned in this project" onClick={openMemory}>
         <Lightbulb className="size-3.5" />
         {learned ? `${learned} learned` : "Memory"}
       </Chip>

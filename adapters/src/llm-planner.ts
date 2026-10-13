@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { envProblem, FeatureFrontmatter, type AnswerInput, type BuilderRole, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@chef/core";
+import { envProblem, FeatureFrontmatter, type AnswerInput, type BuilderRole, type FeatureSpec, type Plan, type PlanInput, type Planner, type SplitInput, type SplitPart, type Triage, type TriageInput, type WorkItem } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
 const TriageSchema = z.object({
@@ -8,6 +8,17 @@ const TriageSchema = z.object({
   changeKind: z.enum(["bug", "extend", "refactor"]).nullable(),
   confidence: z.number(),
   reason: z.string(),
+});
+
+const SplitSchema = z.object({
+  parts: z.array(
+    z.object({
+      kind: z.enum(["new", "change"]),
+      prompt: z.string(),
+      featureId: z.string().nullable(),
+      changeKind: z.enum(["bug", "extend", "refactor"]).nullable(),
+    }),
+  ),
 });
 
 const DEFAULT_BUILDERS: readonly BuilderRole[] = [
@@ -54,8 +65,31 @@ export class LlmPlanner implements Planner {
     return { ...result, featureId: known ? result.featureId : null, confidence: Math.min(1, Math.max(0, result.confidence)) };
   }
 
+  async split(input: SplitInput): Promise<readonly SplitPart[]> {
+    const features = input.spec.map((f) => ({ id: f.id, title: f.title, ...(f.parent ? { parent: f.parent } : {}) }));
+    const guess = input.decision.intent === "change_feature" && input.decision.featureId ? `It looks like a change to ${input.decision.featureId}.` : "It looks like new work.";
+    const result = await structured(this.llm, {
+      model: this.model,
+      system: this.system,
+      effort: "low",
+      schema: SplitSchema,
+      prompt: [
+        `Existing features (a feature with a parent sits under it in the feature tree):\n${JSON.stringify(features, null, 2)}`,
+        `Request:\n${input.prompt}\n\n${guess}`,
+        [
+          "Split the request into the features it asks for. Each part is built by its own session, in parallel with the others, so parts must not depend on each other; if one part needs another part of this same request to exist first, keep them together as one part.",
+          'kind "new": a capability the product does not have yet. Put it under the existing feature it builds on by giving that feature\'s id in featureId (for example "delete items" goes under the todo list), or null when it stands on its own. Adding behavior to an existing feature is a new child feature.',
+          'kind "change": fixing, adjusting or refactoring what one existing feature already does. Give its id in featureId and the changeKind (bug, extend or refactor).',
+          "Write each part's prompt as a short, complete request in the person's words that makes sense on its own. Most requests are a single part; never split one capability into steps.",
+        ].join("\n"),
+      ].join("\n\n"),
+    });
+    return result.parts.map((part): SplitPart => (part.kind === "change" && part.featureId ? { kind: "change", prompt: part.prompt, featureId: part.featureId, changeKind: part.changeKind ?? "extend" } : { kind: "new", prompt: part.prompt, parent: part.featureId }));
+  }
+
   async plan(input: PlanInput): Promise<Plan> {
     const existing = input.featureId ? input.spec.find((f) => f.id === input.featureId) : undefined;
+    const parent = input.parent ? input.spec.find((f) => f.id === input.parent) : undefined;
     const builders = input.roles?.length ? input.roles : DEFAULT_BUILDERS;
     const result = await structured(this.llm, {
       model: this.model,
@@ -65,6 +99,7 @@ export class LlmPlanner implements Planner {
         `Intent: ${input.intent}${input.changeKind ? ` (${input.changeKind})` : ""}`,
         `Roles for code, fix and refactor items (pick the one that fits each item; "test" items use the test role):\n${builders.map((b) => `- ${b.role}: ${b.description}`).join("\n")}`,
         existing ? `Current spec entry:\n${JSON.stringify(existing, null, 2)}` : `Existing feature ids: ${input.spec.map((f) => f.id).join(", ") || "none"}`,
+        ...(parent ? [`This feature sits under ${parent.id} (${parent.title}) and adds to it. Give it its own id and folder. It may also change files in features/${parent.id}/ to wire itself in, for example a button on that feature's page.`] : []),
         `Environment: when the feature talks to an outside service or needs a key or setting the person provides, list the environment variable names it reads in env, in capital snake case like STRIPE_SECRET_KEY, and reuse a name the project already has when it fits. The app reads them at runtime from context.env; their values never go in the code or the spec. Set in this project: ${input.env?.map((v) => v.name).join(", ") || "none"}.`,
         `Request:\n${input.prompt}`,
         "Write the full spec entry for this feature and the work items.",
@@ -97,6 +132,7 @@ export function toPlan(result: PlanResult, existing: FeatureSpec | undefined, mo
     title: result.feature.title,
     status: "building",
     entrypoint: result.feature.entrypoint,
+    ...(existing?.parent ? { parent: existing.parent } : {}),
     revision: existing ? existing.revision + 1 : 1,
     shared: result.feature.shared,
     env: [...new Set([...(existing?.env ?? []), ...result.feature.env.map((name) => name.trim()).filter((name) => envProblem(name) === null)])],

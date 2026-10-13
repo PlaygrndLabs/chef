@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type View = "project" | "feature" | "insights";
-export type Panel = "preview" | "changes" | "checks" | "details";
+export type Panel = "preview" | "messages" | "changes" | "checks" | "details";
 export type SettingsScope = "app" | "project";
 
 export interface SettingsPlace {
@@ -19,7 +19,7 @@ export interface Selection {
   readonly item?: string | null;
 }
 
-const PANELS: readonly Panel[] = ["preview", "changes", "checks", "details"];
+const PANELS: readonly Panel[] = ["preview", "messages", "changes", "checks", "details"];
 const PROJECT = /^[a-z][a-z0-9-]{1,30}$/;
 const SECTION = /^[a-z][a-z-]{1,30}$/;
 const OLD_TABS: Readonly<Record<string, string>> = { roles: "agents", skills: "skills", router: "router" };

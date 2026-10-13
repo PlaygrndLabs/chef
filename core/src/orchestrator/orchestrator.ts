@@ -5,7 +5,7 @@ import type { CheckResult, CheckRunner, ProofRecord, ProofRunner } from "../port
 import type { Classifier } from "../ports/classifier.ts";
 import type { Coder } from "../ports/coder.ts";
 import type { EventBus } from "../ports/event-bus.ts";
-import { chorePlan, choreId, withTestItem, type Plan, type Planner, type WorkItem } from "../ports/planner.ts";
+import { chorePlan, choreId, withTestItem, type Plan, type Planner, type SplitPart, type WorkItem } from "../ports/planner.ts";
 import type { PreviewHost } from "../ports/preview-host.ts";
 import type { PushedEvent, RepoHost, RepoToken } from "../ports/repo-host.ts";
 import type { MemoryHit, MemoryIndex } from "../ports/memory-index.ts";
@@ -207,8 +207,32 @@ export class Orchestrator {
     }
     const chore = decision.intent === "chore";
     const hotfix = decision.hotfix === true;
-    const plan = chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec);
+    const parts = chore ? null : await this.router.split(prompt, spec, decision);
+    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, parts.length > 1 ? part.prompt : prompt)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec)];
     const attempts = chore || hotfix ? 1 : Math.max(1, Math.floor(options.attempts ?? this.specialization.attempts));
+    const created: string[] = [];
+    for (const [at, plan] of plans.entries()) {
+      const part = parts?.[at];
+      const ask = parts && parts.length > 1 && part ? part.prompt : null;
+      const own = part ? partDecision(decision, part, plan.feature.id) : decision;
+      created.push(...(await this.createSessions(prompt, own, plan, attempts, { chore, hotfix, ask })));
+    }
+    const first = plans[0]?.feature.id;
+    return { decision, sessionId: created[0] ?? null, sessionIds: created, ...(first ? { featureId: first } : {}) };
+  }
+
+  private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], prompt: string): Promise<Plan> {
+    if (part.kind === "change") {
+      const existing = spec.find((f) => f.id === part.featureId);
+      const plan = await this.planFeature(prompt, { ...decision, intent: "change_feature", featureId: part.featureId, changeKind: part.changeKind }, spec);
+      return withParent(plan, existing?.parent ?? null);
+    }
+    const plan = await this.planFeature(prompt, { ...decision, intent: "new_feature", featureId: null, changeKind: null }, spec, part.parent);
+    return withParent(plan, part.parent);
+  }
+
+  private async createSessions(prompt: string, decision: RouteDecision, plan: Plan, attempts: number, options: { readonly chore: boolean; readonly hotfix: boolean; readonly ask: string | null }): Promise<string[]> {
+    const { chore, hotfix, ask } = options;
     const ids = Array.from({ length: attempts }, () => this.deps.ids.next("s"));
     const group = ids[0] as string;
     const parent = (await this.sessions()).filter((s) => s.featureId === plan.feature.id && s.machine.state !== "dropped").at(-1)?.id ?? null;
@@ -236,6 +260,7 @@ export class Orchestrator {
         attempt: { group, index: index + 1, of: attempts },
         ...(chore ? { kind: "chore" as const } : {}),
         ...(hotfix ? { hotfix: true } : {}),
+        ...(ask ? { ask } : {}),
         parent,
         history: [],
         previewKey: attempts > 1 ? `${plan.feature.id}--${sessionId}` : plan.feature.id,
@@ -245,15 +270,15 @@ export class Orchestrator {
       await this.save(record);
       await this.emit({ type: "session.created", sessionId, featureId: record.featureId, fork: record.fork, reason: decision.reason, attempt: record.attempt, parent, ...(chore ? { kind: "chore" as const } : {}), ...(hotfix ? { hotfix: true } : {}) });
     }
-    return { decision, sessionId: group, sessionIds: ids, featureId: plan.feature.id };
+    return ids;
   }
 
-  private async planFeature(prompt: string, decision: RouteDecision, spec: readonly FeatureSpec[]): Promise<Plan> {
+  private async planFeature(prompt: string, decision: RouteDecision, spec: readonly FeatureSpec[], parent: string | null = null): Promise<Plan> {
     const roles = Object.values(this.config.profiles)
       .filter((p) => p.plannable)
       .map((p) => ({ role: p.role, description: p.description }));
     const intent = decision.intent === "change_feature" ? "change_feature" : "new_feature";
-    const planned = await this.deps.planner.plan({ prompt: withoutCommand(prompt), intent, changeKind: decision.changeKind, featureId: decision.featureId, spec, roles, env: await this.environment() });
+    const planned = await this.deps.planner.plan({ prompt: withoutCommand(prompt), intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), spec, roles, env: await this.environment() });
     return this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
   }
 
@@ -1180,6 +1205,26 @@ const CHORE_PROOFS = 6;
 const ADOPT_LIMIT = 20;
 
 const SETUP_LOG_FILES = 60;
+
+function withParent(plan: Plan, parent: string | null): Plan {
+  const { parent: _drop, ...feature } = plan.feature;
+  return { ...plan, feature: parent && parent !== feature.id ? { ...feature, parent } : feature };
+}
+
+function uniqueIds(plans: readonly Plan[]): Plan[] {
+  const taken = new Set<string>();
+  return plans.map((plan) => {
+    let id = plan.feature.id;
+    for (let n = 2; taken.has(id); n++) id = `${plan.feature.id.slice(0, 36)}-${n}`;
+    taken.add(id);
+    if (id === plan.feature.id) return plan;
+    return { ...plan, feature: { ...plan.feature, id }, items: plan.items.map((item) => ({ ...item, id: item.id.replace(plan.feature.id, id), featureId: id })) };
+  });
+}
+
+function partDecision(decision: RouteDecision, part: SplitPart, featureId: string): RouteDecision {
+  return part.kind === "change" ? { ...decision, intent: "change_feature", featureId, changeKind: part.changeKind } : { ...decision, intent: "new_feature", featureId: null, changeKind: null };
+}
 
 function hasMarkers(content: string | undefined): boolean {
   return content?.includes("<<<<<<<") ?? false;

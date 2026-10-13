@@ -27,6 +27,16 @@ export interface Triage {
   readonly reason: string;
 }
 
+export interface SplitInput {
+  readonly prompt: string;
+  readonly spec: readonly FeatureSpec[];
+  readonly decision: { readonly intent: "new_feature" | "change_feature"; readonly featureId: string | null; readonly changeKind: ChangeKind | null };
+}
+
+export type SplitPart =
+  | { readonly kind: "new"; readonly prompt: string; readonly parent: string | null }
+  | { readonly kind: "change"; readonly prompt: string; readonly featureId: string; readonly changeKind: ChangeKind };
+
 export interface BuilderRole {
   readonly role: string;
   readonly description: string;
@@ -37,6 +47,7 @@ export interface PlanInput {
   readonly intent: "new_feature" | "change_feature";
   readonly changeKind: ChangeKind | null;
   readonly featureId: string | null;
+  readonly parent?: string | null;
   readonly spec: readonly FeatureSpec[];
   readonly env?: readonly EnvVar[];
   readonly roles?: readonly BuilderRole[];
@@ -58,6 +69,7 @@ export interface Planner {
   readonly model: string;
   triage(input: TriageInput): Promise<Triage>;
   plan(input: PlanInput): Promise<Plan>;
+  split?(input: SplitInput): Promise<readonly SplitPart[]>;
   answer?(input: AnswerInput): Promise<string>;
 }
 

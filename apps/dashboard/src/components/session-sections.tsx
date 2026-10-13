@@ -1,17 +1,14 @@
 import { useMemo, useState } from "react";
 import { diffLines } from "diff";
-import { ChevronDown, ExternalLink, FileCode2, Maximize2, Minimize2, RefreshCw, X } from "lucide-react";
+import { ChevronDown, ExternalLink, FileCode2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusDot } from "@/components/status";
-import { currentSession } from "@/components/feature-page";
 import { isActive } from "@/lib/events";
 import { ago, duration, previewHost, short, tokens } from "@/lib/format";
-import type { SessionNode } from "@/lib/model";
-import type { Panel as PanelTab } from "@/lib/selection";
+import type { FeatureNode, SessionNode } from "@/lib/model";
 import { entryRoute, isPage, pagesFor, routesIn, type Route } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
@@ -26,7 +23,7 @@ function Section({ title, children }: { readonly title: string; readonly childre
   );
 }
 
-function Empty({ children }: { readonly children: React.ReactNode }) {
+export function Empty({ children }: { readonly children: React.ReactNode }) {
   return <p className="rounded-xl border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">{children}</p>;
 }
 
@@ -84,7 +81,7 @@ function PreviewTab({ url, link, commitId, routes, featureId }: { readonly url: 
           ))}
         </div>
       ) : null}
-      <iframe key={`${nonce}-${path}`} src={href} title="Preview" className="min-h-[460px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+      <iframe key={`${nonce}-${path}`} src={href} title="Preview" className="min-h-[320px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
       <p className="text-xs text-muted-foreground">
         {pages.length ? "" : "This build has not added a page yet, so you see the app's home. "}
         This preview updates after every step chef takes. Built from {short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.</p>
@@ -124,7 +121,7 @@ function FileDiff({ path, before, after }: { readonly path: string; readonly bef
   );
 }
 
-function ChangesTab({ node }: { readonly node: SessionNode }) {
+export function ChangesTab({ node }: { readonly node: SessionNode }) {
   const { api } = useWorkspace();
   const head = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
   const changes = useFetch(() => api.changes(node.id), `${node.id}:${head}:${node.state}`, node.id);
@@ -159,7 +156,7 @@ function Meter({ label, value, max, text }: { readonly label: string; readonly v
   );
 }
 
-function DetailsTab({ node }: { readonly node: SessionNode }) {
+export function DetailsTab({ node }: { readonly node: SessionNode }) {
   const { api, data, selection } = useWorkspace();
   const detail = useFetch(() => api.session(node.id), `${node.id}:${node.state}:${node.record?.updatedAt ?? 0}`, node.id);
   const turns = useFetch(() => api.turns(node.id), `${node.id}:${node.live?.commits.length ?? node.record?.commits.length ?? 0}`, node.id);
@@ -247,7 +244,7 @@ function DetailsTab({ node }: { readonly node: SessionNode }) {
   );
 }
 
-function ChecksTab({ node }: { readonly node: SessionNode }) {
+export function ChecksTab({ node }: { readonly node: SessionNode }) {
   const verdict = node.live?.verdict ?? node.record?.verdict ?? null;
   const gate = node.live?.gate ?? null;
   return (
@@ -295,56 +292,13 @@ function ChecksTab({ node }: { readonly node: SessionNode }) {
   );
 }
 
-const TABS: readonly { readonly value: PanelTab; readonly label: string }[] = [
-  { value: "preview", label: "Preview" },
-  { value: "changes", label: "Changes" },
-  { value: "checks", label: "Checks" },
-  { value: "details", label: "Details" },
-];
-
-export function Panel() {
-  const { selection, select, feature, api, panelExpanded, expandPanel } = useWorkspace();
-  const node = feature ? currentSession(feature, selection.session) : null;
-  const preview = node?.live?.preview ?? node?.record?.preview ?? feature?.preview ?? null;
+export function SessionPreview({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
+  const { api } = useWorkspace();
+  const preview = node?.live?.preview ?? node?.record?.preview ?? feature.preview ?? null;
   const head = node?.live?.commits.at(-1)?.id ?? node?.record?.head ?? "";
   const changes = useFetch(node ? () => api.changes(node.id) : null, `${node?.id ?? ""}:${head}`, node?.id ?? "");
   const found = routesIn(changes.data?.files ?? []);
-  const entry = entryRoute(feature?.spec?.entrypoint);
+  const entry = entryRoute(feature.spec?.entrypoint);
   const routes = entry && !found.some((r) => r.method === entry.method && r.path === entry.path) ? [entry, ...found] : found;
-  return (
-    <Tabs value={selection.panel ?? "preview"} onValueChange={(v) => select({ panel: v as PanelTab })} className="flex h-full min-h-0 flex-col gap-0 bg-background">
-      <div className="flex h-15 shrink-0 items-center gap-2 border-b px-3">
-        <TabsList className="h-9">
-          {TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value} className="px-3">
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <span className="flex-1" />
-        <Button variant="ghost" size="icon-sm" onClick={() => expandPanel(!panelExpanded)} aria-label={panelExpanded ? "Make smaller" : "Open large"} title={panelExpanded ? "Make smaller" : "Open large"}>
-          {panelExpanded ? <Minimize2 /> : <Maximize2 />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => {
-            expandPanel(false);
-            select({ panel: null });
-          }}
-          aria-label="Close"
-        >
-          <X />
-        </Button>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
-        <TabsContent value="preview" className="flex min-h-0 flex-1 flex-col">
-          <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} featureId={feature?.id ?? null} />
-        </TabsContent>
-        <TabsContent value="changes">{node ? <ChangesTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
-        <TabsContent value="checks">{node ? <ChecksTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
-        <TabsContent value="details">{node ? <DetailsTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
-      </div>
-    </Tabs>
-  );
+  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} featureId={feature.id} />;
 }

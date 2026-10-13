@@ -1,20 +1,18 @@
-import { useEffect, useRef, useState, type Ref } from "react";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FileCode2, FlaskConical, GitCommitHorizontal, GitFork, GitMerge, Globe, ListChecks, Loader2, MessageSquareText, MoreHorizontal, OctagonX, PanelRight, RotateCcw, Rocket, ShieldCheck, Trophy, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Rocket, ShieldCheck, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Textarea } from "@/components/ui/textarea";
-import { Composer } from "@/components/composer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChangesTab, ChecksTab, DetailsTab, Empty, SessionPreview } from "@/components/session-sections";
 import { KeyPrompt } from "@/components/environment";
 import { KindBadges, StatusDot, StatusPill } from "@/components/status";
 import { isActive } from "@/lib/events";
-import { clock, PLAIN_STATE, previewHost, stateTone } from "@/lib/format";
-import { heldBy, isChore, relationsOf, statusOf, waitsForKey, type FeatureNode, type SessionNode } from "@/lib/model";
+import { clock, PLAIN_STATE, stateTone } from "@/lib/format";
+import { currentSession, heldBy, isChore, relationsOf, statusOf, waitsForKey, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
-import { isTestFile } from "@/lib/routes";
-import { useFetch } from "@/lib/use-fetch";
 import { activity, plainReason, progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
 import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
 import { cn } from "@/lib/utils";
@@ -22,12 +20,6 @@ import { useWorkspace } from "@/lib/workspace";
 
 const ICONS: Readonly<Record<UpdateIcon, typeof Check>> = { plan: ListChecks, test: FlaskConical, code: Code2, review: MessageSquareText, check: ShieldCheck, live: Rocket, alert: AlertTriangle, stop: OctagonX, sync: GitMerge, pick: Trophy };
 const TONE: Readonly<Record<UpdateTone, string>> = { ok: "text-ok", run: "text-run", bad: "text-bad", idle: "text-muted-foreground" };
-
-export function currentSession(feature: FeatureNode, selected: string | null): SessionNode | null {
-  const chosen = selected ? feature.sessions.find((s) => s.id === selected) : undefined;
-  if (chosen) return chosen;
-  return [...feature.sessions].reverse().find((s) => s.state !== "dropped") ?? feature.sessions.at(-1) ?? null;
-}
 
 function Steps({ node }: { readonly node: SessionNode }) {
   const p = progress(node.state, node.live?.timeline ?? []);
@@ -143,17 +135,15 @@ function UpdateRow({ update }: { readonly update: Update }) {
 }
 
 function NeedsYou({ node }: { readonly node: SessionNode }) {
-  const { api, data } = useWorkspace();
-  const [guidance, setGuidance] = useState("");
+  const { api, data, focusComposer } = useWorkspace();
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
   const feedback = node.record?.machine.feedback;
   const retry = async () => {
     setBusy(true);
     try {
-      await api.retry(node.id, guidance.trim());
+      await api.retry(node.id, "");
       toast.success("chef is trying again");
-      setGuidance("");
       data.refresh();
     } catch (error) {
       toast.error("Could not try again", { description: error instanceof Error ? error.message : String(error) });
@@ -164,7 +154,13 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-bad/30 bg-bad/5 p-4" data-needs-you={node.id}>
       <div className="font-semibold text-bad">chef needs your help</div>
-      <p className="text-sm text-muted-foreground">Tell it what to do differently and press Try again, or stop this build. The live app is not affected.</p>
+      <p className="text-sm text-muted-foreground">
+        Press Try again, tell chef in the{" "}
+        <button type="button" onClick={focusComposer} className="underline underline-offset-2 hover:text-foreground">
+          chat
+        </button>{" "}
+        what to do differently, or stop this build. The live app is not affected.
+      </p>
       {feedback ? (
         <Collapsible>
           <CollapsibleTrigger className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground">
@@ -176,7 +172,6 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      <Textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} rows={3} placeholder="Tell chef what to do differently" aria-label="Tell chef what to do differently" className="bg-background" />
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => void retry()} disabled={busy}>
           {busy ? <Loader2 className="animate-spin" /> : <RotateCcw />}
@@ -330,66 +325,81 @@ function PickReasons({ node }: { readonly node: SessionNode }) {
   );
 }
 
-function Pill({ icon: Icon, label, value, tone, panel, id }: { readonly icon: typeof Check; readonly label: string; readonly value: string; readonly tone: "ok" | "bad" | "idle" | "plain"; readonly panel: PanelTab; readonly id: string }) {
-  const { select } = useWorkspace();
-  return (
-    <button type="button" onClick={() => select({ panel })} data-artifact={id} title={`${label}: ${value}`} className="inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-lg border bg-card px-2 text-xs hover:bg-muted/60">
-      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="text-muted-foreground">{label}</span>
-      <span className={cn("truncate font-medium", tone === "ok" && "text-ok", tone === "bad" && "text-bad", tone === "idle" && "font-normal text-muted-foreground")}>{value}</span>
-    </button>
-  );
-}
+const SECTIONS: readonly { readonly value: PanelTab; readonly label: string }[] = [
+  { value: "preview", label: "Preview" },
+  { value: "messages", label: "Messages" },
+  { value: "changes", label: "Changes" },
+  { value: "checks", label: "Checks" },
+  { value: "details", label: "Details" },
+];
 
-function Artifacts({ node, preview }: { readonly node: SessionNode; readonly preview: { readonly url: string } | null }) {
-  const { api } = useWorkspace();
-  const commits = node.live?.commits.length ?? node.record?.commits.length ?? 0;
-  const head = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
-  const changes = useFetch(commits ? () => api.changes(node.id) : null, `${node.id}:${head}`, node.id);
-  const files = changes.data?.files ?? [];
-  const tests = files.filter((f) => isTestFile(f.path)).length;
-  const verdict = node.live?.verdict ?? node.record?.verdict ?? null;
-  const gate = node.live?.gate ?? null;
-  const failed = gate ? gate.checks.filter((c) => !c.ok).length : 0;
-  const used = node.record?.machine.usage.attempts ?? 0;
-  const tries = node.state === "stuck" && /^attempt budget/.test(node.live?.stuck ?? node.record?.machine.reason ?? "") ? used - 1 : used;
+function Messages({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
+  const end = useRef<HTMLDivElement>(null);
+  const timeline = node?.live?.timeline ?? [];
+  const asked = node?.record ? { prompt: node.record.ask ?? node.record.rootPrompt, at: node.record.createdAt } : undefined;
+  const list = node ? updates(timeline, node.state, asked) : [];
+  const p = node ? progress(node.state, timeline) : null;
+  const active = node ? isActive(node.state) : false;
+  const held = node ? heldBy(node) : null;
+  const criteria = feature.spec?.acceptance ?? [];
+  const isLive = node ? node.state === "merged" : feature.status === "merged";
+  useEffect(() => {
+    if (active) end.current?.scrollIntoView({ block: "end" });
+  }, [list.length, node?.id, active]);
   return (
-    <div className="flex flex-wrap gap-1.5 max-sm:-mx-4 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-4" aria-label="What this build made" data-artifacts>
-      <Pill id="preview" icon={Globe} label="Preview" panel="preview" value={preview ? previewHost(preview.url) : "not ready"} tone={preview ? "plain" : "idle"} />
-      <Pill id="files" icon={FileCode2} label="Files" panel="changes" value={files.length ? `${files.length - tests} code, ${tests} test` : changes.loading ? "loading" : "none yet"} tone={files.length ? "plain" : "idle"} />
-      <Pill id="commits" icon={GitCommitHorizontal} label="Commits" panel="details" value={commits ? String(commits) : "none yet"} tone={commits ? "plain" : "idle"} />
-      <Pill id="review" icon={MessageSquareText} label="Review" panel="checks" value={verdict ? (verdict.approve ? "approved" : "asked for changes") : "not yet"} tone={verdict ? (verdict.approve ? "ok" : "bad") : "idle"} />
-      <Pill id="checks" icon={ShieldCheck} label="Checks" panel="checks" value={gate ? (gate.ok ? `${gate.checks.length} of ${gate.checks.length} passed` : `${failed} of ${gate.checks.length} failed`) : "not run yet"} tone={gate ? (gate.ok ? "ok" : "bad") : "idle"} />
-      {tries > 1 ? <Pill id="tries" icon={RotateCcw} label="Tries" panel="details" value={String(tries)} tone="plain" /> : null}
-      {node.live?.recalled.length ? <Pill id="lessons" icon={ListChecks} label="Lessons used" panel="details" value={String(node.live.recalled.length)} tone="plain" /> : null}
+    <div className="min-h-0 flex-1 overflow-y-auto" data-messages>
+      {node && p ? (
+        <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" data-summary>
+          <div className="mx-auto flex max-w-3xl flex-col gap-2.5 px-4 py-3 sm:px-6">
+            <TryTabs node={node} />
+            <Steps node={node} />
+            <Team node={node} />
+            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : p.now}</p>
+          </div>
+        </div>
+      ) : null}
+      <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
+        {node ? <PickReasons node={node} /> : null}
+        {node ? <Related node={node} /> : null}
+        {criteria.length ? (
+          <section className="flex flex-col gap-2.5" data-criteria>
+            <h2 className="text-xs font-medium text-muted-foreground">{isLive ? "What it does" : "What it must do to go live"}</h2>
+            <ul className="flex flex-col gap-2">
+              {criteria.map((c) => (
+                <li key={c.id} className="flex gap-2.5">
+                  {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 rounded-full border border-muted-foreground" />}
+                  <span>{c.text}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {list.length ? <h2 className="-mb-2 text-xs font-medium text-muted-foreground">What happened</h2> : null}
+        {list.map((u) => (
+          <UpdateRow key={u.key} update={u} />
+        ))}
+        <div ref={end} />
+      </div>
     </div>
   );
 }
 
-export function FeaturePage({ feature, composerRef }: { readonly feature: FeatureNode; readonly composerRef: Ref<HTMLTextAreaElement> }) {
-  const { api, data, selection, select, openSession } = useWorkspace();
+function Scroll({ children }: { readonly children: React.ReactNode }) {
+  return <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>;
+}
+
+export function SessionView({ feature }: { readonly feature: FeatureNode }) {
+  const { api, data, selection, select, openSession, panelExpanded, expandPanel } = useWorkspace();
   const node = currentSession(feature, selection.session);
   const [stopping, setStopping] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
-  const timeline = node?.live?.timeline ?? [];
-  const list = node ? updates(timeline, node.state, node.record ? { prompt: node.record.rootPrompt, at: node.record.createdAt } : undefined) : [];
-  const p = node ? progress(node.state, timeline) : null;
+  const section = selection.panel ?? "preview";
   const active = node ? isActive(node.state) : false;
-  const preview = node?.live?.preview ?? node?.record?.preview ?? feature.preview;
-  const panel = selection.panel;
-  const criteria = feature.spec?.acceptance ?? [];
-  const isLive = node ? node.state === "merged" : feature.status === "merged";
   const chore = node ? isChore(node) : feature.id.startsWith("chore-") && !feature.onMain;
-  const held = node ? heldBy(node) : null;
-  const ask = (text: string) => (chore ? `/chore ${text}` : `#${feature.id} ${text}`);
-
-  useEffect(() => {
-    if (active) end.current?.scrollIntoView({ block: "end" });
-  }, [list.length, node?.id, active]);
 
   const startOver = async () => {
+    const asked = (node?.record?.ask ?? node?.record?.rootPrompt ?? feature.title).replace(/^\/(chore|hotfix)\b\s*/i, "");
     try {
-      const result = await api.prompt(chore ? `/chore ${(node?.record?.rootPrompt ?? feature.title).replace(/^\/chore\b\s*/i, "")}` : `#${feature.id} ${node?.record?.rootPrompt ?? feature.title}`);
+      const result = await api.prompt(chore ? `/chore ${asked}` : `#${feature.id} ${asked}`);
       toast.success("Started over");
       data.refresh();
       if (result.sessionId) openSession(result.sessionId);
@@ -398,35 +408,14 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
     }
   };
 
-  const send = async (text: string) => {
-    try {
-      if (node && active) {
-        await api.steer(node.id, text);
-        toast.success("chef reads your note on its next step");
-      } else if (node?.state === "stuck") {
-        await api.retry(node.id, text);
-        toast.success("chef is trying again with your note");
-      } else {
-        const result = await api.prompt(ask(text));
-        toast.success("chef started on your change");
-        if (result.sessionId) openSession(result.sessionId);
-      }
-      data.refresh();
-      return true;
-    } catch (error) {
-      toast.error("Not sent", { description: error instanceof Error ? error.message : String(error) });
-      return false;
-    }
-  };
-
   return (
-    <div className="flex h-full min-h-0 flex-col" data-view="feature" data-feature={feature.id} data-session={node?.id} data-state={node?.state}>
-      <header className="flex h-15 shrink-0 items-center gap-2.5 border-b px-4 sm:px-6">
+    <Tabs value={section} onValueChange={(v) => select({ panel: v as PanelTab })} className="flex h-full min-h-0 flex-col gap-0 bg-background" data-view="feature" data-feature={feature.id} data-session={node?.id} data-state={node?.state}>
+      <header className="flex h-12 shrink-0 items-center gap-2.5 px-4">
         <h1 className="min-w-0 truncate text-base font-semibold">{feature.title}</h1>
         <StatusPill status={node ? statusOf(node.state) : feature.status} />
         {node ? <KindBadges node={node} /> : null}
         {node ? (
-          <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline" data-build-label>
+          <span className="hidden truncate font-mono text-xs text-muted-foreground xl:inline" data-build-label>
             build {node.id}
             {node.attempt && node.attempt.of > 1 ? ` · try ${node.attempt.index} of ${node.attempt.of}` : ""}
           </span>
@@ -444,12 +433,9 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
             Start over
           </Button>
         ) : null}
-        {preview ? (
-          <Button variant={panel ? "outline" : "default"} size="sm" onClick={() => select({ panel: panel ? null : "preview" })}>
-            <PanelRight />
-            {panel ? "Hide preview" : "Preview"}
-          </Button>
-        ) : null}
+        <Button variant="ghost" size="icon-sm" onClick={() => expandPanel(!panelExpanded)} aria-label={panelExpanded ? "Make smaller" : "Open large"} title={panelExpanded ? "Make smaller" : "Open large"}>
+          {panelExpanded ? <Minimize2 /> : <Maximize2 />}
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" aria-label="More">
@@ -457,10 +443,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuItem onClick={() => select({ panel: "changes" })} disabled={!node}>
-              Show changes and details
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void startOver()}>Start over</DropdownMenuItem>
+            {node?.state === "dropped" ? null : <DropdownMenuItem onClick={() => void startOver()}>Start over</DropdownMenuItem>}
             {node && (active || node.state === "stuck") ? (
               <DropdownMenuItem variant="destructive" onClick={() => setStopping(true)}>
                 Stop building
@@ -483,58 +466,36 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {node && p ? (
-          <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" data-summary>
-            <div className="mx-auto flex max-w-3xl flex-col gap-2.5 px-4 py-3 sm:px-6">
-              <TryTabs node={node} />
-              <Steps node={node} />
-              <Team node={node} />
-              <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : p.now}</p>
-              <Artifacts node={node} preview={preview} />
-            </div>
-          </div>
-        ) : null}
-        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
-          {node ? null : (
-            <div className="flex flex-col gap-2 rounded-2xl border p-4">
-              <p>chef has not built this yet.</p>
-              {feature.spec?.body ? <p className="text-muted-foreground">{feature.spec.body}</p> : null}
-              <p className="text-sm text-muted-foreground">Describe what you want below and it starts.</p>
-            </div>
-          )}
-          {node?.state === "stuck" ? <NeedsYou node={node} /> : null}
-          {node && waitsForKey(node) ? <KeyPrompt names={node.needs} api={api} onSaved={data.refresh} /> : null}
-          {node ? <PickReasons node={node} /> : null}
-          {node ? <Related node={node} /> : null}
-          {criteria.length ? (
-            <section className="flex flex-col gap-2.5" data-criteria>
-              <h2 className="text-xs font-medium text-muted-foreground">{isLive ? "What it does" : "What it must do to go live"}</h2>
-              <ul className="flex flex-col gap-2">
-                {criteria.map((c) => (
-                  <li key={c.id} className="flex gap-2.5">
-                    {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 rounded-full border border-muted-foreground" />}
-                    <span>{c.text}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-          {list.length ? <h2 className="-mb-2 text-xs font-medium text-muted-foreground">What happened</h2> : null}
-          {list.map((u) => (
-            <UpdateRow key={u.key} update={u} />
+      <div className="flex shrink-0 items-center border-b px-3 pb-2">
+        <TabsList className="h-8 max-w-full justify-start overflow-x-auto">
+          {SECTIONS.map((t) => (
+            <TabsTrigger key={t.value} value={t.value} className="px-2.5 text-[13px]">
+              {t.label}
+            </TabsTrigger>
           ))}
-          <div ref={end} />
-        </div>
+        </TabsList>
       </div>
-      <Composer
-        ref={composerRef}
-        key={node?.id ?? feature.id}
-        placeholder={active ? "Add a note. chef reads it on its next step" : node?.state === "stuck" ? "Or reply here with a hint" : `Ask for a change to ${feature.title}`}
-        hint={active ? "Your note does not restart the work" : node?.state === "stuck" ? "Sending tries again with your hint" : "Starts a new build of this feature"}
-        onSend={send}
-      />
+      {node?.state === "stuck" || (node && waitsForKey(node)) ? (
+        <div className="max-h-[45%] shrink-0 overflow-y-auto border-b p-3">
+          {node.state === "stuck" ? <NeedsYou node={node} /> : <KeyPrompt names={node.needs} api={api} onSaved={data.refresh} />}
+        </div>
+      ) : null}
+      <TabsContent value="preview" className="flex min-h-0 flex-1 flex-col p-4">
+        <SessionPreview feature={feature} node={node} />
+      </TabsContent>
+      <TabsContent value="messages" className="flex min-h-0 flex-1 flex-col">
+        <Messages feature={feature} node={node} />
+      </TabsContent>
+      <TabsContent value="changes" className="flex min-h-0 flex-1 flex-col">
+        <Scroll>{node ? <ChangesTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>
+      </TabsContent>
+      <TabsContent value="checks" className="flex min-h-0 flex-1 flex-col">
+        <Scroll>{node ? <ChecksTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>
+      </TabsContent>
+      <TabsContent value="details" className="flex min-h-0 flex-1 flex-col">
+        <Scroll>{node ? <DetailsTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>
+      </TabsContent>
       {node ? <StopDialog node={node} open={stopping} onOpenChange={setStopping} /> : null}
-    </div>
+    </Tabs>
   );
 }

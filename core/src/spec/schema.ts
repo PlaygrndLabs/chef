@@ -16,6 +16,7 @@ export const FeatureFrontmatter = z.strictObject({
   status: FeatureStatus,
   entrypoint: z.string().min(1),
   flow: z.string().regex(FEATURE_ID).optional(),
+  parent: z.string().regex(FEATURE_ID).max(40).optional(),
   revision: z.number().int().positive().default(1),
   shared: z.array(z.string().regex(/^shared\/[A-Za-z0-9_./-]+$/)).default([]),
   env: z.array(z.string().regex(ENV_NAME, "env names use capital letters, digits and _")).default([]),

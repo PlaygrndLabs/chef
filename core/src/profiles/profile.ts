@@ -48,6 +48,7 @@ export function loadProfiles(files: Readonly<Record<string, string>>): Profiles 
 
 export function scopeFor(profile: AgentProfile, feature: FeatureSpec): string[] {
   const scope = profile.writeScope.map((pattern) => pattern.replaceAll("{feature}", feature.id));
+  if (feature.parent) scope.push(...profile.writeScope.filter((pattern) => pattern.includes("{feature}")).map((pattern) => pattern.replaceAll("{feature}", feature.parent as string)));
   if (profile.sharedAccess) scope.unshift(...feature.shared);
   return scope;
 }
