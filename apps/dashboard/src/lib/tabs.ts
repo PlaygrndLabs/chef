@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 export const MEMORY_TAB = ":memory";
+export const LIVE_TAB = ":live";
 
 function read(key: string): string[] {
   try {

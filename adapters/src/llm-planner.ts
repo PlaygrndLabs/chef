@@ -75,6 +75,7 @@ export class LlmPlanner implements Planner {
       schema: SplitSchema,
       prompt: [
         `Existing features (a feature with a parent sits under it in the feature tree):\n${JSON.stringify(features, null, 2)}`,
+        ...earlier(input.conversation),
         `Request:\n${input.prompt}\n\n${guess}`,
         [
           "Split the request into the features it asks for. Each part is built by its own session, in parallel with the others, so parts must not depend on each other; if one part needs another part of this same request to exist first, keep them together as one part.",
@@ -102,6 +103,7 @@ export class LlmPlanner implements Planner {
         existing ? `Current spec entry:\n${JSON.stringify(existing, null, 2)}` : `Existing feature ids: ${input.spec.map((f) => f.id).join(", ") || "none"}`,
         ...(parent ? [`This feature sits under ${parent.id} (${parent.title}) and adds to it. Give it its own id and folder. It may also change files in features/${parent.id}/ to wire itself in, for example a button on that feature's page.`] : []),
         `Environment: when the feature talks to an outside service or needs a key or setting the person provides, list the environment variable names it reads in env, in capital snake case like STRIPE_SECRET_KEY, and reuse a name the project already has when it fits. The app reads them at runtime from context.env; their values never go in the code or the spec. Set in this project: ${input.env?.map((v) => v.name).join(", ") || "none"}.`,
+        ...earlier(input.conversation),
         `Request:\n${input.prompt}`,
         "Write the full spec entry for this feature and the work items.",
       ].join("\n\n"),
@@ -120,6 +122,10 @@ export class LlmPlanner implements Planner {
     });
     return result.answer;
   }
+}
+
+function earlier(conversation: string | undefined): string[] {
+  return conversation ? [`Earlier in this chat, oldest first. Use it to understand what the request refers to, and build only what the request asks:\n${conversation}`] : [];
 }
 
 export function toPlan(result: PlanResult, existing: FeatureSpec | undefined, model: string): Plan {
