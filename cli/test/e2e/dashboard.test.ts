@@ -27,6 +27,14 @@ describe("dashboard in a browser", () => {
       await page.keyboard.press("Escape");
       await page.locator("#new-project-button").waitFor();
       await page.locator("#project-settings-button").waitFor();
+      await page.locator("#talk-button").waitFor();
+      await page.locator("#app-menu").click();
+      await page.getByRole("menuitemcheckbox", { name: "Talk button" }).click();
+      await page.locator("#talk-button").waitFor({ state: "detached" });
+      await page.getByRole("menu").waitFor({ state: "detached" });
+      await page.locator("#app-menu").click();
+      await page.getByRole("menuitemcheckbox", { name: "Talk button" }).click();
+      await page.locator("#talk-button").waitFor();
       expect(new URL(page.url()).searchParams.get("project")).toBe("shop");
       const input = page.locator("#chat textarea");
       await input.fill(TODO_PROMPT);

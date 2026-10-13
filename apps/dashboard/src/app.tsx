@@ -16,6 +16,7 @@ import { useSettings } from "@/components/settings-dialog";
 import { Panel } from "@/components/panel";
 import { ProjectBar } from "@/components/project-bar";
 import { Sidebar } from "@/components/sidebar";
+import { TalkButton } from "@/components/voice-button";
 import { appApi, projectApi, type AppMode } from "@/lib/api";
 import { useProject } from "@/lib/live";
 import { featureNodes, sessionNodes } from "@/lib/model";
@@ -172,7 +173,7 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
               <ResizeHandle edge="right" width={sideWidth} min={SIDEBAR.min} max={SIDEBAR.max} initial={SIDEBAR.initial} onResize={setSideWidth} label="Resize the work list" />
             </aside>
           )}
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative flex min-w-0 flex-1 flex-col">
             {compact ? (
               <div className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
                 <Button variant="ghost" size="icon" onClick={() => setSidebar(true)} aria-label="Show features">
@@ -187,6 +188,7 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
             <main className="min-h-0 min-w-0 flex-1">
               <Center workspace={workspace} />
             </main>
+            <TalkButton />
           </div>
           {panel && !compact && !expanded ? (
             <aside className="relative shrink-0 border-l" style={{ width: Math.min(Math.max(panelWidth, PANEL.min), panelMax) }} aria-label="Preview and details">
