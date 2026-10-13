@@ -14,6 +14,7 @@ const feature: FeatureSpec = {
   entrypoint: "POST /reverse",
   revision: 1,
   shared: [],
+  env: [],
   acceptance: [
     { id: "AC1", text: "POST /reverse returns the characters in reverse order" },
     { id: "AC2", text: "emoji stay intact" },

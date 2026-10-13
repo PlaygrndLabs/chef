@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { describe, expect, it } from "vitest";
-import { serve, TODO_PROMPT } from "../../src/serve.ts";
+import { serve, TODO_CLOUD_PROMPT, TODO_PROMPT } from "../../src/serve.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const DIST = join(REPO_ROOT, "apps", "dashboard", "dist");
@@ -91,6 +91,50 @@ describe("dashboard in a browser", () => {
       expect(settings["llm"]).toEqual({ kind: "custom", baseUrl: "https://llm.example", keyHint: "…5678", source: "app" });
       expect(settings["cloudflare"]).toEqual({ accountId: "0123456789abcdef0123456789abcdef", keyHint: "…1234", source: "app" });
       expect(JSON.stringify(settings)).not.toContain("sk-test-12345678");
+    } finally {
+      await browser.close();
+      await local.close();
+    }
+  });
+
+  it("asks for a missing key on the feature page, carries on once it is saved and keeps the value hidden", async () => {
+    const local = await serve({ port: 0, real: false, assets: DIST, project: "shop" });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.goto(`${local.url}/?project=shop`);
+      const input = page.locator("#chat textarea");
+      await input.fill(TODO_CLOUD_PROMPT);
+      await input.press("Enter");
+      const waiting = page.locator('#features [data-group="needs-you"] [data-session="s1"]');
+      await waiting.waitFor({ timeout: 60_000 });
+      await waiting.click();
+      const prompt = page.locator('[data-view="feature"] [data-needs-keys]');
+      await prompt.waitFor({ timeout: 10_000 });
+      expect(await prompt.innerText()).toContain("TODOCLOUD_API_KEY");
+      expect(await page.locator('[data-view="feature"]').innerText()).toContain("Waiting for TODOCLOUD_API_KEY");
+      await prompt.getByLabel("Value of TODOCLOUD_API_KEY").fill("tc-secret-value-123");
+      await prompt.getByRole("button", { name: "Save" }).click();
+      await page.locator('[data-view="feature"][data-state="merged"]').waitFor({ timeout: 60_000 });
+      expect(await page.locator("[data-needs-keys]").count()).toBe(0);
+
+      await page.getByRole("button", { name: "Settings" }).click();
+      await page.getByRole("menuitem", { name: "Project settings" }).click();
+      const env = page.locator('[data-dialog="project-settings"] [data-env]');
+      await env.locator('[data-env-var="TODOCLOUD_API_KEY"]').waitFor({ timeout: 10_000 });
+      await env.getByLabel("Name").fill("api_base_url");
+      await env.getByLabel("Value").fill("https://api.todocloud.example");
+      await env.getByRole("radio", { name: "Plain" }).click();
+      await env.getByRole("button", { name: "Add" }).click();
+      await env.locator('[data-env-var="API_BASE_URL"]').waitFor({ timeout: 10_000 });
+      expect(await env.innerText()).toContain("https://api.todocloud.example");
+      expect(await env.innerText()).not.toContain("tc-secret-value-123");
+      const view = await (await page.request.get(`${local.url}/api/projects/shop/env`)).text();
+      expect(view).not.toContain("tc-secret-value-123");
+      expect(JSON.parse(view)).toMatchObject({ vars: [{ name: "API_BASE_URL", secret: false, value: "https://api.todocloud.example" }, { name: "TODOCLOUD_API_KEY", secret: true, value: null }], needs: [] });
+      expect(errors).toEqual([]);
     } finally {
       await browser.close();
       await local.close();

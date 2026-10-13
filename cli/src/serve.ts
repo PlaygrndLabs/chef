@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { ControlError, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, isTerminal, parseFeature, readSpec, type FeatureSpec } from "@chef/core";
+import { ControlError, DEFAULT_BUDGET, DEFAULT_PREVIEW_IDLE_MINUTES, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec } from "@chef/core";
 import type { Script } from "@chef/core/fakes";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
 import { applyUpdate, describeSettings, NO_SETTINGS, type AppSettings, type SettingsEnv } from "@chef/adapters/settings";
+import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, newEnvKey, viewEnv, type StoredEnv } from "@chef/adapters/project-env";
 import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { createNodeFetchHandler } from "@copilotkit/runtime/v2/node";
 import { benchScript } from "./bench/agent.ts";
@@ -14,6 +15,7 @@ import { readTree } from "./fs.ts";
 import { localWorld, REPO_ROOT, templateTree } from "./world.ts";
 
 export const TODO_PROMPT = "Add an item to a todo list";
+export const TODO_CLOUD_PROMPT = "Add an item to a todo list that also syncs to TodoCloud";
 
 const TYPES: Readonly<Record<string, string>> = {
   ".html": "text/html; charset=utf-8",
@@ -27,7 +29,7 @@ const TYPES: Readonly<Record<string, string>> = {
 function presets(): Map<string, FeatureSpec> {
   const todo = parseFeature(readFileSync(join(REPO_ROOT, "core", "test", "fixtures", "todo-add.md"), "utf8"));
   if (!todo.ok) throw new Error(todo.errors.join("\n"));
-  return new Map<string, FeatureSpec>([[TODO_PROMPT, todo.spec], ...BENCH_ITEMS.map((item) => [promptFor(item), specFor(item)] as const)]);
+  return new Map<string, FeatureSpec>([[TODO_PROMPT, todo.spec], [TODO_CLOUD_PROMPT, { ...todo.spec, env: ["TODOCLOUD_API_KEY"] }], ...BENCH_ITEMS.map((item) => [promptFor(item), specFor(item)] as const)]);
 }
 
 function script(): Script {
@@ -44,12 +46,14 @@ export interface LocalServer {
 
 export async function serve(options: { readonly port: number; readonly project?: string; readonly real: boolean; readonly attempts?: number; readonly assets?: string; readonly settings?: SettingsEnv; readonly log?: (line: string) => void }): Promise<LocalServer> {
   const log = options.log ?? (() => {});
-  const w = localWorld({ script: script(), presets: presets(), real: options.real, ...(options.attempts ? { config: { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } } : {}) });
+  let env: StoredEnv = {};
+  const cipher = await aesCipher(envKeyBytes(newEnvKey()));
+  const w = localWorld({ script: script(), presets: presets(), real: options.real, config: { environment: async () => envNames(env), ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
   await w.orchestrator.bootstrap(templateTree());
   let driving: Promise<void> | null = null;
   const drive = () => {
     driving ??= (async () => {
-      while ((await w.orchestrator.sessions()).some((s) => !isTerminal(s.machine.state))) await w.orchestrator.drain(1);
+      while ((await w.orchestrator.sessions()).some(runnable)) await w.orchestrator.drain(1);
     })()
       .catch((error: unknown) => log(`drive failed: ${error instanceof Error ? error.message : String(error)}`))
       .finally(() => {
@@ -109,6 +113,20 @@ export async function serve(options: { readonly port: number; readonly project?:
     return Response.json({ error: "not found" }, { status: 404 });
   };
 
+  const envView = async () => {
+    const features = [...readSpec((await w.orchestrator.mainTree()).tree), ...(await w.orchestrator.sessions()).filter((s) => !isTerminal(s.machine.state)).map((s) => s.plan.feature)];
+    return viewEnv(env, cipher, envNeeds(features, envNames(env)));
+  };
+  const envRequest = async (request: Request): Promise<Response> => {
+    if (request.method === "GET") return Response.json(await envView());
+    if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
+    const result = await applyEnvUpdate(env, await request.json().catch(() => null), cipher, Date.now());
+    if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+    env = result.env;
+    if ((await w.orchestrator.environmentChanged()).length > 0) drive();
+    return Response.json(await envView());
+  };
+
   let saved: AppSettings = NO_SETTINGS;
   const settings = async (request: Request, env: SettingsEnv): Promise<Response> => {
     if (request.method === "GET") return Response.json(describeSettings(saved, env));
@@ -132,6 +150,8 @@ export async function serve(options: { readonly port: number; readonly project?:
         return Response.json(await link.submit(prompt.trim()), { status: 202 });
       }
       if (request.method === "GET" && action === "sessions") return Response.json(await w.orchestrator.sessions());
+      if (request.method === "GET" && action === "settings") return Response.json({ previewIdleMinutes: DEFAULT_PREVIEW_IDLE_MINUTES, git: null });
+      if (action === "env") return envRequest(request);
       if (request.method === "GET" && action === "spec") {
         const main = await w.orchestrator.mainTree();
         return Response.json({ commitId: main.commitId, features: readSpec(main.tree) });

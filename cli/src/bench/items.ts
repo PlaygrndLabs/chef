@@ -372,6 +372,7 @@ export function specFor(item: BenchItem): FeatureSpec {
     entrypoint: `POST /${item.id}`,
     revision: 1,
     shared: [],
+    env: [],
     acceptance: [
       { id: "AC1", text: item.normal.text },
       { id: "AC2", text: item.edge.text },

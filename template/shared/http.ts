@@ -1,8 +1,11 @@
 import type { Store } from "./storage.ts";
 
+export type Env = Readonly<Record<string, string | undefined>>;
+
 export interface Context {
   readonly store: Store;
   readonly params: Readonly<Record<string, string>>;
+  readonly env: Env;
 }
 
 export interface Route {
@@ -57,7 +60,7 @@ function wantsPage(request: Request): boolean {
   return request.method === "GET" && (request.headers.get("accept") ?? "").includes("text/html");
 }
 
-export function createApp(features: readonly Feature[], store: Store): (request: Request) => Promise<Response> {
+export function createApp(features: readonly Feature[], store: Store, env: Env = {}): (request: Request) => Promise<Response> {
   const routes = features.flatMap((feature) => feature.routes);
   const rootPage = features.some((feature) => feature.id !== "home" && feature.routes.some((route) => route.method === "GET" && route.path === "/"));
   return async (request) => {
@@ -66,7 +69,7 @@ export function createApp(features: readonly Feature[], store: Store): (request:
     for (const route of routes) {
       if (route.method !== request.method) continue;
       const params = matchPath(route.path, url.pathname);
-      if (params) return route.handle(request, { store, params });
+      if (params) return route.handle(request, { store, params, env });
     }
     return json({ error: "not found" }, 404);
   };

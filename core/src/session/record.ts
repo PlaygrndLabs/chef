@@ -26,6 +26,7 @@ export interface SessionRecord {
   previewKey: string;
   readonly parent: string | null;
   history: string[];
+  needs?: readonly string[];
   released?: MachineState["state"] | null;
   forkDeleted?: boolean;
   createdAt: number;
