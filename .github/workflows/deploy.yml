@@ -28,7 +28,6 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       NAME: ${{ inputs.name || 'chef-dev' }}
-      MOVED_FROM: ${{ (inputs.name || 'chef-dev') == 'chef-dev' && 'chef@v2' || '' }}
     steps:
       - name: Check Cloudflare credentials
         id: creds
@@ -66,7 +65,7 @@ jobs:
         run: |
           jq -n '{ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, LLM_BASE_URL: env.LLM_BASE_URL, LLM_API_KEY: env.LLM_API_KEY, VOICE_BASE_URL: env.VOICE_BASE_URL, VOICE_API_KEY: env.VOICE_API_KEY, TYPESAFE_API_KEY: env.TYPESAFE_API_KEY, CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, OPENAI_API_KEY: env.OPENAI_API_KEY, CHEF_PASSWORD: env.CHEF_PASSWORD} | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
           set -o pipefail
-          pnpm run deploy --name "$NAME" ${MOVED_FROM:+--moved-from "$MOVED_FROM"} --secrets-file "$RUNNER_TEMP/secrets.json" | tee "$RUNNER_TEMP/deploy.log"
+          pnpm run deploy --name "$NAME" --secrets-file "$RUNNER_TEMP/secrets.json" | tee "$RUNNER_TEMP/deploy.log"
           grep -o 'https://[a-z0-9.-]*workers.dev' "$RUNNER_TEMP/deploy.log" | head -1 > "$RUNNER_TEMP/url"
       - name: Show Cloudflare's errors from the Wrangler log
         if: failure() && steps.creds.outputs.ready == 'true'
