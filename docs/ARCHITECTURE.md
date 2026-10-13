@@ -2,6 +2,14 @@
 
 chef turns a prompt or a spec entry into a merged feature with no human step. The spec is the memory, git is the state, and chat is only input.
 
+## Where things run
+
+chef has two halves. The engine is the chef Worker in the user's Cloudflare account: the HTTP API, the project and session Durable Objects, sandboxes, previews, Artifacts repos, memory and settings. Everything that does work or keeps state lives there, so work goes on when no client is open.
+
+The interface is a client of that API. In the cloud the Worker serves the dashboard itself. On a computer, `chef app` (`pnpm start`, `cli/src/app.ts`) serves the same dashboard on `localhost` and forwards `/api/*`, `/agents/*` (the live WebSocket) and `/preview/*` to the engine with the password as a Bearer token, so the browser never holds it. It keeps only the engine's address and password (`~/.chef/connection.json`) and answers `/api/app` with `{ mode: "local", engine }`; the Worker answers the same path with `mode: "cloud"`. The dashboard shows a connect screen when a local app has no engine yet. It only answers requests from its own pages: the `Host` must be its own, a cross-site `Origin` or `Sec-Fetch-Site` is refused, and writes need a same-origin signal. A terminal or desktop app would be another client of the same API.
+
+Every deploy goes through `chef deploy` (`pnpm run deploy`, `cli/src/deploy.ts`), from the Deploy to Cloudflare button's Workers Builds, from the `deploy` workflow, or from a computer. It reads the root `wrangler.jsonc`, creates the Vectorize index when it is missing, and runs `wrangler deploy`. With `--name`, it writes a copy of the config where the Artifacts namespace, Workflow, memory index and preview Worker prefix carry that name, so several chefs can share an account.
+
 ## Packages
 
 | Package | Role |
@@ -108,13 +116,7 @@ A correction is a rejected or failed turn followed by the turn that was accepted
 
 `verifyMain` adds a `feature-map` check after every merge: every `features/<id>/index.ts` has a spec entry and every merged spec entry has its folder.
 
-The Worker binds the index as `MEMORY` (index `chef-memory`, 768 dimensions, cosine) and Workers AI as `AI`. Queries filter on the `project` and `kind` metadata fields, which need metadata indexes created before any vector is inserted:
-
-```
-npx wrangler vectorize create chef-memory --dimensions=768 --metric=cosine
-npx wrangler vectorize create-metadata-index chef-memory --property-name=project --type=string
-npx wrangler vectorize create-metadata-index chef-memory --property-name=kind --type=string
-```
+The Worker binds the index as `MEMORY` (index `chef-memory`, 768 dimensions, cosine) and Workers AI as `AI`. Each project's documents live in their own Vectorize namespace, named after the project, and kinds are filtered after the query, so the index needs no metadata indexes. `pnpm run deploy` creates the index when it is missing.
 
 ## Voice
 

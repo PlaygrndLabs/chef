@@ -1,9 +1,9 @@
 import { hashHex, type MemoryDoc, type MemoryHit, type MemoryIndex, type MemoryKind } from "@chef/core";
 
 export interface VectorizeLike {
-  upsert(vectors: { id: string; values: number[]; metadata?: Record<string, string> }[]): Promise<unknown>;
+  upsert(vectors: { id: string; values: number[]; namespace?: string; metadata?: Record<string, string> }[]): Promise<unknown>;
   deleteByIds(ids: string[]): Promise<unknown>;
-  query(vector: number[], options: { topK: number; returnMetadata: "all"; filter?: Record<string, unknown> }): Promise<{ matches: { id: string; score: number; metadata?: Record<string, unknown> }[] }>;
+  query(vector: number[], options: { topK: number; returnMetadata: "all"; namespace?: string }): Promise<{ matches: { id: string; score: number; metadata?: Record<string, unknown> }[] }>;
 }
 
 export interface EmbedderLike {
@@ -13,6 +13,7 @@ export interface EmbedderLike {
 export const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
 
 const KINDS: readonly MemoryKind[] = ["lesson", "feature", "spec", "note"];
+const MAX_TOP_K = 50;
 
 export class VectorizeIndex implements MemoryIndex {
   constructor(
@@ -43,6 +44,7 @@ export class VectorizeIndex implements MemoryIndex {
       docs.map((doc, i) => ({
         id: this.id(doc.path),
         values: vectors[i] as number[],
+        namespace: this.project,
         metadata: { project: this.project, path: doc.path, kind: doc.kind, feature: doc.feature ?? "", text: doc.text.slice(0, 4000) },
       })),
     );
@@ -54,14 +56,13 @@ export class VectorizeIndex implements MemoryIndex {
 
   async query(text: string, limit: number, kinds?: readonly MemoryKind[]): Promise<MemoryHit[]> {
     const [vector] = await this.embed([text]);
-    const filter: Record<string, unknown> = { project: this.project };
-    if (kinds) filter["kind"] = { $in: [...kinds] };
-    const { matches } = await this.index.query(vector as number[], { topK: limit, returnMetadata: "all", filter });
-    return matches.map((m) => {
+    const { matches } = await this.index.query(vector as number[], { topK: kinds ? MAX_TOP_K : Math.min(limit, MAX_TOP_K), returnMetadata: "all", namespace: this.project });
+    const hits = matches.map((m) => {
       const meta = m.metadata ?? {};
       const kind = KINDS.includes(meta["kind"] as MemoryKind) ? (meta["kind"] as MemoryKind) : "note";
       const feature = typeof meta["feature"] === "string" && meta["feature"] ? (meta["feature"] as string) : null;
       return { score: m.score, doc: { path: String(meta["path"] ?? m.id), kind, feature, text: String(meta["text"] ?? "") } };
     });
+    return hits.filter((h) => !kinds || kinds.includes(h.doc.kind)).slice(0, limit);
   }
 }

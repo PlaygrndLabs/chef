@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ApiError, settingsApi, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
+import { ApiError, appApi, settingsApi, type AppMode, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface Choice {
@@ -226,6 +226,45 @@ function PasswordForm(props: { readonly settings: SettingsView; readonly save: S
   );
 }
 
+function ConnectionForm() {
+  const [mode, setMode] = useState<AppMode | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void appApi.get().then(setMode);
+  }, []);
+  if (!mode || mode.mode !== "local") return null;
+  return (
+    <Section title="This computer" note="The app runs here and talks to your chef in the cloud, where the work runs.">
+      <p className="text-xs text-muted-foreground" data-current="engine">
+        Connected to {mode.engine}
+        {mode.fixed ? ", set by CHEF_URL" : ""}
+      </p>
+      {mode.fixed ? null : (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              appApi.disconnect().then(
+                () => location.reload(),
+                (e: unknown) => {
+                  setBusy(false);
+                  toast.error("Could not disconnect", { description: e instanceof Error ? e.message : String(e) });
+                },
+              );
+            }}
+          >
+            Disconnect
+          </Button>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 const TABS = [
   { value: "model", label: "Model" },
   { value: "previews", label: "Previews" },
@@ -291,10 +330,11 @@ export function SettingsDialog(props: { readonly open: boolean; readonly onOpenC
                 <JevForm settings={settings} save={save} />
               </Section>
             </TabsContent>
-            <TabsContent value="password" className="pt-3">
+            <TabsContent value="password" className="grid gap-5 pt-3">
               <Section title="Password" note="Changing it signs out every other browser and script.">
                 <PasswordForm settings={settings} save={save} />
               </Section>
+              <ConnectionForm />
             </TabsContent>
           </Tabs>
         ) : (
