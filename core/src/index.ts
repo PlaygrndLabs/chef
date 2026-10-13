@@ -3,6 +3,7 @@ export * from "./spec/index.ts";
 export * from "./env/env.ts";
 export * from "./notes/notes.ts";
 export * from "./profiles/profile.ts";
+export * from "./profiles/agent-config.ts";
 export * from "./router/decision.ts";
 export * from "./router/router.ts";
 export * from "./router/no-classifier.ts";

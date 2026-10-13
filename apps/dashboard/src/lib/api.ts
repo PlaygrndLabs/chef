@@ -1,4 +1,4 @@
-import type { Budget, FeatureSpec, OutboundMode, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, Budget, FeatureSpec, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -64,6 +64,12 @@ export type SettingsUpdate = Readonly<Record<string, unknown>>;
 export const settingsApi = {
   get: () => call<SettingsView>("/api/settings"),
   save: (update: SettingsUpdate) => call<SettingsView>("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
+};
+
+export const agentsApi = {
+  get: () => call<AgentsView>("/api/agents"),
+  save: (config: AgentConfig, summary: string, version: number) => call<AgentsView>("/api/agents", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ config, summary, version }) }),
+  restore: (version: number) => call<AgentsView>("/api/agents/restore", post({ version })),
 };
 
 export interface ProjectEntry {
@@ -191,6 +197,7 @@ export function projectApi(project: string) {
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
+    route: (prompt: string) => call<RouteDecision>(`${base}/route`, post({ prompt })),
     settings: () => call<ProjectSettingsView>(`${base}/settings`),
     saveSettings: (update: ProjectSettingsUpdate) => call<ProjectSettingsView>(`${base}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
     git: () => call<{ settings: GitLinkView | null; state: SyncState | null }>(`${base}/git`),

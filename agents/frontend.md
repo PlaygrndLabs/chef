@@ -1,7 +1,10 @@
 ---
 role: frontend
+label: Frontend builder
 model: coder-default
 description: Implements a feature's user interface inside its vertical slice.
+runs: agent
+plannable: true
 sharedAccess: true
 writeScope:
   - features/{feature}/**

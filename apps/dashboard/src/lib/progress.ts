@@ -61,6 +61,7 @@ export type Update =
       detail: string;
       readonly tech: string[];
       readonly mark: { readonly review?: "approved" | "rejected"; readonly gate?: "passed" | "failed" };
+      role?: string | null;
     };
 
 type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "retry" | "reopen" | null; round: number };
@@ -120,7 +121,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         if (PHASES.has(item.to)) {
           const after = AFTER[item.reason] ?? null;
           if (after) round++;
-          step = { kind: "chef", key, at: item.at, icon: ICON[item.to] ?? "code", tone: "ok", text: "", detail: "", tech: [], mark: {}, phase: item.to, said: "", last: "", after, round };
+          step = { kind: "chef", key, at: item.at, icon: ICON[item.to] ?? "code", tone: "ok", text: "", detail: "", tech: [], mark: {}, role: null, phase: item.to, said: "", last: "", after, round };
           steps.push(step);
           list.push(step);
         } else if (item.to === "dropped") {
@@ -129,6 +130,10 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         } else step = null;
         return;
       }
+      case "agent":
+        if (step) step.role = item.role;
+        tech(`${item.role} started on ${item.model}`);
+        return;
       case "text":
         if (step) step.said = item.text;
         return;
@@ -140,6 +145,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         tech(`error: ${item.message}`);
         return;
       case "commit":
+        if (step && !step.role && item.role !== "sync") step.role = item.role;
         tech(`commit ${short(item.commitId)} by ${item.role}: ${item.message.split("\n")[0] ?? ""}`);
         return;
       case "preview":
@@ -166,6 +172,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
           detail: "",
           tech: [...item.reasons, `reviewer ${item.model}`],
           mark: { review: item.approve ? "approved" : "rejected" },
+          role: "reviewer",
         });
         return;
       case "gate": {

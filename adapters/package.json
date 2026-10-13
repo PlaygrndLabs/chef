@@ -19,7 +19,8 @@
     "./gpt-live": "./src/gpt-live.ts",
     "./realtime": "./src/realtime.ts",
     "./workers-ai-reviewer": "./src/workers-ai-reviewer.ts",
-    "./agui": "./src/agui.ts"
+    "./agui": "./src/agui.ts",
+    "./agents": "./src/agents.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
