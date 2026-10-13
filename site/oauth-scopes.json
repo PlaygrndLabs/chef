@@ -1,0 +1,13 @@
+[
+  "User Details Read",
+  "Account Settings Read",
+  "Workers Scripts Write",
+  "Containers Write",
+  "Artifacts Write",
+  "Vectorize Write",
+  "Workers AI Read",
+  "Workflows Write",
+  "Event Subscriptions Write",
+  "Account API Tokens Write",
+  "Billing Read"
+]

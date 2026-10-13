@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, type Runner } from "../../src/deploy.ts";
+import { ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, withImage, type Runner } from "../../src/deploy.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const base = parseJsonc(readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8"));
@@ -24,6 +24,13 @@ describe("deploy", () => {
       vars: { PROJECT_WORKER_PREFIX: "trial-", CODER_MODEL: (base["vars"] as Record<string, string>)["CODER_MODEL"] },
     });
     expect(copy["durable_objects"]).toEqual(base["durable_objects"]);
+  });
+
+  it("points every sandbox image at a prebuilt one, so a deploy needs no Docker", () => {
+    const image = "registry.cloudflare.com/0123/chef-sandbox@sha256:abc";
+    const config = withImage(base, image);
+    expect(config["containers"]).toEqual([{ ...(base["containers"] as Record<string, unknown>[])[0], images: { coder: { image } } }]);
+    expect(config["durable_objects"]).toEqual(base["durable_objects"]);
   });
 
   it("creates the memory index only when it is missing and never stops the deploy over it", async () => {

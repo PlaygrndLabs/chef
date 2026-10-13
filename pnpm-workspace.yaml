@@ -6,3 +6,4 @@ packages:
   - workers/sandbox
   - apps/*
   - template
+  - site

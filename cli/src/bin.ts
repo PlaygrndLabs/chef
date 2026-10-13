@@ -279,17 +279,18 @@ async function appCommand(args: readonly string[]): Promise<number> {
 
 async function deployCommand(args: readonly string[]): Promise<number> {
   const name = option(args, "name");
+  const image = option(args, "image");
   const passthrough: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
     if (arg === "deploy" || arg === "--dry-run" || arg === "--") continue;
-    if (arg === "--name") {
+    if (arg === "--name" || arg === "--image") {
       i++;
       continue;
     }
     passthrough.push(arg);
   }
-  const result = await deploy({ ...(name ? { name } : {}), dryRun: args.includes("--dry-run"), passthrough });
+  const result = await deploy({ ...(name ? { name } : {}), ...(image ? { image } : {}), dryRun: args.includes("--dry-run"), passthrough });
   return result.code;
 }
 
@@ -331,7 +332,7 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "tour") return tourCommand(args);
   if (command === "app") return appCommand(args);
   if (command === "deploy") return deployCommand(args);
-  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef app [--local] [--port n] [--no-open] | chef deploy [--name n] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef app [--local] [--port n] [--no-open] | chef deploy [--name n] [--image ref] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
   return 2;
 }
 
