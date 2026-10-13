@@ -1,6 +1,6 @@
 # Phase 1 progress
 
-Date: 2026-10-11. Branch `claude/kargah-build-t66ame`.
+Date: 2026-10-11.
 
 ## Built
 
