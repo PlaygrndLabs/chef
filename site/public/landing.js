@@ -676,41 +676,56 @@ function check(ctx, width, height) {
   };
 }
 
+function todoCells(done) {
+  return layout((rect) => {
+    rect(0, 0, COLS, 4, "solid");
+    rect(3, 7, 40, 4, "line");
+    rect(46, 7, 13, 4, "solid");
+    [26, 34, 20, 30, 24].forEach((w, k) => {
+      rect(3, 14 + k * 4, 2, 2, k < done ? "solid" : "line");
+      rect(8, 14 + k * 4, w, 2, k < done ? "soft" : "solid");
+    });
+    rect(3, 34, 18, 1, "soft");
+  });
+}
+
 function live(ctx, width, height) {
   const k = term(ctx, width, height);
+  const states = [1, 2, 3, 4, 5].map(todoCells);
   const calls = [
-    ["GET", "/", 200], ["GET", "/api/items", 200], ["POST", "/api/items", 201], ["GET", "/app.js", 200],
-    ["PATCH", "/api/items/3", 200], ["GET", "/api/items", 200], ["DELETE", "/api/items/7", 204], ["GET", "/", 200],
+    ["PATCH", "/api/items/1", 200, 14], ["PATCH", "/api/items/2", 200, 11], ["PATCH", "/api/items/3", 200, 16],
+    ["PATCH", "/api/items/4", 200, 12], ["PATCH", "/api/items/5", 200, 13],
   ];
-  const rand = random(17);
-  const times = calls.map(() => 8 + Math.floor(rand() * 40));
-  const shown = Math.max(3, k.rows - 5);
+  const top = k.pad + k.line * 3;
+  const room = { w: width - k.pad * 2, h: height - top - k.pad - k.line * 2 };
+  const step = Math.min(room.w / COLS, room.h / ROWS);
+  const dot = Math.max(1, step * 0.62);
+  const rand = random(23);
+  const twinkle = Array.from({ length: COLS * ROWS }, () => rand() * 6);
   return (ms) => {
-    const t = still ? 6 : ms / 1000;
+    const t = still ? 7.9 : (ms / 1000) % 8;
+    const done = Math.min(4, Math.floor(t / 1.6));
     k.clear();
     k.text("\u25cf", 0, 0, 1, k.green);
     k.text("todo.workers.dev", 2, 0, 1);
     k.text("live", Math.max(20, k.cols - 4), 0, 0.9, k.green);
     k.text("main a41c9e2, deployed when checks passed".slice(0, k.cols), 0, 1, 0.55, k.muted);
-    const count = Math.floor(t / 0.5);
-    for (let i = 0; i < shown; i++) {
-      const n = count - i;
-      if (n < 0) break;
-      const [method, path, code] = calls[n % calls.length];
-      const sec = String(n % 60).padStart(2, "0");
-      const age = i === 0 ? Math.min(1, ((t / 0.5) % 1) * 4) : 1;
-      const a = age * (1 - i / (shown + 2));
-      const row = 3 + i;
-      k.text(`12:04:${sec}`, 0, row, a * 0.5, k.muted);
-      if (k.cols > 34) {
-        k.text(method, 10, row, a, k.brand);
-        k.text(path.slice(0, k.cols - 30), 17, row, a);
-        k.text(String(code), k.cols - 10, row, a, k.green);
-        k.text(`${times[n % times.length]}ms`, k.cols - 5, row, a * 0.6, k.muted);
-      } else {
-        k.text(`${method} ${path}`.slice(0, k.cols - 14), 10, row, a);
-        k.text(String(code), k.cols - 3, row, a, k.green);
-      }
+    ctx.fillStyle = k.brand;
+    for (const [index, value] of states[done]) {
+      const c = index % COLS;
+      const r = Math.floor(index / COLS);
+      ctx.globalAlpha = value * (0.75 + 0.25 * Math.sin(ms / 900 + twinkle[index]));
+      ctx.fillRect(k.pad + c * step, top + r * step, dot, dot);
+    }
+    const [method, path, code, time] = calls[done];
+    const fresh = Math.min(1, ((t % 1.6) / 1.6) * 6);
+    const row = Math.floor((height - k.pad) / k.line) - 1;
+    k.text("12:04:" + String(10 + done).padStart(2, "0"), 0, row, fresh * 0.5, k.muted);
+    k.text(method, 10, row, fresh, k.brand);
+    k.text(path.slice(0, Math.max(4, k.cols - 30)), 17, row, fresh);
+    if (k.cols > 34) {
+      k.text(String(code), k.cols - 10, row, fresh, k.green);
+      k.text(`${time}ms`, k.cols - 5, row, fresh * 0.6, k.muted);
     }
     ctx.globalAlpha = 1;
   };
