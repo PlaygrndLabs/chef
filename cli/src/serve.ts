@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec } from "@chef/core";
+import { AgentSettings, ControlError, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
@@ -18,6 +18,11 @@ import { localWorld, REPO_ROOT, repoProfiles, templateTree } from "./world.ts";
 
 export const TODO_PROMPT = "Add an item to a todo list";
 export const TODO_CLOUD_PROMPT = "Add an item to a todo list that also syncs to TodoCloud";
+export const TODO_SPLIT_PROMPT = "Let people shout and reverse their todo items";
+
+function splits(): Map<string, readonly SplitPart[]> {
+  return new Map([[TODO_SPLIT_PROMPT, BENCH_ITEMS.filter((item) => item.id === "shout" || item.id === "reverse").map((item): SplitPart => ({ kind: "new", prompt: promptFor(item), parent: "todo-add" }))]]);
+}
 
 const TYPES: Readonly<Record<string, string>> = {
   ".html": "text/html; charset=utf-8",
@@ -54,7 +59,7 @@ export async function serve(options: { readonly port: number; readonly project?:
   let env: StoredEnv = {};
   let shared: StoredEnv = {};
   const cipher = await aesCipher(envKeyBytes(newEnvKey()));
-  const w = localWorld({ script: script(), presets: presets(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
+  const w = localWorld({ script: script(), presets: presets(), splits: splits(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
   await w.orchestrator.bootstrap(templateTree());
   let driving: Promise<void> | null = null;
   const drive = () => {

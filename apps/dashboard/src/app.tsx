@@ -2,6 +2,7 @@ import { Suspense, use, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Shown } from "@/components/loading";
 import { MainView, ProjectWorkspace } from "@/components/project-workspace";
+import { SessionView } from "@/components/session-tabs";
 import type { AppMode } from "@/lib/api";
 import { boot } from "@/lib/boot";
 import { preloadable } from "@/lib/lazy";
@@ -12,8 +13,10 @@ const PlaceScreen = preloadable(() => import("@/components/place-screen").then((
 const Start = preloadable(() => import("@/components/start").then((m) => m.Start));
 
 export function preloadScreen() {
-  if (new URLSearchParams(location.search).has("project")) void MainView.preload();
-  else void Start.preload();
+  const params = new URLSearchParams(location.search);
+  if (!params.has("project")) return void Start.preload();
+  void MainView.preload();
+  if (params.has("feature") || params.has("session")) void SessionView.preload();
 }
 
 function needsPlace(mode: AppMode): boolean {

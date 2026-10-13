@@ -13,7 +13,7 @@ const NOW: Readonly<Record<SessionState, string>> = {
   coding: "Writing the code.",
   reviewing: "A reviewer is reading the change.",
   gating: "Running the final checks.",
-  merged: "Live. Ask for a change below whenever you want.",
+  merged: "Live. Ask for a change in the chat whenever you want.",
   stuck: "chef stopped and is waiting for you.",
   dropped: "Stopped. Press Start over to build it again.",
 };
