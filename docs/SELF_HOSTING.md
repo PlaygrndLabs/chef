@@ -3,19 +3,19 @@
 chef is an app you host yourself. Pick where it runs:
 
 - **In the cloud.** The whole of chef runs in your Cloudflare account and you use it from any browser.
-- **On your computer, working in the cloud.** The app and project management run on your computer, and the work (sessions, sandboxes, previews and project repos) runs in your Cloudflare account. Like ChatGPT or Claude Code, the app is only the window: close your laptop and the work goes on.
-- **Fully on your computer.** Everything runs on your machine: the app, projects, agents, sandboxes and previews. You need Docker and a model key, and no Cloudflare account.
+- **On your computer, working in the cloud.** The app and project management run on your computer, and the work (sessions, sandboxes, previews and project repos) runs in your Cloudflare account. Like ChatGPT or Claude Code, the app is only the window: close your laptop and the work goes on, and your computer stays light.
+- **Fully on your computer.** Everything runs on your machine: the app, projects, agents, sandboxes, previews and plain git repositories. You need Docker and a model key, and no Cloudflare account.
 
-The first two use the same chef in Cloudflare, so you can switch between them, or use both, at any time.
+On your computer one app covers both of the last two. `pnpm start` opens a first screen that asks where chef should work, checks your Cloudflare account and sets chef up there if it is not there yet. You can change the choice later in Settings.
 
 | | In the cloud | On your computer, working in the cloud | Fully on your computer |
 | --- | --- | --- | --- |
-| Start it with | the Deploy button | `pnpm start` | `pnpm start --local` |
+| Start it with | the Deploy button | `pnpm start`, then **On Cloudflare** | `pnpm start`, then **On this computer** (or `pnpm start --local`) |
 | Interface | served by your chef Worker | `http://localhost:4300` | `http://localhost:4300` |
 | Projects, settings, keys | your chef in Cloudflare | your chef in Cloudflare; this computer keeps only its address and password | `~/.chef/local` on this computer |
-| Sessions, sandboxes, previews, repos | Cloudflare | Cloudflare | Docker on this computer |
+| Sessions, sandboxes, previews, repos | Cloudflare | Cloudflare | Docker and git on this computer |
 | Keeps working when your computer sleeps | yes | yes | no, it carries on when the computer wakes |
-| Needs | a Cloudflare account | a Cloudflare account | Docker |
+| Needs | a Cloudflare account | a Cloudflare account | Docker and enough CPU, memory and disk for the sandboxes |
 
 ## What you need
 
@@ -43,33 +43,31 @@ git push
 
 ## Run chef on your computer
 
-1. Deploy chef to Cloudflare once, with the button above or with `pnpm run deploy` (see [Deploy from your computer](#deploy-from-your-computer)).
-2. Clone this repository, then:
+Clone this repository, then:
 
-   ```
-   pnpm install
-   pnpm start
-   ```
+```
+pnpm install
+pnpm start
+```
 
-   `pnpm start` builds the app and opens it at `http://localhost:4300` (`--port` or `PORT` changes the port).
-3. Enter your chef's address and password. If that chef has no password yet, the one you enter becomes its password.
+`pnpm start` builds the app and opens it at `http://localhost:4300` (`--port` or `PORT` changes the port). The first screen asks where chef should work:
 
-From then on `pnpm start` opens straight into your projects. The address and password are kept in `~/.chef/connection.json`, readable only by you (`CHEF_HOME` moves the folder). `CHEF_URL` and `CHEF_PASSWORD` in the environment connect without the file. Settings > Password shows which chef this computer uses and can disconnect it.
+- **On Cloudflare** (recommended). The work runs in your Cloudflare account, so this computer only shows the app. Choose it when your computer is short on CPU, memory or disk, or when work should go on while it sleeps.
+  - **I have chef there**: enter your chef's address and password. If that chef has no password yet, the one you enter becomes its password.
+  - **Set it up**: create an API token in Cloudflare from the Edit Cloudflare Workers template, with edit access to Containers, Vectorize, Workflows and Artifacts added, and copy your account id. **Check my account** looks for chef in that account. If it is there, enter its password to connect. If it is not, pick a password and **Set up chef on Cloudflare** deploys it from this computer (this needs Docker, to build the sandbox image) and connects when it is up. Without Docker, use the Deploy button above and then connect.
+- **On this computer**. Everything runs here in Docker; see [Run chef fully on your computer](#run-chef-fully-on-your-computer).
 
-How it works: the local app serves the dashboard and passes every API call, live update and preview link on to your chef, adding the password on the way. The password never reaches the browser. The app listens on `127.0.0.1` only and answers only its own pages, so other websites you visit cannot use it. A future terminal app and desktop app will talk to chef the same way.
+From then on `pnpm start` opens straight into your projects. The choice, and the address and password of a chef in Cloudflare, are kept in `~/.chef/connection.json`, readable only by you (`CHEF_HOME` moves the folder). `CHEF_URL` and `CHEF_PASSWORD` in the environment connect without the file, and `pnpm start --local` runs on this computer without asking.
+
+To switch, open Settings: **Password** (when working in Cloudflare) or **This computer** (when working here) has **Choose where chef works**, which takes you back to the first screen. Projects stay where they were made: projects on this computer stay in `~/.chef/local`, and projects in Cloudflare stay there, ready for when you switch back.
+
+How it works: when working in Cloudflare, the local app serves the dashboard and passes every API call, live update and preview link on to your chef, adding the password on the way. The password never reaches the browser. The app listens on `127.0.0.1` only and answers only its own pages, so other websites you visit cannot use it. A future terminal app and desktop app will talk to chef the same way.
 
 ## Run chef fully on your computer
 
 1. Install and start [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on macOS and Windows, Docker Engine on Linux).
-2. Clone this repository, then:
-
-   ```
-   pnpm install
-   pnpm start --local
-   ```
-
-   The first start builds the sandbox image, which takes a few minutes; later starts skip it.
-3. Open `http://localhost:4300`, add your model provider in Settings, and create your first project.
+2. Clone this repository, run `pnpm install` and `pnpm start`, and choose **On this computer** on the first screen (or run `pnpm start --local` to skip the question). The first start builds the sandbox image, which takes a few minutes; later starts skip it.
+3. Add your model provider in Settings and create your first project.
 
 Everything chef keeps lives in `~/.chef/local` (`CHEF_HOME` moves it): the project repos as plain git repositories, each project's sessions and event log, its memory, and your settings, readable only by you. `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`, in the environment work as defaults, as do the other [Settings](#settings) variables. Stop chef with Ctrl+C; unfinished sessions pick up where they left off on the next start.
 

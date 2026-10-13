@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createServer, request, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { connect, memoryStore, normalizeUrl, startApp, type LocalApp } from "../../src/app.ts";
+import { cloudOf, connect, memoryStore, normalizeUrl, startApp, type LocalApp, type LocalEngineLike } from "../../src/app.ts";
 
 const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -100,7 +100,7 @@ afterEach(async () => {
 
 async function started(password: string | null, connected: boolean) {
   const e = await engine(password);
-  const store = memoryStore(connected && password ? { url: e.url, password } : null);
+  const store = memoryStore(connected && password ? { place: "cloud", url: e.url, password } : null);
   const app: LocalApp = await startApp({ port: 0, store, assets: "/nonexistent" });
   open.push(app, e);
   return { e, app, store };
@@ -125,11 +125,11 @@ describe("local app", () => {
 
   it("asks to connect first, then forwards the API with the password and without browser cookies", async () => {
     const { e, app, store } = await started("secret pass", false);
-    expect(await (await fetch(`${app.url}/api/app`)).json()).toEqual({ mode: "local", engine: null, fixed: false });
+    expect(await (await fetch(`${app.url}/api/app`)).json()).toMatchObject({ mode: "local", place: null, engine: null, fixed: false });
     expect((await fetch(`${app.url}/api/projects`)).status).toBe(503);
     const connected = await fetch(`${app.url}/api/app/connection`, { method: "PUT", headers: { origin: app.url, "content-type": "application/json" }, body: JSON.stringify({ url: e.url, password: "secret pass" }) });
-    expect(await connected.json()).toMatchObject({ mode: "local", engine: e.url });
-    expect(store.read()).toEqual({ url: e.url, password: "secret pass" });
+    expect(await connected.json()).toMatchObject({ mode: "local", place: "cloud", engine: e.url });
+    expect(store.read()).toEqual({ place: "cloud", url: e.url, password: "secret pass" });
 
     const listed = await fetch(`${app.url}/api/projects?x=1`, { headers: { cookie: "chef_access=browser" } });
     expect(await listed.json()).toEqual({ path: "/api/projects?x=1", method: "GET" });
@@ -160,7 +160,7 @@ describe("local app", () => {
     const changed = await fetch(`${app.url}/api/settings`, { method: "PUT", headers: { origin: app.url, "content-type": "application/json" }, body: '{"password":"new secret"}' });
     expect(changed.status).toBe(200);
     expect(e.password).toBe("new secret");
-    expect(store.read()?.password).toBe("new secret");
+    expect(cloudOf(store.read())?.password).toBe("new secret");
     expect((await fetch(`${app.url}/api/projects`)).status).toBe(200);
   });
 
@@ -173,5 +173,71 @@ describe("local app", () => {
     });
     socket.close();
     expect(JSON.parse(message)).toEqual({ seq: 1, path: "/agents/project/shop" });
+  });
+
+  it("runs everything on this computer once chosen, and switches back to choosing", async () => {
+    const handled: string[] = [];
+    const local: LocalEngineLike = { handle: async (request) => (handled.push(new URL(request.url).pathname), Response.json({ local: true })), upgrade: () => false, close: async () => void handled.push("closed") };
+    const store = memoryStore();
+    let docker: string | null = "Docker is not running";
+    const app = await startApp({ port: 0, store, assets: "/nonexistent", dockerProblem: () => docker, startEngine: async (log) => (log("building the sandbox image"), local) });
+    open.push(app);
+    const put = (path: string, body: unknown) => fetch(`${app.url}${path}`, { method: "PUT", headers: { origin: app.url, "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect(await (await fetch(`${app.url}/api/app`)).json()).toMatchObject({ place: null, docker: "Docker is not running" });
+    expect((await put("/api/app/place", { place: "computer" })).status).toBe(409);
+    docker = null;
+    const chosen = (await (await put("/api/app/place", { place: "computer" })).json()) as { place: string };
+    expect(chosen.place).toBe("computer");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await (await fetch(`${app.url}/api/app`)).json()).toMatchObject({ place: "computer", computer: { status: "ready", log: ["building the sandbox image"] } });
+    expect(await (await fetch(`${app.url}/api/projects`)).json()).toEqual({ local: true });
+    expect(store.read()).toEqual({ place: "computer" });
+    await fetch(`${app.url}/api/app/connection`, { method: "DELETE", headers: { origin: app.url } });
+    expect(handled).toEqual(["/api/projects", "closed"]);
+    expect(store.read()).toBeNull();
+  });
+
+  it("closes an engine that finishes starting after the choice was dropped", async () => {
+    let closed = 0;
+    let finish: (engine: LocalEngineLike) => void = () => undefined;
+    const local: LocalEngineLike = { handle: async () => Response.json({}), upgrade: () => false, close: async () => void closed++ };
+    const app = await startApp({ port: 0, store: memoryStore({ place: "computer" }), assets: "/nonexistent", dockerProblem: () => null, startEngine: () => new Promise((resolve) => (finish = resolve)) });
+    open.push(app);
+    expect(await (await fetch(`${app.url}/api/app`)).json()).toMatchObject({ place: "computer", computer: { status: "starting" } });
+    await fetch(`${app.url}/api/app/connection`, { method: "DELETE", headers: { origin: app.url } });
+    finish(local);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(closed).toBe(1);
+    expect(await (await fetch(`${app.url}/api/app`)).json()).toMatchObject({ place: null, computer: { status: "off" } });
+  });
+
+  it("checks a Cloudflare account and sets chef up there when it is missing", async () => {
+    const e = await engine(null);
+    open.push(e);
+    const cloudflare = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://api.cloudflare.com/")) {
+        if (new Headers(init?.headers).get("authorization") !== "Bearer good-token") return Response.json({ success: false, errors: [{ message: "Authentication error" }] }, { status: 403 });
+        if (url.endsWith("/workers/scripts")) return Response.json({ success: true, result: [{ id: "other" }] });
+        return Response.json({ success: true, result: { subdomain: "me" } });
+      }
+      return fetch(input, init);
+    }) as typeof fetch;
+    const deployed: Record<string, string>[] = [];
+    const store = memoryStore();
+    const app = await startApp({ port: 0, store, assets: "/nonexistent", fetchImpl: cloudflare, deployer: async (_account, secrets, log) => (deployed.push({ ...secrets }), log("Uploaded chef"), { code: 0, url: e.url, config: "wrangler.jsonc" }) });
+    open.push(app);
+    const post = (path: string, body: unknown) => fetch(`${app.url}${path}`, { method: "POST", headers: { origin: app.url, "content-type": "application/json" }, body: JSON.stringify(body) });
+    const account = { accountId: "0123456789abcdef0123456789abcdef", apiToken: "good-token" };
+    expect((await post("/api/app/cloudflare/check", { ...account, accountId: "nope" })).status).toBe(400);
+    expect(await (await post("/api/app/cloudflare/check", { ...account, apiToken: "bad" })).json()).toMatchObject({ error: expect.stringContaining("refused") });
+    expect(await (await post("/api/app/cloudflare/check", account)).json()).toEqual({ ok: true, deployed: false, url: "https://chef.me.workers.dev" });
+    expect((await post("/api/app/cloudflare/deploy", { ...account, password: "short" })).status).toBe(400);
+    expect((await post("/api/app/cloudflare/deploy", { ...account, password: "a long password" })).status).toBe(202);
+    for (let i = 0; i < 50 && store.read() === null; i++) await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(deployed).toEqual([{ CHEF_PASSWORD: "a long password", CF_ACCOUNT_ID: account.accountId, CF_API_TOKEN: "good-token" }]);
+    expect(store.read()).toEqual({ place: "cloud", url: e.url, password: "a long password" });
+    expect(await (await fetch(`${app.url}/api/app`)).json()).toMatchObject({ place: "cloud", engine: e.url, setup: { status: "done", url: e.url } });
+    expect(e.password).toBe("a long password");
   });
 });

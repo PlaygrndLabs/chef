@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { startApp, type LocalApp } from "../../src/app.ts";
+import { memoryStore, startApp, type LocalApp } from "../../src/app.ts";
 import { LocalEngine } from "../../src/engine/engine.ts";
 
 const enabled = process.env["CHEF_LIVE_LOCAL"] === "1";
@@ -26,7 +26,9 @@ describe.skipIf(!enabled)("chef fully on this computer with a real model", () =>
 
   it("plans, builds, checks, previews and merges a feature with everything on this machine", async () => {
     engine = await LocalEngine.start({ dir, log: (line) => process.stderr.write(`${line}\n`) });
-    app = await startApp({ port: 0, engine });
+    const ready = engine;
+    app = await startApp({ port: 0, store: memoryStore({ place: "computer" }), dockerProblem: () => null, startEngine: async () => ready });
+    await new Promise((resolve) => setTimeout(resolve, 100));
     const base = app.url;
     const call = async <T>(path: string, init?: RequestInit): Promise<T> => {
       const response = await fetch(`${base}${path}`, { ...init, headers: { "content-type": "application/json", origin: base } });

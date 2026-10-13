@@ -226,51 +226,65 @@ function PasswordForm(props: { readonly settings: SettingsView; readonly save: S
   );
 }
 
+function useAppMode() {
+  const [mode, setMode] = useState<AppMode | null>(null);
+  useEffect(() => {
+    void appApi.get().then(setMode);
+  }, []);
+  return mode;
+}
+
+function ChangePlace(props: { readonly note: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="grid gap-2">
+      <p className="text-xs text-muted-foreground">{props.note}</p>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            appApi.disconnect().then(
+              () => location.reload(),
+              (e: unknown) => {
+                setBusy(false);
+                toast.error("Could not change it", { description: e instanceof Error ? e.message : String(e) });
+              },
+            );
+          }}
+        >
+          Choose where chef works
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ComputerSection(props: { readonly settings: SettingsView }) {
+  const mode = useAppMode();
   return (
     <Section title="This computer" note="Everything runs here: projects, agents, sandboxes and previews. Only this computer can open chef, so it has no password. Work pauses while the computer sleeps.">
       <p className="text-xs text-muted-foreground" data-current="data-dir">
         Data is kept in {props.settings.dataDir}
       </p>
+      {mode && !mode.fixed ? <ChangePlace note="To keep this computer light and let work go on while it sleeps, move the work to Cloudflare. Projects made here stay on this computer and come back when you switch back." /> : null}
     </Section>
   );
 }
 
 function ConnectionForm() {
-  const [mode, setMode] = useState<AppMode | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    void appApi.get().then(setMode);
-  }, []);
-  if (!mode || mode.mode !== "local") return null;
+  const mode = useAppMode();
+  if (!mode || mode.mode !== "local" || mode.place !== "cloud") return null;
   return (
     <Section title="This computer" note="The app runs here and talks to your chef in the cloud, where the work runs.">
       <p className="text-xs text-muted-foreground" data-current="engine">
         Connected to {mode.engine}
         {mode.fixed ? ", set by CHEF_URL" : ""}
       </p>
-      {mode.fixed ? null : (
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              appApi.disconnect().then(
-                () => location.reload(),
-                (e: unknown) => {
-                  setBusy(false);
-                  toast.error("Could not disconnect", { description: e instanceof Error ? e.message : String(e) });
-                },
-              );
-            }}
-          >
-            Disconnect
-          </Button>
-        </div>
-      )}
+      {mode.fixed ? null : <ChangePlace note="You can run everything on this computer instead, or connect to another chef. Your projects stay in this chef in Cloudflare." />}
     </Section>
   );
 }

@@ -13,8 +13,9 @@ import { BENCH_ITEMS } from "./bench/items.ts";
 import { runVoice, VOICE_PROMPT } from "./voice.ts";
 import { exportTuneData } from "./tune/data.ts";
 import { serve } from "./serve.ts";
-import { startApp } from "./app.ts";
-import { LocalEngine } from "./engine/engine.ts";
+import { fileStore, startApp } from "./app.ts";
+import { Docker } from "./engine/docker.ts";
+import { LocalEngine, localHome } from "./engine/engine.ts";
 import { deploy } from "./deploy.ts";
 import { spawn } from "node:child_process";
 import { tour } from "./tour.ts";
@@ -241,17 +242,23 @@ async function serveCommand(args: readonly string[]): Promise<number> {
 
 async function appCommand(args: readonly string[]): Promise<number> {
   const local = args.includes("--local");
-  let engine: LocalEngine | undefined;
-  if (local) {
-    try {
-      engine = await LocalEngine.start({ log: (line) => process.stderr.write(`${line}\n`) });
-    } catch (error) {
-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-      return 1;
-    }
-  }
-  const app = await startApp({ port: Number(option(args, "port") ?? process.env["PORT"] ?? 4300), ...(engine ? { engine } : {}) });
-  process.stdout.write(`chef is open at ${app.url}\n${engine ? `Everything runs on this computer: projects, agents, sandboxes and previews. Data is in ${engine.dir}.` : "The app runs here; sessions, sandboxes and previews run on your chef in Cloudflare."} Press Ctrl+C to stop.\n`);
+  const docker = new Docker({ repos: join(localHome(), "repos") });
+  const app = await startApp({
+    port: Number(option(args, "port") ?? process.env["PORT"] ?? 4300),
+    store: fileStore(undefined, process.env, local ? { place: "computer" } : null),
+    dockerProblem: () => docker.available(),
+    startEngine: async (log) => {
+      const engine = await LocalEngine.start({
+        log: (line) => {
+          log(line);
+          process.stderr.write(`${line}\n`);
+        },
+      });
+      process.stderr.write(`chef is running on this computer. Data is in ${engine.dir}.\n`);
+      return engine;
+    },
+  });
+  process.stdout.write(`chef is open at ${app.url}\nPress Ctrl+C to stop.\n`);
   if (!args.includes("--no-open") && !process.env["CI"]) {
     const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
     spawn(opener, [app.url], { stdio: "ignore", detached: true }).on("error", () => undefined).unref();
