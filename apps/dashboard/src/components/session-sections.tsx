@@ -83,7 +83,7 @@ function PreviewTab({ url, link, commitId, routes, featureId, live }: { readonly
       ) : null}
       <iframe key={`${nonce}-${path}`} src={href} title={live ? "Live app" : "Preview"} className="min-h-[320px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
       <p className="text-xs text-muted-foreground">
-        {pages.length ? "" : "This build has not added a page yet, so you see the app's home. "}
+        {pages.length || live ? "" : "This build has not added a page yet, so you see the app's home. "}
         {live ? `This is the live app, at ${short(commitId)}. Everything chef merges shows up here.` : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
       </p>
     </div>
@@ -327,4 +327,23 @@ export function SessionPreview({ feature, node }: { readonly feature: FeatureNod
   const entry = entryRoute(feature.spec?.entrypoint);
   const routes = entry && !found.some((r) => r.method === entry.method && r.path === entry.path) ? [entry, ...found] : found;
   return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} featureId={feature.id} live={live !== null} />;
+}
+
+export function LiveApp() {
+  const { data, selection } = useWorkspace();
+  const live = data.spec?.live ?? null;
+  const routes = (data.spec?.features ?? []).map((f) => entryRoute(f.entrypoint)).filter((r): r is Route => r !== null);
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-view="live">
+      <div className="flex items-center gap-2">
+        <h2 className="truncate text-[15px] font-semibold">{selection.project}</h2>
+        <span className="font-mono text-xs text-muted-foreground">main {short(live?.commitId ?? data.spec?.commitId) || ""}</span>
+      </div>
+      {live?.url ? (
+        <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} routes={routes} featureId={null} live />
+      ) : (
+        <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
+      )}
+    </div>
+  );
 }

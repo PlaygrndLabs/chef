@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec, type SplitPart } from "@chef/core";
+import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
@@ -199,8 +199,10 @@ export async function serve(options: { readonly port: number; readonly project?:
       }
       if (request.method === "GET" && action === "spec") {
         const main = await w.orchestrator.mainTree();
-        return Response.json({ commitId: main.commitId, features: readSpec(main.tree) });
+        return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await w.orchestrator.layout() });
       }
+      const feature = FEATURE_ROUTE.exec(url.pathname);
+      if (feature) return (await featureRequest(request, w.orchestrator, feature[1] as string)).response;
       const session = action ? /^sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/.exec(action) : null;
       if (session) return sessionRequest(request, session[1] as string, session[2] ?? null);
       if (request.method === "GET" && action === "events") return Response.json(await link.events(Number(url.searchParams.get("after") ?? 0)));

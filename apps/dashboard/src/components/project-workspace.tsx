@@ -4,6 +4,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ResizeHandle, useStoredWidth } from "@/components/resize-handle";
 import { ChatViewSkeleton, Shown } from "@/components/loading";
 import { preloadSettings, SettingsHost } from "@/components/settings-host";
+import { ContextMeter } from "@/components/context-meter";
 import { ProjectBar } from "@/components/project-bar";
 import { InsightsView, SessionTabs, SessionView, TabContent } from "@/components/session-tabs";
 import { ProjectHeader, TreePane } from "@/components/sidebar";
@@ -16,7 +17,7 @@ import { currentSession, featureNodes, sessionNodes } from "@/lib/model";
 import { rememberProject, returningToNewProject } from "@/lib/projects";
 import type { Selection, SettingsScope } from "@/lib/selection";
 import { useSettings } from "@/lib/settings";
-import { MEMORY_TAB, useTabs } from "@/lib/tabs";
+import { LIVE_TAB, MEMORY_TAB, useTabs } from "@/lib/tabs";
 import { WorkspaceContext, type Workspace } from "@/lib/workspace";
 
 export const MainView = preloadable(() => import("@/components/main-view").then((m) => m.MainView));
@@ -36,6 +37,12 @@ function focusComposerSoon() {
   window.setTimeout(() => window.dispatchEvent(new Event("chef:compose")), COMPOSE_DELAY_MS);
 }
 
+function tabPlace(id: string): Partial<Selection> {
+  if (id === MEMORY_TAB) return { view: "insights", feature: null, session: null, panel: null };
+  if (id === LIVE_TAB) return { view: "live", feature: null, session: null, panel: null };
+  return { view: "feature", feature: id, session: null, panel: null };
+}
+
 function titleOf(selection: Selection, featureTitle: string | null): string {
   if (selection.settings) return `${selection.settings.scope === "app" ? "Settings" : `${selection.project} settings`} · chef`;
   if (featureTitle && selection.view === "feature") return `${featureTitle} · chef`;
@@ -45,7 +52,14 @@ function titleOf(selection: Selection, featureTitle: string | null): string {
 function ChatPane({ onMenu }: { readonly onMenu?: () => void }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {onMenu ? <ProjectHeader onMenu={onMenu} /> : <div className="flex h-11 shrink-0 items-center border-b px-4 text-xs font-medium text-muted-foreground">Chat</div>}
+      {onMenu ? (
+        <ProjectHeader onMenu={onMenu} />
+      ) : (
+        <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b px-4 text-xs font-medium text-muted-foreground">
+          Chat
+          <ContextMeter />
+        </div>
+      )}
       <div className="min-h-0 flex-1">
         <Suspense fallback={<ChatViewSkeleton />}>
           <MainView />
@@ -62,12 +76,12 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const data = useProject(project);
   const api = useMemo(() => projectApi(project), [project]);
   const sessions = useMemo(() => sessionNodes(data.live, data.records), [data.live, data.version, data.records]);
-  const features = useMemo(() => featureNodes(data.live, data.records, data.spec?.features ?? []), [data.live, data.version, data.records, data.spec]);
+  const features = useMemo(() => featureNodes(data.live, data.records, data.spec?.features ?? [], data.spec?.layout), [data.live, data.version, data.records, data.spec]);
   const picked = selection.session ? (sessions.find((s) => s.id === selection.session) ?? null) : null;
   const featureId = selection.view === "feature" ? (selection.feature ?? picked?.featureId ?? null) : null;
   const feature = featureId ? (features.find((f) => f.id === featureId) ?? null) : null;
   const session = feature ? currentSession(feature, selection.session) : null;
-  const activeTab = selection.view === "insights" ? MEMORY_TAB : (featureId ?? (selection.view === "feature" ? selection.session : null));
+  const activeTab = selection.view === "insights" ? MEMORY_TAB : selection.view === "live" ? LIVE_TAB : (featureId ?? (selection.view === "feature" ? selection.session : null));
   const { tabs, close, keep } = useTabs(project, activeTab);
   const compact = useMediaQuery("(max-width: 1023px)");
   const width = useWindowWidth();
@@ -86,7 +100,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const chat = Math.min(Math.max(chatWidth, CHAT.min), chatMax);
 
   useEffect(() => {
-    if (data.ready) keep((id) => id === MEMORY_TAB || features.some((f) => f.id === id));
+    if (data.ready) keep((id) => id === MEMORY_TAB || id === LIVE_TAB || features.some((f) => f.id === id));
   }, [data.ready, features, keep]);
 
   const openSettings = useCallback(
@@ -124,16 +138,18 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
         setTreeSheet(false);
       },
       openMemory: () => select({ view: "insights", feature: null, session: null, panel: null }),
+      openLive: () => {
+        select({ view: "live", feature: null, session: null, panel: null });
+        setTreeSheet(false);
+      },
       tabs,
       activeTab,
-      selectTab: (id) => (id === MEMORY_TAB ? select({ view: "insights", feature: null, session: null, panel: null }) : select({ view: "feature", feature: id, session: null, panel: null })),
+      selectTab: (id) => select(tabPlace(id)),
       closeTab: (id) => {
         const next = close(id);
         if (id !== activeTab) return;
         setExpanded(false);
-        if (next === null) select({ view: "project", feature: null, session: null, panel: null });
-        else if (next === MEMORY_TAB) select({ view: "insights", feature: null, session: null, panel: null });
-        else select({ view: "feature", feature: next, session: null, panel: null });
+        select(next === null ? { view: "project", feature: null, session: null, panel: null } : tabPlace(next));
       },
       focusComposer: () => {
         setTreeSheet(false);
