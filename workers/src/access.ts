@@ -1,3 +1,5 @@
+import { faviconDataUri, wordmarkSvg } from "@chef/core/brand";
+
 const COOKIE = "chef_access";
 const ITERATIONS = 100_000;
 export const MIN_PASSWORD = 8;
@@ -68,16 +70,16 @@ function cookie(request: Request, name: string): string | null {
   return null;
 }
 
-const STYLE = `<style>body{font:16px system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f6f4;color:#1d1d1b}form{display:grid;gap:12px;width:min(320px,90vw)}p{margin:0}input,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #c9c9c4}button{background:#1d1d1b;color:#fff;border:0}.note{color:#6b6b66;font-size:14px}.error{color:#b42318}@media (prefers-color-scheme:dark){body{background:#151514;color:#eee}input{background:#222;color:#eee;border-color:#444}button{background:#eee;color:#151514}.note{color:#a3a39e}}</style>`;
+const STYLE = `<style>body{font:16px system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f6f4;color:#1d1d1b}form{display:grid;gap:12px;width:min(320px,90vw)}h1{margin:0 0 12px;display:flex;justify-content:center}h1 svg{height:36px;width:auto}p{margin:0}input,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #c9c9c4}button{background:#1d1d1b;color:#fff;border:0}.note{color:#6b6b66;font-size:14px}.error{color:#b42318}@media (prefers-color-scheme:dark){body{background:#151514;color:#eee}input{background:#222;color:#eee;border-color:#444}button{background:#eee;color:#151514}.note{color:#a3a39e}}</style>`;
 
 function page(body: string, status: number): Response {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>chef</title>${STYLE}</head><body>${body}</body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>chef</title><link rel="icon" href="${faviconDataUri()}">${STYLE}</head><body>${body}</body></html>`;
   return new Response(html, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
 function loginPage(failed: boolean): Response {
   const note = failed ? `<p class="error">Wrong password.</p>` : "";
-  return page(`<form method="post" action="/login"><h1>chef</h1>${note}<input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required><button>Sign in</button></form>`, failed ? 401 : 200);
+  return page(`<form method="post" action="/login"><h1>${wordmarkSvg()}</h1>${note}<input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required><button>Sign in</button></form>`, failed ? 401 : 200);
 }
 
 function setupPage(error: string | null): Response {

@@ -10,6 +10,7 @@ import { VoiceButton } from "@/components/voice-button";
 import { WorkList } from "@/components/work-list";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
+import { Wordmark } from "@/components/logo";
 
 const CONNECTION = { live: ["ok", "Live"], polling: ["run", "Reconnecting, updates every few seconds"], connecting: ["idle", "Connecting"], offline: ["bad", "Offline"] } as const;
 
@@ -137,12 +138,12 @@ export function Sidebar() {
   return (
     <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex items-center gap-1 px-1.5">
-        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">c</span>
+        <Wordmark className="h-[15px] translate-y-px" />
+        <span className="pl-0.5 text-muted-foreground/60">/</span>
         <ProjectSwitcher />
         <span className="flex-1" />
-        <Button variant="ghost" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={addProject} id="new-project-button">
+        <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground" onClick={addProject} id="new-project-button" aria-label="New project" title="New project">
           <FolderPlus />
-          New project
         </Button>
       </div>
       <Button

@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/chef-logo-dark.svg">
+    <img src="docs/assets/chef-logo.svg" alt="chef" width="193">
+  </picture>
+</p>
+
 # chef: a self-hosted AI coding agent that builds and ships your app
 
 [![CI](https://github.com/PlaygrndLabs/chef/actions/workflows/ci.yml/badge.svg)](https://github.com/PlaygrndLabs/chef/actions/workflows/ci.yml)

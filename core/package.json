@@ -8,7 +8,8 @@
     "./fakes": "./src/fakes/index.ts",
     "./checks": "./src/checks/index.ts",
     "./tap": "./src/checks/tap.ts",
-    "./env": "./src/env/env.ts"
+    "./env": "./src/env/env.ts",
+    "./brand": "./src/brand/brand.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
