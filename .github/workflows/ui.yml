@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 45
     env:
       CHEF_URL: https://chef.playgrndlabs.workers.dev
-      CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD || secrets.KARGAH_PASSWORD }}
+      CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
