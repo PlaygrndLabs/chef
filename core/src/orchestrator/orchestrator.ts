@@ -661,11 +661,21 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     const base = await this.commitOf(this.canonical, record.baseMain);
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: "reviewer", kind: "review", model: this.deps.reviewer.model ?? "reviewer" });
-    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "", ...(record.kind === "chore" ? { chore: true } : {}) });
+    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "", scope: this.reviewScope(record, head.tree), ...(record.kind === "chore" ? { chore: true } : {}) });
     record.verdict = { ...verdict, commitId: head.id };
     await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons, model: verdict.model, head: head.id, base: base.id });
     if (verdict.approve) await this.apply(record, { type: "review_approved" });
     else await this.apply(record, { type: "review_rejected", reasons: verdict.reasons, retest: this.specialization.lockTests && verdict.retest === true && record.plan.items.some((i) => i.kind === "test") });
+  }
+
+  private reviewScope(record: SessionRecord, tree: Tree): string[] {
+    const feature = readSpec(tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
+    const roles = new Set(record.plan.items.map((i) => i.role));
+    const scope = [...roles].flatMap((role) => {
+      const profile = this.config.profiles[role];
+      return profile ? scopeFor(profile, feature) : [];
+    });
+    return [...new Set(scope.filter((pattern) => !pattern.startsWith("!")))];
   }
 
   async environmentChanged(): Promise<string[]> {
@@ -1463,7 +1473,7 @@ const TRANSIENT_RETRIES = 5;
 
 export function transient(error: unknown): boolean {
   if ((error as { retryable?: unknown } | null)?.retryable === true) return true;
-  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)/i.test((error as Error | null)?.message ?? "");
+  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)|container service disconnected|sandbox container (stopped|did not start)/i.test((error as Error | null)?.message ?? "");
 }
 
 export function runnable(record: SessionRecord): boolean {
