@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      CHEF_URL: https://chef.playgrndlabs.workers.dev
+      CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
       CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
