@@ -69,7 +69,7 @@ h1, h2, h3 { font-weight: 500; color: var(--foreground); }
 
 .hero { position: relative; }
 .hero-copy { position: relative; z-index: 1; padding-bottom: 120px; text-align: left; }
-.field { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.field { position: absolute; top: 0; left: calc(50% - 50vw); width: 100vw; height: 100%; display: block; pointer-events: none; }
 .hero h1, .hero .lead { margin-left: 0; margin-right: 0; }
 .crumbs { display: flex; gap: 10px; align-items: center; margin: 0 0 18px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted-foreground); }
 .crumbs { flex-wrap: wrap; }
