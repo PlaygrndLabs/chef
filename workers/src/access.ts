@@ -1,6 +1,12 @@
 const COOKIE = "chef_access";
 const ITERATIONS = 100_000;
 export const MIN_PASSWORD = 8;
+export const EXAMPLE_PASSWORD = "change-me-to-a-long-random-password";
+
+export function deploymentPassword(env: { readonly CHEF_PASSWORD?: string }): string | null {
+  const password = env.CHEF_PASSWORD?.trim();
+  return password && password !== EXAMPLE_PASSWORD ? password : null;
+}
 
 export interface StoredPassword {
   readonly salt: string;
