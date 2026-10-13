@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chef admin</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="chef home"><img class="light" src="/chef-logo.svg" alt="chef" width="76" height="26"><img class="dark" src="/chef-logo-dark.svg" alt="" width="76" height="26"></a>
+    <nav class="links"><a href="/">Back to chef</a></nav>
+  </div>
+</header>
+
+<main class="wrap admin">
+  <h1>Members</h1>
+  <p class="sub muted">Everyone who signed in with Cloudflare, where their chef runs and how its setup went.</p>
+  <div class="stats" id="stats"></div>
+  <p class="error" id="error" role="alert"></p>
+  <div class="table">
+    <table>
+      <thead><tr><th>Member</th><th>chef</th><th>Setup</th><th>Joined</th><th>Last sign-in</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</main>
+<script src="/admin.js" defer></script>
+</body>
+</html>

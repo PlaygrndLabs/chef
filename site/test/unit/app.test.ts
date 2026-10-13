@@ -5,14 +5,16 @@ import { signSession } from "../../src/oauth.ts";
 
 interface Fake {
   engine: { url: string; secret: string } | null;
+  admins: string[];
   calls: { name: string; method: string; arg?: unknown }[];
 }
 
 function fakeEnv(state: Partial<Fake> = {}, withClient = true) {
-  const fake: Fake = { engine: null, calls: [], ...state };
+  const fake: Fake = { engine: null, admins: [], calls: [], ...state };
   const stub = (name: string) => ({
     signIn: async (profile: unknown, grant: unknown) => void fake.calls.push({ name, method: "signIn", arg: { profile, grant } }),
     engine: async () => fake.engine,
+    admin: async () => fake.admins.includes(name),
     view: async () => ({ email: "sam@example.com", engine: fake.engine?.url ?? null, canSetUp: true, install: null }),
     accounts: async () => [{ id: "a1", name: "Mine", plan: "paid", hasChef: false, subdomain: "mine" }],
     status: async () => ({ status: "idle" }),
@@ -22,6 +24,7 @@ function fakeEnv(state: Partial<Fake> = {}, withClient = true) {
   const env = {
     ASSETS: { fetch: async (request: Request) => new Response(`asset ${new URL(request.url).pathname}`) },
     MEMBER: { idFromName: (name: string) => name, get: (name: string) => stub(name) },
+    MEMBERS: { idFromName: (name: string) => name, get: () => ({ list: async () => ({ latest: "v2", members: [{ id: "user1", email: "sam@example.com" }] }) }) },
     ...(withClient ? { OAUTH_CLIENT_ID: "abc", OAUTH_CLIENT_SECRET: "shh", OAUTH_SCOPES: "s.read" } : {}),
   } as unknown as Env;
   return { env, fake };
@@ -96,5 +99,15 @@ describe("chef site", () => {
     expect((await handle(new Request(`${origin}/auth/signout`, { method: "POST", headers: { origin: "https://evil.example" } }), fakeEnv().env)).status).toBe(405);
     const response = await handle(new Request(`${origin}/auth/signout`, { method: "POST", headers: { origin } }), fakeEnv().env);
     expect(response.headers.get("set-cookie")).toContain("chef_session=; Path=/; Max-Age=0");
+  });
+
+  it("shows members only to PlaygrndLabs admins", async () => {
+    const admin = fakeEnv({ admins: ["boss"] }).env;
+    expect((await handle(new Request(`${origin}/admin`, { headers: { cookie: await session() } }), admin)).headers.get("location")).toBe("/");
+    expect((await handle(new Request(`${origin}/admin`), admin)).headers.get("location")).toBe("/");
+    expect(await (await handle(new Request(`${origin}/admin`, { headers: { cookie: await session("boss") } }), admin)).text()).toBe("asset /admin");
+    expect((await handle(new Request(`${origin}/site/api/admin/members`, { headers: { cookie: await session() } }), admin)).status).toBe(403);
+    const list = await handle(new Request(`${origin}/site/api/admin/members`, { headers: { cookie: await session("boss") } }), admin);
+    expect(await list.json()).toEqual({ latest: "v2", members: [{ id: "user1", email: "sam@example.com" }] });
   });
 });

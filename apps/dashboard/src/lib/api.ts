@@ -70,6 +70,7 @@ export interface AppMode {
   readonly setup?: CloudflareSetup;
   readonly claimed?: boolean;
   readonly account?: string | null;
+  readonly admin?: boolean;
 }
 
 export interface CloudflareCheck {
