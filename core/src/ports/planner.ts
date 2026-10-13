@@ -53,6 +53,7 @@ export interface PlanInput {
   readonly env?: readonly EnvVar[];
   readonly roles?: readonly BuilderRole[];
   readonly conversation?: string;
+  readonly guidance?: string;
 }
 
 export interface Plan {

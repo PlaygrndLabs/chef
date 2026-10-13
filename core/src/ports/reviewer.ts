@@ -7,6 +7,7 @@ export interface ReviewInput {
   readonly checksLog: string;
   readonly scope?: readonly string[];
   readonly chore?: boolean;
+  readonly guidance?: string;
 }
 
 export interface ReviewVerdict {

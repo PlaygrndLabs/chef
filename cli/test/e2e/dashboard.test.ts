@@ -397,4 +397,55 @@ describe("dashboard in a browser", () => {
       await local.close();
     }
   });
+  it("sets the instructions for every project and one project's goal and instructions, and edits its memory", async () => {
+    const local = await serve({ port: 0, real: false, assets: DIST, project: "shop" });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.goto(`${local.url}/?project=shop&settings=project.instructions`);
+      const project = page.locator('[data-dialog="project-settings"]');
+      const form = project.locator("#project-instructions");
+      await form.waitFor({ timeout: 10_000 });
+      await form.getByLabel("Project goal").fill("A todo list for a small team.");
+      await form.getByLabel("Project instructions").fill("Keep every page under one screen.");
+      await form.getByRole("button", { name: "Save" }).click();
+      await form.getByRole("button", { name: "Save" }).and(page.locator(":disabled")).waitFor({ timeout: 10_000 });
+      expect(await (await page.request.get(`${local.url}/api/projects/shop/instructions`)).json()).toMatchObject({ goal: "A todo list for a small team.", instructions: "Keep every page under one screen.", shared: "" });
+
+      await form.getByRole("button", { name: "Edit for every project" }).click();
+      const shared = page.locator('[data-dialog="settings"] #shared-instructions');
+      await shared.waitFor({ timeout: 10_000 });
+      await shared.getByLabel("Instructions for every project").fill("Use plain CSS.");
+      await shared.getByRole("button", { name: "Save" }).click();
+      await shared.getByRole("button", { name: "Save" }).and(page.locator(":disabled")).waitFor({ timeout: 10_000 });
+      expect(await (await page.request.get(`${local.url}/api/instructions`)).json()).toMatchObject({ text: "Use plain CSS." });
+
+      await page.goto(`${local.url}/?project=shop&settings=project.instructions`);
+      expect(await project.locator("[data-shared-instructions]").innerText({ timeout: 10_000 })).toContain("Use plain CSS.");
+
+      await project.locator('[data-settings-nav="memory"]').click();
+      const add = project.locator("#memory-add");
+      await add.getByLabel("Note title").fill("Prices are in euros");
+      await add.getByLabel("Note text").fill("Show prices with the € sign.");
+      await add.getByRole("button", { name: "Add" }).click();
+      const note = project.locator('[data-memory="memory/notes/prices-are-in-euros.md"]');
+      await note.waitFor({ timeout: 10_000 });
+      await note.getByRole("button", { name: /Prices are in euros/ }).click();
+      await note.getByLabel("Text of Prices are in euros").fill("# Prices are in euros\n\nShow prices with the € sign after the number.");
+      await note.getByRole("button", { name: "Save" }).click();
+      await page.waitForFunction(async (url) => JSON.stringify(await (await fetch(url)).json()).includes("after the number"), `${local.url}/api/projects/shop/memory`, { timeout: 10_000 });
+      await project.locator('[data-memory="memory/notes/prices-are-in-euros.md"]').getByRole("button", { name: /Prices are in euros/ }).click();
+      await project.locator('[data-memory="memory/notes/prices-are-in-euros.md"]').getByRole("button", { name: "Remove" }).click();
+      await project.locator('[data-memory="memory/notes/prices-are-in-euros.md"]').getByRole("button", { name: "Remove" }).click();
+      await project.locator('[data-memory="memory/notes/prices-are-in-euros.md"]').waitFor({ state: "detached", timeout: 10_000 });
+      const main = (await (await page.request.get(`${local.url}/api/projects/shop/memory`)).json()) as { entries: { path: string }[] };
+      expect(main.entries.map((e) => e.path)).not.toContain("memory/notes/prices-are-in-euros.md");
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+      await local.close();
+    }
+  });
 });
