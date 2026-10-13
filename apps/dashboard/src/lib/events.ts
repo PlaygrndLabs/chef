@@ -64,10 +64,11 @@ export interface ProjectLive {
   readonly voice: { readonly prompt: string; readonly intent: string; readonly sessionId: string | null; readonly featureId: string | null; readonly at: number }[];
   readonly log: { readonly seq: number; readonly at: number; readonly type: string; readonly sessionId: string; readonly featureId: string; readonly summary: string }[];
   readonly previews: Record<string, { readonly url: string; readonly commitId: string; readonly link?: string | undefined; readonly sessionId: string; readonly at: number }>;
+  external: { readonly type: string; readonly summary: string; readonly at: number; readonly pullRequest?: string | undefined } | null;
 }
 
 export function emptyProject(): ProjectLive {
-  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], log: [], previews: {} };
+  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], log: [], previews: {}, external: null };
 }
 
 const TIMELINE_LIMIT = 600;
@@ -129,6 +130,18 @@ export function summarize(event: ChefEvent): string {
       return event.archived ? `fork deleted, work kept on ${event.archived}` : "fork deleted";
     case "fork.kept":
       return `fork kept: ${event.reason}`;
+    case "external.pulled":
+      return `${event.status} ${event.branch} ${event.commitId.slice(0, 7)} into main ${event.mainCommit.slice(0, 7)}`;
+    case "external.conflict":
+      return `conflict with ${event.commitId.slice(0, 7)} in ${event.paths.join(", ")}`;
+    case "external.resolved":
+      return `resolved, main ${event.mainCommit.slice(0, 7)}`;
+    case "external.stuck":
+      return `stuck on ${event.commitId.slice(0, 7)}: ${event.reason}`;
+    case "external.pushed":
+      return `pushed ${event.commitId.slice(0, 7)} to ${event.branch}`;
+    case "external.pull-request":
+      return `pull request #${event.number} from ${event.branch} (${event.features.length} features)`;
     case "session.steered":
       return event.message;
     case "turn.rejected":
@@ -280,6 +293,14 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       return true;
     case "fork.deleted":
     case "fork.kept":
+      return true;
+    case "external.pulled":
+    case "external.conflict":
+    case "external.resolved":
+    case "external.stuck":
+    case "external.pushed":
+    case "external.pull-request":
+      state.external = { type: event.type, summary: summarize(event), at, pullRequest: event.type === "external.pull-request" ? `#${event.number}` : state.external?.pullRequest };
       return true;
   }
 }

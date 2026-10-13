@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronsUpDown, Hammer, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
+import { ChevronsUpDown, FolderGit2, Hammer, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FEATURE_LABEL, FEATURE_TONE, StatusDot } from "@/components/status";
 import { missingSettings, SettingsDialog, useSettings } from "@/components/settings-dialog";
+import { ProjectSettingsDialog } from "@/components/project-settings-dialog";
 import { VoiceButton } from "@/components/voice-button";
 import { sortFeatures } from "@/lib/model";
 import { isProjectName } from "@/lib/selection";
@@ -78,6 +79,7 @@ function SettingsMenu() {
   const { setTheme } = useTheme();
   const { settings, setSettings, available } = useSettings();
   const [providers, setProviders] = useState(false);
+  const [projectSettings, setProjectSettings] = useState(false);
   const missing = available && missingSettings(settings).length > 0;
   useEffect(() => {
     if (missing) setProviders(true);
@@ -86,7 +88,7 @@ function SettingsMenu() {
   const bootstrap = () =>
     api.bootstrap().then(
       (r) => {
-        toast.success(r.created ? `Created ${selection.project}` : `${selection.project} already exists`);
+        toast.success(r.imported ? `Imported ${selection.project} from its repository` : r.created ? `Created ${selection.project}` : `${selection.project} already exists`);
         data.refresh();
       },
       (e: unknown) => toast.error("Could not create the project", { description: e instanceof Error ? e.message : String(e) }),
@@ -106,6 +108,10 @@ function SettingsMenu() {
               Settings
             </DropdownMenuItem>
           ) : null}
+          <DropdownMenuItem onClick={() => setProjectSettings(true)}>
+            <FolderGit2 />
+            Project and repository
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => select({ view: "insights", feature: null, session: null, panel: null })}>
             <Lightbulb />
             Health and memory
@@ -132,6 +138,7 @@ function SettingsMenu() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <ProjectSettingsDialog open={projectSettings} onOpenChange={setProjectSettings} project={selection.project} api={api} onSaved={data.refresh} />
       {available ? <SettingsDialog open={providers} onOpenChange={setProviders} settings={settings} onChange={setSettings} /> : null}
     </>
   );

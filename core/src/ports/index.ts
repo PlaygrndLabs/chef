@@ -9,3 +9,4 @@ export type * from "./event-bus.ts";
 export type * from "./runtime.ts";
 export type * from "./memory-index.ts";
 export type * from "./voice.ts";
+export type * from "./external-git.ts";
