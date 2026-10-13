@@ -300,6 +300,7 @@ export class Orchestrator {
       }
       if (isTerminal(record.machine.state)) return;
       try {
+        if (record.head && record.machine.state !== "queued") await this.adoptForkHead(record);
         if (record.syncPending && record.head && record.machine.state !== "queued") {
           record.syncPending = false;
           const synced = await this.syncFromMain(record);
@@ -762,6 +763,21 @@ export class Orchestrator {
     return { name: "proof", ok, log: proof.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${s.name}: ${s.detail}`).join("\n") || "no proof steps" };
   }
 
+  private async adoptForkHead(record: SessionRecord): Promise<void> {
+    const forkHead = await this.deps.repos.resolveRef(record.fork, "main");
+    if (!forkHead || forkHead === record.head) return;
+    const adopted: string[] = [];
+    let cursor: string | undefined = forkHead;
+    while (cursor && cursor !== record.head && adopted.length < ADOPT_LIMIT) {
+      adopted.unshift(cursor);
+      cursor = (await this.commitOf(record.fork, cursor)).parents[0];
+    }
+    if (cursor !== record.head) return;
+    record.head = forkHead;
+    record.commits.push(...adopted.filter((id) => !record.commits.includes(id)));
+    await this.publishPreview(record);
+  }
+
   private async syncFromMain(record: SessionRecord): Promise<"synced" | "up-to-date" | "conflict"> {
     const mainHead = await this.deps.repos.resolveRef(this.canonical, "main");
     if (!mainHead || mainHead === record.baseMain) return "up-to-date";
@@ -990,6 +1006,8 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 const RETRY_EVENTS: ReadonlySet<SessionEvent["type"]> = new Set(["review_rejected", "gate_failed", "turn_rejected", "reopened", "conflict"]);
 
 const CODER_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["test", "code", "fix", "refactor", "conflict"]);
+
+const ADOPT_LIMIT = 20;
 
 function hasMarkers(content: string | undefined): boolean {
   return content?.includes("<<<<<<<") ?? false;
