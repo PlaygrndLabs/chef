@@ -63,8 +63,8 @@ const MEMBER: Readonly<Record<MemberState, string>> = {
 const MEMBER_NOTE: Readonly<Record<MemberState, string>> = { done: "did its part", working: "is working now", next: "comes later", stopped: "was working when chef stopped" };
 
 function Team({ node }: { readonly node: SessionNode }) {
-  const view = useAgents();
-  const { select } = useWorkspace();
+  const { openSettings, selection } = useWorkspace();
+  const view = useAgents(selection.project);
   const team = teamOf(node);
   return (
     <div className="flex flex-wrap items-center gap-1.5" aria-label="Who works on this build" data-team>
@@ -82,7 +82,7 @@ function Team({ node }: { readonly node: SessionNode }) {
             data-member={m.role}
             data-member-state={m.state}
             title={`${label} ${MEMBER_NOTE[m.state]}${model ? ` on ${model}` : ""}. Open its prompt and skills.`}
-            onClick={() => select({ view: "agents", tab: "roles", item: m.role, feature: null, session: null, panel: null })}
+            onClick={() => openSettings("project", "agents", m.role)}
             className={cn("inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs hover:bg-muted", MEMBER[m.state])}
           >
             {m.state === "done" ? <Check className="size-3 text-ok" strokeWidth={3} /> : m.state === "working" ? <span className="pulse-run size-1.5 rounded-full bg-run" /> : m.state === "stopped" ? <X className="size-3" strokeWidth={3} /> : <Circle className="size-2.5" />}
@@ -97,7 +97,7 @@ function Team({ node }: { readonly node: SessionNode }) {
 
 function UpdateRow({ update }: { readonly update: Update }) {
   const [open, setOpen] = useState(false);
-  const view = useAgents();
+  const view = useAgents(useWorkspace().selection.project);
   if (update.kind === "you")
     return (
       <div className="flex max-w-[80%] flex-col items-end gap-0.5 self-end">

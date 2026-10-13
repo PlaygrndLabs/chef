@@ -1,21 +1,19 @@
-import { useEffect, useState } from "react";
-import { Bot, Check, ChevronsUpDown, FolderGit2, FolderPlus, ScanSearch, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, FolderPlus, KeyRound, Monitor, Moon, Plus, Settings, Settings2, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/status";
-import { missingSettings, SettingsDialog, useSettings } from "@/components/settings-dialog";
-import { ProjectSettingsDialog } from "@/components/project-settings-dialog";
+import { missingSettings } from "@/components/settings-dialog";
 import { VoiceButton } from "@/components/voice-button";
 import { WorkList } from "@/components/work-list";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
-import { Wordmark } from "@/components/logo";
+import { Mark, Wordmark } from "@/components/logo";
 
 const CONNECTION = { live: ["ok", "Live"], polling: ["run", "Reconnecting, updates every few seconds"], connecting: ["idle", "Connecting"], offline: ["bad", "Offline"] } as const;
 
 function ProjectSwitcher() {
-  const { selection, select, data, projects, addProject } = useWorkspace();
+  const { selection, select, data, projects, addProject, openSettings } = useWorkspace();
   const [tone, label] = CONNECTION[data.connection];
   return (
     <DropdownMenu>
@@ -31,12 +29,16 @@ function ProjectSwitcher() {
       <DropdownMenuContent align="start" className="w-60">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Projects</DropdownMenuLabel>
         {projects.map((p) => (
-          <DropdownMenuItem key={p} onClick={() => select({ project: p, view: "project", feature: null, session: null, panel: null })}>
+          <DropdownMenuItem key={p} onClick={() => select({ project: p, view: "project", feature: null, session: null, panel: null, settings: null, item: null })}>
             <span className="min-w-0 flex-1 truncate">{p}</span>
             {p === selection.project ? <Check /> : null}
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => openSettings("project")}>
+          <Settings2 />
+          Project settings
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={addProject}>
           <Plus />
           New project
@@ -46,101 +48,80 @@ function ProjectSwitcher() {
   );
 }
 
-function returningFromGitHub(): boolean {
-  const params = new URLSearchParams(location.search);
-  if (params.get("connect") !== "github") return false;
-  params.delete("connect");
-  history.replaceState(null, "", `?${params.toString()}`);
-  return true;
-}
-
-function SettingsMenu() {
+function AppMenu() {
   const { setTheme } = useTheme();
-  const { settings, setSettings, available } = useSettings();
-  const [providers, setProviders] = useState(false);
-  const [projectSettings, setProjectSettings] = useState(returningFromGitHub);
-  const missing = available && missingSettings(settings).length > 0;
-  useEffect(() => {
-    if (missing) setProviders(true);
-  }, [missing]);
-  const { select, api, data, selection } = useWorkspace();
+  const { openSettings, app } = useWorkspace();
+  const missing = app.available && missingSettings(app.settings).length > 0;
+  const host = location.host;
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="Settings" className={cn(missing && "text-bad")}>
-            <Settings />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="top" className="w-56">
-          {available ? (
-            <DropdownMenuItem onClick={() => setProviders(true)}>
-              <KeyRound />
-              Settings
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem onClick={() => select({ view: "agents", feature: null, session: null, panel: null, tab: "roles", item: null })}>
-            <Bot />
-            Agents, skills and router
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setProjectSettings(true)}>
-            <FolderGit2 />
-            Project settings
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => select({ view: "insights", feature: null, session: null, panel: null })}>
-            <Lightbulb />
-            Memory and learning
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              select({ view: "project", feature: null, session: null, panel: null });
-              window.setTimeout(() => window.dispatchEvent(new Event("chef:read-code")), 50);
-            }}
-          >
-            <ScanSearch />
-            Read the code and suggest tasks
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => setTheme("light")}>
-            <Sun />
-            Light
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("dark")}>
-            <Moon />
-            Dark
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("system")}>
-            <Monitor />
-            System
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <ProjectSettingsDialog open={projectSettings} onOpenChange={setProjectSettings} project={selection.project} api={api} onSaved={data.refresh} />
-      {available ? <SettingsDialog open={providers} onOpenChange={setProviders} settings={settings} onChange={setSettings} /> : null}
-    </>
-  );
-}
-
-function AgentsButton() {
-  const { select, selection } = useWorkspace();
-  const current = selection.view === "agents";
-  return (
-    <Button variant="ghost" size="sm" className={cn("h-8 gap-1.5 px-2 text-xs text-muted-foreground", current && "bg-sidebar-accent text-foreground")} aria-current={current ? "page" : undefined} onClick={() => select({ view: "agents", feature: null, session: null, panel: null, tab: "roles", item: null })} id="agents-button">
-      <Bot />
-      Agents
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" id="app-menu" className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left hover:bg-sidebar-accent" aria-label="chef menu" title="Settings for every project, theme and help">
+          <Mark className="size-6 rounded-md" />
+          <span className="grid min-w-0 flex-1 leading-tight">
+            <span className="truncate text-xs font-medium">Settings</span>
+            <span className="truncate text-[11px] text-muted-foreground">{missing ? "Needs setup" : "For every project"}</span>
+          </span>
+          {missing ? <span className="size-1.5 shrink-0 rounded-full bg-bad" aria-label="needs setup" /> : null}
+          <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top" className="w-60">
+        <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">{host}</DropdownMenuLabel>
+        <DropdownMenuItem onClick={() => openSettings("app")}>
+          <Settings />
+          Settings
+          <DropdownMenuShortcut>⌘,</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openSettings("app", "models")}>
+          <Cpu />
+          Models and keys
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openSettings("app", "agents")}>
+          <Bot />
+          Agents and skills
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openSettings("app", "environment")}>
+          <KeyRound />
+          Shared environment
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
+        <DropdownMenuItem onClick={() => setTheme("light")}>
+          <Sun />
+          Light
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("dark")}>
+          <Moon />
+          Dark
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("system")}>
+          <Monitor />
+          System
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <a href="https://github.com/PlaygrndLabs/chef#readme" target="_blank" rel="noreferrer">
+            <BookOpen />
+            Help and docs
+          </a>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 export function Sidebar() {
-  const { select, focusComposer, addProject } = useWorkspace();
+  const { select, focusComposer, addProject, openSettings, selection } = useWorkspace();
   return (
     <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex items-center gap-1 px-1.5">
         <Wordmark className="h-[15px] translate-y-px" />
         <span className="pl-0.5 text-muted-foreground/60">/</span>
         <ProjectSwitcher />
+        <Button variant="ghost" size="icon-sm" className={cn("shrink-0 text-muted-foreground", selection.settings?.scope === "project" && "bg-sidebar-accent text-foreground")} onClick={() => openSettings("project")} id="project-settings-button" aria-label="Project settings" title={`Settings for ${selection.project}`}>
+          <Settings2 />
+        </Button>
         <span className="flex-1" />
         <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground" onClick={addProject} id="new-project-button" aria-label="New project" title="New project">
           <FolderPlus />
@@ -158,10 +139,8 @@ export function Sidebar() {
       </Button>
       <WorkList />
       <div className="flex items-center gap-1 border-t pt-2.5">
+        <AppMenu />
         <VoiceButton />
-        <AgentsButton />
-        <span className="flex-1" />
-        <SettingsMenu />
       </div>
     </div>
   );

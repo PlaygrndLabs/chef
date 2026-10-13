@@ -66,11 +66,14 @@ export const settingsApi = {
   save: (update: SettingsUpdate) => call<SettingsView>("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
 };
 
-export const agentsApi = {
-  get: () => call<AgentsView>("/api/agents"),
-  save: (config: AgentConfig, summary: string, version: number) => call<AgentsView>("/api/agents", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ config, summary, version }) }),
-  restore: (version: number) => call<AgentsView>("/api/agents/restore", post({ version })),
-};
+export function agentsApi(project: string | null) {
+  const base = project ? `/api/projects/${project}/agents` : "/api/agents";
+  return {
+    get: () => call<AgentsView>(base),
+    save: (config: AgentConfig, summary: string, version: number) => call<AgentsView>(base, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ config, summary, version }) }),
+    restore: (version: number) => call<AgentsView>(`${base}/restore`, post({ version })),
+  };
+}
 
 export interface ProjectEntry {
   readonly name: string;
@@ -145,6 +148,7 @@ export interface GitLinkView {
 
 export interface ProjectSettingsView {
   readonly previewIdleMinutes: number;
+  readonly attempts?: number | null;
   readonly git: GitLinkView | null;
 }
 
@@ -159,6 +163,7 @@ export interface GitLinkUpdate {
 
 export interface ProjectSettingsUpdate {
   readonly previewIdleMinutes?: number | null;
+  readonly attempts?: number | null;
   readonly git?: GitLinkUpdate | null;
 }
 
@@ -167,6 +172,7 @@ export interface EnvVarView {
   readonly secret: boolean;
   readonly value: string | null;
   readonly updatedAt: number;
+  readonly scope?: "shared" | "overrides";
 }
 
 export interface EnvNeedView {
@@ -183,6 +189,16 @@ export interface EnvUpdate {
   readonly set?: Readonly<Record<string, { readonly value: string; readonly secret: boolean }>>;
   readonly remove?: readonly string[];
 }
+
+export interface EnvApi {
+  env(): Promise<ProjectEnvView>;
+  saveEnv(update: EnvUpdate): Promise<ProjectEnvView>;
+}
+
+export const sharedEnvApi: EnvApi = {
+  env: () => call<ProjectEnvView>("/api/env"),
+  saveEnv: (update) => call<ProjectEnvView>("/api/env", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
+};
 
 export function projectApi(project: string) {
   const base = `/api/projects/${project}`;

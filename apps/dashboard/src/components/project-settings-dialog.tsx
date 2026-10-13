@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { Bot, BookOpen, FolderGit2, KeyRound, Route, ScanSearch, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import type { OutboundMode, SyncState } from "@chef/core";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { GitHubPicker } from "@/components/github-picker";
 import { EnvironmentForm } from "@/components/environment";
+import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
+import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
 import { githubApi, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -15,18 +17,6 @@ const MODES: readonly { readonly mode: OutboundMode; readonly label: string; rea
   { mode: "branch", label: "Sync branch only", note: "chef mirrors its main to the sync branch. You merge it when you like." },
   { mode: "off", label: "Pull only", note: "chef takes changes from your repository but never pushes back." },
 ];
-
-function Section(props: { readonly title: string; readonly note: string; readonly children: ReactNode }) {
-  return (
-    <div className="grid gap-2.5">
-      <div className="grid gap-1">
-        <h3 className="text-sm font-medium">{props.title}</h3>
-        <p className="text-xs text-muted-foreground">{props.note}</p>
-      </div>
-      {props.children}
-    </div>
-  );
-}
 
 function Field(props: { readonly label: string; readonly children: ReactNode }) {
   return (
@@ -126,7 +116,7 @@ function RepositoryForm(props: { readonly project: string; readonly api: Project
     >
       {viaGitHub ? (
         <GitHubPicker
-          returnTo={`/?project=${props.project}&connect=github`}
+          returnTo={`/?project=${props.project}&settings=project.repository`}
           github={github}
           selected={url}
           onPick={(r) => {
@@ -190,7 +180,9 @@ function RepositoryForm(props: { readonly project: string; readonly api: Project
   );
 }
 
-function PreviewsForm(props: { readonly minutes: number; readonly save: (update: ProjectSettingsUpdate, done?: string) => Promise<boolean> }) {
+type Save = (update: ProjectSettingsUpdate, done?: string) => Promise<boolean>;
+
+function PreviewsForm(props: { readonly minutes: number; readonly save: Save }) {
   const [minutes, setMinutes] = useState(String(props.minutes));
   return (
     <form
@@ -211,13 +203,56 @@ function PreviewsForm(props: { readonly minutes: number; readonly save: (update:
   );
 }
 
-export function ProjectSettingsDialog(props: { readonly open: boolean; readonly onOpenChange: (open: boolean) => void; readonly project: string; readonly api: ProjectApi; readonly onSaved?: () => void }) {
-  const { open, onOpenChange, project, api } = props;
+function TriesForm(props: { readonly own: number | null; readonly shared: number | null; readonly save: Save }) {
+  const [count, setCount] = useState(String(props.own ?? props.shared ?? 1));
+  const own = props.own !== null;
+  return (
+    <form
+      id="project-attempts"
+      className="grid gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void props.save({ attempts: Number(count) });
+      }}
+    >
+      <p className="text-xs text-muted-foreground" data-current="attempts" data-own={own ? "yes" : "no"}>
+        {own ? `This project builds each new feature ${props.own === 1 ? "once" : `${props.own} ways at once`}.` : `Uses the setting for all projects${props.shared ? `: ${props.shared}` : ""}.`}
+      </p>
+      <div className="flex items-end gap-2">
+        <Field label="Parallel tries per feature">
+          <Input value={count} onChange={(e) => setCount(e.target.value)} aria-label="Parallel tries for this project" type="number" min={1} max={4} required />
+        </Field>
+        <Button type="submit" size="sm">
+          Save
+        </Button>
+        {own ? (
+          <Button type="button" size="sm" variant="ghost" onClick={() => void props.save({ attempts: null }, "Uses the setting for all projects")}>
+            Use the setting for all projects
+          </Button>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+
+export function ProjectSettingsDialog(props: {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly project: string;
+  readonly api: ProjectApi;
+  readonly onSaved?: () => void;
+  readonly section: string;
+  readonly item: string | null;
+  readonly nav: AgentsNav & { readonly section: (section: string) => void };
+  readonly sharedAttempts: number | null;
+  readonly onReadCode: () => void;
+}) {
+  const { open, project, api, nav } = props;
   const [settings, setSettings] = useState<ProjectSettingsView | null>(null);
   useEffect(() => {
     if (open) api.settings().then(setSettings, (e: unknown) => toast.error("Could not load the project settings", { description: e instanceof Error ? e.message : String(e) }));
   }, [open, api]);
-  const save = async (update: ProjectSettingsUpdate, done = "Saved") => {
+  const save: Save = async (update, done = "Saved") => {
     try {
       setSettings(await api.saveSettings(update));
       toast.success(done);
@@ -228,29 +263,79 @@ export function ProjectSettingsDialog(props: { readonly open: boolean; readonly 
       return false;
     }
   };
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg" data-dialog="project-settings">
-        <DialogHeader>
-          <DialogTitle>{project}</DialogTitle>
-          <DialogDescription>chef always works on its own copy of the code. Linking a repository is optional and only keeps the two in sync.</DialogDescription>
-        </DialogHeader>
-        {settings ? (
-          <div className="grid gap-5">
-            <Section title="Repository (optional)" note="chef takes in every push to the repository's main branch and sends finished features back the way you pick below.">
-              <RepositoryForm key={settings.git?.url ?? "none"} project={project} api={api} current={settings.git} save={save} />
-            </Section>
-            <Section title="Environment and secrets" note="Keys and settings the app reads at runtime, like API keys for outside services. Previews get the values; agents only see the names. Secrets are hidden once saved and never go into the code.">
-              <EnvironmentForm api={api} />
-            </Section>
-            <Section title="Previews" note="A preview starts when someone opens its link, and is removed from your Cloudflare account after it sits unused.">
+  const loading = () => <p className="text-xs text-muted-foreground">Loading…</p>;
+  const agents = (section: AgentSection) => () => <AgentsSection project={project} section={section} item={props.item} nav={nav} />;
+  const sections: SettingsSection[] = [
+    {
+      id: "general",
+      label: "General",
+      icon: SlidersHorizontal,
+      note: "Settings for this project only. Anything not set here comes from Settings for every project.",
+      render: () =>
+        settings ? (
+          <>
+            <Group title="Name" note="Its address in chef, its previews and its Cloudflare resources use this name.">
+              <Input value={project} readOnly aria-label="Project name" className="font-mono" />
+            </Group>
+            <Group title="Parallel tries" note="How many ways chef builds each new feature at once in this project. Each try costs as much as a whole build.">
+              <TriesForm key={`${settings.attempts ?? "shared"}`} own={settings.attempts ?? null} shared={props.sharedAttempts} save={save} />
+            </Group>
+            <Group title="Previews" note="A preview starts when someone opens its link, and is removed from your Cloudflare account after it sits unused.">
               <PreviewsForm key={settings.previewIdleMinutes} minutes={settings.previewIdleMinutes} save={save} />
-            </Section>
-          </div>
+            </Group>
+            <Group
+              title="Read the code"
+              note="chef reads the whole project and suggests what to build next."
+              action={
+                <Button type="button" size="sm" variant="outline" onClick={props.onReadCode}>
+                  <ScanSearch />
+                  Read and suggest
+                </Button>
+              }
+            >
+              {null}
+            </Group>
+          </>
         ) : (
-          <p className="text-xs text-muted-foreground">Loading…</p>
-        )}
-      </DialogContent>
-    </Dialog>
+          loading()
+        ),
+    },
+    {
+      id: "repository",
+      label: "Repository",
+      icon: FolderGit2,
+      note: "chef always works on its own copy of the code. Linking a repository is optional and only keeps the two in sync.",
+      render: () =>
+        settings ? (
+          <Group title={settings.git ? "Linked repository" : "Link a repository"} note="chef takes in every push to the repository's main branch and sends finished features back the way you pick below.">
+            <RepositoryForm key={settings.git?.url ?? "none"} project={project} api={api} current={settings.git} save={save} />
+          </Group>
+        ) : (
+          loading()
+        ),
+    },
+    { id: "agents", label: "Agents", icon: Bot, fill: true, note: "The roles working on this project. They follow Settings for every project until you change one here.", render: agents("agents") },
+    { id: "skills", label: "Skills", icon: BookOpen, fill: true, note: "Skills from every project plus this project's own.", render: agents("skills") },
+    { id: "router", label: "Router", icon: Route, fill: true, note: "How chef sorts requests in this project.", render: agents("router") },
+    {
+      id: "environment",
+      label: "Environment",
+      icon: KeyRound,
+      note: "Keys and settings this project's app reads at runtime. Values set for all projects show here too; set one here to use a different value in this project. Previews get the values; agents only see the names.",
+      render: () => <EnvironmentForm api={api} />,
+    },
+  ];
+  return (
+    <SettingsShell
+      open={open}
+      onOpenChange={props.onOpenChange}
+      name="project-settings"
+      kicker="Project settings"
+      heading={project}
+      description={`Settings for the project ${project}`}
+      sections={sections}
+      active={props.section}
+      onSelect={nav.section}
+    />
   );
 }

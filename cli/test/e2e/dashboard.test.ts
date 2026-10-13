@@ -79,13 +79,15 @@ describe("dashboard in a browser", () => {
       await claude.getByLabel("API key").fill("sk-test-12345678");
       await claude.getByRole("button", { name: "Save" }).click();
       await expect.poll(() => claude.locator('[data-current="llm"]').innerText(), { timeout: 10_000 }).toContain("https://llm.example, key …5678");
-      await dialog.getByRole("tab", { name: /Previews/ }).click();
+      expect(await dialog.getAttribute("data-section")).toBe("models");
+      expect(await dialog.locator('[data-settings-nav="previews"] [aria-label="needs setup"]').count()).toBe(1);
+      await dialog.locator('[data-settings-nav="previews"]').click();
       const cloudflare = dialog.locator("#settings-cloudflare");
       await cloudflare.getByLabel("Account id").fill("0123456789abcdef0123456789abcdef");
       await cloudflare.getByLabel("API token").fill("cf-token-abcd1234");
       await cloudflare.getByRole("button", { name: "Save" }).click();
       await expect.poll(() => cloudflare.locator('[data-current="cloudflare"]').getAttribute("data-set"), { timeout: 10_000 }).toBe("yes");
-      await dialog.getByRole("tab", { name: "Routing" }).click();
+      await dialog.locator('[data-settings-nav="router"]').click();
       expect(await dialog.locator('[data-current="jev"]').innerText()).toContain("from the deployment");
       const settings = (await (await page.request.get(`${local.url}/api/settings`)).json()) as Record<string, unknown>;
       expect(settings["llm"]).toEqual({ kind: "custom", baseUrl: "https://llm.example", keyHint: "…5678", source: "app" });
@@ -97,7 +99,7 @@ describe("dashboard in a browser", () => {
     }
   });
 
-  it("edits agent roles, skills and the router with history, and shows who works on a build", async () => {
+  it("edits agents for every project and for one project, with history, and shows who works on a build", async () => {
     const local = await serve({ port: 0, real: false, assets: DIST, project: "shop" });
     const browser = await chromium.launch();
     try {
@@ -108,8 +110,10 @@ describe("dashboard in a browser", () => {
       await page.request.post(`${local.url}/api/projects/shop/prompts`, { data: { prompt: TODO_PROMPT } });
       await page.goto(`${local.url}/?project=shop`);
       await page.locator('#features [data-session="s1"][data-state="merged"]').waitFor({ timeout: 60_000 });
-      await page.locator("#agents-button").click();
-      const view = page.locator('[data-view="agents"]');
+      await page.locator("#app-menu").click();
+      await page.getByRole("menuitem", { name: "Agents and skills" }).click();
+      const dialog = page.locator('[data-dialog="settings"]');
+      const view = dialog.locator('[data-view="agents"][data-scope="app"]');
       await view.waitFor({ timeout: 10_000 });
       expect(await view.locator("[data-role]").evaluateAll((items) => items.map((i) => i.getAttribute("data-role")))).toEqual(["planner", "test", "backend", "frontend", "chore", "reviewer", "conflict-resolver", "gardener"]);
       await view.locator('[data-role="backend"]').click();
@@ -127,7 +131,7 @@ describe("dashboard in a browser", () => {
       await added.getByRole("button", { name: "Save" }).click();
       await view.locator('[data-role-editor="data-modeler"]').waitFor({ timeout: 10_000 });
 
-      await view.getByRole("tab", { name: /Skills/ }).click();
+      await dialog.locator('[data-settings-nav="skills"]').click();
       const skill = view.locator('[data-skill-editor="new"]');
       await skill.getByLabel("Skill name").fill("tidy-sql");
       await skill.getByLabel("When to use it").fill("Use when writing SQL queries");
@@ -152,7 +156,7 @@ describe("dashboard in a browser", () => {
       expect(saved.version).toBe(4);
       expect(saved.skills.find((s) => s.name === "house-style")).toMatchObject({ everyone: true });
       expect(await view.locator('[data-skill="house-style"]').innerText()).toContain("Every role");
-      await view.getByRole("tab", { name: /Roles/ }).click();
+      await dialog.locator('[data-settings-nav="agents"]').click();
       await view.locator('[data-role="backend"]').click();
       const option = view.locator('[data-role-editor="backend"] [data-skill-option="house-style"]');
       await expect.poll(() => option.getAttribute("data-shared")).toBe("true");
@@ -166,8 +170,30 @@ describe("dashboard in a browser", () => {
       expect(saved.skills).toEqual([]);
       expect(saved.roles.find((r) => r.role === "backend")?.instructions).toBe("Implement {feature}. Keep handlers small.");
 
-      await view.getByRole("tab", { name: /Router/ }).click();
-      const router = view.locator("[data-router]");
+      await dialog.getByRole("button", { name: "Close" }).click();
+      await dialog.waitFor({ state: "hidden" });
+
+      const projectAgents = async () => (await (await page.request.get(`${local.url}/api/projects/shop/agents`)).json()) as { version: number; roles: { role: string; instructions: string }[]; router: { useJev: boolean }; scope: { roles: string[]; router: boolean } };
+      await page.locator("#project-settings-button").click();
+      const project = page.locator('[data-dialog="project-settings"]');
+      await project.locator('[data-settings-nav="agents"]').click();
+      const scoped = project.locator('[data-view="agents"][data-scope="project"]');
+      await scoped.locator('[data-role="backend"]', { hasText: "all projects" }).waitFor({ timeout: 10_000 });
+      await scoped.locator('[data-role="backend"]').click();
+      const own = scoped.locator('[data-role-editor="backend"]');
+      await own.locator("[data-inherited]").waitFor();
+      await own.getByLabel("System prompt").fill("Implement {feature} for shop only.");
+      await own.getByRole("button", { name: "Save" }).click();
+      await scoped.locator('[data-role="backend"]', { hasText: "this project" }).waitFor({ timeout: 10_000 });
+      expect((await projectAgents()).roles.find((r) => r.role === "backend")?.instructions).toBe("Implement {feature} for shop only.");
+      expect((await projectAgents()).scope.roles).toEqual(["backend"]);
+      expect((await agents()).roles.find((r) => r.role === "backend")?.instructions).toBe("Implement {feature}. Keep handlers small.");
+      await own.getByRole("button", { name: "Use the setting for all projects" }).click();
+      await expect.poll(async () => (await projectAgents()).scope.roles, { timeout: 10_000 }).toEqual([]);
+      expect((await projectAgents()).roles.find((r) => r.role === "backend")?.instructions).toBe("Implement {feature}. Keep handlers small.");
+
+      await project.locator('[data-settings-nav="router"]').click();
+      const router = project.locator("[data-router]");
       expect(await router.locator('[data-router-section="kinds"]').innerText()).toContain("Change: bug fix");
       await router.getByLabel("Request to route").fill("how does the todo list store items?");
       await router.getByRole("button", { name: "Route it" }).click();
@@ -175,7 +201,9 @@ describe("dashboard in a browser", () => {
       expect(await router.locator('[data-router-section="recent"]').innerText()).toContain(TODO_PROMPT);
       await router.getByRole("radio", { name: "Planner only" }).click();
       await router.locator("[data-router-form]").getByRole("button", { name: "Save" }).click();
-      await expect.poll(async () => (await agents()).router.useJev, { timeout: 10_000 }).toBe(false);
+      await expect.poll(async () => (await projectAgents()).router.useJev, { timeout: 10_000 }).toBe(false);
+      expect((await agents()).router.useJev).toBe(true);
+      expect(new URL(page.url()).searchParams.get("settings")).toBe("project.router");
 
       await page.goto(`${local.url}/?project=shop&session=s1`);
       const team = page.locator('[data-view="feature"] [data-team]');
@@ -247,8 +275,8 @@ describe("dashboard in a browser", () => {
       await page.locator('[data-view="feature"][data-state="merged"]').waitFor({ timeout: 60_000 });
       expect(await page.locator("[data-needs-keys]").count()).toBe(0);
 
-      await page.getByRole("button", { name: "Settings" }).click();
-      await page.getByRole("menuitem", { name: "Project settings" }).click();
+      await page.locator("#project-settings-button").click();
+      await page.locator('[data-dialog="project-settings"] [data-settings-nav="environment"]').click();
       const env = page.locator('[data-dialog="project-settings"] [data-env]');
       await env.locator('[data-env-var="TODOCLOUD_API_KEY"]').waitFor({ timeout: 10_000 });
       await env.getByLabel("Name").fill("api_base_url");
@@ -261,6 +289,35 @@ describe("dashboard in a browser", () => {
       const view = await (await page.request.get(`${local.url}/api/projects/shop/env`)).text();
       expect(view).not.toContain("tc-secret-value-123");
       expect(JSON.parse(view)).toMatchObject({ vars: [{ name: "API_BASE_URL", secret: false, value: "https://api.todocloud.example" }, { name: "TODOCLOUD_API_KEY", secret: true, value: null }], needs: [] });
+
+      await page.locator('[data-dialog="project-settings"]').getByRole("button", { name: "Close" }).click();
+      await page.locator("#app-menu").click();
+      await page.getByRole("menuitem", { name: "Shared environment" }).click();
+      const shared = page.locator('[data-dialog="settings"] [data-env]');
+      await shared.waitFor({ timeout: 10_000 });
+      expect(await shared.locator("[data-env-var]").count()).toBe(0);
+      for (const [name, value] of [
+        ["SUPPORT_EMAIL", "help@shop.example"],
+        ["API_BASE_URL", "https://api.shared.example"],
+      ]) {
+        await shared.getByLabel("Name").fill(name);
+        await shared.getByLabel("Value").fill(value);
+        await shared.getByRole("radio", { name: "Plain" }).click();
+        await shared.getByRole("button", { name: "Add" }).click();
+        await shared.locator(`[data-env-var="${name}"]`).waitFor({ timeout: 10_000 });
+      }
+      const merged = (await (await page.request.get(`${local.url}/api/projects/shop/env`)).json()) as { vars: { name: string; value: string | null; scope?: string }[] };
+      expect(merged.vars.map((v) => [v.name, v.value, v.scope ?? "project"])).toEqual([
+        ["API_BASE_URL", "https://api.todocloud.example", "overrides"],
+        ["SUPPORT_EMAIL", "help@shop.example", "shared"],
+        ["TODOCLOUD_API_KEY", null, "project"],
+      ]);
+      await page.locator('[data-dialog="settings"]').getByRole("button", { name: "Close" }).click();
+      await page.locator("#project-settings-button").click();
+      await page.locator('[data-dialog="project-settings"] [data-settings-nav="environment"]').click();
+      await env.locator('[data-env-var="SUPPORT_EMAIL"]', { hasText: "all projects" }).waitFor({ timeout: 10_000 });
+      await env.getByRole("button", { name: "Use the value of API_BASE_URL for all projects" }).click();
+      await expect.poll(() => env.locator('[data-env-var="API_BASE_URL"]').innerText(), { timeout: 10_000 }).toContain("https://api.shared.example");
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
