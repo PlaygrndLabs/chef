@@ -53,6 +53,6 @@ jobs:
         env:
           CHEF_LIVE_LOCAL: "1"
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || secrets.CPA_BASE_URL }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY || secrets.CPA_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: pnpm exec vitest run --project e2e cli/test/e2e/local-live.test.ts

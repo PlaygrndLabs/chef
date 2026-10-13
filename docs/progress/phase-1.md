@@ -31,7 +31,7 @@ Date: 2026-10-11. Branch `claude/kargah-build-t66ame`.
 
 ## Needed to finish Phase 1 on a real account
 
-The same credentials as Phase 0, plus a CPA endpoint for the planner and reviewer (`CPA_BASE_URL`, `CPA_API_KEY`; see `dev/cpa/README.md`). Deploy steps are in `README.md`. After deploy, the three-run criterion is: bootstrap a project, send "Add an item to a todo list", and check the dashboard shows `merged` with a preview URL, three times.
+The same credentials as Phase 0, plus a model provider for the planner and reviewer (`ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`). Deploy steps are in `README.md`. After deploy, the three-run criterion is: bootstrap a project, send "Add an item to a todo list", and check the dashboard shows `merged` with a preview URL, three times.
 
 ## Started for Phase 2
 

@@ -54,7 +54,7 @@ What this does and does not show: the memory path works end to end with real che
 Tests:
 - `core/test/unit/memory.test.ts`: memory documents, feature memory, the lexical index, feature-map gardening, literal generalization, mining thresholds and exclusions, and rule problems.
 - `core/test/e2e/memory.test.ts`: the lesson in the revert commit and its recall in the reopened session and in a fresh project, the feature map on every commit, session parents, a question answered from memory, and a `project-lint` rejection with its recorded correction.
-- `adapters/test/unit/memory-adapters.test.ts`: per-project and per-kind filtering in `VectorizeIndex` against a fake Vectorize, and `LlmPlanner.answer` through CPA.
+- `adapters/test/unit/memory-adapters.test.ts`: per-project and per-kind filtering in `VectorizeIndex` against a fake Vectorize, and `LlmPlanner.answer` through a custom provider.
 - `cli/test/e2e/bench.test.ts`: the replay benchmark on four features.
 - `apps/dashboard/test/unit/state.test.ts`: the memory figures.
 
@@ -66,4 +66,4 @@ Tests:
 
 - `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` with Workers, Vectorize, Workers AI, Artifacts, Containers and Workers Builds permissions.
 - The `chef-memory` index and its `project` and `kind` metadata indexes, created as in `README.md` before the first deploy.
-- For the rest of the loop, as in earlier phases: `TYPESAFE_API_KEY`, `COPILOT_GITHUB_TOKEN`, and a Claude login in chef's CPA with `CPA_API_KEY`.
+- For the rest of the loop, as in earlier phases: `TYPESAFE_API_KEY`, `COPILOT_GITHUB_TOKEN`, and `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`.
