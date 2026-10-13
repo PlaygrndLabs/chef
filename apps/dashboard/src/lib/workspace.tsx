@@ -32,6 +32,10 @@ export interface Workspace {
 
 export const WorkspaceContext = createContext<Workspace | null>(null);
 
+export function useOptionalWorkspace(): Workspace | null {
+  return useContext(WorkspaceContext);
+}
+
 export function useWorkspace(): Workspace {
   const value = useContext(WorkspaceContext);
   if (!value) throw new Error("useWorkspace needs a WorkspaceContext provider");

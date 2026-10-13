@@ -9,11 +9,11 @@ import { pickProject, rememberProject, useProjects } from "@/lib/projects";
 import { useSelection } from "@/lib/selection";
 
 const PlaceScreen = preloadable(() => import("@/components/place-screen").then((m) => m.PlaceScreen));
-const Setup = preloadable(() => import("@/components/project-setup").then((m) => m.Setup));
+const Start = preloadable(() => import("@/components/start").then((m) => m.Start));
 
 export function preloadScreen() {
   if (new URLSearchParams(location.search).has("project")) void MainView.preload();
-  else void Setup.preload();
+  else void Start.preload();
 }
 
 function needsPlace(mode: AppMode): boolean {
@@ -57,7 +57,7 @@ function ConnectedApp({ initial }: { readonly initial: readonly string[] | null 
   if (project === null)
     return (
       <Suspense fallback={null}>
-        <Setup projects={projects} onOpen={open} onCreated={opened} />
+        <Start projects={projects} selection={selection} select={select} onOpen={open} onCreated={opened} />
         <Shown />
       </Suspense>
     );
