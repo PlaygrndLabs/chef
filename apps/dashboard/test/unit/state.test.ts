@@ -3,6 +3,7 @@ import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
 import { featureNodes, featureTree, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
 import { activity, plainReason, progress, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
+import { teamOf } from "../../src/lib/agents.ts";
 import { entryRoute, pagesFor, routesIn } from "../../src/lib/routes.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
@@ -39,6 +40,40 @@ describe("project event state", () => {
     expect(state.previews["todo-add"]?.url).toBe("https://p.example");
     expect(state.log.some((e) => e.type === "coder.event" && e.summary === "text")).toBe(false);
     expect(metrics(state)).toMatchObject({ mergedFeatures: 1, merges: 1, running: 0, stuck: 0 });
+  });
+
+  it("follows roles that work at the same time on their own branches", () => {
+    const lane = (role: string, status: string, extra: object = {}) => ({ type: "lane.updated", sessionId: "s1", featureId: "todo", role, branch: `lane/${role}`, status, ...extra });
+    const said = (role: string, delta: string) => ({ type: "coder.event", sessionId: "s1", featureId: "todo", lane: role, event: { type: "assistant.message_delta", delta } });
+    const events = [
+      { type: "session.created", sessionId: "s1", featureId: "todo", fork: "f", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s1", featureId: "todo", from: "testing", to: "coding", reason: "tests_committed" },
+      { type: "lanes.started", sessionId: "s1", featureId: "todo", lanes: [{ role: "backend", branch: "lane/backend", items: 1 }, { role: "frontend", branch: "lane/frontend", items: 1 }] },
+      { type: "agent.started", sessionId: "s1", featureId: "todo", role: "backend", kind: "code", model: "m", lane: "backend" },
+      lane("backend", "working"),
+      { type: "agent.started", sessionId: "s1", featureId: "todo", role: "frontend", kind: "code", model: "m", lane: "frontend" },
+      lane("frontend", "working"),
+      said("backend", "Adding "),
+      said("frontend", "Drawing "),
+      said("backend", "the API"),
+      said("frontend", "the page"),
+      { type: "commit.created", sessionId: "s1", featureId: "todo", repo: "f", commitId: "c1", role: "backend", message: "code(todo): api", lane: "backend" },
+      lane("backend", "committed", { commitId: "c1" }),
+    ];
+    const state = run(events);
+    const s = state.sessions["s1"];
+    expect(s?.lanes.map((l) => [l.role, l.status, l.commits])).toEqual([["backend", "committed", 1], ["frontend", "working", 0]]);
+    expect(s?.timeline.filter((t) => t.kind === "text").map((t) => (t.kind === "text" ? [t.lane, t.text] : null))).toEqual([["backend", "Adding the API"], ["frontend", "Drawing the page"]]);
+    const steps = updates(s?.timeline ?? [], "coding").filter((u) => u.kind === "chef" && u.role && u.role !== "planner");
+    expect(steps.map((u) => (u.kind === "chef" ? [u.role, u.tone, u.text, u.detail] : null))).toEqual([
+      ["backend", "ok", "Did its part", ""],
+      ["frontend", "run", "Working on its part on its own branch", "Drawing the page"],
+    ]);
+    const node = { id: "s1", featureId: "todo", state: "coding", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], live: s, record: undefined } as const;
+    const team = teamOf(node);
+    expect(team.filter((m) => m.branch).map((m) => [m.role, m.state, m.branch])).toEqual([["backend", "done", "lane/backend"], ["frontend", "working", "lane/frontend"]]);
+    const both = run([...events.slice(0, -2)]);
+    expect(teamOf({ ...node, live: both.sessions["s1"] }).filter((m) => m.state === "working").map((m) => m.role)).toEqual(["backend", "frontend"]);
   });
 
   it("ignores replayed and malformed entries", () => {

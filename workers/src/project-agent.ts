@@ -16,13 +16,13 @@ import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/ada
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
-import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
+import { laneLayout, renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
 import { previewName, SandboxCheckRunner, SandboxLiveHost, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
-import { SandboxCoder } from "./sandbox-coder.ts";
+import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
 import { buildingPage, previewPath } from "@chef/adapters/preview-page";
 import { CloudflareWorkerSpace, WorkerTakenError } from "./preview-space.ts";
 import { gitHubApp } from "./github.ts";
@@ -122,7 +122,7 @@ export class ProjectAgent extends Agent<Env> {
         profiles,
         router: routerConfigOf(agents.config.router),
         generated,
-        specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
+        specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }), laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, Object.keys(tree)) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
         environment: async () => envNames(await this.effectiveEnv()),
         instructions: async () => (await settingsStub(env).sharedInstructions())?.text ?? "",
@@ -267,8 +267,10 @@ export class ProjectAgent extends Agent<Env> {
       if (request.method === "GET" && action === "turns") return Response.json(await orchestrator.turns(id));
       if (request.method === "GET" && action === "changes") return Response.json(await orchestrator.changes(id));
       if (request.method === "GET" && action === "sandbox") {
-        const stub = this.env.SESSION.get(this.env.SESSION.idFromName(id)) as unknown as { status(): Promise<SandboxStatus> };
-        return Response.json(await stub.status());
+        const lanes = ((await orchestrator.session(id)).lanes ?? []).map((lane) => lane.role);
+        const statuses = await Promise.all([id, ...lanes.map((lane) => sandboxName(id, lane))].map((name) => (this.env.SESSION.get(this.env.SESSION.idFromName(name)) as unknown as { status(): Promise<SandboxStatus> }).status()));
+        const main = statuses[0] as SandboxStatus;
+        return Response.json({ ...main, running: statuses.some((s) => s.running), lanes: Object.fromEntries(lanes.map((lane, i) => [lane, statuses[i + 1]?.running ?? false])) });
       }
       if (request.method === "POST" && action === "drop") {
         const { reason } = (await request.json().catch(() => ({}))) as { reason?: string };

@@ -1,4 +1,4 @@
-import type { ChatContext, ChefEvent, RouteDecision, SessionState } from "@chef/core";
+import type { ChatContext, ChefEvent, LaneStatus, RouteDecision, SessionState } from "@chef/core";
 
 export interface LogEntry {
   readonly seq: number;
@@ -14,14 +14,14 @@ export interface CheckView {
 export type TimelineItem =
   | { readonly kind: "created"; readonly at: number; readonly reason: string; readonly fork: string; readonly attempt: { readonly index: number; readonly of: number }; readonly parent: string | null }
   | { readonly kind: "state"; readonly at: number; readonly from: SessionState; readonly to: SessionState; readonly reason: string }
-  | { kind: "text"; readonly at: number; text: string; readonly phase: SessionState }
-  | { readonly kind: "tool"; readonly at: number; readonly tool: string; readonly detail: string; readonly phase: SessionState }
+  | { kind: "text"; readonly at: number; text: string; readonly phase: SessionState; readonly lane?: string }
+  | { readonly kind: "tool"; readonly at: number; readonly tool: string; readonly detail: string; readonly phase: SessionState; readonly lane?: string }
   | { readonly kind: "error"; readonly at: number; readonly message: string }
-  | { readonly kind: "commit"; readonly at: number; readonly commitId: string; readonly role: string; readonly message: string }
+  | { readonly kind: "commit"; readonly at: number; readonly commitId: string; readonly role: string; readonly message: string; readonly lane?: string }
   | { readonly kind: "preview"; readonly at: number; readonly url: string; readonly commitId: string }
   | { readonly kind: "review"; readonly at: number; readonly approve: boolean; readonly reasons: readonly string[]; readonly model: string }
   | { readonly kind: "gate"; readonly at: number; readonly ok: boolean; readonly checks: readonly CheckView[] }
-  | { readonly kind: "rejected"; readonly at: number; readonly role: string; readonly rule: string; readonly paths: readonly string[] }
+  | { readonly kind: "rejected"; readonly at: number; readonly role: string; readonly rule: string; readonly paths: readonly string[]; readonly lane?: string }
   | { readonly kind: "sync"; readonly at: number; readonly conflict: boolean; readonly paths: readonly string[]; readonly mainCommit: string }
   | { readonly kind: "recalled"; readonly at: number; readonly paths: readonly string[] }
   | { readonly kind: "stuck"; readonly at: number; readonly reason: string }
@@ -29,8 +29,19 @@ export type TimelineItem =
   | { readonly kind: "picked"; readonly at: number; readonly won: boolean; readonly winner: string; readonly reasons: readonly string[]; readonly candidates: readonly { readonly sessionId: string; readonly passed: number; readonly total: number }[] }
   | { readonly kind: "steered"; readonly at: number; readonly message: string }
   | { readonly kind: "needs"; readonly at: number; readonly names: readonly string[] }
-  | { readonly kind: "agent"; readonly at: number; readonly role: string; readonly model: string; readonly work: string }
+  | { readonly kind: "agent"; readonly at: number; readonly role: string; readonly model: string; readonly work: string; readonly lane?: string }
+  | { readonly kind: "lanes"; readonly at: number; readonly lanes: readonly { readonly role: string; readonly branch: string; readonly items: number }[] }
+  | { readonly kind: "lane"; readonly at: number; readonly role: string; readonly branch: string; readonly status: LaneStatus; readonly commitId: string | null; readonly paths: readonly string[] }
   | { readonly kind: "held"; readonly at: number; readonly by: string | null };
+
+export interface LaneLive {
+  readonly role: string;
+  readonly branch: string;
+  readonly items: number;
+  status: LaneStatus | "waiting";
+  commits: number;
+  at: number;
+}
 
 export interface SessionLive {
   readonly id: string;
@@ -53,6 +64,7 @@ export interface SessionLive {
   recalled: readonly string[];
   agent: { readonly role: string; readonly model: string; readonly at: number } | null;
   readonly agents: { readonly role: string; readonly model: string; readonly at: number }[];
+  lanes: LaneLive[];
   readonly timeline: TimelineItem[];
   createdAt: number;
   updatedAt: number;
@@ -96,7 +108,7 @@ function sessionOf(state: ProjectLive, sessionId: string, featureId: string, at:
     existing.updatedAt = at;
     return existing;
   }
-  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, kind: "feature", hotfix: false, heldBy: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], merged: null, recalled: [], agent: null, agents: [], timeline: [], createdAt: at, updatedAt: at };
+  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, kind: "feature", hotfix: false, heldBy: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], merged: null, recalled: [], agent: null, agents: [], lanes: [], timeline: [], createdAt: at, updatedAt: at };
   state.sessions[sessionId] = created;
   state.order.push(sessionId);
   return created;
@@ -119,7 +131,11 @@ export function summarize(event: ChefEvent): string {
     case "session.state":
       return `${event.from} → ${event.to} (${event.reason})`;
     case "agent.started":
-      return `${event.role} ${event.kind} on ${event.model}`;
+      return `${event.role} ${event.kind} on ${event.model}${event.lane ? ` in lane/${event.lane}` : ""}`;
+    case "lanes.started":
+      return `${event.lanes.map((l) => l.role).join(", ")} work at the same time`;
+    case "lane.updated":
+      return `${event.branch} ${event.status}${event.paths?.length ? ` ${event.paths.join(", ")}` : ""}`;
     case "coder.event":
       if (event.event.type === "tool.execution_start") return `tool ${event.event.tool} ${event.event.detail ?? ""}`.trim();
       if (event.event.type === "assistant.message_delta") return "text";
@@ -236,18 +252,36 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       const agent = { role: event.role, model: event.model, at };
       s.agent = agent;
       keep(s.agents, agent, 100);
-      keep(s.timeline, { kind: "agent", at, role: event.role, model: event.model, work: event.kind }, TIMELINE_LIMIT);
+      keep(s.timeline, { kind: "agent", at, role: event.role, model: event.model, work: event.kind, ...(event.lane ? { lane: event.lane } : {}) }, TIMELINE_LIMIT);
+      return true;
+    }
+    case "lanes.started": {
+      const s = sessionOf(state, event.sessionId, event.featureId, at);
+      s.lanes = event.lanes.map((l) => ({ role: l.role, branch: l.branch, items: l.items, status: "waiting", commits: 0, at }));
+      keep(s.timeline, { kind: "lanes", at, lanes: event.lanes }, TIMELINE_LIMIT);
+      return true;
+    }
+    case "lane.updated": {
+      const s = sessionOf(state, event.sessionId, event.featureId, at);
+      const lane = s.lanes.find((l) => l.role === event.role);
+      if (lane) {
+        lane.status = event.status;
+        lane.at = at;
+        if (event.status === "committed") lane.commits++;
+      } else s.lanes.push({ role: event.role, branch: event.branch, items: 0, status: event.status, commits: event.status === "committed" ? 1 : 0, at });
+      keep(s.timeline, { kind: "lane", at, role: event.role, branch: event.branch, status: event.status, commitId: event.commitId ?? null, paths: event.paths ?? [] }, TIMELINE_LIMIT);
       return true;
     }
     case "coder.event": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
       const inner = event.event;
-      const last = s.timeline[s.timeline.length - 1];
+      const lane = event.lane ? { lane: event.lane } : {};
+      const last = event.lane ? lastOfLane(s.timeline, event.lane) : s.timeline[s.timeline.length - 1];
       if (inner.type === "assistant.message_delta") {
         if (last && last.kind === "text" && last.phase === s.state) last.text += inner.delta;
-        else keep(s.timeline, { kind: "text", at, text: inner.delta, phase: s.state }, TIMELINE_LIMIT);
+        else keep(s.timeline, { kind: "text", at, text: inner.delta, phase: s.state, ...lane }, TIMELINE_LIMIT);
       } else if (inner.type === "tool.execution_start") {
-        keep(s.timeline, { kind: "tool", at, tool: inner.tool, detail: inner.detail ?? "", phase: s.state }, TIMELINE_LIMIT);
+        keep(s.timeline, { kind: "tool", at, tool: inner.tool, detail: inner.detail ?? "", phase: s.state, ...lane }, TIMELINE_LIMIT);
       } else if (inner.type === "session.error") {
         keep(s.timeline, { kind: "error", at, message: inner.message }, TIMELINE_LIMIT);
       }
@@ -256,7 +290,7 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
     case "commit.created": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
       s.commits.push({ id: event.commitId, role: event.role, message: event.message });
-      keep(s.timeline, { kind: "commit", at, commitId: event.commitId, role: event.role, message: event.message }, TIMELINE_LIMIT);
+      keep(s.timeline, { kind: "commit", at, commitId: event.commitId, role: event.role, message: event.message, ...(event.lane ? { lane: event.lane } : {}) }, TIMELINE_LIMIT);
       return true;
     }
     case "preview.updated": {
@@ -315,7 +349,7 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
     }
     case "turn.rejected": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
-      keep(s.timeline, { kind: "rejected", at, role: event.role, rule: event.rule, paths: event.paths }, TIMELINE_LIMIT);
+      keep(s.timeline, { kind: "rejected", at, role: event.role, rule: event.rule, paths: event.paths, ...(event.lane ? { lane: event.lane } : {}) }, TIMELINE_LIMIT);
       return true;
     }
     case "voice.request":
@@ -362,6 +396,17 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       return true;
   }
 }
+
+function lastOfLane(timeline: readonly TimelineItem[], lane: string): TimelineItem | undefined {
+  for (let i = timeline.length - 1; i >= Math.max(0, timeline.length - LANE_LOOKBACK); i--) {
+    const item = timeline[i];
+    if (item && "lane" in item && item.lane === lane) return item;
+    if (item?.kind === "state" || item?.kind === "lanes" || (item?.kind === "lane" && item.role === lane)) return undefined;
+  }
+  return undefined;
+}
+
+const LANE_LOOKBACK = 80;
 
 export interface Metrics {
   readonly sessions: number;
