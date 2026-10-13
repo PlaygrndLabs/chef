@@ -32,30 +32,6 @@ chef takes that work off your plate, so you spend your time on what to build, no
 - **Your keys stay yours.** Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.
 - **GitHub when you want it.** Projects live in your Cloudflare account. Connect GitHub only if you want a repo kept in sync.
 
-## Set up in a few clicks
-
-No terminal, no Docker and nothing to install.
-
-1. **Sign in with Cloudflare** at [chef.playgrndlabs.com](https://chef.playgrndlabs.com). Cloudflare shows exactly what chef asks for.
-2. **Pick an account.** chef adds its engine there: the agents, sandboxes, previews and your projects. Then it hands the access back.
-3. **Start building.** Add your model key in Settings, create a project and watch each feature come together with its own live preview.
-
-## Pricing
-
-| | Cost | What it covers |
-| --- | --- | --- |
-| **chef** | Free | Open source under the MIT license. Every feature, no seat or project limits. |
-| **Cloudflare Workers Paid** | $5 / month, from Cloudflare | Runs chef's agents, sandboxes and previews, with a monthly allowance. Heavier use is billed by Cloudflare. |
-| **Your model provider** | Pay as you go | Your Anthropic API key or any compatible provider. You pay them for what the agents use. |
-
-## Questions
-
-**Where do my code and data live?** In your Cloudflare account. Projects are git repositories in Cloudflare Artifacts, and your model keys, settings and previews stay with your chef engine there.
-
-**Does chef keep access to my Cloudflare account?** No. The access you grant at sign-in is used only while chef sets up or updates its engine, and it is revoked right after.
-
-**Which Cloudflare plan do I need?** Workers Paid, because chef uses Containers and Artifacts. If your account is on the free plan, the setup page links you to the upgrade.
-
 ## Develop
 
 Run `pnpm install` and `pnpm run verify`. Repository layout and the CLI: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
