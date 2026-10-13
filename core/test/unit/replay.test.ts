@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { replayFrom } from "../../src/events/replay.ts";
+import { caughtUp, isCaughtUp, replayFrom } from "../../src/events/replay.ts";
 
 describe("where a live event socket starts its replay", () => {
   it("reads the after cursor from the socket URL", () => {
@@ -12,5 +12,11 @@ describe("where a live event socket starts its replay", () => {
     expect(replayFrom("/agents/project/shop?after=-3")).toBe(0);
     expect(replayFrom("/agents/project/shop?after=abc")).toBe(0);
     expect(replayFrom("/agents/project/shop?after=1.5")).toBe(0);
+  });
+
+  it("marks the end of the replay with a message no event looks like", () => {
+    expect(isCaughtUp(JSON.parse(JSON.stringify(caughtUp(12))))).toBe(true);
+    expect(isCaughtUp({ seq: 12, event: {} })).toBe(false);
+    expect(isCaughtUp(null)).toBe(false);
   });
 });

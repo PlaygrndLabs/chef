@@ -7,7 +7,7 @@ import type { Duplex } from "node:stream";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
 import { agentsRequest } from "@chef/adapters/agents";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
-import { AgentSettings, replayFrom } from "@chef/core";
+import { AgentSettings, caughtUp, replayFrom } from "@chef/core";
 import { LocalGitHost } from "@chef/adapters/local-git";
 import { buildingPage, previewPath } from "@chef/adapters/preview-page";
 import { projectsRequest, type ProjectEntry } from "@chef/adapters/projects";
@@ -304,6 +304,7 @@ export class LocalEngine {
       }
       replaying = false;
       queued.forEach(send);
+      socket.write(frame(JSON.stringify(caughtUp(sent))));
     }, end);
     return true;
   }
