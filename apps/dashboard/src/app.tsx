@@ -21,6 +21,7 @@ import { featureNodes, sessionNodes } from "@/lib/model";
 import { pickProject, rememberProject, useProjects } from "@/lib/projects";
 import { useSelection, type Selection } from "@/lib/selection";
 import { WorkspaceContext, type Workspace } from "@/lib/workspace";
+import { Wordmark } from "@/components/logo";
 
 function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(
@@ -170,7 +171,8 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
                 <Button variant="ghost" size="icon" onClick={() => setSidebar(true)} aria-label="Show features">
                   <Menu />
                 </Button>
-                <span className="grid size-6 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">c</span>
+                <Wordmark className="h-[14px]" />
+                <span className="text-muted-foreground/60">/</span>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{selection.project}</span>
               </div>
             ) : null}
