@@ -164,6 +164,10 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
     const moved = await run(["deploy", "--config", first, ...(options.passthrough ?? [])], { echo: true });
     result = moved.code === 0 ? await run(args, { echo: true }) : moved;
   }
+  if (result.code !== 0 && !options.dryRun && result.output.includes("could not finish applying")) {
+    log(`finishing the sandbox container settings`);
+    result = await run(args, { echo: true });
+  }
   const url = /https:\/\/[a-z0-9.-]+\.workers\.dev/.exec(result.output)?.[0] ?? null;
   if (result.code === 0 && url) log(`\nchef is live at ${url}\nOpen it in a browser, or connect the local app to it with: pnpm start`);
   return { code: result.code, url, config };
