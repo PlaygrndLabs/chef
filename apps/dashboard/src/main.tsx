@@ -1,10 +1,14 @@
-import { StrictMode } from "react";
+import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { App } from "./app";
+import { boot } from "@/lib/boot";
+import { App, preloadScreen } from "./app";
 import "./index.css";
+
+void boot();
+preloadScreen();
 
 const root = document.getElementById("root");
 if (root)
@@ -12,7 +16,9 @@ if (root)
     <StrictMode>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
         <TooltipProvider delayDuration={300}>
-          <App />
+          <Suspense fallback={null}>
+            <App />
+          </Suspense>
           <Toaster position="bottom-right" />
         </TooltipProvider>
       </ThemeProvider>

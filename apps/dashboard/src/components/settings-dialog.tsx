@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
 import { EnvironmentForm } from "@/components/environment";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
-import { ApiError, appApi, githubApi, settingsApi, sharedEnvApi, type AppMode, type GitHubView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
+import { appApi, githubApi, settingsApi, sharedEnvApi, type AppMode, type GitHubView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
+import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 interface Choice {
@@ -26,22 +27,6 @@ const VOICE_CHOICES: readonly Choice[] = [
   { kind: "openai", label: "OpenAI API key", keyLabel: "OpenAI API key" },
   { kind: "custom", label: "Custom provider", keyLabel: "API key", urlHint: "https://your-provider.example/v1" },
 ];
-
-export function missingSettings(settings: SettingsView | null): string[] {
-  if (!settings) return [];
-  return [...(settings.llm ? [] : ["models"]), ...(settings.cloudflare || settings.runsOn === "computer" ? [] : ["previews"])];
-}
-
-export function useSettings() {
-  const [settings, setSettings] = useState<SettingsView | null>(null);
-  const [available, setAvailable] = useState(true);
-  useEffect(() => {
-    settingsApi.get().then(setSettings, (e: unknown) => {
-      if (e instanceof ApiError && e.status === 404) setAvailable(false);
-    });
-  }, []);
-  return { settings, setSettings, available };
-}
 
 type Save = (update: SettingsUpdate, done?: string) => Promise<boolean>;
 

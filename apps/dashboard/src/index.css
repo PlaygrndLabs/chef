@@ -157,3 +157,11 @@
 }
 
 html, body, #root { height: 100%; }
+
+@keyframes chef-appear {
+  from { opacity: 0; }
+}
+
+@layer utilities {
+  .appear-late { animation: chef-appear 0.2s ease-out 0.15s both; }
+}
