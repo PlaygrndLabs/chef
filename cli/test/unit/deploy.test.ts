@@ -94,4 +94,19 @@ describe("deploy", () => {
     expect(deploys[2]).toEqual(deploys[0]);
     expect(result).toMatchObject({ code: 0, url: "https://chef-dev.example.workers.dev" });
   });
+  it("deploys again when Cloudflare could not finish the container settings", async () => {
+    const calls: string[][] = [];
+    const run: Runner = async (args) => {
+      calls.push([...args]);
+      if (args[0] !== "deploy") return { code: 0, output: "" };
+      const deploys = calls.filter((c) => c[0] === "deploy").length;
+      if (deploys === 1) return { code: 1, output: "The Worker version was deployed, but Wrangler could not finish applying its Durable Object-managed Container application settings." };
+      return { code: 0, output: "https://chef-dev.example.workers.dev" };
+    };
+    const result = await deploy({ name: "chef-dev", movedFrom: "chef@v2", run, log: () => {} });
+    const deploys = calls.filter((c) => c[0] === "deploy");
+    expect(deploys).toHaveLength(2);
+    expect(deploys[1]).toEqual(deploys[0]);
+    expect(result).toMatchObject({ code: 0, url: "https://chef-dev.example.workers.dev" });
+  });
 });
