@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Cloud, Cpu, GitBranch, KeyRound, Mic, Route, SlidersHorizontal } from "lucide-react";
+import { Bot, BookOpen, Cloud, Cpu, GitBranch, KeyRound, Mic, Route, ScrollText, SlidersHorizontal } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
 import { EnvironmentForm } from "@/components/environment";
+import { SharedInstructionsForm } from "@/components/guidance";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
 import { appApi, githubApi, settingsApi, sharedEnvApi, type AppMode, type GitHubView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
 import { missingSettings } from "@/lib/settings";
@@ -431,6 +432,13 @@ export function SettingsDialog(props: {
         ) : (
           loading()
         ),
+    },
+    {
+      id: "instructions",
+      label: "Instructions",
+      icon: ScrollText,
+      note: "Every agent in every project follows these, on top of its role. Each project can add its own goal and instructions in its project settings.",
+      render: () => <SharedInstructionsForm />,
     },
     { id: "agents", label: "Agents", icon: Bot, fill: true, render: agents("agents") },
     { id: "skills", label: "Skills", icon: BookOpen, fill: true, render: agents("skills") },

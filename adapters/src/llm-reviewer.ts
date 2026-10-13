@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { FileChanges, PickInput, PickVerdict, ReviewInput, ReviewVerdict, Reviewer } from "@chef/core";
+import { withGuidance, type FileChanges, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
 const VerdictSchema = z.object({ approve: z.boolean(), reasons: z.array(z.string()), retest: z.boolean() });
@@ -23,7 +23,7 @@ export class LlmReviewer implements Reviewer {
     if (diff.length > this.maxDiffChars) return { approve: false, reasons: [`diff is ${diff.length} characters; split the feature so a review fits in ${this.maxDiffChars}`], model: this.model };
     const result = await structured(this.llm, {
       model: this.model,
-      system: this.system,
+      system: withGuidance(this.system, input.guidance),
       schema: VerdictSchema,
       prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `Spec:\n${JSON.stringify(input.feature, null, 2)}${renderScope(input.scope)}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}`,
     });
