@@ -1,4 +1,4 @@
-import { oauthClient, type Env } from "./env.ts";
+import { directory, oauthClient, type Env } from "./env.ts";
 import { API, authorizeUrl, cookies, decodePending, encodePending, OAUTH_COOKIE, randomToken, readGrant, readInstall, readProfile, readSession, SESSION_COOKIE, SESSION_SECONDS, setCookie, signSession, tokenRequest } from "./oauth.ts";
 import { ENGINE_PATH, proxy } from "./proxy.ts";
 
@@ -56,6 +56,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       return json({ ...view, accounts: view.canSetUp && !view.install ? await member.accounts() : [] });
     }
     if (path === "/site/api/install" && request.method === "GET") return json(await member.status());
+    if (path === "/site/api/admin/members" && request.method === "GET") {
+      if (!(await member.admin())) return json({ error: "only PlaygrndLabs admins can see members" }, 403);
+      return json(await directory(env).list());
+    }
     if (path === "/site/api/install" && request.method === "POST") {
       const input = readInstall(await request.json().catch(() => null));
       if (typeof input === "string") return json({ error: input }, 400);
@@ -71,7 +75,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === "/api/app" && request.method === "GET" && member) {
     const view = await member.view();
-    return json({ mode: "cloud", place: "cloud", engine: url.origin, fixed: true, account: view.email });
+    return json({ mode: "cloud", place: "cloud", engine: url.origin, fixed: true, account: view.email, ...(view.admin ? { admin: true } : {}) });
   }
 
   if (ENGINE_PATH.test(path)) {
@@ -87,6 +91,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === "/setup") return member ? page(env, request, "/setup") : redirect("/");
+  if (path === "/admin") return member && (await member.admin()) ? page(env, request, "/admin") : redirect("/");
   if (path === "/app" || path === "/app.html") return redirect("/");
 
   return env.ASSETS.fetch(request);
