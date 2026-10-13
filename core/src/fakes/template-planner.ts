@@ -1,4 +1,4 @@
-import type { Plan, PlanInput, Planner, SplitInput, SplitPart, Triage, TriageInput, WorkItem } from "../ports/planner.ts";
+import type { CompactInput, Plan, PlanInput, Planner, SplitInput, SplitPart, Triage, TriageInput, WorkItem } from "../ports/planner.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
 import { slugify } from "../util/hash.ts";
 
@@ -16,6 +16,7 @@ export class TemplatePlanner implements Planner {
   private readonly normalized: ReadonlyMap<string, FeatureSpec>;
 
   readonly splitAsked: SplitInput[] = [];
+  readonly compacted: CompactInput[] = [];
 
   constructor(
     private readonly presets: ReadonlyMap<string, FeatureSpec> = new Map(),
@@ -46,6 +47,11 @@ export class TemplatePlanner implements Planner {
       return { intent: "change_feature", featureId: best.id, changeKind, confidence: 0.8, reason: `matches feature ${best.id}` };
     }
     return { intent: "new_feature", featureId: null, changeKind: null, confidence: 0.8, reason: "no existing feature matches" };
+  }
+
+  async compact(input: CompactInput): Promise<string> {
+    this.compacted.push(input);
+    return [input.summary, ...input.turns.map((t) => `- ${t.prompt.slice(0, 60)}`)].filter(Boolean).join("\n");
   }
 
   async split(input: SplitInput): Promise<readonly SplitPart[]> {

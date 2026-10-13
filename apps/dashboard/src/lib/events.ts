@@ -384,7 +384,7 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
     case "features.removed":
       return true;
     case "chat.context":
-      state.context = { used: event.used, limit: event.limit, turns: event.turns, dropped: event.dropped };
+      state.context = { used: event.used, limit: event.limit, turns: event.turns, summarized: event.summarized };
       return true;
     case "external.pulled":
     case "external.conflict":

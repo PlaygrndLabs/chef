@@ -1,3 +1,4 @@
+import type { ChatTurn } from "../router/conversation.ts";
 import type { ChangeKind, RouteIntent } from "../router/decision.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
 import type { EnvVar } from "../env/env.ts";
@@ -25,6 +26,11 @@ export interface Triage {
   readonly changeKind: ChangeKind | null;
   readonly confidence: number;
   readonly reason: string;
+}
+
+export interface CompactInput {
+  readonly summary: string;
+  readonly turns: readonly ChatTurn[];
 }
 
 export interface SplitInput {
@@ -74,6 +80,7 @@ export interface Planner {
   plan(input: PlanInput): Promise<Plan>;
   split?(input: SplitInput): Promise<readonly SplitPart[]>;
   answer?(input: AnswerInput): Promise<string>;
+  compact?(input: CompactInput): Promise<string>;
 }
 
 const FILLER = new Set(["a", "an", "the", "to", "of", "and", "or", "for", "in", "on", "with", "our", "my", "all", "please", "chore", "hotfix"]);
