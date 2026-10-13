@@ -15,7 +15,7 @@ const NOW: Readonly<Record<SessionState, string>> = {
   gating: "Running the final checks.",
   merged: "Live. Ask for a change below whenever you want.",
   stuck: "chef stopped and is waiting for you.",
-  dropped: "Stopped. Use Start over in the menu to try again.",
+  dropped: "Stopped. Press Start over to build it again.",
 };
 
 export interface Progress {
@@ -30,7 +30,10 @@ export function stoppedAt(timeline: readonly TimelineItem[]): SessionState {
   for (let i = timeline.length - 1; i >= 0; i--) {
     const item = timeline[i];
     if (item?.kind !== "state") continue;
-    if (item.to === "stuck" || item.to === "dropped") return item.from;
+    if (item.to === "stuck" || item.to === "dropped") {
+      if (item.from === "stuck" || item.from === "dropped") continue;
+      return item.from;
+    }
     return item.to;
   }
   return "planning";
