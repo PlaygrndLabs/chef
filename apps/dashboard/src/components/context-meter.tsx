@@ -1,4 +1,4 @@
-import { CHAT_CONTEXT_TOKENS, featureList, tokensOf } from "@chef/core/chat";
+import { CHAT_CONTEXT_TOKENS } from "@chef/core/chat";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -9,9 +9,9 @@ function thousands(tokens: number): string {
 export function ContextMeter() {
   const { data } = useWorkspace();
   if (!data.ready) return null;
-  const context = data.live.context ?? { used: tokensOf(featureList(data.spec?.features ?? [])), limit: CHAT_CONTEXT_TOKENS, turns: 0, dropped: 0 };
+  const context = data.live.context ?? { used: 0, limit: CHAT_CONTEXT_TOKENS, turns: 0, summarized: 0 };
   const share = Math.min(1, context.used / context.limit);
-  const about = `chef sends the feature list and your last ${context.turns === 1 ? "message" : `${context.turns} messages`} with each new one: ${context.used.toLocaleString()} of ${context.limit.toLocaleString()} tokens. ${context.dropped ? `${context.dropped} older ${context.dropped === 1 ? "message no longer fits" : "messages no longer fit"}.` : "The oldest messages drop off once it is full."}`;
+  const about = `chef sends this chat's memory with each new message: ${context.summarized ? `a summary of ${context.summarized} earlier ${context.summarized === 1 ? "message" : "messages"} and ` : ""}the last ${context.turns === 1 ? "message" : `${context.turns} messages`}, ${context.used.toLocaleString()} of ${context.limit.toLocaleString()} tokens. When it fills, chef summarizes the older messages. Each feature keeps its own context in its session.`;
   return (
     <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground" id="chat-context" title={about} aria-label={about}>
       <span>Context</span>
