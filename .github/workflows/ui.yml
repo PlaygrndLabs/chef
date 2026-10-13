@@ -1,0 +1,52 @@
+name: ui
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Project to open (created when missing); empty opens the first one
+        required: false
+        default: ""
+      prompt:
+        description: Request to type into the chat; empty only looks around
+        required: false
+        default: ""
+      minutes:
+        description: How long to follow the work
+        required: true
+        default: "25"
+
+permissions:
+  contents: read
+
+jobs:
+  tour:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CHEF_URL: https://chef.playgrndlabs.workers.dev
+      CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD || secrets.KARGAH_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @chef/cli exec playwright install --with-deps chromium
+      - name: Walk through the deployed app and take screenshots
+        run: |
+          args=(--minutes "$MINUTES" --out results/tour)
+          [ -n "$PROJECT" ] && args+=(--project "$PROJECT")
+          [ -n "$PROMPT" ] && args+=(--prompt "$PROMPT")
+          node --import tsx cli/src/bin.ts tour "${args[@]}"
+        env:
+          PROJECT: ${{ inputs.project }}
+          PROMPT: ${{ inputs.prompt }}
+          MINUTES: ${{ inputs.minutes }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tour
+          path: results/tour/

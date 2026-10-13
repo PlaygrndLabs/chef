@@ -13,6 +13,7 @@ import { BENCH_ITEMS } from "./bench/items.ts";
 import { runVoice, VOICE_PROMPT } from "./voice.ts";
 import { exportTuneData } from "./tune/data.ts";
 import { serve } from "./serve.ts";
+import { tour } from "./tour.ts";
 import { renderReport, runBench, runReplay, type BenchMode, type BenchResult } from "./bench/run.ts";
 
 function option(args: readonly string[], name: string): string | undefined {
@@ -232,6 +233,26 @@ async function serveCommand(args: readonly string[]): Promise<number> {
   return 0;
 }
 
+async function tourCommand(args: readonly string[]): Promise<number> {
+  const url = option(args, "url") ?? process.env["CHEF_URL"];
+  if (!url) {
+    process.stderr.write("chef tour needs --url or CHEF_URL\n");
+    return 2;
+  }
+  const result = await tour({
+    url,
+    password: process.env["CHEF_PASSWORD"],
+    project: option(args, "project"),
+    prompt: option(args, "prompt"),
+    minutes: Number(option(args, "minutes") ?? 20),
+    everySeconds: Number(option(args, "every") ?? 45),
+    out: resolve(option(args, "out") ?? "results/tour"),
+    log: (line) => process.stderr.write(`${line}\n`),
+  });
+  process.stdout.write(`${JSON.stringify({ ...result, shots: result.shots.length }, null, 2)}\n`);
+  return result.errors.length ? 1 : 0;
+}
+
 async function main(args: readonly string[]): Promise<number> {
   const [command, sub] = args;
   if (command === "spec" && sub === "lint") return specLint(positional(args)[2] ?? "spec");
@@ -247,7 +268,8 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "voice") return voice(args);
   if (command === "tune" && sub === "data") return tuneData(args);
   if (command === "serve") return serveCommand(args);
-  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--fake-checks]\n");
+  if (command === "tour") return tourCommand(args);
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--fake-checks] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
   return 2;
 }
 
