@@ -12,7 +12,7 @@ import { isActive } from "@/lib/events";
 import { ago, duration, previewHost, short, tokens } from "@/lib/format";
 import type { SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
-import { isPage, pagesFor, routesIn, type Route } from "@/lib/routes";
+import { entryRoute, isPage, pagesFor, routesIn, type Route } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -308,7 +308,9 @@ export function Panel() {
   const preview = node?.live?.preview ?? node?.record?.preview ?? feature?.preview ?? null;
   const head = node?.live?.commits.at(-1)?.id ?? node?.record?.head ?? "";
   const changes = useFetch(node ? () => api.changes(node.id) : null, `${node?.id ?? ""}:${head}`);
-  const routes = routesIn(changes.data?.files ?? []);
+  const found = routesIn(changes.data?.files ?? []);
+  const entry = entryRoute(feature?.spec?.entrypoint);
+  const routes = entry && !found.some((r) => r.method === entry.method && r.path === entry.path) ? [entry, ...found] : found;
   return (
     <Tabs value={selection.panel ?? "preview"} onValueChange={(v) => select({ panel: v as PanelTab })} className="flex h-full min-h-0 flex-col gap-0 bg-background">
       <div className="flex h-15 shrink-0 items-center gap-2 border-b px-3">

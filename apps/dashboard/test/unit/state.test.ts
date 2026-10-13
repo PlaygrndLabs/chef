@@ -3,7 +3,7 @@ import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
 import { featureNodes, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
 import { activity, plainReason, progress, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
-import { pagesFor, routesIn } from "../../src/lib/routes.ts";
+import { entryRoute, pagesFor, routesIn } from "../../src/lib/routes.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
 const base = { project: "demo", at: 1 };
@@ -211,6 +211,15 @@ describe("pages a build added", () => {
   it("says a stopped try lost the pick", () => {
     const lost = progress("dropped", [{ kind: "picked", at: 1, won: false, winner: "s2", reasons: ["s2 passes more tests"], candidates: [] }]);
     expect(lost.now).toBe("Another try was picked over this one, so this one stopped.");
+  });
+
+  it("resolves route paths kept in constants or template strings", () => {
+    const after = ['export const NOTES_PAGE = "/notes";', "const apiPath = `/api/notes`;", "export const routes = [{ method: \"GET\", path: NOTES_PAGE, handle: page }, { method: \"POST\", path: apiPath, handle: add }, { method: `GET`, path: `/notes/feed`, handle: feed }];"].join("\n");
+    expect(routesIn([{ path: "features/notes/page.ts", after }]).map((r) => `${r.method} ${r.path}`)).toEqual(["GET /notes", "GET /notes/feed", "POST /api/notes"]);
+    expect(entryRoute("GET /notes")).toEqual({ method: "GET", path: "/notes" });
+    expect(entryRoute("/notes")).toEqual({ method: "GET", path: "/notes" });
+    expect(entryRoute("POST /shout")).toEqual({ method: "POST", path: "/shout" });
+    expect(entryRoute("the notes page")).toBeNull();
   });
 
   it("describes tool calls in plain words", () => {

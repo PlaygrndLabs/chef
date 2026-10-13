@@ -56,9 +56,20 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
     const page = await context.newPage();
     page.on("pageerror", (error) => report.errors.push(`pageerror ${error.message}`));
+    let leaving = false;
     page.on("console", (message) => {
-      if (message.type() === "error") report.errors.push(`console ${message.text()}`);
+      if (message.type() !== "error") return;
+      if (leaving && /network error/i.test(message.text())) return;
+      report.errors.push(`console ${message.text()}`);
     });
+    const go = async (url: string) => {
+      leaving = true;
+      try {
+        await page.goto(url);
+      } finally {
+        leaving = false;
+      }
+    };
     let n = 0;
     const shot = async (name: string, target: Page = page) => {
       await target.waitForTimeout(1200);
@@ -72,7 +83,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     const listed = await json<{ projects: { name: string }[] }>(page, "/api/projects").catch(() => ({ projects: [] }));
     report.projects.push(...listed.projects.map((p) => p.name));
     for (const name of report.projects.slice(0, 4)) {
-      await page.goto(`/?project=${name}`);
+      await go(`/?project=${name}`);
       await shot(`project-${name}`);
     }
     const project = options.project ?? report.projects[0];
@@ -81,7 +92,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       await json(page, "/api/projects", { method: "POST", data: { name: project } }).catch(() => json(page, `/api/projects/${project}/bootstrap`, { method: "POST" }));
       options.log(`created ${project}`);
     }
-    await page.goto(`/?project=${project}`);
+    await go(`/?project=${project}`);
     await shot(`open-${project}`);
     if (options.prompt) {
       const input = page.locator("#chat textarea");
@@ -96,10 +107,10 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       const sessions = await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[]);
       for (const s of sessions) report.states[s.id] = s.machine.state;
       const latest = sessions.at(-1);
-      await page.goto(`/?project=${project}`);
+      await go(`/?project=${project}`);
       await shot(`round${round}-home`);
       if (latest) {
-        await page.goto(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}`);
+        await go(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}`);
         await shot(`round${round}-feature`);
       }
       const running = sessions.some((s) => ACTIVE.has(s.machine.state));
@@ -107,7 +118,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         report.finished = !running;
         if (latest) {
           for (const panel of ["preview", "changes", "details"]) {
-            await page.goto(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=${panel}`);
+            await go(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=${panel}`);
             await shot(`final-${panel}`);
           }
         }
