@@ -1,5 +1,5 @@
 import { useEffect, useState, type Ref } from "react";
-import { ArrowUp, Loader2 } from "lucide-react";
+import { ArrowUp, AudioLines, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Composer({
@@ -9,6 +9,7 @@ export function Composer({
   draft,
   ref,
   id,
+  onLive,
 }: {
   readonly placeholder: string;
   readonly hint?: string;
@@ -16,6 +17,7 @@ export function Composer({
   readonly draft?: { readonly text: string; readonly n: number } | null;
   readonly ref?: Ref<HTMLTextAreaElement>;
   readonly id?: string;
+  readonly onLive?: () => void;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -52,9 +54,15 @@ export function Composer({
         />
         <div className="flex items-center gap-1.5 px-2 pb-2 pl-4">
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{hint}</span>
-          <Button size="icon" className="rounded-xl" onClick={() => void submit()} disabled={!text.trim() || sending} aria-label="Send">
-            {sending ? <Loader2 className="animate-spin" /> : <ArrowUp />}
-          </Button>
+          {onLive && !text.trim() && !sending ? (
+            <Button size="icon" className="rounded-xl" onClick={onLive} aria-label="Talk live" title="Talk live with chef" id="talk-button">
+              <AudioLines />
+            </Button>
+          ) : (
+            <Button size="icon" className="rounded-xl" onClick={() => void submit()} disabled={!text.trim() || sending} aria-label="Send">
+              {sending ? <Loader2 className="animate-spin" /> : <ArrowUp />}
+            </Button>
+          )}
         </div>
       </div>
     </div>

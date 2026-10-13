@@ -9,7 +9,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { AgentSettings, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -239,6 +239,7 @@ export class ProjectAgent extends Agent<Env> {
           if (result.sessionId) await this.schedule(1, "drive");
           return result;
         },
+        recordSpoken: (turn: SpokenTurn & { voiceSessionId: string }) => orchestrator.recordSpoken(turn),
       };
       const call = await startVoiceCall({
         host,
