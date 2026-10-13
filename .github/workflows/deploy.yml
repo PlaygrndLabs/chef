@@ -58,8 +58,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          VOICE_BASE_URL: ${{ secrets.VOICE_BASE_URL }}
-          VOICE_API_KEY: ${{ secrets.VOICE_API_KEY }}
+          VOICE_BASE_URL: ${{ secrets.VOICE_BASE_URL || (secrets.LLM_BASE_URL && format('{0}/v1', secrets.LLM_BASE_URL)) || '' }}
+          VOICE_API_KEY: ${{ secrets.VOICE_API_KEY || secrets.LLM_API_KEY }}
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
@@ -68,17 +68,6 @@ jobs:
           set -o pipefail
           pnpm run deploy --name "$NAME" ${MOVED_FROM:+--moved-from "$MOVED_FROM"} --secrets-file "$RUNNER_TEMP/secrets.json" | tee "$RUNNER_TEMP/deploy.log"
           grep -o 'https://[a-z0-9.-]*workers.dev' "$RUNNER_TEMP/deploy.log" | head -1 > "$RUNNER_TEMP/url"
-      - name: Remove voice provider secrets that are no longer set
-        if: steps.creds.outputs.ready == 'true'
-        env:
-          VOICE_BASE_URL: ${{ secrets.VOICE_BASE_URL }}
-        run: |
-          if [ -z "$VOICE_BASE_URL" ]; then
-            existing=$(pnpm exec wrangler secret list --name "$NAME" --format json 2>/dev/null || echo '[]')
-            for key in VOICE_BASE_URL VOICE_API_KEY; do
-              if echo "$existing" | grep -q "\"$key\""; then pnpm exec wrangler secret delete "$key" --name "$NAME" </dev/null || echo "::warning::could not remove $key"; fi
-            done
-          fi
       - name: Show Cloudflare's errors from the Wrangler log
         if: failure() && steps.creds.outputs.ready == 'true'
         run: grep -hiE '"(code|message)"|error' ~/.config/.wrangler/logs/*.log | grep -viE 'token|secret|authorization|password|key' | cut -c1-400 | tail -60 || true
