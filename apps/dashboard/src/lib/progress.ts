@@ -42,7 +42,8 @@ export function stoppedAt(timeline: readonly TimelineItem[]): SessionState {
 export function progress(state: SessionState, timeline: readonly TimelineItem[]): Progress {
   const halted = state === "stuck" || state === "dropped";
   const at = halted ? stoppedAt(timeline) : state;
-  return { stage: STAGE[at], done: state === "merged", failed: state === "stuck", stopped: state === "dropped", now: NOW[state] };
+  const lost = state === "dropped" && timeline.some((t) => t.kind === "picked" && !t.won);
+  return { stage: STAGE[at], done: state === "merged", failed: state === "stuck", stopped: state === "dropped", now: lost ? "Another try was picked over this one, so this one stopped." : NOW[state] };
 }
 
 export type UpdateIcon = "plan" | "test" | "code" | "review" | "check" | "live" | "alert" | "stop" | "sync" | "pick";

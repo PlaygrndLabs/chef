@@ -42,12 +42,12 @@ function SessionRow({ node, nested = false, showTitle = true }: { readonly node:
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           {nested ? <StatusDot tone={tone} /> : null}
-          <span className={cn("min-w-0 flex-1 truncate text-sm", !showTitle && "text-muted-foreground")}>{showTitle ? title : `Build ${node.id}`}</span>
+          <span className={cn("min-w-0 flex-1 truncate text-sm", !showTitle && "text-muted-foreground")}>{showTitle ? title : tries ? `Try ${node.attempt?.index ?? ""}` : `Build ${node.id}`}</span>
           <span className={cn("shrink-0 text-xs text-muted-foreground", tone === "bad" && "font-medium text-bad", tone === "run" && "text-run")}>{PLAIN_STATE[node.state]}</span>
         </span>
         <span className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
-          {showTitle ? <span className="font-mono">{node.id}</span> : null}
-          {tries ? (
+          {showTitle || tries ? <span className="font-mono">{node.id}</span> : null}
+          {tries && showTitle ? (
             <span className="inline-flex items-center gap-0.5">
               <GitFork className="size-3" />
               {tries}
@@ -57,6 +57,18 @@ function SessionRow({ node, nested = false, showTitle = true }: { readonly node:
           <span className="ml-auto shrink-0">{ago(node.updatedAt, now)}</span>
         </span>
       </span>
+    </button>
+  );
+}
+
+function TriesHeader({ node, count }: { readonly node: SessionNode; readonly count: number }) {
+  const { features, openSession } = useWorkspace();
+  const title = features.find((f) => f.id === node.featureId)?.title ?? node.featureId;
+  return (
+    <button type="button" onClick={() => openSession(node.id)} className="flex items-center gap-2 rounded-lg px-2 pt-1 text-left hover:bg-sidebar-accent">
+      <GitFork className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{count} tries at once</span>
     </button>
   );
 }
@@ -92,8 +104,9 @@ function Group({ group, list, open: initial, extra = [] }: { readonly group: Ses
         ? bundle(list).map((members) =>
             members.length > 1 ? (
               <div key={members[0]?.id} className="flex flex-col gap-px rounded-lg border border-dashed border-sidebar-border py-0.5" data-attempts={members[0]?.attempt?.group}>
+                <TriesHeader node={members[0] as SessionNode} count={members.length} />
                 {members.map((m) => (
-                  <SessionRow key={m.id} node={m} />
+                  <SessionRow key={m.id} node={m} nested showTitle={false} />
                 ))}
               </div>
             ) : (
