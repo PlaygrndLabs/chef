@@ -1,8 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { directory, oauthClient, organization, type Env } from "./env.ts";
 import { API, planFrom, randomToken, revokeRequest, type Granted, type Plan, type Profile } from "./oauth.ts";
+import { engineName } from "./orgs.ts";
 
 export interface Engine {
+  readonly name: string;
   readonly url: string;
   readonly accountId: string;
   readonly secret: string;
@@ -13,7 +15,6 @@ export interface AccountView {
   readonly id: string;
   readonly name: string;
   readonly plan: Plan;
-  readonly hasChef: boolean;
   readonly subdomain: string | null;
 }
 
@@ -44,12 +45,14 @@ export interface OrgContext {
 
 export interface InstallJob {
   readonly orgId: string;
+  readonly orgName: string;
   readonly accountId: string;
   readonly engine: Engine | null;
 }
 
 interface Job {
   readonly orgId: string;
+  readonly name: string;
   readonly accountId: string;
   readonly secret: string;
   readonly update: boolean;
@@ -80,7 +83,7 @@ export class Member extends DurableObject<Env> {
     const running = (await this.status()).status === "running";
     if (!running) await this.ctx.storage.delete(STATUS);
     if (engine && !running && org.canSetUp && this.env.ENGINE_VERSION && engine.version !== this.env.ENGINE_VERSION && this.ready()) {
-      await this.start({ orgId: org.id, accountId: engine.accountId, secret: engine.secret, update: true });
+      await this.start({ orgId: org.id, name: engine.name, accountId: engine.accountId, secret: engine.secret, update: true });
       return;
     }
     if (engine && !running) {
@@ -110,8 +113,7 @@ export class Member extends DurableObject<Env> {
     const list = await this.cf<readonly { id: string; name: string }[]>(grant.token, "/accounts?per_page=50");
     return Promise.all(
       (list.result ?? []).map(async (account) => {
-        const [scripts, subdomain, subscriptions] = await Promise.all([
-          this.cf<readonly { id?: string }[]>(grant.token, `/accounts/${account.id}/workers/scripts`),
+        const [subdomain, subscriptions] = await Promise.all([
           this.cf<{ subdomain?: string }>(grant.token, `/accounts/${account.id}/workers/subdomain`),
           this.cf<unknown>(grant.token, `/accounts/${account.id}/subscriptions`),
         ]);
@@ -119,7 +121,6 @@ export class Member extends DurableObject<Env> {
           id: account.id,
           name: account.name,
           plan: subscriptions.success ? planFrom(subscriptions.result) : "unknown",
-          hasChef: (scripts.result ?? []).some((script) => script.id === "chef"),
           subdomain: subdomain.result?.subdomain ?? null,
         };
       }),
@@ -127,12 +128,17 @@ export class Member extends DurableObject<Env> {
   }
 
   async install(request: InstallJob): Promise<InstallStatus | string> {
-    if (!(await this.grant())) return "your Cloudflare sign-in has ended; sign in again";
     const current = await this.status();
     if (current.status === "running") return current;
     if (!this.ready()) return "setup is not available right now";
-    const update = request.engine?.accountId === request.accountId;
-    return this.start({ orgId: request.orgId, accountId: request.accountId, secret: update && request.engine ? request.engine.secret : randomToken(), update });
+    const grant = await this.grant();
+    if (!grant) return "your Cloudflare sign-in has ended; sign in again";
+    const engine = request.engine?.accountId === request.accountId ? request.engine : null;
+    if (engine) return this.start({ orgId: request.orgId, name: engine.name, accountId: request.accountId, secret: engine.secret, update: true });
+    const scripts = await this.cf<readonly { id?: string }[]>(grant.token, `/accounts/${request.accountId}/workers/scripts`);
+    if (!scripts.success) return "Cloudflare did not let chef look at this account; sign in again and share it on the consent page";
+    const taken = new Set((scripts.result ?? []).flatMap((script) => (script.id ? [script.id] : [])));
+    return this.start({ orgId: request.orgId, name: engineName(request.orgName, taken), accountId: request.accountId, secret: randomToken(), update: false });
   }
 
   async status(): Promise<InstallStatus> {
@@ -198,7 +204,7 @@ export class Member extends DurableObject<Env> {
       for (let waited = 0; !container.running && !exited && waited < 90_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
       if (!container.running) throw new Error(`the installer did not start${exited ? `: ${exited}` : ""}`);
     }
-    const payload = { accountId: job.accountId, name: "chef", password: job.secret, token: grant.token, source: { image: this.env.SANDBOX_IMAGE, ...source } };
+    const payload = { accountId: job.accountId, name: job.name, password: job.secret, token: grant.token, source: { image: this.env.SANDBOX_IMAGE, ...source } };
     let url: string | null = null;
     try {
       const process = await container.exec(["node", "/opt/chef/site/installer/install.mjs"], { env: { CHEF_JOB: toBase64(JSON.stringify(payload)) }, stdout: "pipe", stderr: "combined" });
@@ -209,7 +215,7 @@ export class Member extends DurableObject<Env> {
     } finally {
       await container.destroy().catch(() => undefined);
     }
-    await organization(this.env, job.orgId).setEngine({ url, accountId: job.accountId, secret: job.secret, version: this.env.ENGINE_VERSION ?? "" } satisfies Engine);
+    await organization(this.env, job.orgId).setEngine({ name: job.name, url, accountId: job.accountId, secret: job.secret, version: this.env.ENGINE_VERSION ?? "" } satisfies Engine);
     await this.update((s) => ({ ...s, status: "done" }));
   }
 

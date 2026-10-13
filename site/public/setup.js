@@ -22,7 +22,6 @@ function selected() {
 
 function refreshForm() {
   const account = selected();
-  $("go").textContent = account?.hasChef ? "Connect and update chef" : "Set up chef";
   $("go").disabled = !account;
   $("form-error").textContent = "";
 }
@@ -36,10 +35,9 @@ function renderAccounts() {
   }
   for (const account of accounts) {
     const meta = el("div", { className: "meta" });
-    if (account.hasChef) meta.append("chef is already on this account. Choosing it updates chef and connects it here, keeping your projects. Its old password stops working; you sign in here from now on.");
-    else if (account.plan === "free") meta.append("chef needs the Workers Paid plan on this account. ", el("a", { href: `https://dash.cloudflare.com/${account.id}/workers/plans`, target: "_blank", rel: "noopener", textContent: "Upgrade in Cloudflare" }), ", then come back here.");
-    else meta.append("chef will set up its engine on this account.");
-    const name = el("div", { className: "name" }, account.name, account.plan === "paid" ? badge("Workers Paid", "ok") : account.plan === "free" ? badge("Free plan", "warn") : null, account.hasChef ? badge("chef installed", "ok") : null);
+    if (account.plan === "free") meta.append("chef needs the Workers Paid plan on this account. ", el("a", { href: `https://dash.cloudflare.com/${account.id}/workers/plans`, target: "_blank", rel: "noopener", textContent: "Upgrade in Cloudflare" }), ", then come back here.");
+    else meta.append("chef will set up its own engine for this organization on this account, next to anything already there.");
+    const name = el("div", { className: "name" }, account.name, account.plan === "paid" ? badge("Workers Paid", "ok") : account.plan === "free" ? badge("Free plan", "warn") : null);
     const input = el("input", { type: "radio", name: "account", value: account.id });
     input.addEventListener("change", refreshForm);
     list.append(el("label", { className: "account" }, input, el("div", {}, name, meta)));

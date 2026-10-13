@@ -86,7 +86,6 @@ export class Members extends DurableObject<Env> {
     );
     sql.exec(`CREATE TABLE IF NOT EXISTS memberships (org_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (org_id, user_id))`);
     sql.exec(`CREATE INDEX IF NOT EXISTS memberships_by_user ON memberships (user_id)`);
-    sql.exec(`CREATE INDEX IF NOT EXISTS orgs_by_account ON orgs (account_id)`);
   }
 
   signIn(identity: Identity, admin: boolean): SignedIn {
@@ -137,13 +136,6 @@ export class Members extends DurableObject<Env> {
       "UPDATE orgs SET account_id = ?, engine = ?, version = ?, install = ?, error = ? WHERE id = ?",
       setup.accountId, setup.engine, setup.version, setup.install, setup.error, orgId,
     );
-  }
-
-  accountTakenBy(accountId: string, orgId: string): string | null {
-    const row = this.ctx.storage.sql
-      .exec<{ name: string }>("SELECT name FROM orgs WHERE account_id = ? AND id != ? AND (engine IS NOT NULL OR install = 'running') LIMIT 1", accountId, orgId)
-      .toArray()[0];
-    return row?.name ?? null;
   }
 
   list(): Directory {
