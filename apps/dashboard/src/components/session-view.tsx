@@ -467,9 +467,9 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
         </DropdownMenu>
       </header>
       <div className="flex shrink-0 items-center border-b px-3 pb-2">
-        <TabsList className="h-8 max-w-full justify-start overflow-x-auto">
+        <TabsList className="h-8 max-w-full justify-start">
           {SECTIONS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value} className="px-2.5 text-[13px]">
+            <TabsTrigger key={t.value} value={t.value} className="min-w-0 px-2.5 text-[13px]">
               {t.label}
             </TabsTrigger>
           ))}
