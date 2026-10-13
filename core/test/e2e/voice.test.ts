@@ -31,6 +31,13 @@ describe("phase 5 voice front end on fakes", () => {
     await call.delegate.idle();
     expect(call.delegate.requests[1]?.result?.sessionId).toBeNull();
     expect(host.spoken()[1]).toContain("memory/features/todo-add.md");
+
+    host.hangUp();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(w.bus.log.filter((e) => e.type === "voice.turn")).toMatchObject([
+      { type: "voice.turn", voiceSessionId: call.sessionId, speaker: "you", text: "Add an item to a to-do list." },
+      { type: "voice.turn", voiceSessionId: call.sessionId, speaker: "you", text: "What does the todo list feature do?" },
+    ]);
   });
 
   it("asks again when it heard nothing, and keeps speech after the delegation point for the next request", async () => {

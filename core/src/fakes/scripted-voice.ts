@@ -47,6 +47,10 @@ export class ScriptedVoiceHost implements VoiceHost {
     return id;
   }
 
+  hangUp(): void {
+    this.listener?.({ type: "session.closed" });
+  }
+
   spoken(): string[] {
     return this.commands.flatMap((c) => (c.type === "session.commentary.append" ? [c.content] : []));
   }

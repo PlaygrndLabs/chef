@@ -2,9 +2,11 @@ import type { SubmitResult } from "../orchestrator/orchestrator.ts";
 import type { IdSource } from "../ports/runtime.ts";
 import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost } from "../ports/voice.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
+import { SpokenTurns, type SpokenTurn } from "./turns.ts";
 
 export interface SpokenTarget {
   submitSpoken(prompt: string, call: { readonly voiceSessionId: string; readonly delegationId: string }): Promise<SubmitResult>;
+  recordSpoken?(turn: SpokenTurn & { readonly voiceSessionId: string }): Promise<void>;
 }
 
 interface Heard {
@@ -103,13 +105,16 @@ export interface VoiceCall {
   readonly connection: LiveConnection;
 }
 
-export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTarget; spec: readonly FeatureSpec[]; sdp: string; ids: IdSource; settle?: () => Promise<void>; onEvent?: (event: LiveEvent) => void }): Promise<VoiceCall> {
+export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTarget; spec: readonly FeatureSpec[]; sdp: string; ids: IdSource; settle?: () => Promise<void>; onEvent?: (event: LiveEvent) => void; now?: () => number }): Promise<VoiceCall> {
   const { sessionId, sdp } = await input.host.open({ sdp: input.sdp, instructions: voiceInstructions(input.spec) });
   let connection: LiveConnection | null = null;
   const queued: LiveCommand[] = [];
   const delegate = new VoiceDelegate(sessionId, input.target, (command) => (connection ? connection.send(command) : queued.push(command)), input.ids, input.settle);
+  const record = input.target.recordSpoken?.bind(input.target);
+  const turns = record ? new SpokenTurns((turn) => void record({ ...turn, voiceSessionId: sessionId }).catch(() => {}), input.now) : null;
   connection = await input.host.attach(sessionId, (event) => {
     input.onEvent?.(event);
+    turns?.handle(event);
     void delegate.handle(event);
   });
   for (const command of queued.splice(0)) connection.send(command);

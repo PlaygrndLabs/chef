@@ -27,30 +27,9 @@ describe("dashboard in a browser", () => {
       await page.keyboard.press("Escape");
       expect(await page.locator("#new-project-button").count()).toBe(0);
       await page.locator("#project-settings-button").waitFor();
-      await page.locator("#talk-button").waitFor();
-      await page.locator("#app-menu").click();
-      await page.getByRole("menuitemcheckbox", { name: "Talk button" }).click();
-      await page.locator("#talk-button").waitFor({ state: "detached" });
-      await page.getByRole("menu").waitFor({ state: "detached" });
-      await page.locator("#app-menu").click();
-      await page.getByRole("menuitemcheckbox", { name: "Talk button" }).click();
-      await page.locator("#talk-button").waitFor();
-      const talk = page.locator("#talk-button");
-      const before = await talk.boundingBox();
-      if (!before) throw new Error("the talk button has no box");
-      await page.mouse.move(before.x + 28, before.y + 28);
-      await page.mouse.down();
-      await page.mouse.move(before.x - 172, before.y - 72, { steps: 8 });
-      await page.mouse.up();
-      await page.mouse.move(0, 0);
-      await page.waitForTimeout(300);
-      const after = await talk.boundingBox();
-      expect((after?.x ?? 0) - before.x).toBeCloseTo(-200, 0);
-      expect((after?.y ?? 0) - before.y).toBeCloseTo(-100, 0);
-      expect(await talk.getAttribute("data-status")).toBe("off");
+      await page.locator("#chat #talk-button").waitFor();
       await page.reload();
-      await talk.waitFor();
-      expect((await talk.boundingBox())?.x ?? 0).toBeCloseTo(after?.x ?? -1, 0);
+      await page.locator("#chat #talk-button").waitFor();
       expect(new URL(page.url()).searchParams.get("project")).toBe("shop");
       await page.locator("#home-link").click();
       const start = page.locator('[data-view="start"]');
@@ -120,6 +99,12 @@ describe("dashboard in a browser", () => {
       await page.getByRole("button", { name: "More for Flip the list" }).click();
       await page.getByRole("menuitem", { name: "Move under" }).hover();
       await page.getByRole("menuitem", { name: "Shout a phrase" }).click();
+      await page.locator('#features li:has([data-feature="shout"]) [data-feature="reverse"]').waitFor({ timeout: 10_000 });
+      await page.getByRole("button", { name: "More for Flip the list" }).click();
+      await page.getByRole("menuitem", { name: "Move under" }).hover();
+      await page.getByRole("menuitem", { name: "Top level" }).click();
+      await page.locator('#features > ul > li > div [data-feature="reverse"]').waitFor({ timeout: 10_000 });
+      await page.locator('#features [data-feature="reverse"]').dragTo(page.locator('#features [data-feature="shout"]'));
       await page.locator('#features li:has([data-feature="shout"]) [data-feature="reverse"]').waitFor({ timeout: 10_000 });
 
       await page.getByRole("button", { name: "More for Shout a phrase" }).click();
@@ -313,7 +298,7 @@ describe("dashboard in a browser", () => {
       expect(await feature.locator("header [data-chore]").count()).toBe(1);
       expect(await feature.locator("[data-team] [data-member]").evaluateAll((items) => items.map((i) => i.getAttribute("data-member")))).toEqual(["chore", "reviewer"]);
 
-      await page.goto(`${local.url}/?project=shop&view=agents&tab=router`);
+      await page.goto(`${local.url}/?project=shop&settings=app.router`);
       const kinds = await page.locator('[data-router-section="kinds"]').innerText();
       expect(kinds).toContain("Chore");
       expect(kinds).toContain("Hotfix");
