@@ -60,7 +60,7 @@ header.top {
 header.top .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
 
 .logo { display: inline-flex; align-items: center; }
-.logo img { height: 26px; width: auto; display: block; }
+.logo img { height: 30px; width: auto; display: block; }
 .logo .dark { display: none; }
 
 @media (prefers-color-scheme: dark) {
