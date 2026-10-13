@@ -5,7 +5,7 @@
 
 **Describe a feature in chat. chef plans it, tests it, builds it and ships it with a live preview, all in your own Cloudflare account.**
 
-chef is a self-hosted, spec-driven AI coding agent. Type (or say) "Add an item to a todo list" and chef turns it into a spec, tests, code, a review and a merge, with no human steps in between.
+chef is a self-hosted, spec-driven AI coding agent. Type (or say) "Add an item to a todo list" and chef turns it into a spec, tests, code, a review and a merge, so you can focus on what to build next.
 
 ## Why chef
 
