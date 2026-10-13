@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
+import type { ChefEvent, SessionRecord } from "@chef/core";
 import { isCaughtUp } from "@chef/core/replay";
-import { projectApi } from "./api";
+import { projectApi, type ProjectSpec } from "./api";
 import { apply, emptyProject, type LogEntry, type ProjectLive } from "./events";
 
 const EVENT_PAGE = 500;
@@ -14,7 +14,7 @@ const NO_RECORDS: readonly SessionRecord[] = [];
 export type Connection = "connecting" | "live" | "polling" | "offline";
 
 const REFRESH_RECORDS: ReadonlySet<ChefEvent["type"]> = new Set(["session.created", "session.state", "session.stuck", "session.needs", "main.merged", "main.reverted", "commit.created", "sync.merged", "attempt.picked"]);
-const REFRESH_SPEC: ReadonlySet<ChefEvent["type"]> = new Set(["main.merged", "main.reverted"]);
+const REFRESH_SPEC: ReadonlySet<ChefEvent["type"]> = new Set(["main.merged", "main.reverted", "live.updated"]);
 
 export class Store {
   state: ProjectLive = emptyProject();
@@ -169,7 +169,7 @@ export interface ProjectData {
   readonly version: number;
   readonly ready: boolean;
   readonly connection: Connection;
-  readonly spec: { readonly commitId: string | null; readonly features: readonly FeatureSpec[] } | null;
+  readonly spec: ProjectSpec | null;
   readonly records: readonly SessionRecord[];
   readonly refresh: () => void;
 }

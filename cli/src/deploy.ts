@@ -53,7 +53,7 @@ export function instanceConfig(base: Json, name: string): Json {
           },
         }
       : {}),
-    vars: { ...(base["vars"] as Json), PREVIEW_WORKER: `${name}-project` },
+    vars: { ...(base["vars"] as Json), PROJECT_WORKER_PREFIX: `${name}-` },
   };
 }
 
