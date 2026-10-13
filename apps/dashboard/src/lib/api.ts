@@ -1,4 +1,4 @@
-import type { Budget, FeatureSpec, SessionChanges, SessionRecord, SessionTurn, SubmitResult } from "@chef/core";
+import type { Budget, FeatureSpec, OutboundMode, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -51,6 +51,34 @@ export const settingsApi = {
   save: (update: SettingsUpdate) => call<SettingsView>("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
 };
 
+export interface GitLinkView {
+  readonly url: string;
+  readonly branch: string;
+  readonly tokenHint: string | null;
+  readonly mode: OutboundMode;
+  readonly syncBranch: string;
+  readonly webhookSecret: string;
+  readonly pullRequests: boolean;
+}
+
+export interface ProjectSettingsView {
+  readonly previewIdleMinutes: number;
+  readonly git: GitLinkView | null;
+}
+
+export interface GitLinkUpdate {
+  readonly url: string;
+  readonly branch: string;
+  readonly token?: string;
+  readonly mode: OutboundMode;
+  readonly syncBranch: string;
+}
+
+export interface ProjectSettingsUpdate {
+  readonly previewIdleMinutes?: number | null;
+  readonly git?: GitLinkUpdate | null;
+}
+
 export function projectApi(project: string) {
   const base = `/api/projects/${project}`;
   return {
@@ -64,7 +92,11 @@ export function projectApi(project: string) {
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
-    bootstrap: () => call<{ commitId: string; created: boolean }>(`${base}/bootstrap`, { method: "POST" }),
+    bootstrap: () => call<{ commitId: string; created: boolean; imported?: boolean }>(`${base}/bootstrap`, { method: "POST" }),
+    settings: () => call<ProjectSettingsView>(`${base}/settings`),
+    saveSettings: (update: ProjectSettingsUpdate) => call<ProjectSettingsView>(`${base}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
+    git: () => call<{ settings: GitLinkView | null; state: SyncState | null }>(`${base}/git`),
+    syncGit: () => call<{ ok: boolean }>(`${base}/git/sync`, { method: "POST" }),
   };
 }
 

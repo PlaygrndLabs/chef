@@ -9,8 +9,9 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, PreviewKeeper, readSpec, startVoiceCall, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
-import { applyProjectUpdate, readProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
+import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, PreviewKeeper, readSpec, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { applyProjectUpdate, readProjectSettings, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
+import { GitRemote } from "@chef/adapters/external-git";
 import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
@@ -20,25 +21,32 @@ import { SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sa
 import { SandboxCoder } from "./sandbox-coder.ts";
 import { buildingPage, CloudflareWorkerSpace } from "./preview-space.ts";
 import { currentSettings } from "./settings.ts";
+import { validSignature } from "./webhook.ts";
 import type { SandboxStatus } from "./session-agent.ts";
 
 const SESSION_ROUTE = /^\/api\/projects\/[a-z][a-z0-9-]{1,30}\/sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/;
 const PREVIEW_ROUTE = /^\/preview\/[a-z][a-z0-9-]{1,30}\/([a-z0-9-]{1,80})\/?$/;
 const PROJECT_SETTINGS = "project/settings";
+const ORIGIN = "project/origin";
+const POLL_SECONDS = 300;
 const BUSY_SWEEP_SECONDS = 600;
 
 const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
 
 export class ProjectAgent extends Agent<Env> {
   private readonly calls = new Map<string, VoiceCall>();
-  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; settings: Resolved; fingerprint: string } | null = null;
+  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
 
   private async build() {
     const settings = await currentSettings(this.env);
-    const fingerprint = JSON.stringify(settings);
+    const project = await this.projectSettings();
+    const origin = (await this.ctx.storage.get<string>(ORIGIN)) ?? null;
+    const fingerprint = JSON.stringify([settings, project.git, origin]);
     if (this.built?.fingerprint === fingerprint) return this.built;
+    this.built?.orchestrator.dispose();
     const env = this.env;
-    const repos = new ArtifactsRepoHost(bindingControl(env.ARTIFACTS as unknown as ArtifactsBindingLike));
+    const control = bindingControl(env.ARTIFACTS as unknown as ArtifactsBindingLike);
+    const repos = new ArtifactsRepoHost(control);
     const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message));
     const llm = settings.llm ? llmFromProvider(settings.llm) : missingLlm;
     const llmReviewer = new LlmReviewer(llm, settings.models.reviewer);
@@ -74,19 +82,30 @@ export class ProjectAgent extends Agent<Env> {
         previewLink: (key) => `/preview/${this.name}/${key}`,
       },
     );
-    this.built = { orchestrator, bus, repos, keeper, settings, fingerprint };
+    const git = project.git;
+    const external = git ? orchestrator.external(new GitRemote({ url: git.url, branch: git.branch, token: git.token }, control), { mode: git.mode, syncBranch: git.syncBranch, ...(origin ? { previewLink: (key: string) => `${origin}/preview/${this.name}/${key}` } : {}) }) : null;
+    this.built = { orchestrator, bus, repos, keeper, external, settings, fingerprint };
     return this.built;
   }
 
   override async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const action = url.pathname.split("/").filter(Boolean).at(-1);
-    const { orchestrator, bus, settings } = await this.build();
+    if (url.pathname.endsWith("/git/webhook")) return this.webhook(request);
+    if ((await this.ctx.storage.get<string>(ORIGIN)) !== url.origin) await this.ctx.storage.put(ORIGIN, url.origin);
+    const { orchestrator, bus, settings, external } = await this.build();
     const session = SESSION_ROUTE.exec(url.pathname);
     if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
     const preview = PREVIEW_ROUTE.exec(url.pathname);
     if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"));
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
+    if (request.method === "GET" && url.pathname.endsWith("/git")) return Response.json({ settings: viewProjectSettings(await this.projectSettings()).git, state: external ? await external.state() : null });
+    if (request.method === "POST" && url.pathname.endsWith("/git/sync")) {
+      if (!external) return Response.json({ error: "this project has no linked repository" }, { status: 409 });
+      await external.retry();
+      await this.schedule(0, "syncExternal");
+      return Response.json({ ok: true }, { status: 202 });
+    }
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
       return Response.json({ commitId: main.commitId, features: readSpec(main.tree) });
@@ -94,6 +113,12 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "POST" && action === "bootstrap") {
       const existing = (await orchestrator.mainTree()).commitId;
       if (existing) return Response.json({ commitId: existing, created: false });
+      if (external) {
+        const pulled = await external.pull();
+        if (pulled.status !== "imported") return Response.json({ error: `importing the linked repository did not finish: ${pulled.status}` }, { status: 409 });
+        await this.ensurePolling();
+        return Response.json({ commitId: pulled.commitId, created: true, imported: true });
+      }
       return Response.json({ commitId: await orchestrator.bootstrap(templateFiles), created: true });
     }
     if (request.method === "POST" && action === "prompts") {
@@ -203,13 +228,18 @@ export class ProjectAgent extends Agent<Env> {
 
   private async settingsRequest(request: Request): Promise<Response> {
     const stored = await this.ctx.storage.get<Partial<ProjectSettings>>(PROJECT_SETTINGS);
-    if (request.method === "GET") return Response.json(readProjectSettings(stored));
+    if (request.method === "GET") return Response.json(viewProjectSettings(readProjectSettings(stored)));
     if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
-    const result = applyProjectUpdate(stored, await request.json().catch(() => null));
+    const result = applyProjectUpdate(stored, await request.json().catch(() => null), () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll("-", ""));
     if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
     await this.ctx.storage.put(PROJECT_SETTINGS, result.settings);
     await this.scheduleSweep();
-    return Response.json(readProjectSettings(result.settings));
+    const saved = readProjectSettings(result.settings);
+    if (saved.git) {
+      await this.ensurePolling();
+      await this.schedule(0, "syncExternal");
+    } else await this.stopPolling();
+    return Response.json(viewProjectSettings(saved));
   }
 
   private async scheduleSweep(): Promise<void> {
@@ -233,10 +263,54 @@ export class ProjectAgent extends Agent<Env> {
     for (const entry of await bus.since(0)) connection.send(JSON.stringify(entry));
   }
 
+  async syncExternal(): Promise<void> {
+    const { external } = await this.build();
+    if (!external) return;
+    try {
+      const pulled = await external.pull();
+      if (pulled.status === "merged" || pulled.status === "resolved") await this.schedule(1, "drive");
+    } catch (error) {
+      console.error(`pulling ${this.name}'s linked repository failed`, error);
+    }
+    await this.pushExternal();
+  }
+
+  private async pushExternal(): Promise<void> {
+    const { external } = await this.build();
+    if (!external) return;
+    try {
+      await external.push();
+    } catch (error) {
+      console.error(`pushing ${this.name} to its linked repository failed`, error);
+    }
+  }
+
+  private async ensurePolling(): Promise<void> {
+    await this.scheduleEvery(POLL_SECONDS, "syncExternal");
+  }
+
+  private async stopPolling(): Promise<void> {
+    for (const schedule of await this.listSchedules()) if (schedule.callback === "syncExternal") await this.cancelSchedule(schedule.id);
+  }
+
+  private async webhook(request: Request): Promise<Response> {
+    if (request.method !== "POST") return Response.json({ error: "method not allowed" }, { status: 405 });
+    const git = (await this.projectSettings()).git;
+    if (!git) return Response.json({ error: "this project has no linked repository" }, { status: 404 });
+    const body = await request.text();
+    if (!(await validSignature(git.webhookSecret, body, request.headers.get("x-hub-signature-256")))) return Response.json({ error: "bad signature" }, { status: 401 });
+    const event = request.headers.get("x-github-event");
+    if (event === "ping") return Response.json({ ok: true });
+    const ref = (JSON.parse(body) as { ref?: string }).ref;
+    if (event === "push" && ref === `refs/heads/${git.branch}`) await this.schedule(0, "syncExternal");
+    return Response.json({ ok: true }, { status: 202 });
+  }
+
   async drive(): Promise<void> {
     const { orchestrator } = await this.build();
     await orchestrator.reclaim();
     const sessions = await orchestrator.drain(1);
+    await this.pushExternal();
     if (sessions.some((s) => !isTerminal(s.machine.state))) await this.schedule(1, "drive");
   }
 

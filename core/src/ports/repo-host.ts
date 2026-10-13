@@ -51,6 +51,7 @@ export interface RepoHost {
   createRepo(name: string, opts?: { defaultBranch?: string; description?: string }): Promise<RepoInfo>;
   fork(source: string, name: string): Promise<RepoInfo>;
   deleteRepo(name: string): Promise<boolean>;
+  importRepo?(name: string, source: { readonly url: string; readonly branch: string; readonly token?: string }): Promise<RepoInfo>;
   info(repo: string): Promise<RepoInfo | null>;
   createToken(repo: string, scope: TokenScope, ttlSeconds: number): Promise<RepoToken>;
   revokeToken(token: RepoToken): Promise<void>;

@@ -25,6 +25,12 @@ export type ChefEvent = Base &
     | { readonly type: "sync.conflict"; readonly sessionId: string; readonly featureId: string; readonly paths: readonly string[]; readonly mainCommit: string }
     | { readonly type: "fork.deleted"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly archived: string | null }
     | { readonly type: "fork.kept"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly reason: string }
+    | { readonly type: "external.pulled"; readonly url: string; readonly branch: string; readonly commitId: string; readonly mainCommit: string; readonly status: string }
+    | { readonly type: "external.conflict"; readonly url: string; readonly syncId: string; readonly commitId: string; readonly paths: readonly string[] }
+    | { readonly type: "external.resolved"; readonly url: string; readonly syncId: string; readonly mainCommit: string }
+    | { readonly type: "external.stuck"; readonly url: string; readonly commitId: string; readonly reason: string }
+    | { readonly type: "external.pushed"; readonly url: string; readonly branch: string; readonly commitId: string }
+    | { readonly type: "external.pull-request"; readonly url: string; readonly number: number; readonly branch: string; readonly features: readonly string[] }
     | { readonly type: "session.stuck"; readonly sessionId: string; readonly featureId: string; readonly reason: string }
     | { readonly type: "session.steered"; readonly sessionId: string; readonly featureId: string; readonly message: string }
     | { readonly type: "turn.rejected"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly rule: RejectionRule; readonly paths: readonly string[] }

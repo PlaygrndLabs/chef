@@ -24,6 +24,8 @@ import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderL
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
 import { projectRuleProblems, renderRule, rulePath } from "../checks/project-rules.ts";
 import { hashHex } from "../util/hash.ts";
+import type { ExternalRemote } from "../ports/external-git.ts";
+import { ExternalSync, type ExternalSyncOptions } from "../sync/external.ts";
 
 export interface Deps {
   readonly repos: RepoHost;
@@ -134,6 +136,31 @@ export class Orchestrator {
 
   dispose(): void {
     this.unsubscribe();
+  }
+
+  external(remote: ExternalRemote, options: ExternalSyncOptions): ExternalSync {
+    return new ExternalSync(
+      {
+        canonical: this.canonical,
+        author: this.config.author,
+        resolvers: this.resolvers,
+        repos: this.deps.repos,
+        coder: this.deps.coder,
+        checks: this.deps.checks,
+        store: this.deps.store,
+        ids: this.deps.ids,
+        clock: this.deps.clock,
+        profiles: this.config.profiles,
+        ttl: this.ttl,
+        lock: (task) => this.mergeQueue.run(task),
+        emit: (event) => this.emit(event),
+        mainChanged: () => this.syncMemory(),
+        regenerate: (tree) => this.regenerate(tree),
+        sessions: () => this.sessions(),
+      },
+      remote,
+      options,
+    );
   }
 
   async bootstrap(template: Tree): Promise<string> {
