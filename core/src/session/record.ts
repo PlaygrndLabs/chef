@@ -1,6 +1,7 @@
 import type { Plan } from "../ports/planner.ts";
 import type { ReviewVerdict } from "../ports/reviewer.ts";
 import type { RouteDecision } from "../router/decision.ts";
+import type { Lane } from "./lanes.ts";
 import type { MachineState } from "./machine.ts";
 
 export interface SessionRecord {
@@ -31,6 +32,7 @@ export interface SessionRecord {
   readonly parent: string | null;
   history: string[];
   needs?: readonly string[];
+  lanes?: Lane[] | null;
   released?: MachineState["state"] | null;
   forkDeleted?: boolean;
   createdAt: number;

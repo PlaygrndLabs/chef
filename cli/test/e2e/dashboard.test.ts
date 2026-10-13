@@ -187,7 +187,7 @@ describe("dashboard in a browser", () => {
       const dialog = page.locator('[data-dialog="settings"]');
       const view = dialog.locator('[data-view="agents"][data-scope="app"]');
       await view.waitFor({ timeout: 10_000 });
-      expect(await view.locator("[data-role]").evaluateAll((items) => items.map((i) => i.getAttribute("data-role")))).toEqual(["planner", "test", "backend", "frontend", "chore", "reviewer", "conflict-resolver", "gardener"]);
+      expect(await view.locator("[data-role]").evaluateAll((items) => items.map((i) => i.getAttribute("data-role")))).toEqual(["planner", "test", "backend", "frontend", "designer", "chore", "reviewer", "conflict-resolver", "gardener"]);
       await view.locator('[data-role="backend"]').click();
       const editor = view.locator('[data-role-editor="backend"]');
       await editor.getByLabel("System prompt").fill("Implement {feature}. Keep handlers small.");

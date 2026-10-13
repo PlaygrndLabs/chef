@@ -10,12 +10,13 @@ export class SandboxCoder implements Coder {
   async runTurn(input: CoderTurnInput): Promise<CoderTurnResult> {
     const llm = this.options.llm;
     if (!llm) throw new Error(NO_LLM);
-    const stub = this.sessions.get(this.sessions.idFromName(input.sessionId)) as unknown as {
+    const sandbox = sandboxName(input.sessionId, input.lane);
+    const stub = this.sessions.get(this.sessions.idFromName(sandbox)) as unknown as {
       runTurn(job: unknown, onEvent: CoderTurnInput["onEvent"], llmKey: string): Promise<CoderTurnResult>;
     };
     return stub.runTurn(
       {
-        sessionId: input.sessionId,
+        sessionId: sandbox,
         featureId: input.featureId,
         role: input.role,
         model: input.model === "coder-default" ? this.options.model : input.model,
@@ -33,8 +34,16 @@ export class SandboxCoder implements Coder {
     );
   }
 
-  async release(sessionId: string): Promise<void> {
-    const stub = this.sessions.get(this.sessions.idFromName(sessionId)) as unknown as { stop(): Promise<boolean> };
-    await stub.stop();
+  async release(sessionId: string, lanes: readonly string[] = []): Promise<void> {
+    await Promise.all(
+      [sessionId, ...lanes.map((lane) => sandboxName(sessionId, lane))].map(async (name) => {
+        const stub = this.sessions.get(this.sessions.idFromName(name)) as unknown as { stop(): Promise<boolean> };
+        await stub.stop();
+      }),
+    );
   }
+}
+
+export function sandboxName(sessionId: string, lane?: string): string {
+  return lane ? `${sessionId}--${lane}` : sessionId;
 }

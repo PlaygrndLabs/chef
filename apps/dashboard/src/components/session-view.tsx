@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Rocket, ShieldCheck, Trophy, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Rocket, ShieldCheck, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -72,12 +72,14 @@ function Team({ node }: { readonly node: SessionNode }) {
             type="button"
             data-member={m.role}
             data-member-state={m.state}
-            title={`${label} ${MEMBER_NOTE[m.state]}${model ? ` on ${model}` : ""}. Open its prompt and skills.`}
+            data-branch={m.branch ?? undefined}
+            title={`${label} ${MEMBER_NOTE[m.state]}${model ? ` on ${model}` : ""}${m.branch ? `, on its own branch ${m.branch}` : ""}. Open its prompt and skills.`}
             onClick={() => openSettings("project", "agents", m.role)}
             className={cn("inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs hover:bg-muted", MEMBER[m.state])}
           >
             {m.state === "done" ? <Check className="size-3 text-ok" strokeWidth={3} /> : m.state === "working" ? <span className="pulse-run size-1.5 rounded-full bg-run" /> : m.state === "stopped" ? <X className="size-3" strokeWidth={3} /> : <Circle className="size-2.5" />}
             {label}
+            {m.branch ? <GitBranch className="size-3 text-muted-foreground" aria-label={`branch ${m.branch}`} /> : null}
             {m.state === "working" && model ? <span className="font-normal text-muted-foreground">· {model}</span> : null}
           </button>
         );

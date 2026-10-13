@@ -14,7 +14,7 @@ import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
-import { renderStub, stubPath } from "@chef/template/gen";
+import { laneLayout, renderStub, stubPath } from "@chef/template/gen";
 import { generated, repoProfiles, templateTree } from "../world.ts";
 import { nodeConnect } from "../voice.ts";
 import type { Docker } from "./docker.ts";
@@ -129,7 +129,7 @@ export class LocalProject {
         profiles,
         router: routerConfigOf(agents.config.router),
         generated,
-        specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
+        specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }), laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, Object.keys(tree)) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
         environment: async () => envNames(await this.effectiveEnv()),
       },

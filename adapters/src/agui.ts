@@ -77,7 +77,7 @@ export class SessionStream {
       case "session.created":
         return this.update(id, { featureId: event.featureId, attempt: `${event.attempt.index}/${event.attempt.of}` });
       case "session.state": {
-        out.push(...this.closeText(id));
+        out.push(...this.closeAllText(id));
         const current = this.steps.get(id);
         if (current) out.push({ type: EventType.STEP_FINISHED, stepName: current } as BaseEvent);
         const step = `${id}:${event.to}`;
@@ -89,7 +89,7 @@ export class SessionStream {
         return [...out, ...this.update(id, { state: event.to })];
       }
       case "coder.event":
-        return this.coder(id, event.event);
+        return this.coder(event.lane ? `${id}:${event.lane}` : id, event.event);
       case "commit.created":
         return this.update(id, { commits: view.commits + 1 });
       case "preview.updated":
@@ -135,7 +135,11 @@ export class SessionStream {
   }
 
   closeAll(): BaseEvent[] {
-    return Object.keys(this.state.sessions).flatMap((id) => this.closeText(id));
+    return Object.keys(this.state.sessions).flatMap((id) => this.closeAllText(id));
+  }
+
+  private closeAllText(id: string): BaseEvent[] {
+    return [...this.openText.keys()].filter((key) => key === id || key.startsWith(`${id}:`)).flatMap((key) => this.closeText(key));
   }
 
   private closeText(id: string): BaseEvent[] {

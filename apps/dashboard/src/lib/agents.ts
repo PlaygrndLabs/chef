@@ -103,11 +103,12 @@ export interface Member {
   readonly role: string;
   readonly state: MemberState;
   readonly model: string | null;
+  readonly branch: string | null;
 }
 
 const ROLE_STAGE: Readonly<Record<string, number>> = { planner: 0, test: 1, reviewer: 3 };
 const STATE_STAGE: Readonly<Record<SessionState, number>> = { queued: -1, planning: 0, testing: 1, coding: 2, reviewing: 3, gating: 4, merged: 5, stuck: -1, dropped: -1 };
-const HIDDEN = new Set(["sync", "gardener"]);
+const HIDDEN = new Set(["sync", "gardener", "chef"]);
 
 function stageOf(role: string): number {
   return ROLE_STAGE[role] ?? 2;
@@ -129,12 +130,17 @@ export function teamOf(node: SessionNode): Member[] {
   const at = halted ? STATE_STAGE[stoppedAt(node.live?.timeline ?? [])] : STATE_STAGE[node.state];
   const current = at === STATE_STAGE.gating || !(isActive(node.state) || halted) ? null : (node.live?.agent?.role ?? null);
   const modelOf = (role: string) => [...(node.live?.agents ?? [])].reverse().find((a) => a.role === role)?.model ?? null;
+  const lanes = node.live?.lanes ?? [];
+  const inLanes = at === STATE_STAGE.coding && lanes.length > 0;
   return roles.map((role): Member => {
     const model = modelOf(role);
-    if (node.state === "merged") return { role, state: "done", model };
-    if (role === current) return { role, state: halted ? "stopped" : "working", model };
-    if (seen.has(role) || at > stageOf(role)) return { role, state: "done", model };
-    return { role, state: "next", model };
+    const lane = lanes.find((l) => l.role === role);
+    const branch = lane?.branch ?? null;
+    if (node.state === "merged") return { role, state: "done", model, branch };
+    if (inLanes && lane) return { role, state: lane.status === "working" ? (halted ? "stopped" : "working") : lane.status === "waiting" || lane.status === "rejected" ? "next" : "done", model, branch };
+    if (role === current && !(inLanes && lanes.some((l) => l.role === current))) return { role, state: halted ? "stopped" : "working", model, branch };
+    if (seen.has(role) || at > stageOf(role)) return { role, state: "done", model, branch };
+    return { role, state: "next", model, branch };
   });
 }
 

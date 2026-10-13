@@ -9,7 +9,7 @@ export const TurnNote = z.strictObject({
   feature: z.string(),
   session: z.string(),
   role: z.string(),
-  kind: z.enum(["spec_change", "test", "code", "fix", "refactor", "chore", "conflict", "sync", "revert", "merge"]),
+  kind: z.enum(["spec_change", "test", "code", "fix", "refactor", "chore", "conflict", "sync", "revert", "merge", "scaffold"]),
   workItem: z.string().nullable(),
   prompt: z.string(),
   rootPrompt: z.string(),
