@@ -89,8 +89,9 @@ interface PreviewOutput {
   readonly deployment?: { readonly id?: string; readonly urls?: readonly string[] };
 }
 
-export function previewName(branch: string): string {
-  return branch.replace(/^preview\//, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/, "") || "preview";
+export function previewName(branch: string, worker = ""): string {
+  const max = Math.max(1, Math.min(30, 62 - worker.length));
+  return branch.replace(/^preview\//, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, max).replace(/-+$/, "") || "preview";
 }
 
 export function parsePreview(stdout: string, commitId: string): PreviewDeployment {
@@ -122,7 +123,7 @@ export class SandboxPreviewHost implements PreviewHost {
   ) {}
 
   async deploy(input: { repo: string; branch: string; commitId: string }): Promise<PreviewDeployment> {
-    const name = previewName(input.branch);
+    const name = previewName(input.branch, this.grant.worker);
     await this.prepare();
     const env = { CLOUDFLARE_API_TOKEN: PLACEHOLDER, CLOUDFLARE_ACCOUNT_ID: this.grant.accountId, WRANGLER_SEND_METRICS: "false", CI: "true" };
     const command = { name: "preview", argv: ["npx", "wrangler", "preview", "--name", name, "--worker-name", this.grant.worker, "--json"], timeoutMs: 300_000, env };
@@ -148,5 +149,31 @@ export class SandboxPreviewHost implements PreviewHost {
 
   async current(input: { repo: string; branch: string }): Promise<PreviewDeployment | null> {
     return this.latest.get(input.branch) ?? null;
+  }
+}
+
+export class SandboxLiveHost {
+  constructor(
+    private readonly sessions: DurableObjectNamespace,
+    private readonly repos: RepoHost,
+    private readonly grant: CloudflareGrant,
+    private readonly apiToken: string,
+  ) {}
+
+  async deploy(input: { repo: string; commitId: string }): Promise<void> {
+    const env = { CLOUDFLARE_API_TOKEN: PLACEHOLDER, CLOUDFLARE_ACCOUNT_ID: this.grant.accountId, WRANGLER_SEND_METRICS: "false", CI: "true" };
+    const command = { name: "live", argv: ["npx", "wrangler", "deploy", "--name", this.grant.worker], timeoutMs: 300_000, env };
+    const sessionId = `live-${this.grant.worker}`;
+    const prepared = await job(this.repos, input.repo, input.commitId, [command]);
+    const stub = this.sessions.get(this.sessions.idFromName(sessionId)) as unknown as ChecksStub;
+    let result: CommandResult | undefined;
+    try {
+      const { token, ...rest } = prepared;
+      void token;
+      result = (await stub.runChecks({ ...rest, sessionId, cloudflare: this.grant }, this.apiToken))[0];
+    } finally {
+      await prepared.token();
+    }
+    if (!result || result.code !== 0) throw new Error(`wrangler deploy failed: ${tail(`${result?.stdout ?? ""}\n${result?.stderr ?? ""}`, 20)}`);
   }
 }

@@ -4,6 +4,8 @@ import type { RouteDecision } from "../router/decision.ts";
 import type { RejectionRule, SessionState } from "../session/machine.ts";
 import type { AttemptScore } from "../ports/reviewer.ts";
 
+export type LiveStatus = "deploying" | "ready" | "failed";
+
 interface Base {
   readonly project: string;
   readonly at: number;
@@ -22,6 +24,7 @@ export type ChefEvent = Base &
     | { readonly type: "preview.updated"; readonly sessionId: string; readonly featureId: string; readonly url: string; readonly commitId: string; readonly link?: string }
     | { readonly type: "review.verdict"; readonly sessionId: string; readonly featureId: string; readonly approve: boolean; readonly reasons: readonly string[]; readonly model: string; readonly head: string; readonly base: string }
     | { readonly type: "gate.result"; readonly sessionId: string; readonly featureId: string; readonly ok: boolean; readonly checks: readonly CheckResult[] }
+    | { readonly type: "live.updated"; readonly status: LiveStatus; readonly commitId: string; readonly url: string | null; readonly error?: string }
     | { readonly type: "main.merged"; readonly sessionId: string; readonly featureId: string; readonly commitId: string }
     | { readonly type: "main.reverted"; readonly featureId: string; readonly revertedCommit: string; readonly commitId: string; readonly log: string }
     | { readonly type: "sync.merged"; readonly sessionId: string; readonly featureId: string; readonly commitId: string; readonly mainCommit: string }

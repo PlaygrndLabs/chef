@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, Budget, FeatureSpec, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, Budget, FeatureSpec, LiveStatus, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -253,10 +253,25 @@ export const sharedEnvApi: EnvApi = {
   saveEnv: (update) => call<ProjectEnvView>("/api/env", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
 };
 
+export interface LiveApp {
+  readonly status: LiveStatus;
+  readonly commitId: string;
+  readonly url: string | null;
+  readonly error?: string;
+  readonly at: number;
+}
+
+export interface ProjectSpec {
+  readonly commitId: string | null;
+  readonly features: readonly FeatureSpec[];
+  readonly live?: LiveApp | null;
+}
+
 export function projectApi(project: string) {
   const base = `/api/projects/${project}`;
   return {
-    spec: () => call<{ commitId: string | null; features: FeatureSpec[] }>(`${base}/spec`),
+    spec: () => call<ProjectSpec>(`${base}/spec`),
+    redeployLive: () => call<{ ok: boolean }>(`${base}/live`, { method: "POST" }),
     sessions: () => call<SessionRecord[]>(`${base}/sessions`),
     session: (id: string) => call<{ record: SessionRecord; budget: Budget }>(`${base}/sessions/${id}`),
     turns: (id: string) => call<SessionTurn[]>(`${base}/sessions/${id}/turns`),
