@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { CopilotKitProvider } from "@copilotkit/react-core/v2";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { ResizeHandle, useStoredWidth } from "@/components/resize-handle";
 import { CommandPalette } from "@/components/command-palette";
 import { FeaturePage } from "@/components/feature-page";
 import { Home } from "@/components/home";
@@ -29,6 +31,9 @@ function useMediaQuery(query: string): boolean {
   );
   return useSyncExternalStore(subscribe, () => window.matchMedia(query).matches);
 }
+
+const SIDEBAR = { initial: 264, min: 220, max: 440 } as const;
+const PANEL = { initial: 480, min: 360 } as const;
 
 function typing(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
@@ -77,6 +82,11 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
   const [sidebar, setSidebar] = useState(false);
   const [adding, setAdding] = useState(false);
   const panel = selection.view === "feature" && feature !== null && selection.panel !== null;
+  const [expanded, setExpanded] = useState(false);
+  const [sideWidth, setSideWidth] = useStoredWidth("chef:sidebar-width", SIDEBAR.initial);
+  const [panelWidth, setPanelWidth] = useStoredWidth("chef:panel-width", PANEL.initial);
+  const wide = useMediaQuery("(min-width: 1024px)") ? window.innerWidth : 1024;
+  const panelMax = Math.max(PANEL.min, wide - sideWidth - 360);
 
   const workspace: Workspace = {
     data,
@@ -88,6 +98,8 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
     feature,
     session,
     projects,
+    panelExpanded: expanded && panel,
+    expandPanel: setExpanded,
     addProject: () => {
       setSidebar(false);
       setAdding(true);
@@ -133,8 +145,9 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
       <WorkspaceContext.Provider value={workspace}>
         <div className="flex h-dvh overflow-hidden">
           {compact ? null : (
-            <aside className="w-66 shrink-0 border-r" aria-label="Features">
+            <aside className="relative shrink-0 border-r" style={{ width: Math.min(Math.max(sideWidth, SIDEBAR.min), SIDEBAR.max) }} aria-label="Features">
               <Sidebar />
+              <ResizeHandle edge="right" width={sideWidth} min={SIDEBAR.min} max={SIDEBAR.max} initial={SIDEBAR.initial} onResize={setSideWidth} label="Resize the work list" />
             </aside>
           )}
           <div className="flex min-w-0 flex-1 flex-col">
@@ -152,8 +165,9 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
               <Center workspace={workspace} />
             </main>
           </div>
-          {panel && !compact ? (
-            <aside className="w-[440px] shrink-0 border-l" aria-label="Preview and details">
+          {panel && !compact && !expanded ? (
+            <aside className="relative shrink-0 border-l" style={{ width: Math.min(Math.max(panelWidth, PANEL.min), panelMax) }} aria-label="Preview and details">
+              <ResizeHandle edge="left" width={panelWidth} min={PANEL.min} max={panelMax} initial={PANEL.initial} onResize={setPanelWidth} label="Resize the preview" />
               <Panel />
             </aside>
           ) : null}
@@ -166,7 +180,7 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
                 <Sidebar />
               </SheetContent>
             </Sheet>
-            <Sheet open={panel} onOpenChange={(open) => {
+            <Sheet open={panel && !expanded} onOpenChange={(open) => {
                 if (!open) select({ panel: null });
               }}>
               <SheetContent side="right" className="w-[min(100vw,28rem)] p-0 [&>button]:hidden">
@@ -176,6 +190,12 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
             </Sheet>
           </>
         ) : null}
+        <Dialog open={panel && expanded} onOpenChange={setExpanded}>
+          <DialogContent showCloseButton={false} className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none" aria-describedby={undefined}>
+            <DialogTitle className="sr-only">Preview and details</DialogTitle>
+            <Panel />
+          </DialogContent>
+        </Dialog>
         <CommandPalette open={palette} onOpenChange={setPalette} />
         <AddProjectDialog open={adding} onOpenChange={setAdding} onCreated={props.onCreated} />
       </WorkspaceContext.Provider>

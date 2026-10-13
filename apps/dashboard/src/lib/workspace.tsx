@@ -14,6 +14,8 @@ export interface Workspace {
   readonly feature: FeatureNode | null;
   readonly session: SessionNode | null;
   readonly projects: readonly string[];
+  readonly panelExpanded: boolean;
+  readonly expandPanel: (on: boolean) => void;
   readonly addProject: () => void;
   readonly openSession: (id: string) => void;
   readonly openFeature: (id: string) => void;

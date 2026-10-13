@@ -3,7 +3,7 @@ import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
 import { featureNodes, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
 import { activity, plainReason, progress, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
-import { routesIn } from "../../src/lib/routes.ts";
+import { pagesFor, routesIn } from "../../src/lib/routes.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
 const base = { project: "demo", at: 1 };
@@ -192,6 +192,25 @@ describe("pages a build added", () => {
       { method: "GET", path: "/notes" },
       { method: "POST", path: "/api/notes" },
     ]);
+  });
+
+  it("finds routes written in other shapes and opens the feature's own page first", () => {
+    const after = [
+      'const page: Route = { method: "GET" as const, name: "list", path: "/notes", handle: () => html() };',
+      'const api = route("POST", "/api/notes", add);',
+      'app.get("/notes/new", form);',
+      '{ method: "GET", path: "/api/notes", handle: list }',
+      '{ method: "GET", path: "/notes/:id", handle: one }',
+      '{ method: "GET", path: "/about", handle: about }',
+    ].join("\n");
+    const routes = routesIn([{ path: "features/notes/index.ts", after }]);
+    expect(routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual(["GET /about", "GET /api/notes", "GET /notes", "GET /notes/:id", "GET /notes/new", "POST /api/notes"]);
+    expect(pagesFor(routes, "notes").map((r) => r.path)).toEqual(["/notes", "/notes/new", "/about"]);
+  });
+
+  it("says a stopped try lost the pick", () => {
+    const lost = progress("dropped", [{ kind: "picked", at: 1, won: false, winner: "s2", reasons: ["s2 passes more tests"], candidates: [] }]);
+    expect(lost.now).toBe("Another try was picked over this one, so this one stopped.");
   });
 
   it("describes tool calls in plain words", () => {

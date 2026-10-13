@@ -199,37 +199,88 @@ function BuildChip({ node, current }: { readonly node: SessionNode; readonly cur
 function Related({ node }: { readonly node: SessionNode }) {
   const { sessions } = useWorkspace();
   const r = relationsOf(node, sessions);
-  if (r.chain.length < 2 && r.attempts.length < 2) return null;
+  const chain = r.chain.filter((s) => s.id === node.id || !node.attempt || s.attempt?.group !== node.attempt.group);
+  if (chain.length < 2) return null;
   return (
     <section className="flex flex-col gap-3 rounded-2xl border p-4" data-related={node.id}>
-      {r.chain.length > 1 ? (
-        <div className="flex flex-col gap-1.5">
-          <h2 className="text-xs font-medium text-muted-foreground">Builds of this feature, oldest first</h2>
-          <ol className="flex flex-wrap items-center gap-1">
-            {r.chain.map((s, i) => (
-              <li key={s.id} className="flex items-center gap-1">
-                {i > 0 ? <ChevronRight className="size-3.5 text-muted-foreground" /> : null}
-                <BuildChip node={s} current={s.id === node.id} />
-              </li>
-            ))}
-          </ol>
-          <p className="text-xs text-muted-foreground">{r.parent ? `This build continues from ${r.parent.id}. ` : ""}Each new build starts from the live app, so earlier work that went live is kept.</p>
-        </div>
-      ) : null}
-      {r.attempts.length > 1 ? (
-        <div className="flex flex-col gap-1.5" data-attempts>
-          <h2 className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <div className="flex flex-col gap-1.5">
+        <h2 className="text-xs font-medium text-muted-foreground">Builds of this feature, oldest first</h2>
+        <ol className="flex flex-wrap items-center gap-1">
+          {chain.map((s, i) => (
+            <li key={s.id} className="flex items-center gap-1">
+              {i > 0 ? <ChevronRight className="size-3.5 text-muted-foreground" /> : null}
+              <BuildChip node={s} current={s.id === node.id} />
+            </li>
+          ))}
+        </ol>
+        <p className="text-xs text-muted-foreground">{r.parent ? `This build continues from ${r.parent.id}. ` : ""}Each new build starts from the live app, so earlier work that went live is kept.</p>
+      </div>
+    </section>
+  );
+}
+
+function picksOf(node: SessionNode, sessions: readonly SessionNode[]) {
+  const r = relationsOf(node, sessions);
+  const pick = r.attempts.flatMap((s) => s.live?.timeline ?? []).find((t) => t.kind === "picked");
+  const picked = pick?.kind === "picked" ? pick : null;
+  const winner = picked ? r.attempts.find((s) => s.id === picked.winner) : undefined;
+  return { attempts: r.attempts, picked, winner };
+}
+
+function TryTabs({ node }: { readonly node: SessionNode }) {
+  const { sessions, openSession } = useWorkspace();
+  const { attempts, picked, winner } = picksOf(node, sessions);
+  if (!node.attempt || attempts.length < 2) return null;
+  const running = attempts.some((s) => isActive(s.state));
+  const score = (id: string) => picked?.candidates.find((c) => c.sessionId === id);
+  const note = picked
+    ? `chef built this ${attempts.length} ways at once and picked try ${winner?.attempt?.index ?? picked.winner}.`
+    : running
+      ? `chef builds this ${attempts.length} ways at once, then keeps the one that passes the most checks.`
+      : `chef built this ${attempts.length} ways at once.`;
+  return (
+    <div className="flex flex-col gap-1" data-tries>
+      <div role="tablist" aria-label="Parallel tries" className="flex gap-1 overflow-x-auto">
+        {attempts.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            role="tab"
+            aria-selected={s.id === node.id}
+            onClick={() => openSession(s.id)}
+            data-try={s.id}
+            className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs hover:bg-muted", s.id === node.id ? "border-foreground/40 bg-muted font-medium" : "text-muted-foreground")}
+          >
             <GitFork className="size-3.5" />
-            Tried {r.attempts.length} ways at once
-          </h2>
-          <div className="flex flex-wrap gap-1">
-            {r.attempts.map((s) => (
-              <BuildChip key={s.id} node={s} current={s.id === node.id} />
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">chef keeps the try that passes the most checks and stops the others.</p>
-        </div>
-      ) : null}
+            Try {s.attempt?.index}
+            <StatusDot tone={stateTone(s.state)} />
+            <span className="font-normal text-muted-foreground">{PLAIN_STATE[s.state]}</span>
+            {score(s.id) ? <span className="font-normal text-muted-foreground tabular-nums">· {score(s.id)?.passed}/{score(s.id)?.total} tests</span> : null}
+            {picked?.winner === s.id ? <Trophy className="size-3.5 text-ok" aria-label="Picked" /> : null}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">{note}</p>
+    </div>
+  );
+}
+
+function PickReasons({ node }: { readonly node: SessionNode }) {
+  const { sessions } = useWorkspace();
+  const { attempts, picked, winner } = picksOf(node, sessions);
+  if (!picked || attempts.length < 2) return null;
+  return (
+    <section className="flex flex-col gap-1.5 rounded-2xl border p-4 text-sm" data-pick-reasons>
+      <h2 className="inline-flex items-center gap-1.5 font-medium">
+        <Trophy className="size-4 text-ok" />
+        Why try {winner?.attempt?.index ?? picked.winner} was picked
+      </h2>
+      <p className="text-xs text-muted-foreground">Each try's code ran against the tests of every try. The reviewer then compared the scores and the code.</p>
+      <ul className="list-disc pl-5 text-muted-foreground">
+        {picked.reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -387,6 +438,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
         {node && p ? (
           <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" data-summary>
             <div className="mx-auto flex max-w-3xl flex-col gap-2.5 px-4 py-3 sm:px-6">
+              <TryTabs node={node} />
               <Steps node={node} />
               <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : active ? activity(node.state, timeline, null) : p.now}</p>
               <Artifacts node={node} preview={preview} />
@@ -402,6 +454,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
             </div>
           )}
           {node?.state === "stuck" ? <NeedsYou node={node} /> : null}
+          {node ? <PickReasons node={node} /> : null}
           {node ? <Related node={node} /> : null}
           {criteria.length ? (
             <section className="flex flex-col gap-2.5" data-criteria>
