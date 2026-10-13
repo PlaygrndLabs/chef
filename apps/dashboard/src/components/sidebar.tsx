@@ -112,7 +112,9 @@ export function Sidebar() {
   return (
     <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex items-center gap-1 px-1.5">
-        <Wordmark className="h-[15px] translate-y-px" />
+        <a href="/" id="home-link" className="rounded-sm" aria-label="All projects" title="All projects">
+          <Wordmark className="h-[15px] translate-y-px" />
+        </a>
         <span className="pl-0.5 text-muted-foreground/60">/</span>
         <ProjectSwitcher />
         <Button variant="ghost" size="icon-sm" className={cn("shrink-0 text-muted-foreground", selection.settings?.scope === "project" && "bg-sidebar-accent text-foreground")} onClick={() => openSettings("project")} id="project-settings-button" aria-label="Project settings" title={`Settings for ${selection.project}`}>
