@@ -3,6 +3,7 @@ import { CloudUpload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { appApi, type AppMode } from "@/lib/api";
+import { Wordmark } from "@/components/logo";
 
 export const DEPLOY_BUTTON = "https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef";
 
@@ -14,7 +15,7 @@ export function ConnectScreen(props: { readonly onConnected: (mode: AppMode) => 
   return (
     <div className="flex h-dvh flex-col overflow-y-auto" data-view="connect">
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-3 px-4 pt-10 pb-16 text-center sm:pt-20">
-        <span className="grid size-11 place-items-center rounded-xl bg-brand text-lg font-semibold text-brand-foreground">c</span>
+        <Wordmark className="mb-2 h-9" />
         <h1 className="text-2xl font-semibold tracking-tight">Connect chef to your cloud</h1>
         <p className="text-muted-foreground">This app runs on your computer. Sessions, sandboxes and previews run on your chef in Cloudflare, so work goes on when this computer sleeps.</p>
         <form
