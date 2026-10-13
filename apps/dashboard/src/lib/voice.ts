@@ -126,7 +126,12 @@ export async function startTalk(options: { readonly project: string; readonly on
     await gathered(pc);
     options.onStatus("connecting");
     const response = await fetch(`/api/projects/${options.project}/voice`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sdp: pc.localDescription?.sdp }) });
-    body = (await response.json().catch(() => ({}))) as typeof body;
+    const text = await response.text();
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      body = text.trim() ? { error: text.trim().slice(0, 300) } : {};
+    }
     if (!response.ok || !body.sdp) throw new Error(body.error ?? `voice failed with ${response.status}`);
     await pc.setRemoteDescription({ type: "answer", sdp: body.sdp });
   } catch (error) {
