@@ -14,7 +14,7 @@ import type { Clock, IdSource, KeyValueStore } from "../ports/runtime.ts";
 import { customAgent, outOfScope, scopeFor, type Profiles } from "../profiles/profile.ts";
 import type { RouteDecision } from "../router/decision.ts";
 import { DEFAULT_ROUTER_CONFIG, Router, withoutCommand, type RouterConfig } from "../router/router.ts";
-import { CHAT_TURNS_KEPT, conversation, type ChatTurn } from "../router/conversation.ts";
+import { chatContext, needsCompacting, plainSummary, readChatMemory, renderConversation, splitForCompacting, type ChatMemory } from "../router/conversation.ts";
 import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type RejectionRule, type SessionEvent } from "../session/machine.ts";
 import { laneBrief, laneItem, lanesBusy, planLanes, type Lane, type LaneLayoutFor, type LaneStatus } from "../session/lanes.ts";
 import type { SessionRecord } from "../session/record.ts";
@@ -221,13 +221,13 @@ export class Orchestrator {
   async submit(prompt: string, options: { readonly attempts?: number } = {}): Promise<SubmitResult> {
     const { tree } = await this.mainTree();
     const spec = arrangedSpec(readSpec(tree), await this.layout());
-    const chat = conversation(await this.chatTurns(), spec).text;
+    const chat = renderConversation(await this.chatMemory());
     const decision = await this.router.route(prompt, spec);
     await this.emit({ type: "route.decided", prompt, decision });
     if (decision.intent === "question") {
       const answer = await this.answer(prompt);
       await this.emit({ type: "question.answered", prompt, answer: answer.text, sources: answer.sources });
-      await this.remember(prompt, answer.text, spec);
+      await this.remember(prompt, answer.text);
       return { decision, sessionId: null, sessionIds: [], answer };
     }
     const chore = decision.intent === "chore";
@@ -243,18 +243,27 @@ export class Orchestrator {
       created.push(...(await this.createSessions(prompt, own, plan, attempts, { chore, hotfix, ask })));
     }
     const first = plans[0]?.feature.id;
-    await this.remember(prompt, `${chore ? "Started a chore" : plans.length > 1 ? "Split it into features" : decision.intent === "change_feature" ? "Changing the feature" : "Started the feature"}: ${plans.map((p) => `${p.feature.title} (${p.feature.id})`).join(", ")}`, spec);
+    await this.remember(prompt, `${chore ? "Started a chore" : plans.length > 1 ? "Split it into features" : decision.intent === "change_feature" ? "Changing the feature" : "Started the feature"}: ${plans.map((p) => `${p.feature.title} (${p.feature.id})`).join(", ")}`);
     return { decision, sessionId: created[0] ?? null, sessionIds: created, ...(first ? { featureId: first } : {}) };
   }
 
-  async chatTurns(): Promise<readonly ChatTurn[]> {
-    return (await this.deps.store.get<ChatTurn[]>(CHAT_KEY)) ?? [];
+  async chatMemory(): Promise<ChatMemory> {
+    return readChatMemory(await this.deps.store.get(CHAT_KEY));
   }
 
-  private async remember(prompt: string, reply: string, spec: readonly FeatureSpec[]): Promise<void> {
-    const turns = [...(await this.chatTurns()), { prompt, reply, at: this.deps.clock.now() }].slice(-CHAT_TURNS_KEPT);
-    await this.deps.store.put(CHAT_KEY, turns);
-    await this.emit({ type: "chat.context", ...conversation(turns, spec).context });
+  private async remember(prompt: string, reply: string): Promise<void> {
+    const current = await this.chatMemory();
+    const memory: ChatMemory = { ...current, turns: [...current.turns, { prompt, reply, at: this.deps.clock.now() }] };
+    const kept = needsCompacting(memory) ? await this.compact(memory) : memory;
+    await this.deps.store.put(CHAT_KEY, kept);
+    await this.emit({ type: "chat.context", ...chatContext(kept, kept.summarized ?? 0) });
+  }
+
+  private async compact(memory: ChatMemory): Promise<ChatMemory> {
+    const { older, recent } = splitForCompacting(memory);
+    if (older.length === 0) return memory;
+    const summary = await (this.deps.planner.compact?.({ summary: memory.summary, turns: older }) ?? Promise.reject(new Error("no compact"))).catch(() => plainSummary(memory.summary, older));
+    return { summary, turns: recent, summarized: (memory.summarized ?? 0) + older.length };
   }
 
   private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], prompt: string, chat: string): Promise<Plan> {

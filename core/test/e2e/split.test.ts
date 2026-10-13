@@ -80,7 +80,7 @@ describe("splitting a request into features", () => {
 });
 
 describe("the main chat's memory", () => {
-  it("sends earlier messages with a new request and reports how full the context is", async () => {
+  it("sends earlier messages with a new request and reports how full the chat's memory is", async () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]) });
     await w.orchestrator.bootstrap(templateTree());
     await w.orchestrator.submit(TODO);
@@ -89,9 +89,23 @@ describe("the main chat's memory", () => {
     expect(asked?.conversation).toContain(`Person: ${TODO}`);
     expect(asked?.conversation).toContain("chef: Started the feature:");
     expect(w.planner.splitAsked[0]?.conversation).toBeUndefined();
-    expect((await w.orchestrator.chatTurns()).map((t) => t.prompt)).toEqual([TODO, "Let people delete an item"]);
+    expect((await w.orchestrator.chatMemory()).turns.map((t) => t.prompt)).toEqual([TODO, "Let people delete an item"]);
     const contexts = w.bus.log.filter((e) => e.type === "chat.context");
     expect(contexts).toHaveLength(2);
-    expect(contexts.at(-1)).toMatchObject({ turns: 2, dropped: 0, limit: 32_000 });
+    expect(contexts.at(-1)).toMatchObject({ turns: 2, summarized: 0, limit: 8000 });
+  });
+
+  it("summarizes older messages when the chat fills up", async () => {
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]) });
+    await w.orchestrator.bootstrap(templateTree());
+    for (let i = 0; i < 40; i++) await w.orchestrator.submit(`/chore Tidy part ${i} of the docs ${"so it reads better ".repeat(40)}`);
+    const memory = await w.orchestrator.chatMemory();
+    expect(memory.summary).toContain("Tidy part 0");
+    expect(w.planner.compacted.length).toBeGreaterThan(0);
+    expect(memory.turns.at(-1)?.prompt).toContain("Tidy part 39");
+    expect(memory.summarized).toBe(40 - memory.turns.length);
+    const last = w.bus.log.filter((e) => e.type === "chat.context").at(-1);
+    expect(last).toMatchObject({ summarized: memory.summarized });
+    expect(last?.type === "chat.context" && last.used <= last.limit).toBe(true);
   });
 });
