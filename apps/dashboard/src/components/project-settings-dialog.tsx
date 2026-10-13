@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, FolderGit2, KeyRound, Route, ScanSearch, SlidersHorizontal } from "lucide-react";
+import { Bot, BookOpen, Brain, FolderGit2, KeyRound, Route, ScanSearch, ScrollText, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import type { OutboundMode, SyncState } from "@chef/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GitHubPicker } from "@/components/github-picker";
 import { EnvironmentForm } from "@/components/environment";
+import { MemoryForm, ProjectInstructionsForm } from "@/components/guidance";
 import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
 import { githubApi, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
@@ -246,6 +247,7 @@ export function ProjectSettingsDialog(props: {
   readonly nav: AgentsNav & { readonly section: (section: string) => void };
   readonly sharedAttempts: number | null;
   readonly onReadCode: () => void;
+  readonly onEditShared: () => void;
 }) {
   const { open, project, api, nav } = props;
   const [settings, setSettings] = useState<ProjectSettingsView | null>(null);
@@ -313,6 +315,20 @@ export function ProjectSettingsDialog(props: {
         ) : (
           loading()
         ),
+    },
+    {
+      id: "instructions",
+      label: "Instructions",
+      icon: ScrollText,
+      note: "Every agent in this project reads the goal and follows these instructions, on top of the instructions for every project.",
+      render: () => <ProjectInstructionsForm api={api} onEditShared={props.onEditShared} />,
+    },
+    {
+      id: "memory",
+      label: "Memory",
+      icon: Brain,
+      note: "What chef remembers about this project. Agents recall the entries that fit each task. It lives in the memory folder of the project's code.",
+      render: () => <MemoryForm api={api} />,
     },
     { id: "agents", label: "Agents", icon: Bot, fill: true, render: agents("agents") },
     { id: "skills", label: "Skills", icon: BookOpen, fill: true, render: agents("skills") },
