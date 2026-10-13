@@ -48,7 +48,7 @@ export function Composer({
           }}
           placeholder={placeholder}
           aria-label={placeholder}
-          className="block max-h-48 min-h-12 w-full resize-none bg-transparent px-4 pt-3.5 text-[15px] outline-none placeholder:text-muted-foreground"
+          className="block max-h-48 min-h-12 w-full resize-none bg-transparent px-4 pt-3.5 text-sm outline-none placeholder:text-muted-foreground"
         />
         <div className="flex items-center gap-1.5 px-2 pb-2 pl-4">
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{hint}</span>

@@ -95,7 +95,7 @@ function UpdateRow({ update }: { readonly update: Update }) {
     return (
       <div className="flex max-w-[80%] flex-col items-end gap-0.5 self-end">
         {update.note ? <span className="text-xs text-muted-foreground">Your note for the next step</span> : null}
-        <div className="rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-[15px] whitespace-pre-wrap">{update.text}</div>
+        <div className="rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">{update.text}</div>
       </div>
     );
   const Icon = ICONS[update.icon];
@@ -103,7 +103,7 @@ function UpdateRow({ update }: { readonly update: Update }) {
     <div className="flex gap-3" data-review={update.mark.review} data-gate={update.mark.gate} data-tone={update.tone}>
       <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg bg-muted", TONE[update.tone])}>{update.tone === "run" ? <Loader2 className="size-3.5 animate-spin" /> : <Icon className="size-3.5" />}</span>
       <Collapsible open={open} onOpenChange={setOpen} className="min-w-0 flex-1 pt-0.5">
-        <div className="text-[15px]">{update.text}</div>
+        <div className="text-sm">{update.text}</div>
         {update.detail ? <div className="truncate text-sm text-muted-foreground">{update.detail}</div> : null}
         {update.tone === "run" && !open && update.tech.length ? (
           <ul className="mt-1 flex flex-col gap-0.5 font-mono text-xs text-muted-foreground" data-live-actions>
@@ -155,7 +155,7 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   };
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-bad/30 bg-bad/5 p-4" data-needs-you={node.id}>
-      <div className="font-semibold text-bad">chef needs your help</div>
+      <div className="font-medium text-bad">chef needs your help</div>
       <p className="text-sm text-muted-foreground">
         Press Try again, tell chef in the{" "}
         <button type="button" onClick={focusComposer} className="underline underline-offset-2 hover:text-foreground">
@@ -413,7 +413,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
   return (
     <Tabs value={section} onValueChange={(v) => select({ panel: v as PanelTab })} className="flex h-full min-h-0 flex-col gap-0 bg-background" data-view="feature" data-feature={feature.id} data-session={node?.id} data-state={node?.state}>
       <header className="flex h-12 shrink-0 items-center gap-2.5 px-4">
-        <h1 className="min-w-0 truncate text-base font-semibold">{feature.title}</h1>
+        <h1 className="min-w-0 truncate text-base font-medium">{feature.title}</h1>
         <StatusPill status={node ? statusOf(node.state) : feature.status} />
         {node ? <KindBadges node={node} /> : null}
         {node ? (
