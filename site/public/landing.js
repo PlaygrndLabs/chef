@@ -739,18 +739,28 @@ function story(ctx, width, height) {
 
 const steps = document.querySelectorAll("[data-step]");
 const showStep = (name) => {
-  if (!storyScenes[name]) return;
+  if (!storyScenes[name] || (name === storyStep && document.querySelector(".step.on"))) return;
   storyStep = name;
   steps.forEach((step) => step.classList.toggle("on", step.dataset.step === name));
   const label = document.querySelector("[data-story-label]");
   if (label) label.textContent = storyLabels[name];
   document.querySelectorAll("[data-story]").forEach((canvas) => canvas.redraw?.());
 };
-showStep("ask");
-const stepper = new IntersectionObserver((entries) => {
-  for (const entry of entries) if (entry.isIntersecting) showStep(entry.target.dataset.step);
-}, { rootMargin: "-45% 0px -50% 0px" });
-steps.forEach((step) => stepper.observe(step));
+let picking = 0;
+const pickStep = () => {
+  picking = 0;
+  if (!steps.length) return;
+  const line = innerHeight * 0.55;
+  let current = steps[0];
+  for (const step of steps) if (step.getBoundingClientRect().top <= line) current = step;
+  showStep(current.dataset.step);
+};
+const queuePick = () => {
+  if (!picking) picking = requestAnimationFrame(pickStep);
+};
+addEventListener("scroll", queuePick, { passive: true });
+addEventListener("resize", queuePick);
+pickStep();
 
 const scenes = { city, app, dots, story };
 for (const [name, setup] of Object.entries(scenes)) {
