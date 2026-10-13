@@ -155,7 +155,15 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
   if (index && !options.dryRun) await ensureMemoryIndex(run, index, log);
   const args = ["deploy", "--config", config, ...(options.dryRun ? ["--dry-run", "--outdir", join(REPO_ROOT, "dist", "worker")] : []), ...(options.passthrough ?? [])];
   mkdirSync(join(REPO_ROOT, "dist"), { recursive: true });
-  const result = await run(args, { echo: true });
+  let result = await run(args, { echo: true });
+  if (result.code !== 0 && options.movedFrom && !options.dryRun && result.output.includes("10074")) {
+    log(`moving the Durable Objects first, then turning on the sandbox containers`);
+    const first = join(REPO_ROOT, `.wrangler.${name}.move.jsonc`);
+    const { containers: _containers, ...withoutContainers } = parseJsonc(readFileSync(config, "utf8"));
+    writeFileSync(first, `${JSON.stringify(withoutContainers, null, 2)}\n`);
+    const moved = await run(["deploy", "--config", first, ...(options.passthrough ?? [])], { echo: true });
+    result = moved.code === 0 ? await run(args, { echo: true }) : moved;
+  }
   const url = /https:\/\/[a-z0-9.-]+\.workers\.dev/.exec(result.output)?.[0] ?? null;
   if (result.code === 0 && url) log(`\nchef is live at ${url}\nOpen it in a browser, or connect the local app to it with: pnpm start`);
   return { code: result.code, url, config };

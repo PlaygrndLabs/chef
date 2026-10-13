@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, movedConfig, parseJsonc, withImage, type Runner } from "../../src/deploy.ts";
+import { deploy, ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, movedConfig, parseJsonc, withImage, type Runner } from "../../src/deploy.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const base = parseJsonc(readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8"));
@@ -71,5 +71,27 @@ describe("deploy", () => {
     expect(calls[1]).toEqual(["vectorize", "create", "chef-memory", `--dimensions=${MEMORY_DIMENSIONS}`, "--metric=cosine"]);
     await ensureMemoryIndex(runner({ get: 1, create: 1 }), "chef-memory", (l) => log.push(l));
     expect(log.at(-1)).toContain("deploying anyway");
+  });
+
+  it("moves the Durable Objects before turning on containers when Cloudflare refuses both at once", async () => {
+    const calls: string[][] = [];
+    const run: Runner = async (args) => {
+      calls.push([...args]);
+      if (args[0] !== "deploy") return { code: 0, output: "" };
+      const deploys = calls.filter((c) => c[0] === "deploy").length;
+      if (deploys === 1) return { code: 1, output: "Cannot enable containers in a Durable Objects class 'SessionAgent' if it is not a SQLite Durable Object [code: 10074]" };
+      return { code: 0, output: "https://chef-dev.example.workers.dev" };
+    };
+    const result = await deploy({ name: "chef-dev", movedFrom: "chef@v2", run, log: () => {} });
+    const deploys = calls.filter((c) => c[0] === "deploy");
+    expect(deploys).toHaveLength(3);
+    const second = deploys[1] ?? [];
+    const first = second[second.indexOf("--config") + 1] ?? "";
+    expect(first.endsWith(".wrangler.chef-dev.move.jsonc")).toBe(true);
+    const moved = parseJsonc(readFileSync(first, "utf8"));
+    expect(moved["containers"]).toBeUndefined();
+    expect((moved["migrations"] as { transferred_classes?: unknown[] }[])[0]?.transferred_classes).toHaveLength(3);
+    expect(deploys[2]).toEqual(deploys[0]);
+    expect(result).toMatchObject({ code: 0, url: "https://chef-dev.example.workers.dev" });
   });
 });
