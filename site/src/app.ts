@@ -76,9 +76,8 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (!can(role, "setup")) return json({ error: "only owners and admins of this organization can set up chef" }, 403);
       const input = readInstall(await request.json().catch(() => null));
       if (typeof input === "string") return json({ error: input }, 400);
-      const taken = await directory(env).accountTakenBy(input.accountId, session.orgId);
-      if (taken) return json({ error: `this Cloudflare account already runs chef for ${taken}; choose another account` }, 409);
-      const started = await member.install({ orgId: session.orgId, accountId: input.accountId, engine: await org.engine() });
+      const current = await org.view(session.userId);
+      const started = await member.install({ orgId: session.orgId, orgName: current?.name ?? "org", accountId: input.accountId, engine: await org.engine() });
       return typeof started === "string" ? json({ error: started }, 409) : json(started, 202);
     }
     if (path === "/site/api/install" && request.method === "DELETE") {
