@@ -58,11 +58,12 @@ describe("llm endpoint", () => {
   });
 
   it("drives the reviewer through a custom provider", async () => {
-    const { fetchImpl } = custom({ approve: false, reasons: ["AC2 has no test"], retest: true });
+    const { seen, fetchImpl } = custom({ approve: false, reasons: ["AC2 has no test"], retest: true });
     const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl), "reviewer-model", "Review the diff.");
     const feature = { id: "todo-add", title: "Add", status: "building" as const, entrypoint: "POST /todos", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: "adds" }], body: "b" };
-    const verdict = await reviewer.review({ feature, diff: { "features/todo-add/index.ts": "export {}" }, checksLog: "" });
+    const verdict = await reviewer.review({ feature, diff: { "features/todo-add/index.ts": "export {}" }, checksLog: "", scope: ["features/todo-add/**", "features/todo/**"] });
     expect(verdict).toMatchObject({ approve: false, reasons: ["AC2 has no test"], retest: true });
+    expect(JSON.stringify(seen[0]?.body["messages"])).toContain("- features/todo/**");
   });
 
   it("asks for a configured endpoint", () => {
