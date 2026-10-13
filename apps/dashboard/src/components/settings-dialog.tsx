@@ -26,7 +26,7 @@ const VOICE_CHOICES: readonly Choice[] = [
 
 export function missingSettings(settings: SettingsView | null): string[] {
   if (!settings) return [];
-  return [...(settings.llm ? [] : ["model"]), ...(settings.cloudflare ? [] : ["previews"])];
+  return [...(settings.llm ? [] : ["model"]), ...(settings.cloudflare || settings.runsOn === "computer" ? [] : ["previews"])];
 }
 
 export function useSettings() {
@@ -226,6 +226,16 @@ function PasswordForm(props: { readonly settings: SettingsView; readonly save: S
   );
 }
 
+function ComputerSection(props: { readonly settings: SettingsView }) {
+  return (
+    <Section title="This computer" note="Everything runs here: projects, agents, sandboxes and previews. Only this computer can open chef, so it has no password. Work pauses while the computer sleeps.">
+      <p className="text-xs text-muted-foreground" data-current="data-dir">
+        Data is kept in {props.settings.dataDir}
+      </p>
+    </Section>
+  );
+}
+
 function ConnectionForm() {
   const [mode, setMode] = useState<AppMode | null>(null);
   const [busy, setBusy] = useState(false);
@@ -276,6 +286,8 @@ const TABS = [
 export function SettingsDialog(props: { readonly open: boolean; readonly onOpenChange: (open: boolean) => void; readonly settings: SettingsView | null; readonly onChange: (settings: SettingsView) => void }) {
   const { open, onOpenChange, settings, onChange } = props;
   const missing = missingSettings(settings);
+  const computer = settings?.runsOn === "computer";
+  const keys = computer ? "Keys stay on this computer" : "Keys stay on your chef";
   const [tab, setTab] = useState<string>(missing[0] ?? "model");
   useEffect(() => {
     if (open && missing[0]) setTab(missing[0]);
@@ -295,12 +307,12 @@ export function SettingsDialog(props: { readonly open: boolean; readonly onOpenC
       <DialogContent className="sm:max-w-lg" data-dialog="settings">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>{missing.length > 0 ? "chef needs a model and a Cloudflare account before it can build. Keys stay on your chef; only their last four characters come back here." : "Keys stay on your chef; only their last four characters come back here."}</DialogDescription>
+          <DialogDescription>{`${missing.length > 0 ? (computer ? "chef needs a model before it can build. " : "chef needs a model and a Cloudflare account before it can build. ") : ""}${keys}; only their last four characters come back here.`}</DialogDescription>
         </DialogHeader>
         {settings ? (
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="h-9 w-full">
-              {TABS.map((t) => (
+              {TABS.map((t) => (computer && t.value === "password" ? { ...t, label: "This computer" } : t)).map((t) => (
                 <TabsTrigger key={t.value} value={t.value} className="px-2 text-xs" data-missing={missing.includes(t.value) ? "yes" : undefined}>
                   {t.label}
                   {missing.includes(t.value) ? <span className="ml-1 size-1.5 rounded-full bg-bad" aria-label="needs setup" /> : null}
@@ -316,9 +328,17 @@ export function SettingsDialog(props: { readonly open: boolean; readonly onOpenC
               </Section>
             </TabsContent>
             <TabsContent value="previews" className="pt-3">
-              <Section title="Cloudflare" note="Every feature gets a live preview on your Cloudflare account. The token needs permission to edit Workers.">
-                <CloudflareForm key={settings.cloudflare?.accountId ?? "none"} settings={settings} save={save} />
-              </Section>
+              {computer ? (
+                <Section title="Previews" note="Every feature gets a live preview in Docker on this computer. No Cloudflare account is needed.">
+                  <p className="text-xs text-muted-foreground" data-current="previews">
+                    Previews start when you open them and stop after they sit idle.
+                  </p>
+                </Section>
+              ) : (
+                <Section title="Cloudflare" note="Every feature gets a live preview on your Cloudflare account. The token needs permission to edit Workers.">
+                  <CloudflareForm key={settings.cloudflare?.accountId ?? "none"} settings={settings} save={save} />
+                </Section>
+              )}
             </TabsContent>
             <TabsContent value="voice" className="pt-3">
               <Section title="Voice (optional)" note="Talk to chef. Needs an OpenAI key, or a provider that serves the OpenAI Realtime API.">
@@ -331,10 +351,16 @@ export function SettingsDialog(props: { readonly open: boolean; readonly onOpenC
               </Section>
             </TabsContent>
             <TabsContent value="password" className="grid gap-5 pt-3">
-              <Section title="Password" note="Changing it signs out every other browser and script.">
-                <PasswordForm settings={settings} save={save} />
-              </Section>
-              <ConnectionForm />
+              {computer ? (
+                <ComputerSection settings={settings} />
+              ) : (
+                <>
+                  <Section title="Password" note="Changing it signs out every other browser and script.">
+                    <PasswordForm settings={settings} save={save} />
+                  </Section>
+                  <ConnectionForm />
+                </>
+              )}
             </TabsContent>
           </Tabs>
         ) : (

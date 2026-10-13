@@ -1,24 +1,29 @@
 # Self-hosting chef
 
-chef is an app you host yourself. Pick where the app runs:
+chef is an app you host yourself. Pick where it runs:
 
 - **In the cloud.** The whole of chef runs in your Cloudflare account and you use it from any browser.
-- **On your computer.** The app and project management run on your computer, and the work (sessions, sandboxes, previews and project repos) runs in your Cloudflare account. Like ChatGPT or Claude Code, the app is only the window: close your laptop and the work goes on.
+- **On your computer, working in the cloud.** The app and project management run on your computer, and the work (sessions, sandboxes, previews and project repos) runs in your Cloudflare account. Like ChatGPT or Claude Code, the app is only the window: close your laptop and the work goes on.
+- **Fully on your computer.** Everything runs on your machine: the app, projects, agents, sandboxes and previews. You need Docker and a model key, and no Cloudflare account.
 
-Both use the same chef in Cloudflare, so you can switch between them, or use both, at any time.
+The first two use the same chef in Cloudflare, so you can switch between them, or use both, at any time.
 
-| | In the cloud | On your computer |
-| --- | --- | --- |
-| Interface | served by your chef Worker | `pnpm start`, at `http://localhost:4300` |
-| Projects, settings, keys | your chef in Cloudflare | your chef in Cloudflare; this computer keeps only its address and password |
-| Sessions, sandboxes, previews, repos | Cloudflare | Cloudflare |
-| Keeps working when your computer sleeps | yes | yes |
+| | In the cloud | On your computer, working in the cloud | Fully on your computer |
+| --- | --- | --- | --- |
+| Start it with | the Deploy button | `pnpm start` | `pnpm start --local` |
+| Interface | served by your chef Worker | `http://localhost:4300` | `http://localhost:4300` |
+| Projects, settings, keys | your chef in Cloudflare | your chef in Cloudflare; this computer keeps only its address and password | `~/.chef/local` on this computer |
+| Sessions, sandboxes, previews, repos | Cloudflare | Cloudflare | Docker on this computer |
+| Keeps working when your computer sleeps | yes | yes | no, it carries on when the computer wakes |
+| Needs | a Cloudflare account | a Cloudflare account | Docker |
 
 ## What you need
 
 - A Cloudflare account on the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) ($5 a month), with Containers and Artifacts available. Sandboxes and previews run there.
 - A model provider: an Anthropic API key, or any Anthropic-compatible provider (base URL and key). You add it in Settings after the deploy.
 - For the local app: Node 22.18 or later, pnpm 10 and git.
+
+Running fully on your computer needs only Node 22.18 or later, pnpm 10, git, Docker and a model provider.
 
 ## Deploy to Cloudflare in one click
 
@@ -52,6 +57,30 @@ git push
 From then on `pnpm start` opens straight into your projects. The address and password are kept in `~/.chef/connection.json`, readable only by you (`CHEF_HOME` moves the folder). `CHEF_URL` and `CHEF_PASSWORD` in the environment connect without the file. Settings > Password shows which chef this computer uses and can disconnect it.
 
 How it works: the local app serves the dashboard and passes every API call, live update and preview link on to your chef, adding the password on the way. The password never reaches the browser. The app listens on `127.0.0.1` only and answers only its own pages, so other websites you visit cannot use it. A future terminal app and desktop app will talk to chef the same way.
+
+## Run chef fully on your computer
+
+1. Install and start [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on macOS and Windows, Docker Engine on Linux).
+2. Clone this repository, then:
+
+   ```
+   pnpm install
+   pnpm start --local
+   ```
+
+   The first start builds the sandbox image, which takes a few minutes; later starts skip it.
+3. Open `http://localhost:4300`, add your model provider in Settings, and create your first project.
+
+Everything chef keeps lives in `~/.chef/local` (`CHEF_HOME` moves it): the project repos as plain git repositories, each project's sessions and event log, its memory, and your settings, readable only by you. `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`, in the environment work as defaults, as do the other [Settings](#settings) variables. Stop chef with Ctrl+C; unfinished sessions pick up where they left off on the next start.
+
+How it works: the same engine that runs in the Worker runs inside the local app. Each coder turn, each check run, each proof and each preview runs in its own Docker container from the sandbox image. Containers read the project repos through a read-only mount and hand their changes back to chef, which commits them. A preview is the project's Worker in `wrangler dev`, on a `localhost` port; it starts when you open its link, stops after it sits idle (Project settings sets how long) and is rebuilt on the next visit. The app listens on `127.0.0.1` only and answers only its own pages, so it needs no password.
+
+Differences from chef in Cloudflare:
+
+- Work pauses while the computer sleeps or chef is stopped.
+- Connect GitHub needs chef in Cloudflare, because GitHub has to reach it. To keep a project in sync with GitHub or any other git host, choose Other git host and give the repository's address and an access token; chef pulls every few minutes and pushes after each merge.
+- A sandbox can reach the internet freely; in Cloudflare it reaches only the hosts it needs.
+- A custom model provider on `localhost` is reached from the containers as `host.docker.internal`, so on Linux it has to listen on more than `127.0.0.1`. Behind a proxy on `localhost`, set `CHEF_SANDBOX_NETWORK=host`.
 
 ## Deploy from your computer
 
@@ -95,9 +124,9 @@ A self-hosted chef is set up from its own dashboard, like any other app. On the 
 | Tab | What it holds | Needed | Same thing as a Worker secret |
 | --- | --- | --- | --- |
 | Model | Claude through your Anthropic API key, or any Anthropic-compatible provider (base URL and key); the planner, reviewer and coder model ids; parallel attempts per feature | Yes | `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`; `PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `ATTEMPTS` |
-| Previews | Cloudflare account id and an API token that can edit Workers, for each feature's live preview | Yes | `CF_ACCOUNT_ID`, `CF_API_TOKEN` |
+| Previews | Cloudflare account id and an API token that can edit Workers, for each feature's live preview | In Cloudflare only | `CF_ACCOUNT_ID`, `CF_API_TOKEN` |
 | Voice | An OpenAI key (GPT-Live), or a provider that serves the OpenAI Realtime API (base URL with `/v1`, and key) | No | `OPENAI_API_KEY`, or `VOICE_BASE_URL` and `VOICE_API_KEY` |
 | Routing | A TypeSafe key, so Jev routes requests in about 100ms; without it Claude routes them | No | `TYPESAFE_API_KEY` |
-| Password | The dashboard password, also accepted as a Bearer token by scripts | Yes | `CHEF_PASSWORD` |
+| Password | The dashboard password, also accepted as a Bearer token by scripts | In Cloudflare only | `CHEF_PASSWORD` |
 
 What is saved in the dashboard wins over the Worker's secrets, so the secrets are only defaults for a scripted deploy. Saved settings live in the `Settings` Durable Object; the password is stored as a salted PBKDF2 hash. Keys never go back to the browser; the dashboard shows only their last four characters. The coder sandbox gets only placeholders; the Worker's outbound handler swaps in the real keys on the provider's and Cloudflare's hosts.

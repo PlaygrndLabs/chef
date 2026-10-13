@@ -5,7 +5,7 @@
 
 **chef is an AI app builder you host yourself, on your own computer or in your own cloud.** Like ChatGPT or Claude Code, you talk to it. Unlike them, you own every part: the app, the code, the keys and the infrastructure.
 
-Run chef on your PC and the app and its management stay on your machine, while the agents work in your Cloudflare account. Or deploy the whole thing to Cloudflare in one click and use it from any browser.
+Run chef on your PC and the app and its management stay on your machine, while the agents work in your Cloudflare account. Deploy the whole thing to Cloudflare in one click and use it from any browser. Or keep everything on your own machine with Docker.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef)
 
@@ -20,7 +20,7 @@ Run chef on your PC and the app and its management stay on your machine, while t
 
 ## Self-host chef
 
-Both ways need a Cloudflare account on the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) with Containers and Artifacts enabled. That is where the agents, sandboxes and previews run.
+The first two ways need a Cloudflare account on the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) with Containers and Artifacts enabled. That is where the agents, sandboxes and previews run.
 
 ### In the cloud
 
@@ -35,6 +35,14 @@ Both ways need a Cloudflare account on the [Workers Paid plan](https://developer
 3. Open `http://localhost:4300` and enter your chef's address and password.
 
 The app and project management run locally. Sessions, sandboxes and previews run in your Cloudflare account, so closing your laptop does not stop the work.
+
+### Fully on your computer
+
+1. Install Node 22.18+, pnpm 10 and Docker, and clone this repository.
+2. Run `pnpm install` and `pnpm start --local`, then open `http://localhost:4300`.
+3. Add your model key in Settings and create your first project.
+
+Agents, sandboxes and previews run in Docker on your machine, and your projects stay in `~/.chef/local`. No Cloudflare account needed.
 
 Every setting and the manual deploy steps: [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 

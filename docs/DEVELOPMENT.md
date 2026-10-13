@@ -21,6 +21,7 @@ Requires Node 22.18 or later, pnpm 10 and git.
 ```
 pnpm install
 pnpm start                                           # the app on this computer, connected to a chef in Cloudflare (see docs/SELF_HOSTING.md)
+pnpm start --local                                   # everything on this computer: the engine runs in-process and agents, checks and previews run in Docker
 pnpm run deploy [--name n] [--dry-run]               # build and deploy to Cloudflare; the Deploy button and the deploy workflow run the same script
 pnpm run verify                                      # typecheck, lint, spec lint, dashboard build, unit and e2e tests (the browser test needs Chromium: pnpm --filter @chef/cli exec playwright install chromium)
 node --import tsx cli/src/bin.ts serve               # dashboard and CopilotKit chat at http://127.0.0.1:8787, after pnpm build
@@ -34,6 +35,10 @@ node --import tsx cli/src/bin.ts tune data         # export reviewer examples fr
 node --import tsx cli/src/bin.ts llm check           # planner and reviewer through your model provider, see [Model provider for the CLI](#model-provider-for-the-cli)
 node --import tsx cli/src/bin.ts demo --live         # one feature with the real planner, Claude coder and reviewer
 ```
+
+## Testing the local engine
+
+`cli/test/unit/engine.test.ts` runs the local engine with a stand-in for Docker. `CHEF_DOCKER_E2E=1 pnpm exec vitest run --project e2e cli/test/e2e/local-sandbox.test.ts` takes a feature through checks, a preview and its proof in real containers (it builds the sandbox image the first time). `CHEF_LIVE_LOCAL=1` with a model key runs `cli/test/e2e/local-live.test.ts`, a whole feature with a real model; CI runs it on pull requests labelled `live-local`. Behind a proxy on `localhost`, set `CHEF_SANDBOX_NETWORK=host`.
 
 ## Model provider for the CLI
 

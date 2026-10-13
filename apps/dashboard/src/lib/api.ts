@@ -41,11 +41,13 @@ export interface SettingsView {
   readonly cloudflare: { readonly accountId: string; readonly keyHint: string; readonly source: Source } | null;
   readonly models: { readonly planner: string; readonly reviewer: string; readonly coder: string; readonly source: Source };
   readonly attempts: { readonly value: number; readonly source: Source };
-  readonly password: Source;
+  readonly password: Source | "none";
+  readonly runsOn?: "computer";
+  readonly dataDir?: string;
 }
 
 export interface AppMode {
-  readonly mode: "local" | "cloud";
+  readonly mode: "local" | "cloud" | "computer";
   readonly engine: string | null;
   readonly fixed: boolean;
   readonly claimed?: boolean;
@@ -115,6 +117,7 @@ export interface InstalledRepository {
 }
 
 export interface GitHubView {
+  readonly available?: false;
   readonly app: GitHubAppView | null;
   readonly repositories: readonly InstalledRepository[];
   readonly error?: string;
