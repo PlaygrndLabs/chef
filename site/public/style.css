@@ -2,12 +2,8 @@
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
-  --primary: #004dfc;
-  --primary-foreground: #ffffff;
-  --brand: #004dfc;
-  --brand-soft: #eef2ff;
-  --cf: #ff5e1f;
-  --cf-hover: #e94f12;
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.48 0 0);
   --border: oklch(0.922 0 0);
@@ -23,10 +19,8 @@
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.18 0 0);
-    --primary: #3d7bff;
-    --primary-foreground: #ffffff;
-    --brand: #5b8cff;
-    --brand-soft: oklch(0.22 0.04 265);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.22 0 0);
     --muted-foreground: oklch(0.72 0 0);
     --border: oklch(1 0 0 / 12%);
@@ -85,7 +79,7 @@ nav.links a:hover { color: var(--foreground); }
   gap: 8px;
   height: 40px;
   padding: 0 18px;
-  border-radius: 999px;
+  border-radius: var(--radius);
   border: 1px solid transparent;
   font: inherit;
   font-size: 15px;
@@ -101,12 +95,6 @@ nav.links a:hover { color: var(--foreground); }
 .btn-primary:hover:not(:disabled) { opacity: 0.9; }
 .btn-outline { background: transparent; border-color: var(--border); color: var(--foreground); }
 .btn-outline:hover { background: var(--muted); }
-.btn-cf { background: var(--cf); color: #fff; }
-.btn-cf:hover { background: var(--cf-hover); }
-.btn-cf .cf-cloud { width: 26px; height: 13px; fill: currentColor; }
-.btn-sm .cf-cloud { width: 22px; height: 11px; }
-.btn-pill { background: var(--card); border-color: var(--border); color: var(--foreground); }
-.btn-pill:hover { border-color: color-mix(in oklch, var(--foreground) 25%, transparent); }
 .btn-sm { height: 34px; padding: 0 12px; font-size: 14px; }
 .btn-lg { height: 46px; padding: 0 22px; font-size: 16px; }
 .btn svg { width: 20px; height: 20px; flex: none; }
