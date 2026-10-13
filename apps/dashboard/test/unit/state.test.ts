@@ -120,6 +120,11 @@ describe("plain progress", () => {
     expect(progress("merged", items)).toMatchObject({ stage: 4, done: true });
   });
 
+  it("keeps the progress of a stuck build that was then stopped", () => {
+    const items = timeline([created, to("queued", "planning", "start"), to("planning", "testing", "planned"), to("testing", "coding", "tests_committed"), to("coding", "reviewing", "coded"), to("reviewing", "stuck", "budget"), to("stuck", "dropped", "stopped")]);
+    expect(progress("dropped", items)).toMatchObject({ stage: 3, stopped: true });
+  });
+
   it("marks where a stuck build stopped", () => {
     const items = timeline([created, to("queued", "gating", "coded"), { type: "session.stuck", sessionId: "s1", featureId: "a", reason: "gate failed 4 times" }, to("gating", "stuck", "gate_failed")]);
     expect(progress("stuck", items)).toMatchObject({ stage: 3, failed: true });
