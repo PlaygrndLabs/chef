@@ -1,5 +1,5 @@
 const messages = {
-  unavailable: "Sign-in with Cloudflare opens soon. Until then you can set chef up yourself from the self-hosting guide.",
+  unavailable: "Sign-in with Cloudflare opens soon. Please check back shortly.",
   cancelled: "Sign-in was cancelled. Try again whenever you are ready.",
   failed: "Cloudflare did not complete the sign-in. Please try again.",
 };
