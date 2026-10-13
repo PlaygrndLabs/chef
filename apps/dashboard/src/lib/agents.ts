@@ -16,23 +16,30 @@ const BUILT_IN: Readonly<Record<string, string>> = {
   gardener: "Gardener",
 };
 
-let cached: AgentsView | null = null;
-let loading: Promise<void> | null = null;
+const cached = new Map<string, AgentsView>();
+const loading = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 
+function keyOf(project: string | null): string {
+  return project ?? "";
+}
+
 export function setAgents(view: AgentsView): void {
-  cached = view;
+  cached.set(keyOf(view.scope?.project ?? null), view);
+  if (!view.scope) for (const key of [...cached.keys()]) if (key) void reloadAgents(key);
   for (const listener of listeners) listener();
 }
 
-export function reloadAgents(): Promise<void> {
-  loading ??= agentsApi
+export function reloadAgents(project: string | null): Promise<void> {
+  const key = keyOf(project);
+  const running = loading.get(key);
+  if (running) return running;
+  const next = agentsApi(project)
     .get()
     .then(setAgents, () => undefined)
-    .finally(() => {
-      loading = null;
-    });
-  return loading;
+    .finally(() => loading.delete(key));
+  loading.set(key, next);
+  return next;
 }
 
 function subscribe(listener: () => void) {
@@ -40,18 +47,28 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-export function useAgents(): AgentsView | null {
-  const view = useSyncExternalStore(subscribe, () => cached);
+export function useAgents(project: string | null): AgentsView | null {
+  const key = keyOf(project);
+  const view = useSyncExternalStore(subscribe, () => cached.get(key) ?? null);
   useEffect(() => {
-    if (!cached) void reloadAgents();
-  }, []);
+    if (!cached.has(key)) void reloadAgents(project);
+  }, [key]);
   return view;
+}
+
+export function ownRole(view: AgentsView, role: string): boolean {
+  return view.scope ? view.scope.roles.includes(role) : (view.roles.find((r) => r.role === role)?.edited ?? false);
+}
+
+export function ownSkill(view: AgentsView, name: string): boolean {
+  return view.scope ? view.scope.skills.includes(name) : view.skills.some((s) => s.name === name);
 }
 
 export function configOf(view: AgentsView): AgentConfig {
   const roles: Record<string, RoleSetting> = {};
-  for (const r of view.roles) if (r.edited) roles[r.role] = settingOf(r);
-  return { roles, skills: [...view.skills], router: view.routerEdited ? view.router : null };
+  for (const r of view.roles) if (ownRole(view, r.role)) roles[r.role] = settingOf(r);
+  const own = view.scope ? view.scope.router : view.routerEdited;
+  return { roles, skills: view.skills.filter((s) => ownSkill(view, s.name)), router: own ? view.router : null };
 }
 
 export function settingOf(r: RoleView): RoleSetting {
@@ -60,7 +77,7 @@ export function settingOf(r: RoleView): RoleSetting {
 
 export async function saveAgents(view: AgentsView, config: AgentConfig, summary: string): Promise<boolean> {
   try {
-    const next = await agentsApi.save(config, summary, view.version);
+    const next = await agentsApi(view.scope?.project ?? null).save(config, summary, view.version);
     setAgents(next);
     toast.success("Saved", { description: `Version ${next.version}. Builds use it from their next step.` });
     return true;

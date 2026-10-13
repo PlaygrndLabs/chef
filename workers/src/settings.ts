@@ -3,7 +3,7 @@ import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSe
 import type { ProjectEntry } from "./projects.ts";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import { AgentSettings, type AgentConfig, type AgentVersion, type SaveResult, type StoredAgents } from "@chef/core";
-import { newEnvKey } from "@chef/adapters/project-env";
+import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
 import { DurableStore } from "./do-store.ts";
 
@@ -14,6 +14,7 @@ const GITHUB_APP = "github/app";
 const GITHUB_LINKS = "github/links";
 const GITHUB_PENDING = "github/pending";
 const ENV_KEY = "env/key";
+const SHARED_ENV = "env/shared";
 const PENDING_MS = 60 * 60_000;
 
 export interface PendingConnect {
@@ -62,6 +63,14 @@ export class Settings extends DurableObject<Env> {
     const key = newEnvKey();
     await this.ctx.storage.put(ENV_KEY, key);
     return key;
+  }
+
+  async sharedEnv(): Promise<StoredEnv> {
+    return (await this.ctx.storage.get<StoredEnv>(SHARED_ENV)) ?? {};
+  }
+
+  async saveSharedEnv(env: StoredEnv): Promise<void> {
+    await this.ctx.storage.put(SHARED_ENV, env);
   }
 
   async githubApp(): Promise<GitHubAppCredentials | null> {
@@ -171,4 +180,30 @@ export function agentStore(env: Env) {
     save: (config: AgentConfig, summary: string, expected: number | null) => stub.agentsSave(config, summary, expected),
     restore: (version: number) => stub.agentsRestore(version),
   };
+}
+
+export function envCipher(env: Env): EnvCipher {
+  let cipher: Promise<EnvCipher> | null = null;
+  const sealed = (): Promise<EnvCipher> => {
+    cipher ??= settingsStub(env)
+      .envKey()
+      .then((key) => aesCipher(envKeyBytes(key)));
+    cipher.catch(() => (cipher = null));
+    return cipher;
+  };
+  return { encrypt: async (text) => (await sealed()).encrypt(text), decrypt: async (text) => (await sealed()).decrypt(text) };
+}
+
+export async function sharedEnvRequest(request: Request, env: Env, changed: (project: string) => Promise<void>): Promise<Response> {
+  const settings = settingsStub(env);
+  const cipher = envCipher(env);
+  const stored = await settings.sharedEnv();
+  if (request.method === "GET") return Response.json(await viewEnv(stored, cipher, []));
+  if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
+  const result = await applyEnvUpdate(stored, await request.json().catch(() => null), cipher, Date.now());
+  if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+  await settings.saveSharedEnv(result.env);
+  const projects = await settings.projects();
+  await Promise.all(projects.map((p) => changed(p.name).catch((error: unknown) => console.error(`telling ${p.name} about the shared environment failed`, error))));
+  return Response.json(await viewEnv(result.env, cipher, []));
 }

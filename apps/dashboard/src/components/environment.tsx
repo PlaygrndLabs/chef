@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { KeyRound, Loader2, Trash2 } from "lucide-react";
+import { KeyRound, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ENV_NAME, parseDotEnv } from "@chef/core/env";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { EnvUpdate, EnvVarView, ProjectApi, ProjectEnvView } from "@/lib/api";
+import type { EnvApi, EnvUpdate, EnvVarView, ProjectEnvView } from "@/lib/api";
+import { ToneBadge } from "@/components/status";
 import { cn } from "@/lib/utils";
 
-function useSave(api: ProjectApi, onSaved: (view: ProjectEnvView) => void) {
+function useSave(api: EnvApi, onSaved: (view: ProjectEnvView) => void) {
   const [busy, setBusy] = useState(false);
   const save = async (update: EnvUpdate, done: string) => {
     setBusy(true);
@@ -41,7 +42,7 @@ function KindToggle(props: { readonly secret: boolean; readonly onChange: (secre
   );
 }
 
-function VarRow(props: { readonly item: EnvVarView; readonly api: ProjectApi; readonly onSaved: (view: ProjectEnvView) => void }) {
+function VarRow(props: { readonly item: EnvVarView; readonly api: EnvApi; readonly onSaved: (view: ProjectEnvView) => void }) {
   const { item } = props;
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(item.value ?? "");
@@ -50,13 +51,16 @@ function VarRow(props: { readonly item: EnvVarView; readonly api: ProjectApi; re
     <li className="grid gap-1.5 py-2" data-env-var={item.name}>
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-mono text-xs">{item.name}</span>
+        {item.scope === "shared" ? <ToneBadge tone="idle">all projects</ToneBadge> : item.scope === "overrides" ? <ToneBadge tone="run">this project</ToneBadge> : null}
         <span className="text-[11px] text-muted-foreground">{item.secret ? "Secret" : "Plain"}</span>
         <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(!editing)}>
-          {editing ? "Cancel" : item.secret ? "Replace" : "Edit"}
+          {editing ? "Cancel" : item.scope === "shared" ? "Change here" : item.secret ? "Replace" : "Edit"}
         </Button>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Remove ${item.name}`} disabled={busy} onClick={() => void save({ remove: [item.name] }, `Removed ${item.name}`)}>
-          <Trash2 />
-        </Button>
+        {item.scope === "shared" ? null : (
+          <Button type="button" size="icon-sm" variant="ghost" aria-label={item.scope === "overrides" ? `Use the value of ${item.name} for all projects` : `Remove ${item.name}`} title={item.scope === "overrides" ? "Use the value for all projects" : undefined} disabled={busy} onClick={() => void save({ remove: [item.name] }, item.scope === "overrides" ? `${item.name} uses the value for all projects` : `Removed ${item.name}`)}>
+            {item.scope === "overrides" ? <RotateCcw /> : <Trash2 />}
+          </Button>
+        )}
       </div>
       {editing ? (
         <form
@@ -78,7 +82,7 @@ function VarRow(props: { readonly item: EnvVarView; readonly api: ProjectApi; re
   );
 }
 
-function AddForm(props: { readonly api: ProjectApi; readonly onSaved: (view: ProjectEnvView) => void; readonly name?: string }) {
+function AddForm(props: { readonly api: EnvApi; readonly onSaved: (view: ProjectEnvView) => void; readonly name?: string }) {
   const [name, setName] = useState(props.name ?? "");
   const [value, setValue] = useState("");
   const [secret, setSecret] = useState(true);
@@ -137,7 +141,7 @@ function AddForm(props: { readonly api: ProjectApi; readonly onSaved: (view: Pro
   );
 }
 
-function NeededKey(props: { readonly name: string; readonly features: readonly string[]; readonly api: ProjectApi; readonly onSaved: (view: ProjectEnvView) => void }) {
+function NeededKey(props: { readonly name: string; readonly features: readonly string[]; readonly api: EnvApi; readonly onSaved: (view: ProjectEnvView) => void }) {
   const [value, setValue] = useState("");
   const { busy, save } = useSave(props.api, props.onSaved);
   return (
@@ -164,7 +168,7 @@ function NeededKey(props: { readonly name: string; readonly features: readonly s
   );
 }
 
-export function KeyPrompt(props: { readonly names: readonly string[]; readonly api: ProjectApi; readonly onSaved?: () => void }) {
+export function KeyPrompt(props: { readonly names: readonly string[]; readonly api: EnvApi; readonly onSaved?: () => void }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-run/30 bg-run/5 p-4" data-needs-keys>
       <div className="flex items-center gap-2 font-semibold">
@@ -179,7 +183,7 @@ export function KeyPrompt(props: { readonly names: readonly string[]; readonly a
   );
 }
 
-export function EnvironmentForm(props: { readonly api: ProjectApi }) {
+export function EnvironmentForm(props: { readonly api: EnvApi }) {
   const [view, setView] = useState<ProjectEnvView | null>(null);
   useEffect(() => {
     props.api.env().then(setView, (e: unknown) => toast.error("Could not load the environment", { description: e instanceof Error ? e.message : String(e) }));

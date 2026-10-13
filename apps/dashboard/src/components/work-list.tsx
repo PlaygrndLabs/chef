@@ -24,13 +24,13 @@ function readMode(): Mode {
 }
 
 function SessionRow({ node, nested = false, showTitle = true }: { readonly node: SessionNode; readonly nested?: boolean; readonly showTitle?: boolean }) {
-  const { features, session, openSession } = useWorkspace();
+  const { features, session, openSession, selection } = useWorkspace();
   const now = useNow(15000);
   const title = features.find((f) => f.id === node.featureId)?.title ?? node.featureId;
   const tone = waitsForKey(node) ? "bad" : stateTone(node.state);
   const tries = node.attempt && node.attempt.of > 1 ? `try ${node.attempt.index} of ${node.attempt.of}` : null;
   const selected = session?.id === node.id;
-  const agents = useAgents();
+  const agents = useAgents(selection.project);
   const role = workingRole(node);
   const held = heldBy(node);
   return (
