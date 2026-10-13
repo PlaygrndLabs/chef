@@ -33,11 +33,12 @@ function Tab({ id }: { readonly id: string }) {
 }
 
 function Nothing() {
+  const { tabs } = useWorkspace();
   return (
     <div className="grid h-full place-items-center p-6 text-center" data-view="no-tab">
       <div className="flex max-w-xs flex-col items-center gap-3 text-sm text-muted-foreground">
         <Mark className="size-8 rounded-lg opacity-60" />
-        <p>Pick a feature in the list to see its preview, its messages and what changed.</p>
+        <p>{tabs.length ? "Pick an open tab or a feature in the list" : "Pick a feature in the list"} to see its preview, its messages and what changed.</p>
       </div>
     </div>
   );
