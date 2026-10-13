@@ -6,13 +6,15 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { CommandPalette } from "@/components/command-palette";
 import { FeaturePage } from "@/components/feature-page";
 import { Home } from "@/components/home";
+import { AddProjectDialog, Setup } from "@/components/project-setup";
 import { InsightsView } from "@/components/insights-view";
 import { Panel } from "@/components/panel";
 import { Sidebar } from "@/components/sidebar";
 import { projectApi } from "@/lib/api";
 import { useProject } from "@/lib/live";
 import { featureNodes, sessionNodes } from "@/lib/model";
-import { useSelection } from "@/lib/selection";
+import { pickProject, rememberProject, useProjects } from "@/lib/projects";
+import { useSelection, type Selection } from "@/lib/selection";
 import { WorkspaceContext, type Workspace } from "@/lib/workspace";
 
 function useMediaQuery(query: string): boolean {
@@ -47,6 +49,21 @@ function Center({ workspace }: { readonly workspace: Workspace }) {
 
 export function App() {
   const [selection, select] = useSelection();
+  const { projects, failed, refresh } = useProjects();
+  const opened = (name: string) => {
+    rememberProject(name);
+    refresh();
+    select({ project: name, view: "project", feature: null, session: null, panel: null });
+  };
+  if (projects === null) return <div className="grid h-dvh place-items-center text-muted-foreground">{failed ? `Could not load your projects: ${failed}` : "Loading"}</div>;
+  const project = pickProject(projects, selection.project);
+  if (project === null) return <Setup onCreated={opened} />;
+  return <ProjectWorkspace key={project} selection={project === selection.project ? selection : { ...selection, project }} select={select} projects={projects} onCreated={opened} />;
+}
+
+function ProjectWorkspace(props: { readonly selection: Selection; readonly select: (patch: Partial<Selection>) => void; readonly projects: readonly string[]; readonly onCreated: (name: string) => void }) {
+  const { selection, projects } = props;
+  const select = useCallback((patch: Partial<Selection>) => props.select({ project: selection.project, ...patch }), [props.select, selection.project]);
   const data = useProject(selection.project);
   const api = useMemo(() => projectApi(selection.project), [selection.project]);
   const sessions = useMemo(() => sessionNodes(data.live, data.records), [data.live, data.version, data.records]);
@@ -57,6 +74,7 @@ export function App() {
   const compact = useMediaQuery("(max-width: 1023px)");
   const [palette, setPalette] = useState(false);
   const [sidebar, setSidebar] = useState(false);
+  const [adding, setAdding] = useState(false);
   const panel = selection.view === "feature" && feature !== null && selection.panel !== null;
 
   const workspace: Workspace = {
@@ -68,6 +86,11 @@ export function App() {
     sessions,
     feature,
     session,
+    projects,
+    addProject: () => {
+      setSidebar(false);
+      setAdding(true);
+    },
     openSession: (id) => {
       const node = sessions.find((s) => s.id === id);
       select({ view: "feature", session: id, feature: node?.featureId ?? null });
@@ -98,6 +121,8 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [select]);
 
+  useEffect(() => rememberProject(selection.project), [selection.project]);
+
   useEffect(() => {
     document.title = feature && selection.view === "feature" ? `${feature.title} · chef` : `${selection.project} · chef`;
   }, [feature, selection.view, selection.project]);
@@ -117,7 +142,7 @@ export function App() {
                 <Button variant="ghost" size="icon" onClick={() => setSidebar(true)} aria-label="Show features">
                   <Menu />
                 </Button>
-                <span className="grid size-6 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">k</span>
+                <span className="grid size-6 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">c</span>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{selection.project}</span>
               </div>
             ) : null}
@@ -150,6 +175,7 @@ export function App() {
           </>
         ) : null}
         <CommandPalette open={palette} onOpenChange={setPalette} />
+        <AddProjectDialog open={adding} onOpenChange={setAdding} onCreated={props.onCreated} />
       </WorkspaceContext.Provider>
     </CopilotKitProvider>
   );

@@ -8,15 +8,25 @@ import { REPO_ROOT } from "../../src/world.ts";
 const DIST = join(REPO_ROOT, "apps", "dashboard", "dist");
 
 describe("dashboard in a browser", () => {
-  it("sends a chat message through CopilotKit, follows the feature until it goes live and opens it", async () => {
+  it("starts with no projects, creates one, sends a chat message through CopilotKit, follows the feature until it goes live and opens it", async () => {
     expect(existsSync(join(DIST, "index.html")), "run pnpm build first").toBe(true);
-    const local = await serve({ port: 0, project: "demo", real: false, assets: DIST });
+    const local = await serve({ port: 0, real: false, assets: DIST });
     const browser = await chromium.launch();
     try {
       const page = await browser.newPage();
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      await page.goto(`${local.url}/?project=demo`);
+      await page.goto(local.url);
+      const setup = page.locator('[data-view="setup"]');
+      await setup.waitFor({ timeout: 10_000 });
+      expect(await setup.innerText()).toContain("Create your first project");
+      await setup.getByLabel("Project name").fill("shop");
+      await setup.getByRole("button", { name: "Create project" }).click();
+      await page.getByRole("button", { name: "Switch project" }).click();
+      await page.getByRole("menuitem", { name: "shop" }).waitFor();
+      await page.getByRole("menuitem", { name: "Add project" }).waitFor();
+      await page.keyboard.press("Escape");
+      expect(new URL(page.url()).searchParams.get("project")).toBe("shop");
       const input = page.locator("#chat textarea");
       await input.fill(TODO_PROMPT);
       await input.press("Enter");
@@ -43,11 +53,11 @@ describe("dashboard in a browser", () => {
   });
 
   it("asks for a model and a Cloudflare account when none is set and saves them", async () => {
-    const local = await serve({ port: 0, project: "demo", real: false, assets: DIST, settings: { TYPESAFE_API_KEY: "ts-deployment-key" } });
+    const local = await serve({ port: 0, real: false, assets: DIST, settings: { TYPESAFE_API_KEY: "ts-deployment-key" } });
     const browser = await chromium.launch();
     try {
       const page = await browser.newPage();
-      await page.goto(`${local.url}/?project=demo`);
+      await page.goto(local.url);
       const dialog = page.locator('[data-dialog="settings"]');
       await dialog.waitFor({ timeout: 10_000 });
       const claude = dialog.locator("#settings-llm");

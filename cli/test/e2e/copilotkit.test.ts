@@ -7,7 +7,7 @@ interface Frame {
 }
 
 async function runAgent(url: string, prompt: string): Promise<Frame[]> {
-  const response = await fetch(`${url}/api/projects/demo/copilotkit/agent/default/run`, {
+  const response = await fetch(`${url}/api/projects/shop/copilotkit/agent/default/run`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
     body: JSON.stringify({ threadId: "t1", runId: "r1", messages: [{ id: "m1", role: "user", content: prompt }], tools: [], context: [], state: {}, forwardedProps: {} }),
@@ -22,7 +22,7 @@ async function runAgent(url: string, prompt: string): Promise<Frame[]> {
 
 describe("CopilotKit runtime streams chef sessions", () => {
   it("routes a chat message, streams the session as AG-UI events and finishes when it merges", async () => {
-    const local = await serve({ port: 0, project: "demo", real: false });
+    const local = await serve({ port: 0, project: "shop", real: false });
     try {
       const frames = await runAgent(local.url, TODO_PROMPT);
       const types = frames.map((f) => f.type);
@@ -46,11 +46,11 @@ describe("CopilotKit runtime streams chef sessions", () => {
   });
 
   it("answers an empty message without starting a session", async () => {
-    const local = await serve({ port: 0, project: "demo", real: false });
+    const local = await serve({ port: 0, project: "shop", real: false });
     try {
       const frames = await runAgent(local.url, "   ");
       expect(frames.map((f) => f.type)).toEqual(["RUN_STARTED", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "RUN_FINISHED"]);
-      const sessions = (await (await fetch(`${local.url}/api/projects/demo/sessions`)).json()) as unknown[];
+      const sessions = (await (await fetch(`${local.url}/api/projects/shop/sessions`)).json()) as unknown[];
       expect(sessions).toEqual([]);
     } finally {
       await local.close();
