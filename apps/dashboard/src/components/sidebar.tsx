@@ -13,7 +13,7 @@ import { Mark, Wordmark } from "@/components/logo";
 const CONNECTION = { live: ["ok", "Live"], polling: ["run", "Reconnecting, updates every few seconds"], connecting: ["idle", "Connecting"], offline: ["bad", "Offline"] } as const;
 
 function ProjectSwitcher() {
-  const { selection, select, data, projects, addProject, openSettings } = useWorkspace();
+  const { selection, select, data, projects } = useWorkspace();
   const [tone, label] = CONNECTION[data.connection];
   return (
     <DropdownMenu>
@@ -34,15 +34,6 @@ function ProjectSwitcher() {
             {p === selection.project ? <Check /> : null}
           </DropdownMenuItem>
         ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => openSettings("project")}>
-          <Settings2 />
-          Project settings
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={addProject}>
-          <Plus />
-          New project
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
