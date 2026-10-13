@@ -58,7 +58,8 @@ jobs:
           api="https://api.cloudflare.com/client/v4"
           auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
           host=$(curl -fsS -H "$auth" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r .result.subdomain)
-          site="https://chef-site.$host.workers.dev"
+          site="https://chef.playgrndlabs.com"
+          dev="https://chef-site.$host.workers.dev"
           wanted=$(jq -c . site/oauth-scopes.json)
           scopes=$(curl -sS -H "$auth" "$api/oauth/scopes" | jq -c --argjson wanted "$wanted" '[.result[]? | select((.name | ascii_downcase) as $n | $wanted | map(ascii_downcase) | index($n)) | .id]')
           if [ "$scopes" = "[]" ] || [ "$scopes" = "" ]; then
@@ -66,7 +67,7 @@ jobs:
             exit 0
           fi
           echo "scopes: $scopes"
-          body=$(jq -n --arg site "$site" --argjson scopes "$scopes" '{client_name: "chef", client_uri: $site, logo_uri: ($site + "/favicon.svg"), redirect_uris: [$site + "/auth/callback"], grant_types: ["authorization_code"], response_types: ["code"], token_endpoint_auth_method: "client_secret_basic", scopes: $scopes}')
+          body=$(jq -n --arg site "$site" --arg dev "$dev" --argjson scopes "$scopes" '{client_name: "chef", client_uri: $site, logo_uri: ($site + "/favicon.svg"), redirect_uris: [$site + "/auth/callback", $dev + "/auth/callback"], grant_types: ["authorization_code"], response_types: ["code"], token_endpoint_auth_method: "client_secret_basic", scopes: $scopes}')
           created=$(curl -sS -X POST -H "$auth" -H "content-type: application/json" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/oauth_clients" -d "$body")
           if [ "$(echo "$created" | jq -r .success)" != "true" ]; then
             echo "::notice::Cloudflare did not create the sign-in app: $(echo "$created" | jq -c .errors)"
