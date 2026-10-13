@@ -1,0 +1,75 @@
+name: site
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site
+  cancel-in-progress: false
+
+jobs:
+  site:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Publish the sandbox image that setups copy into each account
+        id: image
+        run: |
+          tag="chef-sandbox:$(git rev-parse --short=12 HEAD)"
+          npx wrangler containers build workers/sandbox -t "$tag" -p
+          echo "ref=registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/$tag" >> "$GITHUB_OUTPUT"
+      - name: Deploy the landing site
+        env:
+          SANDBOX_IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          jq -n '{CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID}' > "$RUNNER_TEMP/secrets.json"
+          npx wrangler deploy --config site/wrangler.jsonc --var "SANDBOX_IMAGE:$SANDBOX_IMAGE" --secrets-file "$RUNNER_TEMP/secrets.json"
+          rm "$RUNNER_TEMP/secrets.json"
+      - name: Create the Sign in with Cloudflare app once
+        run: |
+          set -euo pipefail
+          if npx wrangler secret list --config site/wrangler.jsonc --format json | jq -e 'map(.name) | index("OAUTH_CLIENT_ID")' > /dev/null; then
+            echo "the sign-in app already exists"
+            exit 0
+          fi
+          api="https://api.cloudflare.com/client/v4"
+          auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          host=$(curl -fsS -H "$auth" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r .result.subdomain)
+          site="https://getchef.$host.workers.dev"
+          wanted=$(jq -c . site/oauth-scopes.json)
+          scopes=$(curl -sS -H "$auth" "$api/oauth/scopes" | jq -c --argjson wanted "$wanted" '[.result[]? | select((.name | ascii_downcase) as $n | $wanted | map(ascii_downcase) | index($n)) | .id]')
+          if [ "$scopes" = "[]" ] || [ "$scopes" = "" ]; then
+            echo "::notice::Cloudflare did not list OAuth scopes for this token. Give CLOUDFLARE_API_TOKEN the OAuth Clients Write permission, then run this workflow again."
+            exit 0
+          fi
+          echo "scopes: $scopes"
+          body=$(jq -n --arg site "$site" --argjson scopes "$scopes" '{client_name: "chef", client_uri: $site, logo_uri: ($site + "/favicon.svg"), redirect_uris: [$site + "/callback"], grant_types: ["authorization_code"], response_types: ["code"], token_endpoint_auth_method: "client_secret_basic", scopes: $scopes}')
+          created=$(curl -sS -X POST -H "$auth" -H "content-type: application/json" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/oauth_clients" -d "$body")
+          if [ "$(echo "$created" | jq -r .success)" != "true" ]; then
+            echo "::notice::Cloudflare did not create the sign-in app: $(echo "$created" | jq -c .errors)"
+            exit 0
+          fi
+          echo "$created" | jq -r '.result.client_id // .result.id' | npx wrangler secret put OAUTH_CLIENT_ID --config site/wrangler.jsonc
+          echo "$created" | jq -r '.result.client_secret' | npx wrangler secret put OAUTH_CLIENT_SECRET --config site/wrangler.jsonc
+          echo "$scopes" | jq -r 'join(" ")' | npx wrangler secret put OAUTH_SCOPES --config site/wrangler.jsonc
+          echo "sign-in app created for $site"

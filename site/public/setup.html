@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up chef</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="chef home"><img class="light" src="/chef-logo.svg" alt="chef" width="76" height="26"><img class="dark" src="/chef-logo-dark.svg" alt="" width="76" height="26"></a>
+    <nav class="links"><a href="#" id="signout" hidden>Sign out</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="panel">
+    <div id="loading"><p class="muted">Loading your Cloudflare accounts…</p></div>
+
+    <div id="signed-out" hidden>
+      <h1>Sign in to continue</h1>
+      <p class="sub muted">Your Cloudflare sign-in has ended. Sign in again to set up or update chef.</p>
+      <a class="btn btn-primary" href="/start">Sign in with Cloudflare</a>
+    </div>
+
+    <form id="choose" hidden>
+      <h1>Set up chef</h1>
+      <p class="sub muted">Choose the Cloudflare account chef should live in.</p>
+      <div class="accounts" id="accounts" role="radiogroup" aria-label="Cloudflare accounts"></div>
+      <div id="password-fields">
+        <label class="field">Password for your chef<input id="password" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters"></label>
+        <label class="field">Repeat the password<input id="password2" type="password" autocomplete="new-password" minlength="8"></label>
+      </div>
+      <p class="error" id="form-error" role="alert"></p>
+      <button class="btn btn-primary" id="go" type="submit" disabled>Set up chef</button>
+    </form>
+
+    <div id="installing" hidden>
+      <h1 id="install-title">Setting up chef</h1>
+      <p class="sub muted" id="install-sub">This takes a few minutes. You can keep this page open and watch each step.</p>
+      <ol class="progress" id="steps">
+        <li data-step="account" data-state="waiting"><span class="dot"></span>Check your account</li>
+        <li data-step="image" data-state="waiting"><span class="dot"></span>Add chef's sandbox image</li>
+        <li data-step="token" data-state="waiting"><span class="dot"></span>Create a token for previews</li>
+        <li data-step="deploy" data-state="waiting"><span class="dot"></span>Deploy chef</li>
+      </ol>
+      <p class="error" id="install-error" role="alert"></p>
+      <div class="actions" style="justify-content:flex-start">
+        <a class="btn btn-primary" id="open" hidden>Open your chef</a>
+        <a class="btn btn-primary" id="retry" href="/start" hidden>Sign in and try again</a>
+        <button class="btn btn-outline" id="toggle-log" type="button">Show log</button>
+      </div>
+      <pre class="log" id="log" hidden></pre>
+    </div>
+  </div>
+</main>
+<script src="/setup.js" defer></script>
+</body>
+</html>
