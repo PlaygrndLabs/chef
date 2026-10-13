@@ -16,7 +16,7 @@ export interface TourOptions {
 interface SessionRow {
   readonly id: string;
   readonly featureId: string;
-  readonly machine: { readonly state: string };
+  readonly machine: { readonly state: string; readonly reason?: string; readonly feedback?: string | null };
 }
 
 const ACTIVE = new Set(["queued", "planning", "testing", "coding", "reviewing", "gating"]);
@@ -124,7 +124,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     for (;;) {
       round++;
       const sessions = await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[]);
-      for (const s of sessions) report.states[s.id] = s.machine.state;
+      for (const s of sessions) report.states[s.id] = s.machine.state === "stuck" ? `stuck: ${s.machine.reason ?? ""} ${(s.machine.feedback ?? "").slice(0, 1500)}`.trim() : s.machine.state;
       const latest = sessions.at(-1);
       await go(`/?project=${project}`);
       await shot(`round${round}-home`);
