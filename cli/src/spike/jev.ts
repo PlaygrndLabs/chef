@@ -109,7 +109,7 @@ export function stats(results: readonly ItemResult[]): SliceStats {
 
 export function sweep(results: readonly ItemResult[], thresholds: readonly number[] = [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95]): SweepRow[] {
   return thresholds.map((threshold) => {
-    const config: RouterConfig = { thresholds: { new_feature: threshold, change_feature: threshold, question: threshold }, featureThreshold: threshold };
+    const config: RouterConfig = { thresholds: { new_feature: threshold, change_feature: threshold, chore: threshold, question: threshold }, featureThreshold: threshold };
     const accepted = results.map((r) => ({ r, d: decideFromAnswers(r.answers, config, "sweep") })).filter((x) => x.d !== null);
     const wrong = accepted.filter((x) => !isCorrect(x.r.item, x.d as RouteDecision)).length;
     return { threshold, coverage: accepted.length / Math.max(1, results.length), misrouteRate: wrong / Math.max(1, results.length) };

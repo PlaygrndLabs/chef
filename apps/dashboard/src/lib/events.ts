@@ -28,7 +28,8 @@ export type TimelineItem =
   | { readonly kind: "merged"; readonly at: number; readonly commitId: string }
   | { readonly kind: "picked"; readonly at: number; readonly won: boolean; readonly winner: string; readonly reasons: readonly string[]; readonly candidates: readonly { readonly sessionId: string; readonly passed: number; readonly total: number }[] }
   | { readonly kind: "steered"; readonly at: number; readonly message: string }
-  | { readonly kind: "agent"; readonly at: number; readonly role: string; readonly model: string; readonly work: string };
+  | { readonly kind: "agent"; readonly at: number; readonly role: string; readonly model: string; readonly work: string }
+  | { readonly kind: "held"; readonly at: number; readonly by: string | null };
 
 export interface SessionLive {
   readonly id: string;
@@ -38,6 +39,9 @@ export interface SessionLive {
   reason: string;
   attempt: { readonly group: string; readonly index: number; readonly of: number } | null;
   parent: string | null;
+  kind: "feature" | "chore";
+  hotfix: boolean;
+  heldBy: string | null;
   commits: { readonly id: string; readonly role: string; readonly message: string }[];
   preview: { readonly url: string; readonly commitId: string; readonly link?: string | undefined } | null;
   verdict: { readonly approve: boolean; readonly reasons: readonly string[] } | null;
@@ -89,7 +93,7 @@ function sessionOf(state: ProjectLive, sessionId: string, featureId: string, at:
     existing.updatedAt = at;
     return existing;
   }
-  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, merged: null, recalled: [], agent: null, agents: [], timeline: [], createdAt: at, updatedAt: at };
+  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, kind: "feature", hotfix: false, heldBy: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, merged: null, recalled: [], agent: null, agents: [], timeline: [], createdAt: at, updatedAt: at };
   state.sessions[sessionId] = created;
   state.order.push(sessionId);
   return created;
@@ -106,7 +110,9 @@ export function summarize(event: ChefEvent): string {
     case "question.answered":
       return event.answer.slice(0, 200);
     case "session.created":
-      return `fork ${event.fork} attempt ${event.attempt.index}/${event.attempt.of}`;
+      return `${event.hotfix ? "hotfix " : ""}${event.kind === "chore" ? "chore " : ""}fork ${event.fork} attempt ${event.attempt.index}/${event.attempt.of}`;
+    case "session.held":
+      return event.by ? `waiting for hotfix ${event.by}` : "no longer waiting";
     case "session.state":
       return `${event.from} → ${event.to} (${event.reason})`;
     case "agent.started":
@@ -192,6 +198,8 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       s.reason = event.reason;
       s.attempt = event.attempt;
       s.parent = event.parent;
+      s.kind = event.kind ?? "feature";
+      s.hotfix = event.hotfix === true;
       s.createdAt = at;
       keep(s.timeline, { kind: "created", at, reason: event.reason, fork: event.fork, attempt: event.attempt, parent: event.parent }, TIMELINE_LIMIT);
       return true;
@@ -202,6 +210,12 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       s.reason = event.reason;
       if (event.to !== "stuck") s.stuck = null;
       keep(s.timeline, { kind: "state", at, from: event.from, to: event.to, reason: event.reason }, TIMELINE_LIMIT);
+      return true;
+    }
+    case "session.held": {
+      const s = sessionOf(state, event.sessionId, event.featureId, at);
+      s.heldBy = event.by;
+      keep(s.timeline, { kind: "held", at, by: event.by }, TIMELINE_LIMIT);
       return true;
     }
     case "agent.started": {

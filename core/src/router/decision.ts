@@ -1,6 +1,6 @@
 import type { ChoiceAnswer } from "../ports/classifier.ts";
 
-export type RouteIntent = "new_feature" | "change_feature" | "question";
+export type RouteIntent = "new_feature" | "change_feature" | "chore" | "question";
 
 export type ChangeKind = "bug" | "extend" | "refactor";
 
@@ -12,6 +12,7 @@ export interface RouteDecision {
   readonly confidence: number;
   readonly reason: string;
   readonly classifier?: ClassifierTrace | null;
+  readonly hotfix?: boolean;
 }
 
 export interface ClassifierTrace {

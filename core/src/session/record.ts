@@ -23,6 +23,9 @@ export interface SessionRecord {
   syncPending: boolean;
   merge: { commitId: string; mainBefore: string } | null;
   readonly attempt: { readonly group: string; readonly index: number; readonly of: number };
+  readonly kind?: "feature" | "chore";
+  readonly hotfix?: boolean;
+  heldBy?: string | null;
   previewKey: string;
   readonly parent: string | null;
   history: string[];

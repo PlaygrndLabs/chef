@@ -8,6 +8,8 @@ const PickSchema = z.object({ sessionId: z.string(), reasons: z.array(z.string()
 
 const PICK_SYSTEM = `You pick one of several competing attempts at the same chef feature. Each attempt's code was run against the tests written by every attempt; prefer the attempt that passes the most of them, then the one that best matches the spec, then the smaller diff. Answer with the chosen sessionId and one line per reason.`;
 
+const CHORE_NOTE = "This is a chore: maintenance outside any one feature, not a feature build, so there is no spec and no new tests are expected. Approve if the diff does the task, changes no feature's behavior, and weakens no test. Never set retest for a chore.";
+
 export class LlmReviewer implements Reviewer {
   constructor(
     private readonly llm: LlmEndpoint,
@@ -23,7 +25,7 @@ export class LlmReviewer implements Reviewer {
       model: this.model,
       system: this.system,
       schema: VerdictSchema,
-      prompt: `Spec:\n${JSON.stringify(input.feature, null, 2)}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}`,
+      prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `Spec:\n${JSON.stringify(input.feature, null, 2)}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}`,
     });
     return { approve: result.approve && result.reasons.length === 0, reasons: result.reasons, retest: result.retest, model: this.model };
   }

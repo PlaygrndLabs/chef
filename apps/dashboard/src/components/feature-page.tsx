@@ -7,11 +7,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Composer } from "@/components/composer";
-import { StatusDot, StatusPill } from "@/components/status";
+import { KindBadges, StatusDot, StatusPill } from "@/components/status";
 import { statusOf } from "@/components/home";
 import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, previewHost, stateTone } from "@/lib/format";
-import { relationsOf, type FeatureNode, type SessionNode } from "@/lib/model";
+import { heldBy, isChore, relationsOf, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
 import { isTestFile } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
@@ -379,6 +379,9 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
   const panel = selection.panel;
   const criteria = feature.spec?.acceptance ?? [];
   const isLive = node ? node.state === "merged" : feature.status === "merged";
+  const chore = node ? isChore(node) : feature.id.startsWith("chore-") && !feature.onMain;
+  const held = node ? heldBy(node) : null;
+  const ask = (text: string) => (chore ? `/chore ${text}` : `#${feature.id} ${text}`);
 
   useEffect(() => {
     if (active) end.current?.scrollIntoView({ block: "end" });
@@ -386,7 +389,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
 
   const startOver = async () => {
     try {
-      const result = await api.prompt(`#${feature.id} ${node?.record?.rootPrompt ?? feature.title}`);
+      const result = await api.prompt(chore ? `/chore ${(node?.record?.rootPrompt ?? feature.title).replace(/^\/chore\b\s*/i, "")}` : `#${feature.id} ${node?.record?.rootPrompt ?? feature.title}`);
       toast.success("Started over");
       data.refresh();
       if (result.sessionId) openSession(result.sessionId);
@@ -404,7 +407,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
         await api.retry(node.id, text);
         toast.success("chef is trying again with your note");
       } else {
-        const result = await api.prompt(`#${feature.id} ${text}`);
+        const result = await api.prompt(ask(text));
         toast.success("chef started on your change");
         if (result.sessionId) openSession(result.sessionId);
       }
@@ -421,6 +424,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
       <header className="flex h-15 shrink-0 items-center gap-2.5 border-b px-4 sm:px-6">
         <h1 className="min-w-0 truncate text-base font-semibold">{feature.title}</h1>
         <StatusPill status={node ? statusOf(node.state) : feature.status} />
+        {node ? <KindBadges node={node} /> : null}
         {node ? (
           <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline" data-build-label>
             build {node.id}
@@ -486,7 +490,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
               <TryTabs node={node} />
               <Steps node={node} />
               <Team node={node} />
-              <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : active ? activity(node.state, timeline, null) : p.now}</p>
+              <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : p.now}</p>
               <Artifacts node={node} preview={preview} />
             </div>
           </div>

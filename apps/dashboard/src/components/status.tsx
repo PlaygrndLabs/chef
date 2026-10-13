@@ -1,7 +1,7 @@
 import type { SessionState } from "@chef/core";
 import { cn } from "@/lib/utils";
 import { STATE_LABEL, stateTone, type Tone } from "@/lib/format";
-import type { FeatureStatus } from "@/lib/model";
+import { isChore, isHotfix, type FeatureStatus, type SessionNode } from "@/lib/model";
 
 const DOT: Readonly<Record<Tone, string>> = {
   run: "bg-run pulse-run",
@@ -55,5 +55,26 @@ export function StatusPill({ status, className }: { readonly status: FeatureStat
       <StatusDot tone={tone} />
       {FEATURE_LABEL[status]}
     </span>
+  );
+}
+
+export function KindBadges({ node }: { readonly node: SessionNode }) {
+  return (
+    <>
+      {isHotfix(node) ? (
+        <span className="contents" data-hotfix>
+          <ToneBadge tone="bad" className="h-4 px-1 text-[10.5px]">
+            hotfix
+          </ToneBadge>
+        </span>
+      ) : null}
+      {isChore(node) ? (
+        <span className="contents" data-chore>
+          <ToneBadge tone="idle" className="h-4 px-1 text-[10.5px]">
+            chore
+          </ToneBadge>
+        </span>
+      ) : null}
+    </>
   );
 }
