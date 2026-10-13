@@ -1,37 +1,58 @@
 name: deploy
 
 on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      name:
+        description: Worker name. Leave empty for the main chef; any other name deploys a separate copy with its own repos, memory and previews.
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
-concurrency: deploy
+concurrency:
+  group: deploy-${{ inputs.name || 'chef' }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      NAME: ${{ inputs.name }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - name: Check Cloudflare credentials
+        id: creds
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::Skipping deploy: add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID as Actions secrets to deploy from GitHub, or use the Deploy to Cloudflare button."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.creds.outputs.ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - if: steps.creds.outputs.ready == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.creds.outputs.ready == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Create the memory index once
-        working-directory: workers
-        run: |
-          if ! npx wrangler vectorize get chef-memory >/dev/null 2>&1; then
-            npx wrangler vectorize create chef-memory --dimensions=768 --metric=cosine
-            npx wrangler vectorize create-metadata-index chef-memory --property-name=project --type=string
-            npx wrangler vectorize create-metadata-index chef-memory --property-name=kind --type=string
-          fi
-      - name: Deploy with secrets
-        working-directory: workers
+      - if: steps.creds.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Deploy with the same script as the Deploy to Cloudflare button
+        if: steps.creds.outputs.ready == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || secrets.CPA_BASE_URL }}
@@ -44,11 +65,21 @@ jobs:
         run: |
           jq -n '{ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, LLM_BASE_URL: env.LLM_BASE_URL, LLM_API_KEY: env.LLM_API_KEY, VOICE_BASE_URL: env.VOICE_BASE_URL, VOICE_API_KEY: env.VOICE_API_KEY, TYPESAFE_API_KEY: env.TYPESAFE_API_KEY, CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, OPENAI_API_KEY: env.OPENAI_API_KEY, CHEF_PASSWORD: env.CHEF_PASSWORD} | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
           set -o pipefail
-          npx wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json" | tee "$RUNNER_TEMP/deploy.log"
+          pnpm run deploy ${NAME:+--name "$NAME"} --secrets-file "$RUNNER_TEMP/secrets.json" | tee "$RUNNER_TEMP/deploy.log"
           grep -o 'https://[a-z0-9.-]*workers.dev' "$RUNNER_TEMP/deploy.log" | head -1 > "$RUNNER_TEMP/url"
-      - name: Smoke test
+      - name: Smoke test in the browser's place and through the local app
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD || secrets.KARGAH_PASSWORD }}
         run: |
           url=$(cat "$RUNNER_TEMP/url")
           echo "chef is at $url"
           curl -fsS --retry 10 --retry-all-errors --retry-delay 6 -o /dev/null -w '%{http_code}\n' "$url/"
           test "$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/projects")" != 200
+          if [ -n "$CHEF_PASSWORD" ]; then
+            CHEF_URL="$url" CI=1 node --import tsx cli/src/bin.ts app --no-open --port 4300 &
+            for i in $(seq 1 20); do curl -fsS -o /dev/null http://localhost:4300/api/app && break; sleep 1; done
+            curl -fsS http://localhost:4300/api/app
+            curl -fsS --retry 5 --retry-all-errors --retry-delay 5 -o /dev/null -w 'projects through the local app: %{http_code}\n' http://localhost:4300/api/projects
+            kill %1
+          fi

@@ -1,12 +1,12 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "chef",
-  "main": "src/index.ts",
+  "main": "workers/src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
-  "build": { "command": "pnpm --dir .. build" },
-  "assets": { "directory": "../apps/dashboard/dist", "binding": "ASSETS", "run_worker_first": true },
+  "build": { "command": "pnpm build" },
+  "assets": { "directory": "apps/dashboard/dist", "binding": "ASSETS", "run_worker_first": true },
   "artifacts": [{ "binding": "ARTIFACTS", "namespace": "chef" }],
   "durable_objects": {
     "bindings": [
@@ -23,7 +23,7 @@
     {
       "class_name": "SessionAgent",
       "scheduling_policy": "durable_object",
-      "images": { "coder": { "dockerfile": "./sandbox/Dockerfile" } }
+      "images": { "coder": { "dockerfile": "./workers/sandbox/Dockerfile" } }
     }
   ],
   "workflows": [{ "name": "upstream-sync", "binding": "UPSTREAM_SYNC", "class_name": "UpstreamSync" }],

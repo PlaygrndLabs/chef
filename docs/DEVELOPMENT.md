@@ -6,11 +6,11 @@
 spec/        chef's own feature map
 core/        spec, router, state machine, orchestrator, merge, ports and fakes
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, the CopilotKit agent
-workers/     the chef Worker: project and session Durable Objects, coder sandbox, sync workflow
+workers/     the chef Worker: project and session Durable Objects, coder sandbox, sync workflow (configured by the root wrangler.jsonc)
 apps/        dashboard: chat-first CopilotKit UI with a feature list, feature progress, controls and a preview panel
 agents/      specialist profiles with write scopes
 template/    the template every project chef builds starts from
-cli/         chef CLI and local runners
+cli/         chef CLI, the local app (chef app) and deploy script (chef deploy), local runners
 docs/        architecture, spikes, progress
 ```
 
@@ -20,6 +20,8 @@ Requires Node 22.18 or later, pnpm 10 and git.
 
 ```
 pnpm install
+pnpm start                                           # the app on this computer, connected to a chef in Cloudflare (see docs/SELF_HOSTING.md)
+pnpm run deploy [--name n] [--dry-run]               # build and deploy to Cloudflare; the Deploy button and the deploy workflow run the same script
 pnpm run verify                                      # typecheck, lint, spec lint, dashboard build, unit and e2e tests (the browser test needs Chromium: pnpm --filter @chef/cli exec playwright install chromium)
 node --import tsx cli/src/bin.ts serve               # dashboard and CopilotKit chat at http://127.0.0.1:8787, after pnpm build
 node --import tsx cli/src/bin.ts demo                # one feature through every state with real tsc, tests and proof

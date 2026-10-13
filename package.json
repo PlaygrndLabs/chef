@@ -13,7 +13,10 @@
     "test:e2e": "vitest run --project e2e",
     "spec:lint": "node --import tsx cli/src/bin.ts spec lint spec",
     "verify": "pnpm typecheck && pnpm lint && pnpm spec:lint && pnpm build && pnpm test && pnpm test:e2e",
-    "build": "pnpm --filter @chef/dashboard build"
+    "build": "pnpm --filter @chef/dashboard build",
+    "start": "pnpm build && node --import tsx cli/src/bin.ts app",
+    "deploy": "node --import tsx cli/src/bin.ts deploy",
+    "chef": "node --import tsx cli/src/bin.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -22,6 +25,14 @@
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1",
-    "vitest": "5.0.3"
+    "vitest": "5.0.3",
+    "wrangler": "4.149.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "CHEF_PASSWORD": {
+        "description": "The password you sign in to chef with. Scripts and the local app send it as a Bearer token. Use at least 8 characters; a long random one is best, for example from `openssl rand -base64 24`."
+      }
+    }
   }
 }
