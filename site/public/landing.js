@@ -68,6 +68,9 @@ function animate(canvas, setup) {
     canvas.pointer = null;
     if (!frame) frame = requestAnimationFrame(loop);
   });
+  canvas.redraw = () => {
+    if (!frame) frame = requestAnimationFrame(loop);
+  };
   new ResizeObserver(size).observe(canvas);
   new IntersectionObserver(([entry]) => {
     visible = entry.isIntersecting;
@@ -411,7 +414,8 @@ function tree(ctx, width, height) {
   ctx.textBaseline = "top";
   const cw = ctx.measureText("M").width;
   const line = size + 4;
-  const cols = Math.floor(width / cw);
+  const pad = width < 420 ? 14 : 24;
+  const cols = Math.floor((width - pad * 2) / cw);
   const name = Math.min(22, Math.max(17, Math.floor(cols * 0.4)));
   const status = 9;
   const bar = Math.max(6, cols - name - status - 2);
@@ -423,7 +427,7 @@ function tree(ctx, width, height) {
   const text = (value, col, row, alpha, fill = color) => {
     ctx.globalAlpha = alpha;
     ctx.fillStyle = fill;
-    ctx.fillText(value, col * cw, top + row * line);
+    ctx.fillText(value, pad + col * cw, top + row * line);
   };
   return (now) => {
     const t = still ? 14 : (now / 1000) % cycle;
@@ -497,7 +501,258 @@ function dots(ctx, width, height) {
   };
 }
 
-const scenes = { city, app, tree, dots };
+function term(ctx, width, height) {
+  const size = width < 420 ? 10 : 11;
+  ctx.font = `500 ${size}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  ctx.textBaseline = "top";
+  const cw = ctx.measureText("M").width;
+  const line = Math.round(size * 1.8);
+  const pad = width < 420 ? 14 : 24;
+  const cols = Math.floor((width - pad * 2) / cw);
+  const rows = Math.floor((height - pad * 2) / line);
+  const ink = { brand: brand(), muted: css("--muted-foreground", "#777"), green: css("--success", "#16a34a"), fg: css("--foreground", "#111") };
+  const text = (value, col, row, alpha = 1, fill = ink.fg) => {
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.fillStyle = fill;
+    ctx.fillText(value, pad + col * cw, pad + row * line);
+  };
+  const clear = () => {
+    ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, width, height);
+  };
+  const glyph = (seed, moving, now) => {
+    const n = Math.sin(seed * 12.9898 + (moving ? Math.floor(now / 140) : 0) * 78.233) * 43758.5453;
+    const v = n - Math.floor(n);
+    return { char: "#=N@%"[Math.floor(v * 5)], v };
+  };
+  return { cw, line, cols, rows, pad, text, clear, glyph, ...ink };
+}
+
+function clock(ms, cycle, end) {
+  const t = still ? end : (ms / 1000) % cycle;
+  return { t, fade: still ? 1 : Math.min(1, t / 0.3, (cycle - t) / 0.6) };
+}
+
+const spinner = (ms) => "|/-\\"[Math.floor(ms / 120) % 4];
+
+function ask(ctx, width, height) {
+  const k = term(ctx, width, height);
+  const prompt = "Build a todo app where I can edit and delete items";
+  const words = prompt.split(" ");
+  const lines = [""];
+  for (const word of words) {
+    const last = lines[lines.length - 1];
+    if ((last + " " + word).trim().length > k.cols - 2) lines.push(word);
+    else lines[lines.length - 1] = (last + " " + word).trim();
+  }
+  const plan = [
+    ["todo list", "add, show and complete items"],
+    ["edit items", "change an item's text"],
+    ["delete items", "remove an item"],
+  ];
+  return (ms) => {
+    const { t, fade } = clock(ms, 10, 9);
+    k.clear();
+    let typed = Math.floor(t * 20);
+    lines.forEach((value, row) => {
+      const shown = value.slice(0, Math.max(0, typed));
+      typed -= value.length + 1;
+      k.text(row ? "  " : "> ", 0, row, fade * 0.6, k.muted);
+      k.text(shown, 2, row, fade);
+    });
+    const done = prompt.length / 20;
+    if (t < done + 0.3) k.text(Math.floor(ms / 500) % 2 ? "_" : "", 2 + (lines[lines.length - 1] ?? "").length, lines.length - 1, fade, k.brand);
+    const base = lines.length + 1;
+    if (t > done + 0.4) {
+      const ready = t > done + 1.6;
+      k.text(ready ? "\u25cf" : spinner(ms), 0, base, fade, ready ? k.green : k.brand);
+      k.text(ready ? "spec ready" : "planner is writing the spec", 2, base, fade * 0.8, k.muted);
+    }
+    const wide = Math.min(14, Math.floor(k.cols * 0.35));
+    plan.forEach(([name, what], index) => {
+      const at = done + 1.8 + index * 0.45;
+      if (t < at) return;
+      const a = fade * Math.min(1, (t - at) * 3);
+      k.text("+", 0, base + 2 + index, a, k.brand);
+      k.text(name, 2, base + 2 + index, a);
+      k.text(what.slice(0, k.cols - wide - 2), 2 + wide, base + 2 + index, a * 0.7, k.muted);
+    });
+    const tests = done + 3.4;
+    if (t > tests) {
+      const a = fade * Math.min(1, (t - tests) * 3);
+      const count = Math.min(9, Math.floor((t - tests) * 12));
+      k.text("tests", 0, base + 6, a, k.brand);
+      k.text(`${count} written, failing until built`.slice(0, k.cols - 8), 8, base + 6, a * 0.8, k.muted);
+    }
+    ctx.globalAlpha = 1;
+  };
+}
+
+function build(ctx, width, height) {
+  const k = term(ctx, width, height);
+  const boxes = [
+    { name: "edit items", url: "edit-items.preview", start: 0.3, build: 3.0 },
+    { name: "delete items", url: "delete-items.preview", start: 0.5, build: 3.6 },
+    { name: "dark mode", url: "dark-mode.preview", start: 0.7, build: 4.2, naps: true },
+  ];
+  const gap = 2;
+  const bw = Math.floor((k.cols - gap * 2) / 3);
+  const bh = Math.max(5, Math.min(9, k.rows - 6));
+  return (ms) => {
+    const { t, fade } = clock(ms, 12, 6);
+    k.clear();
+    k.text("3 sessions, 3 sandboxes", 0, 0, fade * 0.7, k.muted);
+    boxes.forEach((box, index) => {
+      const x = index * (bw + gap);
+      const progress = Math.min(1, Math.max(0, (t - box.start) / box.build));
+      const ready = progress >= 1;
+      const asleep = box.naps && t > 8 && t < 10;
+      const waking = box.naps && t >= 10 && t < 10.8;
+      const edge = ready && !asleep ? k.brand : k.muted;
+      const alpha = fade * (asleep ? 0.35 : 1);
+      k.text("+" + "-".repeat(bw - 2) + "+", x, 2, alpha * (ready ? 0.9 : 0.5), edge);
+      k.text("+" + "-".repeat(bw - 2) + "+", x, 3 + bh, alpha * (ready ? 0.9 : 0.5), edge);
+      for (let r = 0; r < bh; r++) {
+        k.text("|", x, 3 + r, alpha * (ready ? 0.9 : 0.5), edge);
+        k.text("|", x + bw - 1, 3 + r, alpha * (ready ? 0.9 : 0.5), edge);
+        const level = bh - 1 - r;
+        if (level >= Math.round(progress * bh)) continue;
+        for (let c = 1; c < bw - 1; c++) {
+          const g = k.glyph(index * 997 + r * 61 + c, !ready || waking, ms);
+          k.text(g.char, x + c, 3 + r, alpha * (0.3 + 0.5 * g.v), k.brand);
+        }
+      }
+      k.text(box.name.slice(0, bw), x, 5 + bh, alpha);
+      const link = box.url.length <= bw ? box.url : "preview ready";
+      const status = asleep ? "zz sleeping" : waking ? `${spinner(ms)} waking` : ready ? link : `${spinner(ms)} ${Math.round(progress * 100)}%`;
+      k.text(status.slice(0, bw), x, 6 + bh, fade * (ready && !asleep ? 0.9 : 0.6), ready && !asleep && !waking ? k.green : k.muted);
+    });
+    ctx.globalAlpha = 1;
+  };
+}
+
+function check(ctx, width, height) {
+  const k = term(ctx, width, height);
+  const steps = [
+    { name: "tests", done: "12 passed", at: 0.8, take: 1.5 },
+    { name: "typecheck", done: "0 errors", at: 2.3, take: 0.9 },
+    { name: "ai review", done: "approved", at: 3.2, take: 1.6 },
+  ];
+  const wide = 12;
+  const bar = Math.max(6, Math.min(24, k.cols - wide - 16));
+  return (ms) => {
+    const { t, fade } = clock(ms, 10, 9);
+    k.clear();
+    k.text("edit items", 0, 0, fade);
+    k.text("session done, checking before merge".slice(0, k.cols - 12), 12, 0, fade * 0.6, k.muted);
+    steps.forEach((step, index) => {
+      const row = 2 + index * 2;
+      if (t < step.at - 0.4) return;
+      const progress = Math.min(1, Math.max(0, (t - step.at) / step.take));
+      const ok = progress >= 1;
+      k.text(ok ? "[\u2713]" : `[${spinner(ms)}]`, 0, row, fade, ok ? k.green : k.brand);
+      k.text(step.name, 4, row, fade);
+      if (ok) k.text(step.done, 4 + wide, row, fade * 0.8, k.green);
+      else {
+        for (let c = 0; c < bar; c++) {
+          const on = c < Math.round(progress * bar);
+          const g = k.glyph(index * 131 + c, true, ms);
+          k.text(on ? g.char : ".", 4 + wide + c, row, fade * (on ? 0.35 + 0.5 * g.v : 0.2), on ? k.brand : k.muted);
+        }
+      }
+    });
+    const after = [
+      { at: 5.4, mark: "\u21bb", label: "synced with main", note: "no conflicts" },
+      { at: 6.2, mark: "\u25cf", label: "merged into main", note: "a41c9e2" },
+    ];
+    after.forEach((item, index) => {
+      if (t < item.at) return;
+      const a = fade * Math.min(1, (t - item.at) * 3);
+      k.text(item.mark, 1, 9 + index * 2, a, index ? k.green : k.brand);
+      k.text(item.label, 4, 9 + index * 2, a);
+      k.text(item.note, 4 + wide + 6, 9 + index * 2, a * 0.6, k.muted);
+    });
+    ctx.globalAlpha = 1;
+  };
+}
+
+function live(ctx, width, height) {
+  const k = term(ctx, width, height);
+  const calls = [
+    ["GET", "/", 200], ["GET", "/api/items", 200], ["POST", "/api/items", 201], ["GET", "/app.js", 200],
+    ["PATCH", "/api/items/3", 200], ["GET", "/api/items", 200], ["DELETE", "/api/items/7", 204], ["GET", "/", 200],
+  ];
+  const rand = random(17);
+  const times = calls.map(() => 8 + Math.floor(rand() * 40));
+  const shown = Math.max(3, k.rows - 5);
+  return (ms) => {
+    const t = still ? 6 : ms / 1000;
+    k.clear();
+    k.text("\u25cf", 0, 0, 1, k.green);
+    k.text("todo.workers.dev", 2, 0, 1);
+    k.text("live", Math.max(20, k.cols - 4), 0, 0.9, k.green);
+    k.text("main a41c9e2, deployed when checks passed".slice(0, k.cols), 0, 1, 0.55, k.muted);
+    const count = Math.floor(t / 0.5);
+    for (let i = 0; i < shown; i++) {
+      const n = count - i;
+      if (n < 0) break;
+      const [method, path, code] = calls[n % calls.length];
+      const sec = String(n % 60).padStart(2, "0");
+      const age = i === 0 ? Math.min(1, ((t / 0.5) % 1) * 4) : 1;
+      const a = age * (1 - i / (shown + 2));
+      const row = 3 + i;
+      k.text(`12:04:${sec}`, 0, row, a * 0.5, k.muted);
+      if (k.cols > 34) {
+        k.text(method, 10, row, a, k.brand);
+        k.text(path.slice(0, k.cols - 30), 17, row, a);
+        k.text(String(code), k.cols - 10, row, a, k.green);
+        k.text(`${times[n % times.length]}ms`, k.cols - 5, row, a * 0.6, k.muted);
+      } else {
+        k.text(`${method} ${path}`.slice(0, k.cols - 14), 10, row, a);
+        k.text(String(code), k.cols - 3, row, a, k.green);
+      }
+    }
+    ctx.globalAlpha = 1;
+  };
+}
+
+const storyScenes = { ask, tree, build, check, live };
+const storyLabels = { ask: "01 ask", tree: "02 split", build: "03 build", check: "04 check", live: "05 live" };
+let storyStep = "ask";
+
+function story(ctx, width, height) {
+  let current = null;
+  let scene = null;
+  let start = 0;
+  let last = 0;
+  return (now) => {
+    if (now - last > 400) start = now - (last - start);
+    last = now;
+    if (current !== storyStep) {
+      current = storyStep;
+      scene = storyScenes[current](ctx, width, height);
+      start = now;
+    }
+    scene(now - start);
+  };
+}
+
+const steps = document.querySelectorAll("[data-step]");
+const showStep = (name) => {
+  if (!storyScenes[name]) return;
+  storyStep = name;
+  steps.forEach((step) => step.classList.toggle("on", step.dataset.step === name));
+  const label = document.querySelector("[data-story-label]");
+  if (label) label.textContent = storyLabels[name];
+  document.querySelectorAll("[data-story]").forEach((canvas) => canvas.redraw?.());
+};
+showStep("ask");
+const stepper = new IntersectionObserver((entries) => {
+  for (const entry of entries) if (entry.isIntersecting) showStep(entry.target.dataset.step);
+}, { rootMargin: "-45% 0px -50% 0px" });
+steps.forEach((step) => stepper.observe(step));
+
+const scenes = { city, app, dots, story };
 for (const [name, setup] of Object.entries(scenes)) {
   document.querySelectorAll(`[data-${name}]`).forEach((canvas) => animate(canvas, setup));
 }
