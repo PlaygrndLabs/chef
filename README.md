@@ -41,7 +41,7 @@ Every setting and the manual deploy steps: [docs/SELF_HOSTING.md](docs/SELF_HOST
 ## Coming soon
 
 - **Terminal app:** use chef from your terminal, like Claude Code.
-- **Desktop app:** a desktop app with the same chat-first interface.
+- **Desktop app:** the same chat-first interface as a native app.
 
 ## Develop
 
