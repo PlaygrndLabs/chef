@@ -10,10 +10,6 @@ const PICK_SYSTEM = `You pick one of several competing attempts at the same chef
 
 const CHORE_NOTE = "This is a chore: maintenance outside any one feature, not a feature build, so there is no spec and no new tests are expected. Approve if the diff does the task, changes no feature's behavior, and weakens no test. Never set retest for a chore.";
 
-function parentNote(parent: string): string {
-  return `This feature sits under ${parent} in the feature tree and adds to it, so its slice also covers features/${parent}/: edits there that wire this feature in, like a button, a link or a script on ${parent}'s page or a field in its store, are inside the slice. They must keep everything ${parent} already does and its tests passing.`;
-}
-
 export class LlmReviewer implements Reviewer {
   constructor(
     private readonly llm: LlmEndpoint,
@@ -29,7 +25,7 @@ export class LlmReviewer implements Reviewer {
       model: this.model,
       system: this.system,
       schema: VerdictSchema,
-      prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `Spec:\n${JSON.stringify(input.feature, null, 2)}${input.feature.parent ? `\n\n${parentNote(input.feature.parent)}` : ""}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}`,
+      prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `Spec:\n${JSON.stringify(input.feature, null, 2)}${renderScope(input.scope)}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}`,
     });
     return { approve: result.approve && result.reasons.length === 0, reasons: result.reasons, retest: result.retest, model: this.model };
   }
@@ -49,6 +45,11 @@ export class LlmReviewer implements Reviewer {
     if (!ids.includes(result.sessionId)) throw new Error(`reviewer picked unknown attempt ${result.sessionId}`);
     return { sessionId: result.sessionId, reasons: result.reasons, model: this.model };
   }
+}
+
+function renderScope(scope: readonly string[] | undefined): string {
+  if (!scope?.length) return "";
+  return `\n\nThis feature's slice: the paths it may change. chef blocks writes anywhere else, so never reject a change for touching these:\n${scope.map((pattern) => `- ${pattern}`).join("\n")}`;
 }
 
 function renderDiff(diff: FileChanges): string {
