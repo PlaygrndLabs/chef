@@ -4,6 +4,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ResizeHandle, useStoredWidth } from "@/components/resize-handle";
 import { ChatViewSkeleton, Shown } from "@/components/loading";
 import { preloadSettings, SettingsHost } from "@/components/settings-host";
+import { ContextMeter } from "@/components/context-meter";
 import { ProjectBar } from "@/components/project-bar";
 import { InsightsView, SessionTabs, SessionView, TabContent } from "@/components/session-tabs";
 import { ProjectHeader, TreePane } from "@/components/sidebar";
@@ -51,7 +52,14 @@ function titleOf(selection: Selection, featureTitle: string | null): string {
 function ChatPane({ onMenu }: { readonly onMenu?: () => void }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {onMenu ? <ProjectHeader onMenu={onMenu} /> : <div className="flex h-11 shrink-0 items-center border-b px-4 text-xs font-medium text-muted-foreground">Chat</div>}
+      {onMenu ? (
+        <ProjectHeader onMenu={onMenu} />
+      ) : (
+        <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b px-4 text-xs font-medium text-muted-foreground">
+          Chat
+          <ContextMeter />
+        </div>
+      )}
       <div className="min-h-0 flex-1">
         <Suspense fallback={<ChatViewSkeleton />}>
           <MainView />
