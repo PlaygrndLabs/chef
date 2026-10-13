@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.SITE_CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.SITE_CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +48,23 @@ jobs:
           jq -n '{CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID}' > "$RUNNER_TEMP/secrets.json"
           (cd site && npx wrangler deploy --var "SANDBOX_IMAGE:$SANDBOX_IMAGE" --var "ENGINE_VERSION:$ENGINE_VERSION" --secrets-file "$RUNNER_TEMP/secrets.json")
           rm "$RUNNER_TEMP/secrets.json"
+      - name: Serve the site at chef.playgrndlabs.com
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4"
+          auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          zone=$(curl -sS -H "$auth" "$api/zones?name=playgrndlabs.com&account.id=$CLOUDFLARE_ACCOUNT_ID" | jq -r '.result[0].id // empty')
+          if [ -z "$zone" ]; then
+            echo "::notice::playgrndlabs.com is not in this Cloudflare account, so the site stays on workers.dev. Set SITE_CLOUDFLARE_API_TOKEN and SITE_CLOUDFLARE_ACCOUNT_ID for the account that has the domain."
+            exit 0
+          fi
+          body=$(jq -n --arg zone "$zone" '{hostname: "chef.playgrndlabs.com", service: "chef-site", zone_id: $zone, environment: "production"}')
+          attached=$(curl -sS -X PUT -H "$auth" -H "content-type: application/json" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains" -d "$body")
+          if [ "$(echo "$attached" | jq -r .success)" != "true" ]; then
+            echo "::notice::Cloudflare did not attach chef.playgrndlabs.com: $(echo "$attached" | jq -c .errors)"
+            exit 0
+          fi
+          echo "chef.playgrndlabs.com serves the site"
       - name: Create the Sign in with Cloudflare app once
         if: ${{ !cancelled() && steps.image.outcome == 'success' }}
         run: |
