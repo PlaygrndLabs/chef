@@ -313,7 +313,7 @@ describe("dashboard in a browser", () => {
       expect(await feature.locator("header [data-chore]").count()).toBe(1);
       expect(await feature.locator("[data-team] [data-member]").evaluateAll((items) => items.map((i) => i.getAttribute("data-member")))).toEqual(["chore", "reviewer"]);
 
-      await page.goto(`${local.url}/?project=shop&view=agents&tab=router`);
+      await page.goto(`${local.url}/?project=shop&settings=app.router`);
       const kinds = await page.locator('[data-router-section="kinds"]').innerText();
       expect(kinds).toContain("Chore");
       expect(kinds).toContain("Hotfix");
