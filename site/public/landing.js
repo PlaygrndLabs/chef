@@ -387,49 +387,85 @@ function app(ctx, width, height) {
   };
 }
 
-function ascii(ctx, width, height) {
+const sessions = [
+  { name: "todo-app", depth: 0, ask: 0, start: 0.2, build: 0 },
+  { name: "layout", depth: 1, ask: 0, start: 1.6, build: 2.4 },
+  { name: "todo list", depth: 1, ask: 0, start: 1.8, build: 2.9 },
+  { name: "edit", depth: 2, ask: 1, start: 6.0, build: 2.6 },
+  { name: "delete", depth: 2, ask: 1, start: 6.2, build: 2.3 },
+  { name: "sign-in", depth: 1, ask: 2, start: 10.0, build: 2.6 },
+];
+
+const asks = [
+  { text: "Build a todo app", at: 0, split: "2 sessions" },
+  { text: "Add edit and delete", at: 4.4, split: "2 parallel sessions under todo list" },
+  { text: "Let people sign in", at: 8.6, split: "1 session" },
+];
+
+function tree(ctx, width, height) {
   const color = brand();
-  const cw = 7;
-  const ch = 11;
-  const cols = Math.floor(width / cw);
-  const rows = Math.floor(height / ch);
-  const count = width < 500 ? 4 : 5;
-  const span = Math.floor(cols / (count + 1));
-  const wide = Math.max(4, Math.floor(span * 0.7));
-  const rand = random(11);
-  const stars = Array.from({ length: Math.floor(cols * rows * 0.035) }, () => ({ x: Math.floor(rand() * cols), y: Math.floor(rand() * rows), s: rand() * 6 }));
-  const glyphs = "#=N@%";
-  ctx.font = `600 ${ch - 1}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  const muted = css("--muted-foreground", "#777");
+  const green = css("--success", "#16a34a");
+  const size = width < 420 ? 10 : 11;
+  ctx.font = `500 ${size}px ui-monospace, SFMono-Regular, Menlo, monospace`;
   ctx.textBaseline = "top";
+  const cw = ctx.measureText("M").width;
+  const line = size + 4;
+  const cols = Math.floor(width / cw);
+  const name = Math.min(22, Math.max(17, Math.floor(cols * 0.4)));
+  const status = 9;
+  const bar = Math.max(6, cols - name - status - 2);
+  const top = Math.max(0, Math.floor((height - line * (3 + sessions.length * 2)) / 2));
+  const rand = random(11);
+  const stars = Array.from({ length: Math.floor((width * height) / 900) }, () => ({ x: rand() * width, y: rand() * height, s: rand() * 6 }));
+  const cycle = 16;
+  const glyphs = "#=N@%";
+  const text = (value, col, row, alpha, fill = color) => {
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = fill;
+    ctx.fillText(value, col * cw, top + row * line);
+  };
   return (now) => {
-    const t = now / 1000;
+    const t = still ? 14 : (now / 1000) % cycle;
+    const fade = still ? 1 : Math.min(1, t / 0.4, (cycle - t) / 0.8);
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = color;
     for (const star of stars) {
-      ctx.globalAlpha = 0.12 + 0.18 * (Math.sin(t * 1.3 + star.s) * 0.5 + 0.5);
-      ctx.fillText(".", star.x * cw, star.y * ch);
+      ctx.globalAlpha = 0.08 + 0.14 * (Math.sin(now / 770 + star.s) * 0.5 + 0.5);
+      ctx.fillRect(star.x, star.y, 1.5, 1.5);
     }
-    const base = rows - 3;
-    for (let b = 0; b < count; b++) {
-      const level = 0.35 + 0.5 * (Math.sin(t * 0.7 + b * 1.7) * 0.5 + 0.5);
-      const tall = Math.max(3, Math.floor((base - 4) * level));
-      const x0 = Math.floor(span * (b + 0.65));
-      for (let r = 0; r < tall; r++) {
-        const y = base - r;
-        for (let k = 0; k < wide; k++) {
-          const top = r === tall - 1;
-          const side = k === 0 || k === wide - 1;
-          const n = Math.sin((x0 + k) * 12.9898 + y * 78.233 + Math.floor(t * 6)) * 43758.5453;
-          const noise = n - Math.floor(n);
-          let glyph = top ? "-" : side ? "#" : noise < 0.18 ? "=" : noise < 0.24 ? " " : glyphs[Math.floor(noise * glyphs.length)];
-          if (!top && !side && r % 4 === 0) glyph = "=";
-          ctx.globalAlpha = top ? 0.9 : 0.45 + 0.45 * noise;
-          ctx.fillText(glyph, (x0 + k) * cw, y * ch);
-        }
+    const ask = [...asks].reverse().find((a) => t >= a.at) ?? asks[0];
+    const typed = ask.text.slice(0, Math.floor((t - ask.at) * 18));
+    const cursor = typed.length < ask.text.length || Math.floor(now / 500) % 2 ? "_" : "";
+    text(`> ${typed}${cursor}`, 0, 0, fade * 0.95, muted);
+    if (t - ask.at > 1.3) text(`  router: ${ask.split}`, 0, 1, fade * Math.min(0.55, (t - ask.at - 1.3) * 2), color);
+    const shown = sessions.filter((s) => t >= s.start);
+    shown.forEach((s, index) => {
+      const row = 3 + index * 2;
+      const appear = Math.min(1, (t - s.start) * 3) * fade;
+      const later = shown.slice(index + 1);
+      const sibling = later.some((o) => o.depth === s.depth && !later.slice(0, later.indexOf(o)).some((p) => p.depth < s.depth));
+      const outer = later.some((o) => o.depth === 1);
+      const indent = s.depth === 0 ? "" : s.depth === 1 ? "" : outer ? "\u2502  " : "   ";
+      const branch = s.depth === 0 ? "" : sibling ? "\u251c\u2500 " : "\u2514\u2500 ";
+      const progress = s.build ? Math.min(1, Math.max(0, (t - s.start - 0.5) / s.build)) : 1;
+      const live = progress >= 1;
+      const mark = s.depth === 0 ? "\u25be" : live ? "\u25cf" : "|/-\\"[Math.floor(now / 120) % 4];
+      text(indent + branch, 0, row, appear * 0.4, muted);
+      const start = (indent + branch).length;
+      text(mark, start, row, appear, live && s.depth ? green : color);
+      text(s.name.slice(0, name - start - 3), start + 2, row, appear * (s.depth ? 0.9 : 1), s.depth ? undefined : color);
+      if (!s.depth) return;
+      const filled = Math.round(progress * bar);
+      for (let k = 0; k < bar; k++) {
+        const n = Math.sin((k + index * 31) * 12.9898 + row * 78.233 + (live ? 0 : Math.floor(now / 140))) * 43758.5453;
+        const noise = n - Math.floor(n);
+        const on = k < filled;
+        const glyph = !on ? "." : k === 0 || k === bar - 1 ? "#" : live ? (k % 4 === 0 ? "=" : glyphs[Math.floor(noise * glyphs.length)]) : glyphs[Math.floor(noise * glyphs.length)];
+        text(glyph, name + k, row, appear * (on ? 0.4 + 0.5 * noise : 0.18));
       }
-    }
-    ctx.globalAlpha = 0.35;
-    for (let k = 0; k < cols; k++) ctx.fillText(k % 2 ? "-" : "=", k * cw, (base + 1) * ch);
+      text(live ? "live" : progress > 0 ? `${Math.round(progress * 100)}%` : "queued", name + bar + 2, row, appear * (live ? 0.9 : 0.6), live ? green : muted);
+    });
     ctx.globalAlpha = 1;
   };
 }
@@ -461,7 +497,7 @@ function dots(ctx, width, height) {
   };
 }
 
-const scenes = { city, app, ascii, dots };
+const scenes = { city, app, tree, dots };
 for (const [name, setup] of Object.entries(scenes)) {
   document.querySelectorAll(`[data-${name}]`).forEach((canvas) => animate(canvas, setup));
 }
