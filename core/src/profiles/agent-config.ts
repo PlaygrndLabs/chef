@@ -122,6 +122,8 @@ export interface StoredAgents extends AgentVersion {
   readonly config: AgentConfig;
 }
 
+export const DEFAULT_STORED_AGENTS: StoredAgents = { version: 0, at: 0, summary: "chef defaults", config: EMPTY_AGENT_CONFIG };
+
 const CURRENT = "agents/current";
 const VERSION = "agents/version/";
 
@@ -141,7 +143,7 @@ export class AgentSettings implements AgentStore {
   ) {}
 
   async current(): Promise<StoredAgents> {
-    return (await this.store.get<StoredAgents>(CURRENT)) ?? { version: 0, at: 0, summary: "chef defaults", config: EMPTY_AGENT_CONFIG };
+    return (await this.store.get<StoredAgents>(CURRENT)) ?? DEFAULT_STORED_AGENTS;
   }
 
   async history(): Promise<AgentVersion[]> {

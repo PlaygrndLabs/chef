@@ -30,7 +30,7 @@ export default {
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/agents" || url.pathname === "/api/agents/restore") {
       const settings = await currentSettings(env);
-      return agentsRequest(request, { store: agentStore(env), defaults: loadProfiles(agentFiles), models: settings.models, jev: settings.jev !== null });
+      return agentsRequest(request, { store: agentStore(env), defaults: loadProfiles(agentFiles), models: settings.models, jev: settings.jev !== null }).catch(() => Response.json({ error: "chef is finishing an update, so try again in a minute" }, { status: 503 }));
     }
     if (url.pathname === "/api/projects") return projectsRequest(request, settingsStub(env), (project, path, init) => projectStub(env, project, new Request(`${url.origin}/api/projects/${project}/${path}`, init)));
     if (url.pathname === "/api/github" || url.pathname.startsWith("/api/github/")) return gitHubRequest(request, env);
