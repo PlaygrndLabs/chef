@@ -81,8 +81,8 @@ A Deploy to Cloudflare button is not offered yet: the button builds a self-conta
    ```
 
 4. Deploy: `pnpm --filter @chef/workers run deploy`. The `deploy` workflow (Actions, run by hand) does steps 2 to 4 from the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, plus whichever secrets from [Settings](#settings) the repository has. Scripts can call the API with `Authorization: Bearer <password>`.
-5. Open `https://<chef-worker>/`, pick a password and fill in Settings. Create a project from the dashboard, or with `curl -X POST -H "Authorization: Bearer <password>" https://<chef-worker>/api/projects/demo/bootstrap`. This creates the canonical repo `demo` in the `chef` Artifacts namespace from `template/`.
-6. Open `https://<chef-worker>/?project=demo` and send a prompt such as "Add an item to a todo list".
+5. Open `https://<chef-worker>/`, pick a password and fill in Settings. chef starts with no projects and shows a setup screen: name your first project, and optionally give an existing repository to start from. Later projects are added from the project menu. Scripts can do the same with `curl -X POST -H "Authorization: Bearer <password>" -H "content-type: application/json" -d '{"name":"shop"}' https://<chef-worker>/api/projects`. This creates the canonical repo `shop` in the `chef` Artifacts namespace from `template/` and adds it to the project list (`GET /api/projects`).
+6. Send a prompt such as "Add an item to a todo list".
 
 The `cloud` workflow (Actions, run by hand) does steps 5 and 6 from CI: it bootstraps a project, sends a prompt, follows its sessions until they end and prints the Worker's logs from `wrangler tail`.
 

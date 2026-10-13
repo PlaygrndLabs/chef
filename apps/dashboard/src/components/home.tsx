@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type Ref } from "react";
 import { useAgent, useCopilotKit, UseAgentUpdate } from "@copilotkit/react-core/v2";
 import type { RouteDecision, SessionState } from "@chef/core";
-import { ChevronRight, Hammer, Loader2 } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Composer } from "@/components/composer";
 import { StatusPill } from "@/components/status";
 import type { FeatureStatus, SessionNode } from "@/lib/model";
@@ -23,7 +22,7 @@ export function statusOf(state: SessionState): FeatureStatus {
 }
 
 function Avatar() {
-  return <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand text-xs font-semibold text-brand-foreground">k</span>;
+  return <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand text-xs font-semibold text-brand-foreground">c</span>;
 }
 
 function You({ children }: { readonly children: React.ReactNode }) {
@@ -80,40 +79,18 @@ function Reply({ text, sessions }: { readonly text: string; readonly sessions: r
 }
 
 function Welcome({ onExample }: { readonly onExample: (text: string) => void }) {
-  const { data, api, selection } = useWorkspace();
-  const [creating, setCreating] = useState(false);
-  const empty = data.spec !== null && !data.spec.commitId;
-  const create = async () => {
-    setCreating(true);
-    try {
-      await api.bootstrap();
-      toast.success(`Created ${selection.project}`);
-      data.refresh();
-    } catch (error) {
-      toast.error("Could not create the project", { description: error instanceof Error ? error.message : String(error) });
-    } finally {
-      setCreating(false);
-    }
-  };
   return (
     <div className="flex flex-col items-center gap-3 pt-16 pb-4 text-center sm:pt-24" data-view="welcome">
-      <span className="grid size-11 place-items-center rounded-xl bg-brand text-lg font-semibold text-brand-foreground">k</span>
+      <span className="grid size-11 place-items-center rounded-xl bg-brand text-lg font-semibold text-brand-foreground">c</span>
       <h2 className="text-2xl font-semibold tracking-tight">What should we build?</h2>
       <p className="max-w-md text-muted-foreground">Describe a feature in plain words. chef plans it, writes the tests and the code, checks it, and puts it live.</p>
-      {empty ? (
-        <Button className="mt-2" onClick={() => void create()} disabled={creating}>
-          <Hammer />
-          Create {selection.project} to start
-        </Button>
-      ) : (
-        <div className="mt-2 flex flex-wrap justify-center gap-2">
-          {EXAMPLES.map((e) => (
-            <button key={e} type="button" onClick={() => onExample(e)} className="rounded-full border px-3.5 py-1.5 text-sm hover:bg-muted">
-              {e}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="mt-2 flex flex-wrap justify-center gap-2">
+        {EXAMPLES.map((e) => (
+          <button key={e} type="button" onClick={() => onExample(e)} className="rounded-full border px-3.5 py-1.5 text-sm hover:bg-muted">
+            {e}
+          </button>
+        ))}
+      </div>
       <ol className="mt-8 grid w-full gap-3 text-left sm:grid-cols-3">
         {[
           ["Describe it", "Type or talk. One sentence is enough."],
