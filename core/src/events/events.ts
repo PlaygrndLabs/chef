@@ -23,6 +23,8 @@ export type ChefEvent = Base &
     | { readonly type: "main.reverted"; readonly featureId: string; readonly revertedCommit: string; readonly commitId: string; readonly log: string }
     | { readonly type: "sync.merged"; readonly sessionId: string; readonly featureId: string; readonly commitId: string; readonly mainCommit: string }
     | { readonly type: "sync.conflict"; readonly sessionId: string; readonly featureId: string; readonly paths: readonly string[]; readonly mainCommit: string }
+    | { readonly type: "fork.deleted"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly archived: string | null }
+    | { readonly type: "fork.kept"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly reason: string }
     | { readonly type: "session.stuck"; readonly sessionId: string; readonly featureId: string; readonly reason: string }
     | { readonly type: "session.steered"; readonly sessionId: string; readonly featureId: string; readonly message: string }
     | { readonly type: "turn.rejected"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly rule: RejectionRule; readonly paths: readonly string[] }
