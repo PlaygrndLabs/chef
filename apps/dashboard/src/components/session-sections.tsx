@@ -40,7 +40,7 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, link, commitId, routes, featureId }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly routes: readonly Route[]; readonly featureId: string | null }) {
+function PreviewTab({ url, link, commitId, routes, featureId, live }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly routes: readonly Route[]; readonly featureId: string | null; readonly live: boolean }) {
   const [nonce, setNonce] = useState(0);
   const [chosen, setPath] = useState<string | null>(null);
   const pages = pagesFor(routes, featureId);
@@ -61,7 +61,7 @@ function PreviewTab({ url, link, commitId, routes, featureId }: { readonly url: 
           <RefreshCw />
         </Button>
         <Button variant="ghost" size="icon-xs" asChild>
-          <a href={href} target="_blank" rel="noreferrer" aria-label="Open the preview in a new tab">
+          <a href={href} target="_blank" rel="noreferrer" aria-label={live ? "Open the live app in a new tab" : "Open the preview in a new tab"}>
             <ExternalLink />
           </a>
         </Button>
@@ -81,10 +81,11 @@ function PreviewTab({ url, link, commitId, routes, featureId }: { readonly url: 
           ))}
         </div>
       ) : null}
-      <iframe key={`${nonce}-${path}`} src={href} title="Preview" className="min-h-[320px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+      <iframe key={`${nonce}-${path}`} src={href} title={live ? "Live app" : "Preview"} className="min-h-[320px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
       <p className="text-xs text-muted-foreground">
         {pages.length ? "" : "This build has not added a page yet, so you see the app's home. "}
-        This preview updates after every step chef takes. Built from {short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.</p>
+        {live ? `This is the live app, at ${short(commitId)}. Everything chef merges shows up here.` : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
+      </p>
     </div>
   );
 }
@@ -172,7 +173,14 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
         <Facts
           rows={[
             ["Repository", <span className="font-mono text-xs">{record?.forkDeleted ? (record.machine.state === "dropped" ? `archive/${record.id} (fork removed)` : "main (fork removed after merge)") : (record?.fork ?? node.live?.fork ?? "not created")}</span>],
-            ["Live app", <span className="font-mono text-xs">{`${selection.project} · main ${short(data.spec?.commitId) || "none"}`}</span>],
+            [
+              "Live app",
+              data.spec?.live?.url ? (
+                <a href={data.spec.live.url} target="_blank" rel="noreferrer" className="font-mono text-xs underline-offset-2 hover:underline">{`${new URL(data.spec.live.url).host} · main ${short(data.spec.commitId) || "none"}`}</a>
+              ) : (
+                <span className="font-mono text-xs">{`${selection.project} · main ${short(data.spec?.commitId) || "none"}`}</span>
+              ),
+            ],
             ["Build", <span className="font-mono text-xs">{node.id}</span>],
           ]}
         />
@@ -293,12 +301,14 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
 }
 
 export function SessionPreview({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
-  const { api } = useWorkspace();
-  const preview = node?.live?.preview ?? node?.record?.preview ?? feature.preview ?? null;
+  const { api, data } = useWorkspace();
+  const app = data.spec?.live;
+  const live = node?.state === "merged" && app?.url ? { url: app.url, link: null, commitId: app.commitId } : null;
+  const preview = live ?? node?.live?.preview ?? node?.record?.preview ?? feature.preview ?? null;
   const head = node?.live?.commits.at(-1)?.id ?? node?.record?.head ?? "";
   const changes = useFetch(node ? () => api.changes(node.id) : null, `${node?.id ?? ""}:${head}`, node?.id ?? "");
   const found = routesIn(changes.data?.files ?? []);
   const entry = entryRoute(feature.spec?.entrypoint);
   const routes = entry && !found.some((r) => r.method === entry.method && r.path === entry.path) ? [entry, ...found] : found;
-  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} featureId={feature.id} />;
+  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} featureId={feature.id} live={live !== null} />;
 }

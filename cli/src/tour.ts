@@ -32,6 +32,7 @@ export interface TourReport {
   finished: boolean;
 }
 
+const SETTLE_MS = 15_000;
 const ROUTE_PROMPT = "Add a way to mark items as done";
 
 async function signIn(page: Page, url: string, password: string | undefined): Promise<void> {
@@ -83,8 +84,11 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     const page = await context.newPage();
     page.on("pageerror", (error) => report.errors.push(`pageerror ${error.message}`));
     let leaving = false;
+    page.on("response", (response) => {
+      if (response.status() >= 400) report.errors.push(`http ${response.status()} ${response.request().method()} ${response.url()}`);
+    });
     page.on("console", (message) => {
-      if (message.type() !== "error") return;
+      if (message.type() !== "error" || message.text().startsWith("Failed to load resource")) return;
       if (leaving && /network error/i.test(message.text())) return;
       report.errors.push(`console ${message.text()}`);
     });
@@ -99,6 +103,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     let n = 0;
     const shot = async (name: string, target: Page = page) => {
       await target.waitForTimeout(1200);
+      await target.waitForFunction(() => !document.querySelector('[aria-busy="true"]'), null, { timeout: SETTLE_MS }).catch(() => options.log(`${name}: still loading after ${SETTLE_MS / 1000}s`));
       const file = `${String(++n).padStart(3, "0")}-${name}.png`;
       await target.screenshot({ path: join(options.out, file) });
       report.shots.push(file);
