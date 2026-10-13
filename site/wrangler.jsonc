@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "workers_dev": true,
-  "routes": [{ "pattern": "chef.playgrndlabs.com", "custom_domain": true }],
+  "routes": [{ "pattern": "chef.playgrndlabs.com", "zone_name": "playgrndlabs.com", "custom_domain": true }],
   "build": { "command": "node scripts/build.mjs" },
   "assets": { "directory": "dist", "binding": "ASSETS", "run_worker_first": true },
   "durable_objects": { "bindings": [{ "name": "MEMBER", "class_name": "Member" }, { "name": "MEMBERS", "class_name": "Members" }] },
