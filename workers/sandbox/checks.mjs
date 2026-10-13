@@ -14,8 +14,24 @@ function setup(argv, options = {}) {
   }
 }
 
+function clone(target) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      execFileSync("git", ["clone", "--quiet", "--no-tags", "--branch", job.ref, job.remote, target], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      return;
+    } catch (error) {
+      rmSync(target, { recursive: true, force: true });
+      if (attempt >= 3) {
+        process.stderr.write(`git clone failed: ${String(error.stderr || error.message).trim()}\n`);
+        process.exit(1);
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000 * 4 ** (attempt - 1));
+    }
+  }
+}
+
 setup(["rm", "-rf", dir]);
-setup(["git", "clone", "--quiet", "--no-tags", "--branch", job.ref, job.remote, dir]);
+clone(dir);
 setup(["git", "checkout", "--quiet", job.commitId], { cwd: dir });
 for (const [path, content] of Object.entries(job.overlay ?? {})) {
   const target = join(dir, path);
