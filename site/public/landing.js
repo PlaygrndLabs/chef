@@ -261,48 +261,143 @@ function layout(draw) {
 
 const apps = [
   {
-    prompt: "Build a todo app",
-    host: "todo.workers.dev",
+    prompt: "Build a video editor with AI captions",
+    host: "cut.workers.dev",
     cells: layout((rect) => {
-      rect(0, 0, COLS, 4, "solid");
-      rect(3, 7, 40, 4, "line");
-      rect(46, 7, 13, 4, "solid");
-      [26, 34, 20, 30, 24].forEach((w, k) => {
-        rect(3, 14 + k * 4, 2, 2, k < 2 ? "solid" : "line");
-        rect(8, 14 + k * 4, w, 2, k < 2 ? "soft" : "solid");
+      rect(0, 0, 62, 3, "solid");
+      rect(0, 5, 40, 18, "line");
+      rect(18, 11, 2, 5, "solid");
+      rect(20, 12, 1, 3, "solid");
+      rect(10, 19, 20, 1, "soft");
+      rect(42, 5, 20, 18, "line");
+      [8, 11, 14, 17].forEach((r, k) => {
+        rect(44, r, 8, 1, "soft");
+        rect(54, r, k % 2 ? 4 : 6, 1, "solid");
       });
-      rect(3, 34, 18, 1, "soft");
+      rect(0, 25, 62, 1, "soft");
+      [[0, 14], [15, 10], [26, 18], [45, 17]].forEach(([c, w]) => rect(c, 27, w, 2, "solid"));
+      [[4, 20], [30, 22]].forEach(([c, w]) => rect(c, 30, w, 2, "soft"));
+      [[2, 6], [10, 8], [20, 5], [27, 9], [38, 7], [47, 10]].forEach(([c, w]) => rect(c, 33, w, 2, "line"));
     }),
+    move: (p, rect) => {
+      rect(Math.round(p * 61), 24, 1, 12);
+      rect(10, 19, Math.round(4 + p * 16), 1);
+    },
   },
   {
-    prompt: "Make a sales dashboard",
-    host: "sales.workers.dev",
+    prompt: "Make a multiplayer whiteboard",
+    host: "board.workers.dev",
     cells: layout((rect) => {
-      rect(0, 0, 12, ROWS, "soft");
-      [3, 7, 11, 15].forEach((r, k) => rect(2, r, k ? 7 : 8, 2, k ? "line" : "solid"));
-      [14, 30, 46].forEach((c) => {
-        rect(c, 2, 14, 8, "line");
-        rect(c + 2, 4, 6, 2, "solid");
-        rect(c + 2, 7, 9, 1, "soft");
-      });
-      [9, 14, 11, 18, 15, 20, 17, 21].forEach((h, k) => rect(16 + k * 5, 33 - h, 3, h, k === 7 ? "solid" : "soft"));
-      rect(14, 34, 46, 1, "solid");
+      rect(0, 0, 4, 36, "line");
+      [3, 7, 11, 15, 19].forEach((r, k) => rect(1, r, 2, 2, k === 1 ? "solid" : "line"));
+      rect(48, 1, 3, 3, "solid");
+      rect(52, 1, 3, 3, "soft");
+      rect(56, 1, 3, 3, "line");
+      rect(10, 7, 10, 8, "soft");
+      rect(24, 6, 10, 8, "line");
+      rect(26, 8, 6, 1, "solid");
+      rect(26, 10, 4, 1, "soft");
+      rect(40, 9, 12, 8, "soft");
+      rect(14, 22, 12, 9, "line");
+      rect(34, 23, 14, 9, "soft");
+      rect(20, 11, 4, 1, "solid");
+      rect(34, 12, 6, 1, "solid");
+      rect(29, 14, 1, 9, "solid");
+      rect(26, 26, 8, 1, "solid");
     }),
+    move: (p, rect) => {
+      const a = { c: 12 + Math.round(Math.sin(p * 6) * 6 + p * 22), r: 18 + Math.round(Math.cos(p * 5) * 3) };
+      const b = { c: 52 - Math.round(p * 14), r: 28 - Math.round(p * 6) };
+      rect(a.c, a.r, 2, 2);
+      rect(a.c + 3, a.r + 2, 5, 1);
+      rect(b.c, b.r, 2, 2);
+      rect(b.c + 3, b.r + 2, 4, 1);
+      rect(50, 33, Math.round(p * 10), 1);
+    },
   },
   {
-    prompt: "Add a support chat",
-    host: "support.workers.dev",
+    prompt: "Build a CRM with a sales pipeline",
+    host: "deals.workers.dev",
     cells: layout((rect) => {
-      rect(0, 0, COLS, 4, "solid");
-      rect(3, 7, 28, 5, "soft");
-      rect(29, 14, 30, 4, "solid");
-      rect(3, 20, 36, 7, "soft");
-      rect(39, 24, 20, 3, "solid");
-      rect(3, 31, 48, 4, "line");
-      rect(53, 31, 6, 4, "solid");
+      rect(0, 0, 10, 36, "line");
+      [2, 6, 9, 12, 15].forEach((r, k) => rect(2, r, k ? 6 : 7, 1, k ? "soft" : "solid"));
+      rect(12, 1, 30, 3, "line");
+      rect(54, 1, 8, 3, "solid");
+      [[5, 4, 6], [6, 5], [4, 6, 4], [5]].forEach((cards, k) => {
+        const c = 12 + k * 13;
+        rect(c, 6, 7, 1, "solid");
+        rect(c + 9, 6, 2, 1, "soft");
+        let y = 9;
+        cards.forEach((h) => {
+          rect(c, y, 11, h, "line");
+          rect(c + 1, y + 1, 7, 1, "soft");
+          rect(c + 1, y + h - 2, 4, 1, "solid");
+          y += h + 1;
+        });
+      });
     }),
+    move: (p, rect) => {
+      const c = 25 + Math.round(Math.min(1, p * 1.4) * 26);
+      const r = 21 - Math.round(Math.sin(Math.min(1, p * 1.4) * Math.PI) * 4) + Math.round(Math.min(1, p * 1.4) * -6);
+      rect(c, r, 11, 1);
+      rect(c, r + 4, 11, 1);
+      rect(c, r, 1, 5);
+      rect(c + 10, r, 1, 5);
+      rect(c + 2, r + 2, 6, 1);
+    },
+  },
+  {
+    prompt: "Track deliveries on a live map",
+    host: "fleet.workers.dev",
+    cells: layout((rect) => {
+      rect(0, 0, 42, 36, "line");
+      [6, 14, 22, 30].forEach((r) => rect(1, r, 40, 1, "soft"));
+      [8, 18, 28, 36].forEach((c) => rect(c, 1, 1, 34, "soft"));
+      rect(10, 16, 7, 5, "soft");
+      rect(30, 24, 5, 5, "soft");
+      rect(8, 22, 1, 9);
+      rect(8, 22, 21, 1);
+      rect(28, 6, 1, 17);
+      rect(28, 6, 9, 1);
+      rect(7, 30, 3, 3);
+      rect(35, 4, 3, 3);
+      rect(45, 1, 17, 3);
+      [7, 13, 19, 25].forEach((r, k) => {
+        rect(45, r, 17, 5, "line");
+        rect(47, r + 1, 8, 1, "soft");
+        rect(47, r + 3, 5, 1);
+        rect(58, r + 1, 2, 2, k ? "line" : "solid");
+      });
+      rect(45, 32, 17, 2, "soft");
+    }),
+    move: (p, rect) => {
+      const path = [[8, 31], [8, 22], [28, 22], [28, 6], [36, 6]];
+      const lengths = path.slice(1).map(([c, r], k) => Math.abs(c - path[k][0]) + Math.abs(r - path[k][1]));
+      let left = p * lengths.reduce((x, y) => x + y, 0);
+      let at = path[0];
+      for (let k = 0; k < lengths.length; k++) {
+        const f = Math.min(1, left / lengths[k]);
+        at = [path[k][0] + (path[k + 1][0] - path[k][0]) * f, path[k][1] + (path[k + 1][1] - path[k][1]) * f];
+        left -= lengths[k];
+        if (left <= 0) break;
+      }
+      rect(Math.round(at[0]) - 1, Math.round(at[1]) - 1, 3, 3);
+      rect(45, 32, Math.round(p * 17), 2);
+    },
   },
 ];
+
+function moving(app, p) {
+  const cells = [];
+  app.move(p, (c0, r0, w, h) => {
+    for (let c = c0 * FINE; c < (c0 + w) * FINE; c++) {
+      for (let r = r0 * FINE; r < (r0 + h) * FINE; r++) {
+        if (c >= 0 && r >= 0 && c < COLS && r < ROWS) cells.push([c, r]);
+      }
+    }
+  });
+  return cells;
+}
 
 function app(ctx, width, height) {
   const blue = brand();
@@ -368,6 +463,12 @@ function app(ctx, width, height) {
       }
       ctx.globalAlpha = alpha;
       ctx.fillRect(x, y, size, size);
+    }
+
+    const shown = ease((t - 3.4) / 0.4) * (1 - ease((t - 7.0) / 0.4));
+    if (shown > 0) {
+      ctx.globalAlpha = shown;
+      for (const [c, r] of moving(app, Math.max(0, Math.min(1, (t - 3.4) / 3.8)))) ctx.fillRect(grid.x + c * step, grid.y + r * step, step * 0.55, step * 0.55);
     }
 
     const typing = ease(Math.min(1, t / 1.3));
@@ -676,56 +777,95 @@ function check(ctx, width, height) {
   };
 }
 
-function todoCells(done) {
-  return layout((rect) => {
-    rect(0, 0, COLS, 4, "solid");
-    rect(3, 7, 40, 4, "line");
-    rect(46, 7, 13, 4, "solid");
-    [26, 34, 20, 30, 24].forEach((w, k) => {
-      rect(3, 14 + k * 4, 2, 2, k < done ? "solid" : "line");
-      rect(8, 14 + k * 4, w, 2, k < done ? "soft" : "solid");
-    });
-    rect(3, 34, 18, 1, "soft");
-  });
-}
-
 function live(ctx, width, height) {
   const k = term(ctx, width, height);
-  const states = [1, 2, 3, 4, 5].map(todoCells);
-  const calls = [
-    ["PATCH", "/api/items/1", 200, 14], ["PATCH", "/api/items/2", 200, 11], ["PATCH", "/api/items/3", 200, 16],
-    ["PATCH", "/api/items/4", 200, 12], ["PATCH", "/api/items/5", 200, 13],
-  ];
   const top = k.pad + k.line * 3;
   const room = { w: width - k.pad * 2, h: height - top - k.pad - k.line * 2 };
   const step = Math.min(room.w / COLS, room.h / ROWS);
   const dot = Math.max(1, step * 0.62);
   const rand = random(23);
-  const twinkle = Array.from({ length: COLS * ROWS }, () => rand() * 6);
+  const noise = Array.from({ length: COLS * ROWS }, () => rand());
+  const cycle = 13;
+  const span = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
+  const smooth = (x) => x * x * (3 - 2 * x);
+  const calls = [
+    [0.3, "GET", "/", 200, 18],
+    [3.9, "POST", "/api/items", 201, 22],
+    [7.4, "PUT", "/api/items/2", 200, 15],
+    [8.9, "DELETE", "/api/items/3", 204, 12],
+  ];
+  const actions = [[0, "loading the app"], [2.1, "adding an item"], [5.0, "editing item 2"], [8.0, "deleting item 3"]];
   return (ms) => {
-    const t = still ? 7.9 : (ms / 1000) % 8;
-    const done = Math.min(4, Math.floor(t / 1.6));
+    const { t, fade } = clock(ms, cycle, 11.5);
     k.clear();
-    k.text("\u25cf", 0, 0, 1, k.green);
-    k.text("todo.workers.dev", 2, 0, 1);
-    k.text("live", Math.max(20, k.cols - 4), 0, 0.9, k.green);
-    k.text("main a41c9e2, deployed when checks passed".slice(0, k.cols), 0, 1, 0.55, k.muted);
+    const paint = (c0, r0, w, h, kind, alpha = 1, gone = 0) => {
+      if (alpha <= 0 || w <= 0) return;
+      const x0 = Math.round(c0 * FINE);
+      const y0 = Math.round(r0 * FINE);
+      const x1 = x0 + Math.round(w * FINE);
+      const y1 = y0 + Math.round(h * FINE);
+      for (let c = x0; c < x1; c++) {
+        for (let r = y0; r < y1; r++) {
+          if (c < 0 || r < 0 || c >= COLS || r >= ROWS) continue;
+          const edge = c === x0 || r === y0 || c === x1 - 1 || r === y1 - 1;
+          if (kind === "line" && !edge) continue;
+          if (kind === "soft" && !edge && (c + r) % 2) continue;
+          const n = noise[r * COLS + c];
+          if (gone && n < gone) continue;
+          const shown = smooth(span(t, 0.3 + (r / ROWS) * 1.2 + n * 0.3, 0.6 + (r / ROWS) * 1.2 + n * 0.3));
+          const value = kind === "solid" ? (edge ? 0.95 : 0.6) : kind === "line" ? 0.7 : edge ? 0.5 : 0.3;
+          ctx.globalAlpha = fade * alpha * shown * value * (0.8 + 0.2 * Math.sin(ms / 900 + n * 6));
+          ctx.fillRect(k.pad + c * step, top + r * step, dot, dot);
+        }
+      }
+    };
+    const blink = Math.floor(ms / 400) % 2 === 0;
     ctx.fillStyle = k.brand;
-    for (const [index, value] of states[done]) {
-      const c = index % COLS;
-      const r = Math.floor(index / COLS);
-      ctx.globalAlpha = value * (0.75 + 0.25 * Math.sin(ms / 900 + twinkle[index]));
-      ctx.fillRect(k.pad + c * step, top + r * step, dot, dot);
+    paint(0, 0, 62, 4, "solid");
+    paint(3, 7, 40, 4, "line");
+    const typed = t < 3.9 ? Math.round(span(t, 2.2, 3.5) * 24) : 0;
+    paint(5, 8, typed, 2, "soft");
+    if (t > 2.1 && t < 3.9 && blink) paint(5 + typed, 8, 1, 2, "solid");
+    paint(46, 7, 13, 4, "solid", t > 3.6 && t < 3.9 ? 0.35 : 1);
+    const row = (slot, width, alpha = 1, gone = 0, lift = 0) => {
+      const y = 14 + slot * 4 + lift;
+      paint(3, y, 2, 2, slot === 0 ? "solid" : "line", alpha, gone);
+      paint(8, y, width, 2, slot === 0 ? "soft" : "solid", alpha, gone);
+    };
+    row(0, 26);
+    const editWidth = t < 5.4 || t > 8.4 ? (t > 8.4 ? 22 : 34) : t < 6.2 ? Math.round(34 * (1 - span(t, 5.4, 6.2))) : Math.round(22 * span(t, 6.2, 7.4));
+    row(1, editWidth);
+    if (t > 5.0 && t < 8.0) {
+      const ring = Math.min(span(t, 5.0, 5.3), 1 - span(t, 7.6, 8.0));
+      paint(1, 17, 60, 4, "line", ring * 0.8);
+      if (t > 5.3 && t < 7.5 && blink) paint(8 + editWidth, 18, 1, 2, "solid");
     }
-    const [method, path, code, time] = calls[done];
-    const fresh = Math.min(1, ((t % 1.6) / 1.6) * 6);
-    const row = Math.floor((height - k.pad) / k.line) - 1;
-    k.text("12:04:" + String(10 + done).padStart(2, "0"), 0, row, fresh * 0.5, k.muted);
-    k.text(method, 10, row, fresh, k.brand);
-    k.text(path.slice(0, Math.max(4, k.cols - 30)), 17, row, fresh);
+    const removed = span(t, 8.9, 9.6);
+    if (removed < 1) row(2, 20, 1, removed);
+    if (t > 8.0 && t < 9.6) paint(55, 22, 2, 2, "solid", span(t, 8.0, 8.3) * (t > 8.8 ? 1 - removed : 1));
+    if (t > 3.9) {
+      const slide = smooth(span(t, 3.9, 4.5));
+      const up = smooth(span(t, 9.6, 10.3));
+      row(3 - up, 30, slide, 0, (1 - slide) * 2);
+    }
+    paint(3, 34, 18, 1, "soft");
+    let call = calls[0];
+    for (const c of calls) if (t >= c[0]) call = c;
+    const [at, method, path, code, time] = call;
+    let action = actions[0][1];
+    for (const [from, label] of actions) if (t >= from) action = label;
+    const fresh = fade * Math.min(1, Math.max(0, (t - at) * 6));
+    k.text("\u25cf", 0, 0, fade, k.green);
+    k.text("todo.workers.dev", 2, 0, fade);
+    k.text("live", Math.max(20, k.cols - 4), 0, fade * 0.9, k.green);
+    k.text(`${t < 1.8 ? spinner(ms) : ">"} ${action}`.slice(0, k.cols), 0, 1, fade * 0.7, k.muted);
+    const line = Math.floor((height - k.pad) / k.line) - 1;
+    k.text("12:04:" + String(10 + Math.floor(t)).padStart(2, "0"), 0, line, fresh * 0.5, k.muted);
+    k.text(method, 10, line, fresh, k.brand);
+    k.text(path.slice(0, Math.max(4, k.cols - 31)), 17, line, fresh);
     if (k.cols > 34) {
-      k.text(String(code), k.cols - 10, row, fresh, k.green);
-      k.text(`${time}ms`, k.cols - 5, row, fresh * 0.6, k.muted);
+      k.text(String(code), k.cols - 10, line, fresh, k.green);
+      k.text(`${time}ms`, k.cols - 5, line, fresh * 0.6, k.muted);
     }
     ctx.globalAlpha = 1;
   };
