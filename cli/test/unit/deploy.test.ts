@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { deploy, ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, movedConfig, parseJsonc, withImage, type Runner } from "../../src/deploy.ts";
+import { deploy, ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, withImage, type Runner } from "../../src/deploy.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const base = parseJsonc(readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8"));
@@ -24,28 +24,6 @@ describe("deploy", () => {
       vars: { PROJECT_WORKER_PREFIX: "trial-", CODER_MODEL: (base["vars"] as Record<string, string>)["CODER_MODEL"] },
     });
     expect(copy["durable_objects"]).toEqual(base["durable_objects"]);
-  });
-
-  it("moves the main chef to a new name with its projects, repos, memory and live apps", () => {
-    const tags = (base["migrations"] as { tag: string }[]).map((m) => m.tag);
-    const moved = movedConfig(base, "chef-dev", `chef@${tags.at(-1) ?? ""}`);
-    expect(moved).toMatchObject({
-      name: "chef-dev",
-      artifacts: base["artifacts"],
-      vectorize: base["vectorize"],
-      vars: { PROJECT_WORKER_PREFIX: "" },
-      workflows: [{ binding: "UPSTREAM_SYNC", name: "chef-dev-upstream-sync" }],
-      triggers: { events: [{ filter: { namespace: "chef" }, targets: [{ workflow_name: "chef-dev-upstream-sync" }] }] },
-    });
-    expect(moved["migrations"]).toEqual([
-      {
-        tag: tags.at(-1),
-        transferred_classes: ["ProjectAgent", "SessionAgent", "Settings"].map((cls) => ({ from: cls, from_script: "chef", to: cls })),
-      },
-    ]);
-    const later = movedConfig({ ...base, migrations: [...(base["migrations"] as unknown[]), { tag: "v9", new_sqlite_classes: ["Later"] }] }, "chef-dev", "chef@v2");
-    expect((later["migrations"] as { tag: string }[]).map((m) => m.tag)).toEqual(["v2", "v9"]);
-    expect(() => movedConfig(base, "chef-dev", "chef@nope")).toThrow("--moved-from");
   });
 
   it("points every sandbox image at a prebuilt one, so a deploy needs no Docker", () => {
@@ -73,27 +51,6 @@ describe("deploy", () => {
     expect(log.at(-1)).toContain("deploying anyway");
   });
 
-  it("moves the Durable Objects before turning on containers when Cloudflare refuses both at once", async () => {
-    const calls: string[][] = [];
-    const run: Runner = async (args) => {
-      calls.push([...args]);
-      if (args[0] !== "deploy") return { code: 0, output: "" };
-      const deploys = calls.filter((c) => c[0] === "deploy").length;
-      if (deploys === 1) return { code: 1, output: "Cannot enable containers in a Durable Objects class 'SessionAgent' if it is not a SQLite Durable Object [code: 10074]" };
-      return { code: 0, output: "https://chef-dev.example.workers.dev" };
-    };
-    const result = await deploy({ name: "chef-dev", movedFrom: "chef@v2", run, log: () => {} });
-    const deploys = calls.filter((c) => c[0] === "deploy");
-    expect(deploys).toHaveLength(3);
-    const second = deploys[1] ?? [];
-    const first = second[second.indexOf("--config") + 1] ?? "";
-    expect(first.endsWith(".wrangler.chef-dev.move.jsonc")).toBe(true);
-    const moved = parseJsonc(readFileSync(first, "utf8"));
-    expect(moved["containers"]).toBeUndefined();
-    expect((moved["migrations"] as { transferred_classes?: unknown[] }[])[0]?.transferred_classes).toHaveLength(3);
-    expect(deploys[2]).toEqual(deploys[0]);
-    expect(result).toMatchObject({ code: 0, url: "https://chef-dev.example.workers.dev" });
-  });
   it("deploys again when Cloudflare could not finish the container settings", async () => {
     const calls: string[][] = [];
     const run: Runner = async (args) => {
@@ -103,7 +60,7 @@ describe("deploy", () => {
       if (deploys === 1) return { code: 1, output: "The Worker version was deployed, but Wrangler could not finish applying its Durable Object-managed Container application settings." };
       return { code: 0, output: "https://chef-dev.example.workers.dev" };
     };
-    const result = await deploy({ name: "chef-dev", movedFrom: "chef@v2", run, log: () => {} });
+    const result = await deploy({ name: "chef-dev", run, log: () => {} });
     const deploys = calls.filter((c) => c[0] === "deploy");
     expect(deploys).toHaveLength(2);
     expect(deploys[1]).toEqual(deploys[0]);
