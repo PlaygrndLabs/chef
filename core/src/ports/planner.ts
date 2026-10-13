@@ -51,6 +51,7 @@ export interface PlanInput {
   readonly spec: readonly FeatureSpec[];
   readonly env?: readonly EnvVar[];
   readonly roles?: readonly BuilderRole[];
+  readonly guidance?: string;
 }
 
 export interface Plan {

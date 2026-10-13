@@ -67,8 +67,9 @@ export interface CustomAgent {
   readonly skills: readonly Skill[];
 }
 
-export function customAgent(profile: AgentProfile, featureId: string, scope: readonly string[]): CustomAgent {
-  const instructions = profile.instructions.replaceAll("{feature}", featureId);
+export function customAgent(profile: AgentProfile, featureId: string, scope: readonly string[], guidance = ""): CustomAgent {
+  const own = profile.instructions.replaceAll("{feature}", featureId);
+  const instructions = guidance ? `${own}\n\n${guidance}` : own;
   const rules = scope.length ? `You may only change files matching:\n${scope.join("\n")}` : "You may not change any file.";
   return {
     name: `chef-${profile.role}`,

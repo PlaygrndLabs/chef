@@ -12,6 +12,7 @@ import { RealtimeHost } from "@chef/adapters/realtime";
 import { AgentSettings, applyAgentConfig, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
+import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
@@ -122,6 +123,7 @@ export class ProjectAgent extends Agent<Env> {
         specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
         environment: async () => envNames(await this.effectiveEnv()),
+        instructions: async () => (await settingsStub(env).sharedInstructions())?.text ?? "",
       },
     );
     const git = project.git;
@@ -144,6 +146,8 @@ export class ProjectAgent extends Agent<Env> {
     if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")));
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
     if (action === "env" && url.pathname.endsWith(`/projects/${this.name}/env`)) return this.envRequest(request);
+    if (action === "instructions" && url.pathname.endsWith(`/projects/${this.name}/instructions`)) return instructionsRequest(request, await this.guidanceHost());
+    if (action === "memory" && url.pathname.endsWith(`/projects/${this.name}/memory`)) return memoryRequest(request, await this.guidanceHost());
     if (url.pathname.endsWith(`/projects/${this.name}/agents`) || url.pathname.endsWith(`/projects/${this.name}/agents/restore`)) {
       return projectAgentsRequest(request, { project: this.name, store: this.agentSettings(), shared: agentStore(this.env), defaults: loadProfiles(agentFiles), models: settings.models, jev: settings.jev !== null });
     }
@@ -336,6 +340,24 @@ export class ProjectAgent extends Agent<Env> {
       await this.schedule(0, "syncExternal");
     } else await this.stopPolling();
     return Response.json(viewProjectSettings(saved));
+  }
+
+  private async guidanceHost(): Promise<GuidanceHost> {
+    const { orchestrator } = await this.build();
+    return {
+      main: () => orchestrator.mainTree(),
+      shared: () => settingsStub(this.env).sharedInstructions(),
+      edit: async (edit) => {
+        const before = (await orchestrator.mainTree()).commitId;
+        const result = await orchestrator.editGuidance(edit);
+        if (result.ok && result.commitId && result.commitId !== before) {
+          const live = await this.ctx.storage.get<LiveState>(LIVE);
+          if (live?.status === "ready" && live.commitId === before) await this.ctx.storage.put<LiveState>(LIVE, { ...live, commitId: result.commitId });
+          await this.schedule(1, "drive");
+        }
+        return result;
+      },
+    };
   }
 
   private async storedEnv(): Promise<StoredEnv> {

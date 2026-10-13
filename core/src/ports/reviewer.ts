@@ -6,6 +6,7 @@ export interface ReviewInput {
   readonly diff: FileChanges;
   readonly checksLog: string;
   readonly chore?: boolean;
+  readonly guidance?: string;
 }
 
 export interface ReviewVerdict {
