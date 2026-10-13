@@ -1,5 +1,5 @@
 import type { ChoiceAnswers, ChoiceQuestions, Classifier } from "../ports/classifier.ts";
-import type { Planner } from "../ports/planner.ts";
+import type { Planner, SplitPart } from "../ports/planner.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
 import type { ChangeKind, ClassifierTrace, RouteDecision, RouteIntent } from "./decision.ts";
 import { NO_CLASSIFIER } from "./no-classifier.ts";
@@ -40,6 +40,8 @@ export const DEFAULT_ROUTER_CONFIG: RouterConfig = {
   useClassifier: true,
   wording: DEFAULT_WORDING,
 };
+
+export const MAX_PARTS = 6;
 
 const QUESTION = /^(what|how|why|which|when|who|where|is|are|does|do|can)\b[^]*\?\s*$/i;
 
@@ -111,6 +113,28 @@ export class Router {
     const decision = await this.decide(prompt, spec);
     if (!isHotfix(prompt) || decision.intent === "question") return decision;
     return { ...decision, hotfix: true, changeKind: decision.intent === "change_feature" ? "bug" : decision.changeKind };
+  }
+
+  async split(prompt: string, spec: readonly FeatureSpec[], decision: RouteDecision): Promise<SplitPart[] | null> {
+    if (decision.via === "rules" || decision.hotfix || !this.deps.planner.split) return null;
+    if (decision.intent !== "new_feature" && decision.intent !== "change_feature") return null;
+    const intent = decision.intent;
+    let parts: readonly SplitPart[];
+    try {
+      parts = await this.deps.planner.split({ prompt: withoutCommand(prompt), spec, decision: { intent, featureId: decision.featureId, changeKind: decision.changeKind } });
+    } catch {
+      return null;
+    }
+    const known = new Set(spec.map((f) => f.id));
+    const clean = parts
+      .filter((part) => part.prompt.trim().length > 0)
+      .slice(0, MAX_PARTS)
+      .map((part): SplitPart => {
+        const text = part.prompt.trim();
+        if (part.kind === "change") return known.has(part.featureId) ? { kind: "change", prompt: text, featureId: part.featureId, changeKind: part.changeKind } : { kind: "new", prompt: text, parent: null };
+        return { kind: "new", prompt: text, parent: part.parent && known.has(part.parent) ? part.parent : null };
+      });
+    return clean.length ? clean : null;
   }
 
   private async decide(prompt: string, spec: readonly FeatureSpec[]): Promise<RouteDecision> {

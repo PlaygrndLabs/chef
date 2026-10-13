@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import { scopeFor } from "../../src/profiles/profile.ts";
+import { readSpec } from "../../src/spec/lint.ts";
+import { fixture, profiles, scriptFromFixture, templateTree, todoSpec, world } from "../harness.ts";
+
+const TODO = "Add an item to a todo list";
+const EDIT_AND_DELETE = "Let people edit and delete items in the todo list";
+
+describe("splitting a request into features", () => {
+  it("builds each part as its own session under the feature it extends", async () => {
+    const splits = new Map([
+      [
+        EDIT_AND_DELETE,
+        [
+          { kind: "new", prompt: "Let people delete an item from the todo list", parent: "todo-add" },
+          { kind: "new", prompt: "Let people edit an item in the todo list", parent: "todo-add" },
+        ] as const,
+      ],
+    ]);
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]), splits });
+    await w.orchestrator.bootstrap(templateTree());
+    const todo = await w.orchestrator.submit(TODO);
+    expect(w.planner.splitAsked.map((s) => s.prompt)).toEqual([TODO]);
+    expect((await w.orchestrator.run(todo.sessionId as string)).machine.state).toBe("merged");
+
+    const result = await w.orchestrator.submit(EDIT_AND_DELETE);
+    expect(result.sessionIds).toHaveLength(2);
+    const records = await Promise.all(result.sessionIds.map((id) => w.orchestrator.session(id)));
+    expect(records.map((r) => r.featureId)).toEqual(["let-people-delete-item-from-todo-list", "let-people-edit-item-todo-list"]);
+    expect(records.map((r) => r.plan.feature.parent)).toEqual(["todo-add", "todo-add"]);
+    expect(records.map((r) => r.ask)).toEqual(["Let people delete an item from the todo list", "Let people edit an item in the todo list"]);
+    expect(records.map((r) => r.rootPrompt)).toEqual([EDIT_AND_DELETE, EDIT_AND_DELETE]);
+    expect(records.map((r) => r.decision.intent)).toEqual(["new_feature", "new_feature"]);
+    expect(records.map((r) => r.parent)).toEqual([null, null]);
+    const backend = profiles()["backend"];
+    if (!backend) throw new Error("no backend role");
+    const scope = scopeFor(backend, records[0]?.plan.feature ?? todoSpec);
+    expect(scope).toContain("features/todo-add/**");
+    expect(scope).toContain("!features/todo-add/flow.ts");
+  });
+
+  it("keeps one request as one feature when the planner does not split it", async () => {
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]) });
+    await w.orchestrator.bootstrap(templateTree());
+    const result = await w.orchestrator.submit(TODO);
+    expect(result.sessionIds).toHaveLength(1);
+    expect((await w.orchestrator.session(result.sessionId as string)).ask).toBeUndefined();
+  });
+
+  it("skips splitting for explicit commands and writes the parent into the spec", async () => {
+    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add" }] as const]]);
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]), splits });
+    await w.orchestrator.bootstrap(templateTree());
+    await w.orchestrator.run((await w.orchestrator.submit(TODO)).sessionId as string);
+    await w.orchestrator.submit("#todo-add Let people delete an item");
+    expect(w.planner.splitAsked.map((s) => s.prompt)).toEqual([TODO]);
+    const child = await w.orchestrator.submit("Let people delete an item");
+    const record = await w.orchestrator.session(child.sessionId as string);
+    expect(record.plan.feature.parent).toBe("todo-add");
+    expect(record.ask).toBeUndefined();
+    for (let i = 0; i < 3; i++) await w.orchestrator.step(record.id);
+    const fork = await w.repos.readCommit(record.fork, (await w.orchestrator.session(record.id)).head as string);
+    expect(readSpec(fork?.tree ?? {}).find((f) => f.id === record.featureId)?.parent).toBe("todo-add");
+  });
+});

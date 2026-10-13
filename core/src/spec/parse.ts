@@ -27,6 +27,7 @@ export function renderFeature(spec: FeatureSpec): string {
     status: frontmatter.status,
     entrypoint: frontmatter.entrypoint,
     ...(frontmatter.flow ? { flow: frontmatter.flow } : {}),
+    ...(frontmatter.parent ? { parent: frontmatter.parent } : {}),
     revision: frontmatter.revision,
     ...(frontmatter.shared.length > 0 ? { shared: frontmatter.shared } : {}),
     ...(frontmatter.env.length > 0 ? { env: frontmatter.env } : {}),

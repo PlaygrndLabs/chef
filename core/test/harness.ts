@@ -5,6 +5,7 @@ import type { Tree } from "../src/git/tree.ts";
 import { Orchestrator, type Deps, type ProjectConfig } from "../src/orchestrator/orchestrator.ts";
 import { loadProfiles } from "../src/profiles/profile.ts";
 import type { FeatureSpec } from "../src/spec/schema.ts";
+import type { SplitPart } from "../src/ports/planner.ts";
 import {
   FakeCheckRunner,
   FakeProofRunner,
@@ -93,7 +94,7 @@ export interface World {
   readonly deps: Deps;
 }
 
-export function world(options: { script: Script; presets?: Map<string, FeatureSpec>; config?: Partial<ProjectConfig>; deps?: Partial<Deps> }): World {
+export function world(options: { script: Script; presets?: Map<string, FeatureSpec>; splits?: Map<string, readonly SplitPart[]>; config?: Partial<ProjectConfig>; deps?: Partial<Deps> }): World {
   const clock = new TickingClock();
   const repos = new MemoryRepoHost(clock);
   const bus = new MemoryEventBus();
@@ -101,7 +102,7 @@ export function world(options: { script: Script; presets?: Map<string, FeatureSp
   const checks = new FakeCheckRunner(undefined, generated);
   const proofs = new FakeProofRunner(clock);
   const previews = new MemoryPreviewHost();
-  const planner = new TemplatePlanner(options.presets ?? new Map());
+  const planner = new TemplatePlanner(options.presets ?? new Map(), options.splits ?? new Map());
   const deps: Deps = {
     repos,
     coder,

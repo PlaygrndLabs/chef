@@ -62,10 +62,10 @@ function wantsPage(request: Request): boolean {
 
 export function createApp(features: readonly Feature[], store: Store, env: Env = {}): (request: Request) => Promise<Response> {
   const routes = features.flatMap((feature) => feature.routes);
-  const rootPage = features.some((feature) => feature.id !== "home" && feature.routes.some((route) => route.method === "GET" && route.path === "/"));
+  const rootPage = routes.some((route) => route.method === "GET" && route.path === "/");
   return async (request) => {
     const url = new URL(request.url);
-    if (url.pathname === "/" && !rootPage && wantsPage(request)) return indexPage(features);
+    if (url.pathname === "/" && !rootPage && request.method === "GET") return wantsPage(request) ? indexPage(features) : json({ ok: true, pages: pagesOf(features).map((page) => page.path) });
     for (const route of routes) {
       if (route.method !== request.method) continue;
       const params = matchPath(route.path, url.pathname);
