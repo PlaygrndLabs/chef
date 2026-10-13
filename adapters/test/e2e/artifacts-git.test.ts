@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { NOTES_NAMESPACE, parseNote } from "@chef/core";
+import type { GitHttpRequest, GitHttpResponse, HttpClient } from "isomorphic-git";
+import webHttp from "isomorphic-git/http/web";
 import { ArtifactsRepoHost } from "../../src/artifacts.ts";
 import { fixture, scriptFromFixture, templateTree, todoSpec, world } from "../../../core/test/harness.ts";
 import { LocalGitServer } from "../git-server.ts";
@@ -125,5 +127,59 @@ describe("ArtifactsRepoHost with the Artifacts read API and a small cache", () =
     expect(await host.info(record.fork)).toBeNull();
     expect(server.gitLog("small-cache")).toContain("spec: mark todo-add merged");
     expect((await w.orchestrator.turns(sessionId as string)).every((t) => t.note !== null)).toBe(true);
+  });
+});
+
+describe("ArtifactsRepoHost when the git server has a bad moment", () => {
+  const author = { name: "t", email: "ma.karimi76@gmail.com" };
+  const failure = (request: GitHttpRequest): GitHttpResponse => ({ url: request.url, method: request.method, headers: {}, statusCode: 500, statusMessage: "Internal Server Error", body: [new TextEncoder().encode("oops")] as unknown as GitHttpResponse["body"] });
+  const flaky = (plan: (request: GitHttpRequest) => "pass" | "fail" | "fail-after"): HttpClient => ({
+    async request(request) {
+      const step = plan(request);
+      if (step === "fail") return failure(request);
+      const response = await webHttp.request(request);
+      if (step === "fail-after") {
+        for await (const chunk of response.body ?? []) void chunk;
+        return failure(request);
+      }
+      return response;
+    },
+  });
+  const wait = async () => undefined;
+
+  it("retries reads and pushes that hit a server error", async () => {
+    const setup = new ArtifactsRepoHost(server.control());
+    await setup.createRepo("flaky", { defaultBranch: "main" });
+    const first = await setup.commit(await setup.createToken("flaky", "write", 600), { ref: "main", parent: null, changes: { "a.txt": "a\n" }, message: "init", author });
+    const seen = { refs: 0, pushes: 0 };
+    const host = new ArtifactsRepoHost(server.control(), {
+      wait,
+      http: flaky((request) => {
+        if (request.url.includes("info/refs") && seen.refs++ === 0) return "fail";
+        if (request.method === "POST" && request.url.endsWith("/git-receive-pack") && seen.pushes++ === 0) return "fail";
+        return "pass";
+      }),
+    });
+    const second = await host.commit(await host.createToken("flaky", "write", 600), { ref: "lane/backend", parent: null, changes: { "b.txt": "b\n" }, message: "lane", author });
+    expect(seen.pushes).toBe(2);
+    expect(await setup.resolveRef("flaky", "lane/backend")).toBe(second.id);
+    expect(await setup.resolveRef("flaky", "main")).toBe(first.id);
+  });
+
+  it("treats a push the server applied before failing as done", async () => {
+    const setup = new ArtifactsRepoHost(server.control());
+    await setup.createRepo("applied", { defaultBranch: "main" });
+    let pushes = 0;
+    const host = new ArtifactsRepoHost(server.control(), { wait, http: flaky((request) => (request.method === "POST" && request.url.endsWith("/git-receive-pack") && pushes++ === 0 ? "fail-after" : "pass")) });
+    const commit = await host.commit(await host.createToken("applied", "write", 600), { ref: "main", parent: null, changes: { "a.txt": "a\n" }, message: "init", author });
+    expect(pushes).toBe(1);
+    expect(await setup.resolveRef("applied", "main")).toBe(commit.id);
+  });
+
+  it("names the branch and repo when a push keeps failing", async () => {
+    const setup = new ArtifactsRepoHost(server.control());
+    await setup.createRepo("down", { defaultBranch: "main" });
+    const host = new ArtifactsRepoHost(server.control(), { wait, http: flaky((request) => (request.method === "POST" && request.url.endsWith("/git-receive-pack") ? "fail" : "pass")) });
+    await expect(host.commit(await host.createToken("down", "write", 600), { ref: "lane/frontend", parent: null, changes: { "a.txt": "a\n" }, message: "init", author })).rejects.toThrow(/^push lane\/frontend to down: HTTP Error: 500/);
   });
 });

@@ -592,6 +592,12 @@ export class Orchestrator {
   }
 
   private async laneRound(record: SessionRecord): Promise<boolean> {
+    const leftover = (record.lanes ?? []).filter((lane) => lane.unmerged);
+    if (leftover.length) {
+      await this.mergeLanes(record, leftover);
+      if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(record.lanes)) await this.apply(record, { type: "coded" });
+      return true;
+    }
     if (!record.lanes) {
       if (!this.specialization.parallelRoles || record.kind === "chore") return false;
       const rest = record.plan.items.slice(record.cursor);
@@ -621,13 +627,21 @@ export class Orchestrator {
         failure ??= outcome.reason;
         continue;
       }
-      const result = await this.finishTurn(record, items[i] as WorkItem, outcome.value, lane);
+      let result: "committed" | "empty" | "rejected";
+      try {
+        result = await this.finishTurn(record, items[i] as WorkItem, outcome.value, lane);
+      } catch (error) {
+        failure ??= error;
+        continue;
+      }
       if (result === "rejected") continue;
       lane.feedback = null;
       if (lane.done < lane.items.length) lane.done++;
       else lane.rework = false;
-      if (result === "committed") committed.push(lane);
-      else await this.laneUpdate(record, lane, "unchanged");
+      if (result === "committed") {
+        lane.unmerged = true;
+        committed.push(lane);
+      } else await this.laneUpdate(record, lane, "unchanged");
     }
     if (committed.length) await this.mergeLanes(record, committed);
     if (failure) throw failure;
@@ -662,13 +676,17 @@ export class Orchestrator {
       for (const lane of lanes) {
         const outcome = await this.deps.repos.merge(token, { into: "main", from: { repo: record.fork, ref: lane.branch }, message: `Merge ${lane.role} into ${record.featureId}`, author: this.config.author, resolvers: this.resolvers, onConflict: "commit-markers" });
         if (outcome.status === "conflict") throw new Error(`merge of ${lane.branch} into ${record.fork} failed on ${outcome.paths.join(", ")}`);
-        if (outcome.status === "up-to-date") continue;
+        if (outcome.status === "up-to-date") {
+          lane.unmerged = false;
+          continue;
+        }
         record.head = outcome.commitId;
         const paths = outcome.status === "conflicted" ? outcome.paths : [];
         if (outcome.status !== "fast-forward") {
           record.commits.push(outcome.commitId);
           await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "merge", workItem: null, prompt: `Merge ${lane.branch}`, runId: this.deps.ids.next("run"), model: "chef-sync", paths })) });
         }
+        lane.unmerged = false;
         for (const path of paths) conflicts.add(path);
         await this.laneUpdate(record, lane, paths.length ? "conflict" : "merged", outcome.commitId, paths);
       }
@@ -1526,7 +1544,7 @@ const TRANSIENT_RETRIES = 5;
 
 export function transient(error: unknown): boolean {
   if ((error as { retryable?: unknown } | null)?.retryable === true) return true;
-  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)|container service disconnected|sandbox container (stopped|did not start)/i.test((error as Error | null)?.message ?? "");
+  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)|container service disconnected|sandbox container (stopped|did not start)|HTTP Error: (429|5\d\d)/i.test((error as Error | null)?.message ?? "");
 }
 
 export function runnable(record: SessionRecord): boolean {
