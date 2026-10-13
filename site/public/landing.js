@@ -280,7 +280,7 @@ const apps = [
       [[2, 6], [10, 8], [20, 5], [27, 9], [38, 7], [47, 10]].forEach(([c, w]) => rect(c, 33, w, 2, "line"));
     }),
     move: (p, rect) => {
-      rect(Math.round(p * 61), 24, 1, 12);
+      rect(p * 61, 24, 1, 12);
       rect(10, 19, Math.round(4 + p * 16), 1);
     },
   },
@@ -306,8 +306,8 @@ const apps = [
       rect(26, 26, 8, 1, "solid");
     }),
     move: (p, rect) => {
-      const a = { c: 12 + Math.round(Math.sin(p * 6) * 6 + p * 22), r: 18 + Math.round(Math.cos(p * 5) * 3) };
-      const b = { c: 52 - Math.round(p * 14), r: 28 - Math.round(p * 6) };
+      const a = { c: 12 + Math.sin(p * 6) * 6 + p * 22, r: 18 + Math.cos(p * 5) * 3 };
+      const b = { c: 52 - p * 14, r: 28 - p * 6 };
       rect(a.c, a.r, 2, 2);
       rect(a.c + 3, a.r + 2, 5, 1);
       rect(b.c, b.r, 2, 2);
@@ -337,13 +337,16 @@ const apps = [
       });
     }),
     move: (p, rect) => {
-      const c = 25 + Math.round(Math.min(1, p * 1.4) * 26);
-      const r = 21 - Math.round(Math.sin(Math.min(1, p * 1.4) * Math.PI) * 4) + Math.round(Math.min(1, p * 1.4) * -6);
-      rect(c, r, 11, 1);
-      rect(c, r + 4, 11, 1);
-      rect(c, r, 1, 5);
-      rect(c + 10, r, 1, 5);
-      rect(c + 2, r + 2, 6, 1);
+      const f = Math.max(0, Math.min(1, (p - 0.15) / 0.6));
+      const e = f * f * f * (f * (f * 6 - 15) + 10);
+      const c = 25 + e * 13;
+      const r = 22 + e * 4 - Math.sin(e * Math.PI) * 1.5;
+      rect(c, r, 11, 0.5);
+      rect(c, r + 4.5, 11, 0.5);
+      rect(c, r, 0.5, 5);
+      rect(c + 10.5, r, 0.5, 5);
+      rect(c + 1, r + 1, 7, 1);
+      rect(c + 1, r + 3, 4, 1);
     },
   },
   {
@@ -381,7 +384,7 @@ const apps = [
         left -= lengths[k];
         if (left <= 0) break;
       }
-      rect(Math.round(at[0]) - 1, Math.round(at[1]) - 1, 3, 3);
+      rect(at[0] - 1, at[1] - 1, 3, 3);
       rect(45, 32, Math.round(p * 17), 2);
     },
   },
@@ -390,8 +393,12 @@ const apps = [
 function moving(app, p) {
   const cells = [];
   app.move(p, (c0, r0, w, h) => {
-    for (let c = c0 * FINE; c < (c0 + w) * FINE; c++) {
-      for (let r = r0 * FINE; r < (r0 + h) * FINE; r++) {
+    const x = c0 * FINE;
+    const y = r0 * FINE;
+    for (let i = 0; i < Math.max(1, Math.round(w * FINE)); i++) {
+      for (let j = 0; j < Math.max(1, Math.round(h * FINE)); j++) {
+        const c = x + i;
+        const r = y + j;
         if (c >= 0 && r >= 0 && c < COLS && r < ROWS) cells.push([c, r]);
       }
     }
