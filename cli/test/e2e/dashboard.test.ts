@@ -181,7 +181,7 @@ describe("dashboard in a browser", () => {
       const team = page.locator('[data-view="feature"] [data-team]');
       await team.waitFor({ timeout: 10_000 });
       for (const role of ["planner", "test", "backend", "reviewer"]) expect(await team.locator(`[data-member="${role}"]`).getAttribute("data-member-state")).toBe("done");
-      expect(await page.locator('[data-update-role="test"]').count()).toBeGreaterThan(0);
+      await page.locator('[data-update-role="test"]').first().waitFor({ timeout: 10_000 });
       await team.locator('[data-member="backend"]').click();
       await page.locator('[data-role-editor="backend"]').waitFor({ timeout: 10_000 });
       expect(errors).toEqual([]);
