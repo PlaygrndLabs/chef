@@ -197,6 +197,7 @@ export class DockerPreviewHost implements PreviewHost, PreviewSpace {
   constructor(
     private readonly docker: Docker,
     private readonly project: string,
+    private readonly environment: () => Promise<readonly { readonly name: string; readonly value: string }[]> = async () => [],
     private readonly startMs = 180_000,
   ) {}
 
@@ -208,7 +209,8 @@ export class DockerPreviewHost implements PreviewHost, PreviewSpace {
     this.docker.remove(name);
     const port = previous?.port ?? (await freePort());
     const listen = this.docker.network === "host" ? ["--ip", "127.0.0.1", "--port", String(port)] : ["--ip", "0.0.0.0", "--port", "8787"];
-    const job = { sessionId: `preview-${key}`, remote: repoPath(input.repo), ref: input.branch, commitId: input.commitId, commands: [{ name: "preview", argv: ["npx", "wrangler", "dev", ...listen, "--show-interactive-dev-session=false"], timeoutMs: 7 * 24 * 3600_000, env: { WRANGLER_SEND_METRICS: "false", CI: "true" } }] };
+    const vars = (await this.environment()).flatMap((v) => ["--var", `${v.name}:${v.value}`]);
+    const job = { sessionId: `preview-${key}`, remote: repoPath(input.repo), ref: input.branch, commitId: input.commitId, commands: [{ name: "preview", argv: ["npx", "wrangler", "dev", ...listen, ...vars, "--show-interactive-dev-session=false"], timeoutMs: 7 * 24 * 3600_000, env: { WRANGLER_SEND_METRICS: "false", CI: "true" } }] };
     const env = { CHEF_JOB: Buffer.from(JSON.stringify(job)).toString("base64") };
     const started = await this.docker.exec([...this.docker.runArgs({ name, env, publish: port, detach: true, labels: [`chef-project=${this.project}`] }), "node", "/opt/chef/checks.mjs"], { env: this.docker.containerEnv(env) });
     if (started.code !== 0) throw new Error(`starting the preview failed: ${tail(started.stderr, 20)}`);

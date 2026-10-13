@@ -118,10 +118,12 @@ export class SandboxPreviewHost implements PreviewHost {
     private readonly repos: RepoHost,
     private readonly grant: CloudflareGrant,
     private readonly apiToken: string,
+    private readonly prepare: () => Promise<void> = async () => undefined,
   ) {}
 
   async deploy(input: { repo: string; branch: string; commitId: string }): Promise<PreviewDeployment> {
     const name = previewName(input.branch);
+    await this.prepare();
     const env = { CLOUDFLARE_API_TOKEN: PLACEHOLDER, CLOUDFLARE_ACCOUNT_ID: this.grant.accountId, WRANGLER_SEND_METRICS: "false", CI: "true" };
     const command = { name: "preview", argv: ["npx", "wrangler", "preview", "--name", name, "--worker-name", this.grant.worker, "--json"], timeoutMs: 300_000, env };
     let result: CommandResult | undefined;

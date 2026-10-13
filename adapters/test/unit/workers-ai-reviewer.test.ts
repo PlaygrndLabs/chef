@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PickInput, Reviewer } from "@chef/core";
 import { LORA_BASE_MODEL, WorkersAiReviewer, type TextGenerator } from "../../src/workers-ai-reviewer.ts";
 
-const feature = { id: "shout", title: "Shout", status: "building" as const, entrypoint: "POST /shout", revision: 1, shared: [], acceptance: [{ id: "AC1", text: "uppercases" }], body: "" };
+const feature = { id: "shout", title: "Shout", status: "building" as const, entrypoint: "POST /shout", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: "uppercases" }], body: "" };
 
 function generator(response: unknown): TextGenerator & { calls: { model: string; input: Parameters<TextGenerator["run"]>[1] }[] } {
   const calls: { model: string; input: Parameters<TextGenerator["run"]>[1] }[] = [];

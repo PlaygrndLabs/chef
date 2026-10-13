@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Ref } from "react";
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Code2, FileCode2, FlaskConical, GitCommitHorizontal, GitFork, GitMerge, Globe, ListChecks, Loader2, MessageSquareText, MoreHorizontal, OctagonX, PanelRight, RotateCcw, Rocket, ShieldCheck, Trophy, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FileCode2, FlaskConical, GitCommitHorizontal, GitFork, GitMerge, Globe, ListChecks, Loader2, MessageSquareText, MoreHorizontal, OctagonX, PanelRight, RotateCcw, Rocket, ShieldCheck, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -7,15 +7,17 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Composer } from "@/components/composer";
+import { KeyPrompt } from "@/components/environment";
 import { StatusDot, StatusPill } from "@/components/status";
 import { statusOf } from "@/components/home";
 import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, previewHost, stateTone } from "@/lib/format";
-import { relationsOf, type FeatureNode, type SessionNode } from "@/lib/model";
+import { relationsOf, waitsForKey, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
 import { isTestFile } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
 import { activity, plainReason, progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
+import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -51,8 +53,51 @@ function Steps({ node }: { readonly node: SessionNode }) {
   );
 }
 
+const MEMBER: Readonly<Record<MemberState, string>> = {
+  done: "text-foreground",
+  working: "border-run/40 bg-run/10 font-medium text-run",
+  next: "border-dashed text-muted-foreground",
+  stopped: "border-bad/40 bg-bad/5 text-bad",
+};
+
+const MEMBER_NOTE: Readonly<Record<MemberState, string>> = { done: "did its part", working: "is working now", next: "comes later", stopped: "was working when chef stopped" };
+
+function Team({ node }: { readonly node: SessionNode }) {
+  const view = useAgents();
+  const { select } = useWorkspace();
+  const team = teamOf(node);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" aria-label="Who works on this build" data-team>
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <Bot className="size-3.5" />
+        Team
+      </span>
+      {team.map((m) => {
+        const label = roleLabel(m.role, view);
+        const model = modelLabel(m.role, m.model, view);
+        return (
+          <button
+            key={m.role}
+            type="button"
+            data-member={m.role}
+            data-member-state={m.state}
+            title={`${label} ${MEMBER_NOTE[m.state]}${model ? ` on ${model}` : ""}. Open its prompt and skills.`}
+            onClick={() => select({ view: "agents", tab: "roles", item: m.role, feature: null, session: null, panel: null })}
+            className={cn("inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs hover:bg-muted", MEMBER[m.state])}
+          >
+            {m.state === "done" ? <Check className="size-3 text-ok" strokeWidth={3} /> : m.state === "working" ? <span className="pulse-run size-1.5 rounded-full bg-run" /> : m.state === "stopped" ? <X className="size-3" strokeWidth={3} /> : <Circle className="size-2.5" />}
+            {label}
+            {m.state === "working" && model ? <span className="font-normal text-muted-foreground">· {model}</span> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function UpdateRow({ update }: { readonly update: Update }) {
   const [open, setOpen] = useState(false);
+  const view = useAgents();
   if (update.kind === "you")
     return (
       <div className="flex max-w-[80%] flex-col items-end gap-0.5 self-end">
@@ -78,6 +123,7 @@ function UpdateRow({ update }: { readonly update: Update }) {
         ) : null}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{clock(update.at)}</span>
+          {update.role ? <span data-update-role={update.role}>{roleLabel(update.role, view)}</span> : null}
           {update.tech.length ? (
             <CollapsibleTrigger className="inline-flex items-center gap-0.5 hover:text-foreground">
               {open ? "Hide" : `${update.tech.length} ${update.tech.length === 1 ? "action" : "actions"}`}
@@ -440,7 +486,8 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
             <div className="mx-auto flex max-w-3xl flex-col gap-2.5 px-4 py-3 sm:px-6">
               <TryTabs node={node} />
               <Steps node={node} />
-              <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : active ? activity(node.state, timeline, null) : p.now}</p>
+              <Team node={node} />
+              <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : active ? activity(node.state, timeline, null) : p.now}</p>
               <Artifacts node={node} preview={preview} />
             </div>
           </div>
@@ -454,6 +501,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
             </div>
           )}
           {node?.state === "stuck" ? <NeedsYou node={node} /> : null}
+          {node && waitsForKey(node) ? <KeyPrompt names={node.needs} api={api} onSaved={data.refresh} /> : null}
           {node ? <PickReasons node={node} /> : null}
           {node ? <Related node={node} /> : null}
           {criteria.length ? (

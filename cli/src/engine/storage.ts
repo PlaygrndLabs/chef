@@ -22,8 +22,9 @@ export class FileStore implements KeyValueStore {
   constructor(private readonly file: string) {
     for (const line of readLines(file)) {
       try {
-        const { k, v } = JSON.parse(line) as { k: string; v: string };
-        this.values.set(k, v);
+        const { k, v, d } = JSON.parse(line) as { k: string; v?: string; d?: 1 };
+        if (d) this.values.delete(k);
+        else if (v !== undefined) this.values.set(k, v);
         this.lines++;
       } catch {
         continue;
@@ -43,6 +44,13 @@ export class FileStore implements KeyValueStore {
     mkdirSync(dirname(this.file), { recursive: true });
     appendFileSync(this.file, `${JSON.stringify({ k: key, v: raw })}\n`, { mode: 0o600 });
     if (++this.lines > this.values.size * 4 + 1000) this.compact();
+  }
+
+  async delete(key: string): Promise<void> {
+    if (!this.values.delete(key)) return;
+    mkdirSync(dirname(this.file), { recursive: true });
+    appendFileSync(this.file, `${JSON.stringify({ k: key, d: 1 })}\n`, { mode: 0o600 });
+    this.lines++;
   }
 
   async list<T>(prefix: string): Promise<Map<string, T>> {

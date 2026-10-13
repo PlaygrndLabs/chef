@@ -15,6 +15,7 @@ export type ChefEvent = Base &
     | { readonly type: "question.answered"; readonly prompt: string; readonly answer: string; readonly sources: readonly string[] }
     | { readonly type: "session.created"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly reason: string; readonly attempt: { readonly group: string; readonly index: number; readonly of: number }; readonly parent: string | null }
     | { readonly type: "session.state"; readonly sessionId: string; readonly featureId: string; readonly from: SessionState; readonly to: SessionState; readonly reason: string }
+    | { readonly type: "agent.started"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly kind: string; readonly model: string }
     | { readonly type: "coder.event"; readonly sessionId: string; readonly featureId: string; readonly event: CoderEvent }
     | { readonly type: "commit.created"; readonly sessionId: string; readonly featureId: string; readonly repo: string; readonly commitId: string; readonly role: string; readonly message: string }
     | { readonly type: "preview.updated"; readonly sessionId: string; readonly featureId: string; readonly url: string; readonly commitId: string; readonly link?: string }
@@ -34,6 +35,7 @@ export type ChefEvent = Base &
     | { readonly type: "external.pull-request"; readonly url: string; readonly number: number; readonly branch: string; readonly features: readonly string[] }
     | { readonly type: "session.stuck"; readonly sessionId: string; readonly featureId: string; readonly reason: string }
     | { readonly type: "session.steered"; readonly sessionId: string; readonly featureId: string; readonly message: string }
+    | { readonly type: "session.needs"; readonly sessionId: string; readonly featureId: string; readonly names: readonly string[] }
     | { readonly type: "turn.rejected"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly rule: RejectionRule; readonly paths: readonly string[] }
     | { readonly type: "voice.request"; readonly voiceSessionId: string; readonly delegationId: string; readonly prompt: string; readonly intent: string; readonly sessionId: string | null; readonly featureId: string | null }
     | { readonly type: "memory.recorded"; readonly featureId: string; readonly path: string; readonly kind: "lesson" | "feature" }

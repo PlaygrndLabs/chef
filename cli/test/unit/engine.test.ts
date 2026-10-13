@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,6 +28,8 @@ describe("local storage", () => {
     await store.put("session/a", { state: "coding" });
     await store.put("session/a", { state: "merged" });
     await store.put("session/b", null);
+    await store.put("session/c", 1);
+    await store.delete("session/c");
     const bus = new FileEventBus(join(dir, "events.jsonl"));
     await bus.publish({ type: "main.merged", featureId: "todo-add" } as ChefEvent);
     await bus.publish({ type: "main.merged", featureId: "todo-done" } as ChefEvent);
@@ -37,6 +39,7 @@ describe("local storage", () => {
     const again = new FileStore(join(dir, "store.jsonl"));
     expect(await again.get("session/a")).toEqual({ state: "merged" });
     expect([...(await again.list("session/")).keys()]).toEqual(["session/a", "session/b"]);
+    expect(await again.get("session/c")).toBeUndefined();
     const log = new FileEventBus(join(dir, "events.jsonl"));
     expect(await log.cursor()).toBe(2);
     expect((await log.since(1)).map((e) => e.seq)).toEqual([2]);
@@ -110,6 +113,26 @@ describe("chef running fully on this computer", () => {
     expect(listed.projects.map((p) => p.name)).toEqual(["notes"]);
     const respec = (await (await second.handle(new Request("http://localhost/api/projects/notes/spec"))).json()) as { commitId: string };
     expect(respec.commitId).toBe(spec.commitId);
+    await second.close();
+  });
+
+  it("keeps agent settings and each project's keys on this computer, sealed on disk", async () => {
+    const skill = { name: "house-style", description: "Use for every change", body: "Keep functions short.", everyone: true };
+    const saved = await api("/api/agents", { method: "PUT", body: JSON.stringify({ config: { roles: {}, skills: [skill], router: null }, version: 0, summary: "house style" }) });
+    expect(saved.status).toBe(200);
+    expect(((await saved.json()) as { version: number }).version).toBe(1);
+    const env = await api("/api/projects/notes/env", { method: "PUT", body: JSON.stringify({ set: { MAPS_KEY: { value: "maps-secret-value" }, API_URL: { value: "https://api.example.com", secret: false } } }) });
+    expect(env.status).toBe(200);
+    expect(await env.json()).toMatchObject({ vars: [{ name: "API_URL", value: "https://api.example.com" }, { name: "MAPS_KEY", secret: true, value: null }] });
+    expect(readFileSync(join(dir, "projects", "notes", "store.jsonl"), "utf8")).not.toContain("maps-secret-value");
+    expect((await api("/api/projects/notes/route", { method: "POST", body: JSON.stringify({ prompt: "" }) })).status).toBe(400);
+
+    const second = await LocalEngine.start({ dir, env: {}, docker: new Docker({ repos: join(dir, "repos"), docker: "true" }) });
+    const agents = (await (await second.handle(new Request("http://localhost/api/agents"))).json()) as { version: number; skills: { name: string }[] };
+    expect(agents.version).toBe(1);
+    expect(agents.skills.map((s) => s.name)).toContain("house-style");
+    const again = (await (await second.handle(new Request("http://localhost/api/projects/notes/env"))).json()) as { vars: { name: string }[] };
+    expect(again.vars.map((v) => v.name)).toEqual(["API_URL", "MAPS_KEY"]);
     await second.close();
   });
 

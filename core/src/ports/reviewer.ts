@@ -38,6 +38,7 @@ export interface PickVerdict {
 }
 
 export interface Reviewer {
+  readonly model?: string;
   review(input: ReviewInput): Promise<ReviewVerdict>;
   pick(input: PickInput): Promise<PickVerdict>;
 }

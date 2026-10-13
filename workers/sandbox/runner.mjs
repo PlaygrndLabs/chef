@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync, symlinkSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
@@ -30,15 +30,25 @@ const env = {
 };
 for (const name of ["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy"]) if (process.env[name]) env[name] = process.env[name];
 
+const skills = job.agent.skills ?? [];
+const skillsDir = join(env.HOME, ".claude", "skills");
+rmSync(skillsDir, { recursive: true, force: true });
+for (const skill of skills) {
+  mkdirSync(join(skillsDir, skill.name), { recursive: true });
+  writeFileSync(join(skillsDir, skill.name, "SKILL.md"), `---\nname: ${skill.name}\ndescription: ${JSON.stringify(skill.description)}\n---\n\n${skill.body}\n`);
+}
+const skillNames = skills.map((skill) => skill.name);
+
 const lint = process.env.CHEF_LINT ?? "/opt/chef/template/lint.mjs";
 const options = (resume) => ({
   cwd: dir,
   model: job.model,
-  agents: { [job.agent.name]: { description: job.agent.description, prompt: job.agent.prompt, ...(job.agent.tools ? { tools: [...job.agent.tools] } : {}) } },
+  agents: { [job.agent.name]: { description: job.agent.description, prompt: job.agent.prompt, ...(job.agent.tools ? { tools: [...job.agent.tools] } : {}), ...(skillNames.length ? { skills: skillNames } : {}) } },
   agent: job.agent.name,
   canUseTool: async (_name, input) => ({ behavior: "allow", updatedInput: input }),
   disallowedTools: ["WebFetch", "WebSearch"],
-  settingSources: [],
+  settingSources: skillNames.length ? ["user"] : [],
+  ...(skillNames.length ? { skills: skillNames } : {}),
   includePartialMessages: true,
   maxTurns: job.maxTurns ?? 60,
   env,

@@ -34,6 +34,8 @@ describe("phase 1 core loop on fakes", () => {
     }
     const roles = await Promise.all(featureCommits.map(async (c) => parseNote(await w.repos.readNote("demo", NOTES_NAMESPACE, c.id))?.role));
     expect(roles).toEqual(expect.arrayContaining(["planner", "test", "backend", "gardener"]));
+    const started = w.bus.log.flatMap((e) => (e.type === "agent.started" ? [e.role] : []));
+    expect([...new Set(started)]).toEqual(["planner", "test", "backend", "reviewer"]);
 
     expect(record.firstPreviewCommit).toBe(record.commits[0]);
     expect(w.previews.deployments[0]?.commitId).toBe(record.commits[0]);

@@ -177,7 +177,7 @@ export function NewProjectForm(props: { readonly onCreated: (name: string) => vo
               setPicked(null);
             }}
           />
-          {picked ? <p className="text-xs text-muted-foreground">chef copies {picked.fullName} and reads it. Finished features come back as one pull request to {picked.defaultBranch}; change that later in Project and repository.</p> : null}
+          {picked ? <p className="text-xs text-muted-foreground">chef copies {picked.fullName} and reads it. Finished features come back as one pull request to {picked.defaultBranch}; change that later in Project settings.</p> : null}
         </>
       ) : null}
       {source === "other" ? (

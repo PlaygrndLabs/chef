@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ChevronDown, CornerDownRight, GitFork } from "lucide-react";
+import { Bot, ChevronDown, CornerDownRight, GitFork } from "lucide-react";
 import { FEATURE_LABEL, FEATURE_TONE, StatusDot } from "@/components/status";
 import { ago, PLAIN_STATE, stateTone } from "@/lib/format";
-import { groupSessions, sortFeatures, type FeatureNode, type SessionGroup, type SessionNode } from "@/lib/model";
+import { groupSessions, sortFeatures, waitsForKey, type FeatureNode, type SessionGroup, type SessionNode } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { useNow } from "@/lib/live";
 import { useWorkspace } from "@/lib/workspace";
+import { roleLabel, useAgents, workingRole } from "@/lib/agents";
 
 type Mode = "status" | "feature";
 
@@ -26,9 +27,11 @@ function SessionRow({ node, nested = false, showTitle = true }: { readonly node:
   const { features, session, openSession } = useWorkspace();
   const now = useNow(15000);
   const title = features.find((f) => f.id === node.featureId)?.title ?? node.featureId;
-  const tone = stateTone(node.state);
+  const tone = waitsForKey(node) ? "bad" : stateTone(node.state);
   const tries = node.attempt && node.attempt.of > 1 ? `try ${node.attempt.index} of ${node.attempt.of}` : null;
   const selected = session?.id === node.id;
+  const agents = useAgents();
+  const role = workingRole(node);
   return (
     <button
       type="button"
@@ -43,9 +46,15 @@ function SessionRow({ node, nested = false, showTitle = true }: { readonly node:
         <span className="flex items-center gap-1.5">
           {nested ? <StatusDot tone={tone} /> : null}
           <span className={cn("min-w-0 flex-1 truncate text-sm", !showTitle && "text-muted-foreground")}>{showTitle ? title : tries ? `Try ${node.attempt?.index ?? ""}` : `Build ${node.id}`}</span>
-          <span className={cn("shrink-0 text-xs text-muted-foreground", tone === "bad" && "font-medium text-bad", tone === "run" && "text-run")}>{PLAIN_STATE[node.state]}</span>
+          <span className={cn("shrink-0 text-xs text-muted-foreground", tone === "bad" && "font-medium text-bad", tone === "run" && "text-run")}>{waitsForKey(node) ? "Needs a key" : PLAIN_STATE[node.state]}</span>
         </span>
         <span className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+          {role ? (
+            <span className="inline-flex shrink-0 items-center gap-0.5 text-run" data-working-role={role}>
+              <Bot className="size-3" />
+              {roleLabel(role, agents)}
+            </span>
+          ) : null}
           {showTitle || tries ? <span className="font-mono">{node.id}</span> : null}
           {tries && showTitle ? (
             <span className="inline-flex items-center gap-0.5">
