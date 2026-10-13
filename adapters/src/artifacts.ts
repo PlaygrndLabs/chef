@@ -39,6 +39,7 @@ export interface ArtifactsControl {
   fork(source: string, name: string): Promise<ControlRepo>;
   info(name: string): Promise<ControlRepo | null>;
   delete(name: string): Promise<boolean>;
+  import?(name: string, source: { readonly url: string; readonly branch: string; readonly token?: string }): Promise<ControlRepo>;
   createToken(repo: string, scope: TokenScope, ttlSeconds: number): Promise<{ plaintext: string; expiresAt: number }>;
   revokeToken(repo: string, token: string): Promise<void>;
   readonly read?: ArtifactsReader;
@@ -60,6 +61,7 @@ export interface ArtifactsBindingLike {
   create(name: string, opts?: { description?: string; readOnly?: boolean; setDefaultBranch?: string }): Promise<{ name: string; remote: string; defaultBranch: string; token: string }>;
   get(name: string): Promise<ArtifactsRepoHandle>;
   delete?(name: string): Promise<boolean>;
+  import?(params: { source: { url: string; branch?: string; depth?: number }; target: { name: string; opts?: { description?: string; readOnly?: boolean } } }): Promise<{ name: string; remote: string; defaultBranch: string }>;
 }
 
 export function bindingControl(binding: ArtifactsBindingLike): ArtifactsControl {
@@ -100,6 +102,23 @@ export function bindingControl(binding: ArtifactsBindingLike): ArtifactsControl 
     async delete(name) {
       if (!binding.delete) throw new Error("this Artifacts binding cannot delete repos");
       return binding.delete(name);
+    },
+    async import(name, source) {
+      const importer = binding.import;
+      if (!importer) throw new Error("this Artifacts binding cannot import repos");
+      const run = async (url: string) => {
+        const created = await importer.call(binding, { source: { url, branch: source.branch }, target: { name, opts: { description: `Imported from ${source.url}` } } });
+        return { name: created.name, remote: created.remote, defaultBranch: created.defaultBranch };
+      };
+      try {
+        return await run(source.url);
+      } catch (error) {
+        if (!source.token || (error as { code?: string }).code !== "REMOTE_AUTH_REQUIRED") throw error;
+        const withAuth = new URL(source.url);
+        withAuth.username = "x-access-token";
+        withAuth.password = source.token;
+        return run(withAuth.toString());
+      }
     },
     read: {
       readCommit: (repo, hash) => withRepo(repo, async (handle) => (handle.readCommit ? handle.readCommit(hash) : null)),
@@ -208,6 +227,14 @@ export class ArtifactsRepoHost implements RepoHost {
     const repo = await this.control.fork(source, name);
     this.remotes.set(repo.name, repo.remote);
     return { name: repo.name, remote: repo.remote, defaultBranch: repo.defaultBranch, forkedFrom: source };
+  }
+
+  async importRepo(name: string, source: { readonly url: string; readonly branch: string; readonly token?: string }): Promise<RepoInfo> {
+    if (!this.control.import) throw new Error("this Artifacts namespace cannot import repos");
+    if (source.branch !== "main") throw new Error(`only a main branch is imported directly, not ${source.branch}`);
+    const repo = await this.control.import(name, source);
+    this.remotes.set(repo.name, repo.remote);
+    return { name: repo.name, remote: repo.remote, defaultBranch: repo.defaultBranch };
   }
 
   async deleteRepo(name: string): Promise<boolean> {

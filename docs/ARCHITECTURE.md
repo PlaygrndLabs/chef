@@ -25,6 +25,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 | `Classifier` | `KeywordClassifier` | `JevClassifier` (`adapters/src/jev.ts`) |
 | `Planner` | `TemplatePlanner` | `LlmPlanner` (`adapters/src/llm-planner.ts`) |
 | `Reviewer` | `RuleReviewer` | `LlmReviewer` (`adapters/src/llm-reviewer.ts`), or `WorkersAiReviewer` (`adapters/src/workers-ai-reviewer.ts`, a tuned LoRA on Workers AI) when `REVIEWER_LORA` is set |
+| `ExternalRemote` | `MemoryExternalRemote` | `GitRemote` (`adapters/src/external-git.ts`): any https git remote over smart HTTP, plus the GitHub pulls API |
 | `PreviewHost` | `MemoryPreviewHost` | `SandboxPreviewHost` (`workers/src/sandbox-checks.ts`): runs `wrangler preview` for the branch in the session sandbox |
 | `CheckRunner`, `ProofRunner` | `FakeCheckRunner`, `FakeProofRunner` | `LocalCheckRunner` and `LocalProofRunner` (`cli/src/local`), `SandboxCheckRunner` and `SandboxProofRunner` (`workers/src/sandbox-checks.ts`) |
 | `VoiceHost` | `ScriptedVoiceHost` | `GptLiveHost` (`adapters/src/gpt-live.ts`, GPT-Live `gpt-live-1`) |
@@ -71,6 +72,19 @@ chef serves many projects from one Cloudflare account, so nothing stays up that 
 - A push to canonical `main` emits `cf.artifacts.repo.pushed`, which starts the `upstream-sync` Workflow. It ignores forks and non-`main` refs and tells `ProjectAgent`, which marks every active session for sync. Sync runs between turns: a session that is mid-turn is synced when the turn ends.
 - A conflicting sync is still committed: the fork gets a two-parent merge commit with hunk-level conflict markers, and the session gets a conflict work item, using the conflict-resolver profile when one exists. Since both parents are recorded, later syncs and the gate do not recompute the same conflict.
 - After every merge the gate runs the checks on `main`. If they fail, the merge is reverted and the session reopens on its restored work with the failure log. `revertMerge` does the same for a failure reported later: it undoes only that merge when later merges allow it, and otherwise returns `main` to before it and reopens every session merged since, without charging their attempt budgets.
+
+## External git
+
+The project's code always lives on Artifacts, and every session, gate and preview works there. A project can be linked to an outside repository (GitHub first, any https git host for the branch mode) from the dashboard's "Project and repository" dialog. The link is optional and only keeps the two in sync; unlinking leaves the project on Artifacts as it is.
+
+- **Import.** When a linked project has no `main` yet, `bootstrap` takes the repository in instead of the template: through Artifacts' own import when it can, otherwise by copying the branch over git. The repository has to follow the chef template's layout (spec, `app` CLI, checks) for chef's gate to pass.
+- **Inbound.** `ExternalSync.pull` (`core/src/sync/external.ts`) copies the repository's main branch to `external/<branch>` on the canonical repo and merges it into `main` like any other change, so running sessions sync with it as usual. A conflict does not block anything else: chef forks `main` to `<project>--sync--<id>`, commits the merge with conflict markers, lets the conflict-resolver profile fix it, runs the checks, merges it into `main` and deletes the fork. If that fails, `external.stuck` is emitted and chef waits for a new push to that branch or "Sync now". chef checks the repository every five minutes and at once when GitHub calls `POST /api/projects/:name/git/webhook` with a push to that branch (signed with the project's webhook secret).
+- **Outbound.** A per-project setting decides how work goes back. chef never pushes to the repository's main branch, and a merged pull request comes back as an ordinary inbound change:
+  - `off`: pull only.
+  - `branch`: `main` is mirrored to the sync branch (`chef` by default) after each merge.
+  - `pull-request` (the default): the sync branch, plus one pull request that chef keeps up to date. It lists the features merged on chef but not yet on the repository's main branch, each with its preview link.
+  - `feature-pull-requests`: the sync branch, plus one branch (`<sync branch>-<feature>`) and pull request per merged feature. Each is the feature's own diff applied on the repository's main branch.
+- **Access.** The link takes a token that can push branches and open pull requests. It is stored in the project's Durable Object, and only its last four characters come back to the dashboard. A GitHub App would let chef act without a personal token; that is the planned replacement.
 
 ## Memory
 
@@ -155,10 +169,13 @@ Served by the chef Worker (`workers/src/index.ts`):
 | --- | --- |
 | `GET /api/settings` | The settings in use (Claude and voice providers, Cloudflare account, TypeSafe key, models, attempts, password source), with only the last four characters of each key and whether each comes from the dashboard or the deployment |
 | `PUT /api/settings` | Saves any of `llm` (`{ kind: "anthropic", apiKey }` or `{ kind: "custom", baseUrl, apiKey }`), `voice` (`{ kind: "openai", apiKey }` or `{ kind: "custom", baseUrl, apiKey }`), `cloudflare` (`{ accountId, apiToken }`), `jev` (`{ apiKey }`), `models` (`{ planner, reviewer, coder }`) and `attempts`; `null` falls back to the deployment. `{ password }` alone changes the password and returns a new session cookie |
-| `GET /api/projects/:name/settings` | The project's own settings: `previewIdleMinutes` |
-| `PUT /api/projects/:name/settings` | Saves `previewIdleMinutes` (5 minutes to a week); `null` goes back to the default of 60 |
+| `GET /api/projects/:name/settings` | The project's own settings: `previewIdleMinutes`, and `git`, the linked repository (`url`, `branch`, `mode`, `syncBranch`, `webhookSecret`, the token's last four characters) or `null` |
+| `PUT /api/projects/:name/settings` | Saves `previewIdleMinutes` (5 minutes to a week; `null` goes back to the default of 60) and `git` (`{ url, branch, token, mode, syncBranch }`; `null` unlinks). A token is required for every mode but `off`, and the pull request modes need a github.com repository |
+| `GET /api/projects/:name/git` | The linked repository and its sync state: last commit taken in, last commit sent, a commit chef could not merge, the rolling pull request |
+| `POST /api/projects/:name/git/sync` | Clears a stuck sync and syncs now |
+| `POST /api/projects/:name/git/webhook` | GitHub push webhook; outside the password, checked with the `x-hub-signature-256` HMAC instead |
 | `GET /preview/:name/:feature` | Redirects to the feature's preview, or wakes it up and shows a page that refreshes until it is ready |
-| `POST /api/projects/:name/bootstrap` | Creates the canonical repo from the template if it does not exist |
+| `POST /api/projects/:name/bootstrap` | Creates the canonical repo if it does not exist: from the linked repository when there is one, otherwise from the template |
 | `POST /api/projects/:name/voice` | Exchanges a WebRTC `{ sdp }` offer for a voice session that delegates spoken requests to the router: GPT-Live with an OpenAI API key, or a custom provider that serves the OpenAI Realtime API, where a `chef_request` tool call stands in for client delegation |
 | `POST /api/projects/:name/prompts` | Routes `{ prompt }` and starts a session when there is work; a question returns `answer` with its sources |
 | `GET /api/projects/:name/sessions` | Session records |
