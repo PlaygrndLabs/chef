@@ -21,7 +21,7 @@ export function InsightsView() {
     <div className="flex h-full min-h-0 flex-col" data-view="insights">
       <header className="border-b bg-card px-5 py-3">
         <div className="text-xs text-muted-foreground">Project</div>
-        <h1 className="text-base font-semibold">Health and memory</h1>
+        <h1 className="text-base font-semibold">Memory and learning</h1>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6">

@@ -34,7 +34,11 @@ describe("dashboard in a browser", () => {
       await card.waitFor({ timeout: 60_000 });
       expect(await card.innerText()).toContain("Live");
       expect(await page.locator("#chat").innerText()).toContain("On it. This is a new feature.");
-      await expect.poll(() => page.locator('#features [data-feature="todo-add"]').getAttribute("data-status"), { timeout: 10_000 }).toBe("merged");
+      await expect.poll(() => page.locator('#features [data-group="live"] [data-session="s1"]').getAttribute("data-state"), { timeout: 10_000 }).toBe("merged");
+      expect(await page.locator('#project-bar [data-chip="working"]').innerText()).toContain("Nothing running");
+      await page.getByRole("tab", { name: "By feature" }).click();
+      await page.locator('#features [data-feature="todo-add"][data-status="merged"]').waitFor();
+      await page.getByRole("tab", { name: "By status" }).click();
       await card.click();
       const feature = page.locator('[data-view="feature"][data-state="merged"]');
       await feature.waitFor({ timeout: 10_000 });
@@ -42,6 +46,9 @@ describe("dashboard in a browser", () => {
       await feature.locator('[data-gate="passed"]').waitFor();
       expect(await feature.innerText()).toContain("Went live");
       expect(new URL(page.url()).searchParams.get("session")).toBe("s1");
+      expect(await feature.locator('[data-artifact="checks"]').innerText()).toContain("passed");
+      await feature.locator('[data-artifact="checks"]').click();
+      await page.getByRole("tabpanel", { name: "Checks" }).locator('[data-check][data-ok="true"]').first().waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "More" }).click();
       await page.getByRole("menuitem", { name: "Show changes and details" }).click();
       await expect.poll(() => page.getByRole("tabpanel", { name: "Changes" }).innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");

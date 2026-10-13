@@ -7,7 +7,8 @@ export interface SessionNode {
   readonly id: string;
   readonly featureId: string;
   readonly state: SessionState;
-  readonly attempt: { readonly index: number; readonly of: number } | null;
+  readonly attempt: { readonly group: string; readonly index: number; readonly of: number } | null;
+  readonly parent: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly live: SessionLive | undefined;
@@ -30,12 +31,12 @@ export function sessionNodes(live: ProjectLive, records: readonly SessionRecord[
   const byId = new Map<string, SessionNode>();
   for (const record of records) {
     const l = live.sessions[record.id];
-    byId.set(record.id, { id: record.id, featureId: record.featureId, state: l?.state ?? record.machine.state, attempt: record.attempt, createdAt: record.createdAt, updatedAt: Math.max(record.updatedAt, l?.updatedAt ?? 0), live: l, record });
+    byId.set(record.id, { id: record.id, featureId: record.featureId, state: l?.state ?? record.machine.state, attempt: record.attempt, parent: record.parent, createdAt: record.createdAt, updatedAt: Math.max(record.updatedAt, l?.updatedAt ?? 0), live: l, record });
   }
   for (const id of live.order) {
     const l = live.sessions[id];
     if (!l || byId.has(id)) continue;
-    byId.set(id, { id, featureId: l.featureId, state: l.state, attempt: l.attempt, createdAt: l.createdAt, updatedAt: l.updatedAt, live: l, record: undefined });
+    byId.set(id, { id, featureId: l.featureId, state: l.state, attempt: l.attempt, parent: l.parent, createdAt: l.createdAt, updatedAt: l.updatedAt, live: l, record: undefined });
   }
   return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
 }
@@ -78,4 +79,42 @@ const STATUS_ORDER: Readonly<Record<FeatureStatus, number>> = { stuck: 0, buildi
 
 export function sortFeatures(list: readonly FeatureNode[]): FeatureNode[] {
   return [...list].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+}
+
+export type SessionGroup = "needs-you" | "working" | "live" | "stopped";
+
+export const GROUPS: readonly SessionGroup[] = ["needs-you", "working", "live", "stopped"];
+
+export function groupOf(state: SessionState): SessionGroup {
+  if (state === "stuck") return "needs-you";
+  if (state === "merged") return "live";
+  if (state === "dropped") return "stopped";
+  return "working";
+}
+
+export function groupSessions(sessions: readonly SessionNode[]): Record<SessionGroup, SessionNode[]> {
+  const groups: Record<SessionGroup, SessionNode[]> = { "needs-you": [], working: [], live: [], stopped: [] };
+  for (const s of sessions) groups[groupOf(s.state)].push(s);
+  for (const list of Object.values(groups)) list.sort((a, b) => b.updatedAt - a.updatedAt);
+  return groups;
+}
+
+export interface Relations {
+  readonly parent: SessionNode | null;
+  readonly children: readonly SessionNode[];
+  readonly attempts: readonly SessionNode[];
+  readonly chain: readonly SessionNode[];
+}
+
+export function relationsOf(node: SessionNode, sessions: readonly SessionNode[]): Relations {
+  const parent = node.parent ? (sessions.find((s) => s.id === node.parent) ?? null) : null;
+  const children = sessions.filter((s) => s.parent === node.id);
+  const group = node.attempt && node.attempt.of > 1 ? node.attempt.group : null;
+  const attempts = group ? sessions.filter((s) => s.attempt?.group === group).sort((a, b) => (a.attempt?.index ?? 0) - (b.attempt?.index ?? 0)) : [];
+  const chain = sessions.filter((s) => s.featureId === node.featureId).sort((a, b) => a.createdAt - b.createdAt);
+  return { parent, children, attempts, chain };
+}
+
+export function sessionLabel(node: SessionNode): string {
+  return node.attempt && node.attempt.of > 1 ? `${node.id} · try ${node.attempt.index} of ${node.attempt.of}` : node.id;
 }
