@@ -1,4 +1,4 @@
-import type { ChefEvent, RouteDecision, SessionState } from "@chef/core";
+import type { ChatContext, ChefEvent, RouteDecision, SessionState } from "@chef/core";
 
 export interface LogEntry {
   readonly seq: number;
@@ -75,10 +75,11 @@ export interface ProjectLive {
   readonly log: { readonly seq: number; readonly at: number; readonly type: string; readonly sessionId: string; readonly featureId: string; readonly summary: string }[];
   readonly previews: Record<string, { readonly url: string; readonly commitId: string; readonly link?: string | undefined; readonly sessionId: string; readonly at: number }>;
   external: { readonly type: string; readonly summary: string; readonly at: number; readonly pullRequest?: string | undefined } | null;
+  context: ChatContext | null;
 }
 
 export function emptyProject(): ProjectLive {
-  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], answers: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], log: [], previews: {}, external: null };
+  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], answers: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], log: [], previews: {}, external: null, context: null };
 }
 
 const TIMELINE_LIMIT = 600;
@@ -138,6 +139,8 @@ export function summarize(event: ChefEvent): string {
       return event.status === "failed" ? `live app failed at ${event.commitId.slice(0, 7)}: ${event.error ?? ""}`.trim() : `live app ${event.status} ${event.commitId.slice(0, 7)}`;
     case "main.reverted":
       return `reverted ${event.revertedCommit.slice(0, 7)}`;
+    case "chat.context":
+      return `chat context ${event.used} of ${event.limit} tokens`;
     case "feature.arranged":
       return [event.title ? `renamed to ${event.title}` : null, `under ${event.parent ?? "the app"}`].filter(Boolean).join(", ");
     case "features.removed":
@@ -345,6 +348,9 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
     case "live.updated":
     case "feature.arranged":
     case "features.removed":
+      return true;
+    case "chat.context":
+      state.context = { used: event.used, limit: event.limit, turns: event.turns, dropped: event.dropped };
       return true;
     case "external.pulled":
     case "external.conflict":

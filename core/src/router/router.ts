@@ -115,13 +115,13 @@ export class Router {
     return { ...decision, hotfix: true, changeKind: decision.intent === "change_feature" ? "bug" : decision.changeKind };
   }
 
-  async split(prompt: string, spec: readonly FeatureSpec[], decision: RouteDecision): Promise<SplitPart[] | null> {
+  async split(prompt: string, spec: readonly FeatureSpec[], decision: RouteDecision, conversation = ""): Promise<SplitPart[] | null> {
     if (decision.via === "rules" || decision.hotfix || !this.deps.planner.split) return null;
     if (decision.intent !== "new_feature" && decision.intent !== "change_feature") return null;
     const intent = decision.intent;
     let parts: readonly SplitPart[];
     try {
-      parts = await this.deps.planner.split({ prompt: withoutCommand(prompt), spec, decision: { intent, featureId: decision.featureId, changeKind: decision.changeKind } });
+      parts = await this.deps.planner.split({ prompt: withoutCommand(prompt), spec, decision: { intent, featureId: decision.featureId, changeKind: decision.changeKind }, ...(conversation ? { conversation } : {}) });
     } catch {
       return null;
     }

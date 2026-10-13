@@ -31,6 +31,7 @@ export interface SplitInput {
   readonly prompt: string;
   readonly spec: readonly FeatureSpec[];
   readonly decision: { readonly intent: "new_feature" | "change_feature"; readonly featureId: string | null; readonly changeKind: ChangeKind | null };
+  readonly conversation?: string;
 }
 
 export type SplitPart =
@@ -51,6 +52,7 @@ export interface PlanInput {
   readonly spec: readonly FeatureSpec[];
   readonly env?: readonly EnvVar[];
   readonly roles?: readonly BuilderRole[];
+  readonly conversation?: string;
   readonly guidance?: string;
 }
 
