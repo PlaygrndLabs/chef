@@ -62,7 +62,7 @@ function ofType<T extends ChefEvent["type"]>(log: readonly ChefEvent[], type: T)
 describe("roles working in parallel inside one feature", () => {
   it("runs backend and frontend at the same time on their own branches and merges them into one session", async () => {
     const { script, inFlight } = laneScript();
-    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, Object.keys(tree)) } } });
+    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
     await w.orchestrator.bootstrap(templateTree());
     const { sessionIds } = await w.orchestrator.submit(prompt);
     expect(sessionIds).toHaveLength(1);
@@ -118,7 +118,7 @@ describe("roles working in parallel inside one feature", () => {
 
   it("sends a blocked change back to its own role only", async () => {
     const { script } = laneScript((input, attempt) => (input.role === "frontend" && attempt === 1 ? { "src/index.ts": "export {};\n" } : null));
-    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, Object.keys(tree)) } } });
+    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
     await w.orchestrator.bootstrap(templateTree());
     const { sessionId } = await w.orchestrator.submit(prompt);
     const record = await w.orchestrator.run(sessionId as string);
@@ -143,7 +143,7 @@ describe("roles working in parallel inside one feature", () => {
       }
     }
     const { script } = laneScript();
-    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]), reviewer: new OnceRejecting() }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, Object.keys(tree)) } } });
+    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]), reviewer: new OnceRejecting() }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
     await w.orchestrator.bootstrap(templateTree());
     const { sessionId } = await w.orchestrator.submit(prompt);
     const record = await w.orchestrator.run(sessionId as string);
@@ -153,6 +153,67 @@ describe("roles working in parallel inside one feature", () => {
     expect(rework.map((t) => t.role)).toEqual(["backend", "frontend"]);
     for (const turn of rework) expect(turn.prompt).toContain("the page should say hello");
     expect(ofType(w.bus.log, "lane.updated").filter((e) => e.status === "unchanged").map((e) => e.role)).toEqual(["backend", "frontend"]);
+  });
+
+  it("merges a role's finished work when another role's commit fails, and retries only the failed role", async () => {
+    const { script } = laneScript();
+    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
+    const commit = w.repos.commit.bind(w.repos);
+    let broken = true;
+    w.repos.commit = async (token, input) => {
+      if (broken && input.ref === "lane/frontend") {
+        broken = false;
+        throw new Error("the git server failed");
+      }
+      return commit(token, input);
+    };
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    const stuck = await w.orchestrator.run(sessionId as string);
+    expect(stuck.machine.state).toBe("stuck");
+    expect(stuck.machine.reason).toContain("the git server failed");
+    expect(stuck.lanes?.map((l) => [l.role, l.done, l.unmerged ?? false])).toEqual([
+      ["backend", 1, false],
+      ["frontend", 0, false],
+    ]);
+    expect(ofType(w.bus.log, "lane.updated").map((e) => `${e.role}:${e.status}`)).toContain("backend:merged");
+
+    await w.orchestrator.retry(sessionId as string, "");
+    const record = await w.orchestrator.run(sessionId as string);
+    expect(record.machine.state, record.machine.reason).toBe("merged");
+    expect(w.coder.turns.filter((t) => t.role === "backend")).toHaveLength(1);
+    expect(w.coder.turns.filter((t) => t.role === "frontend")).toHaveLength(2);
+    const main = (await w.orchestrator.mainTree()).tree;
+    expect(main[PARTS.backend]).toBe(backendRoutes);
+    expect(main[PARTS.frontend]).toBe(frontendRoutes);
+  });
+
+  it("merges a committed role branch on retry when merging it failed", async () => {
+    const { script } = laneScript();
+    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
+    const merge = w.repos.merge.bind(w.repos);
+    let broken = true;
+    w.repos.merge = async (token, input) => {
+      if (broken && input.from.ref === "lane/frontend") {
+        broken = false;
+        throw new Error("the git server failed");
+      }
+      return merge(token, input);
+    };
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    const stuck = await w.orchestrator.run(sessionId as string);
+    expect(stuck.machine.state).toBe("stuck");
+    expect(stuck.lanes?.map((l) => [l.role, l.done, l.unmerged ?? false])).toEqual([
+      ["backend", 1, false],
+      ["frontend", 1, true],
+    ]);
+
+    await w.orchestrator.retry(sessionId as string, "");
+    const record = await w.orchestrator.run(sessionId as string);
+    expect(record.machine.state, record.machine.reason).toBe("merged");
+    expect(w.coder.turns.filter((t) => t.lane).map((t) => t.role)).toEqual(["backend", "frontend"]);
+    expect((await w.orchestrator.mainTree()).tree[PARTS.frontend]).toBe(frontendRoutes);
   });
 
   it("keeps one role's steps in order on one branch", async () => {

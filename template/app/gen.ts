@@ -46,11 +46,23 @@ export function renderLanePart(): string {
   return [`import type { Route } from "../../../shared/http.ts";`, "", "export const routes: readonly Route[] = [];", ""].join("\n");
 }
 
-export function laneLayout(id: string, title: string, roles: readonly string[], paths: Iterable<string>): { changes: Record<string, string>; parts: Record<string, string> } | null {
+const LANE_INDEX = /^import type \{ Feature \} from "\.\.\/\.\.\/shared\/http\.ts";\n((?:import \{ routes as \w+ \} from "\.\/[a-z0-9-]+\/routes\.ts";\n)+)\nexport const feature: Feature = \{ id: .*, routes: \[[^\]]*\] \};\n?$/;
+
+export function laneRoles(index: string): string[] | null {
+  const imports = LANE_INDEX.exec(index)?.[1];
+  return imports ? [...imports.matchAll(/from "\.\/([a-z0-9-]+)\/routes\.ts"/g)].map((m) => m[1] as string) : null;
+}
+
+export function laneLayout(id: string, title: string, roles: readonly string[], files: Readonly<Record<string, string>>): { changes: Record<string, string>; parts: Record<string, string> } | null {
   const prefix = `features/${id}/`;
-  for (const path of paths) if (path.startsWith(prefix) && !path.endsWith(".test.ts") && path !== `${prefix}flow.ts`) return null;
+  const index = files[stubPath(id)];
+  const laid = index === undefined ? [] : laneRoles(index);
+  if (!laid) return null;
+  if (index === undefined) for (const path of Object.keys(files)) if (path.startsWith(prefix) && !path.endsWith(".test.ts") && path !== `${prefix}flow.ts`) return null;
+  const all = [...laid, ...roles.filter((role) => !laid.includes(role))];
   const parts = Object.fromEntries(roles.map((role) => [role, lanePartPath(id, role)]));
-  const changes: Record<string, string> = { [stubPath(id)]: renderLaneIndex(id, title, roles) };
-  for (const path of Object.values(parts)) changes[path] = renderLanePart();
+  const changes: Record<string, string> = {};
+  if (all.length > laid.length) changes[stubPath(id)] = renderLaneIndex(id, title, all);
+  for (const role of all) if (files[lanePartPath(id, role)] === undefined) changes[lanePartPath(id, role)] = renderLanePart();
   return { changes, parts };
 }
