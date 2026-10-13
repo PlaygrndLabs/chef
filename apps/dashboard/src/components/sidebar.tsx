@@ -49,7 +49,7 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button type="button" id="app-menu" className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left hover:bg-sidebar-accent" aria-label="chef menu" title="Settings for every project, theme and help">
-          <Mark className="size-6 rounded-md" />
+          <Mark className="size-6" />
           <span className="grid min-w-0 flex-1 leading-tight">
             <span className="truncate text-xs font-medium">Settings</span>
             <span className="truncate text-[11px] text-muted-foreground">{missing ? "Needs setup" : "For every project"}</span>
@@ -117,7 +117,7 @@ export function ProjectHeader({ onMenu }: { readonly onMenu?: () => void }) {
         </Button>
       ) : null}
       <a href="/" id="home-link" className="rounded-sm" aria-label="All projects" title="All projects">
-        <Wordmark className="h-[15px] translate-y-px" />
+        <Wordmark />
       </a>
       <span className="pl-0.5 text-muted-foreground/60">/</span>
       <ProjectSwitcher />

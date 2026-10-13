@@ -197,7 +197,7 @@ export function PlaceScreen(props: { readonly mode: AppMode; readonly onChange: 
     <div className="flex h-dvh flex-col overflow-y-auto" data-view="place">
       <div className="mx-auto grid w-full max-w-4xl gap-6 px-4 pt-10 pb-16 sm:pt-16">
         <div className="grid justify-items-center gap-2 text-center">
-          <Wordmark className="mb-2 h-9" />
+          <Wordmark className="mb-2 h-11" />
           <h1 className="text-2xl font-semibold tracking-tight">Where should chef work?</h1>
           <p className="max-w-xl text-muted-foreground">This app runs on your computer either way. Pick where the agents, sandboxes and previews run. You can change it later in Settings.</p>
         </div>
