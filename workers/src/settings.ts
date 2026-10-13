@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
 import type { ProjectEntry } from "@chef/adapters/projects";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
+import type { SharedInstructions } from "@chef/adapters/guidance";
 import { AgentSettings, type AgentConfig, type AgentVersion, type SaveResult, type StoredAgents } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
@@ -15,6 +16,7 @@ const GITHUB_LINKS = "github/links";
 const GITHUB_PENDING = "github/pending";
 const ENV_KEY = "env/key";
 const SHARED_ENV = "env/shared";
+const SHARED_INSTRUCTIONS = "instructions/shared";
 const PENDING_MS = 60 * 60_000;
 
 export interface PendingConnect {
@@ -71,6 +73,14 @@ export class Settings extends DurableObject<Env> {
 
   async saveSharedEnv(env: StoredEnv): Promise<void> {
     await this.ctx.storage.put(SHARED_ENV, env);
+  }
+
+  async sharedInstructions(): Promise<SharedInstructions | null> {
+    return (await this.ctx.storage.get<SharedInstructions>(SHARED_INSTRUCTIONS)) ?? null;
+  }
+
+  async saveSharedInstructions(value: SharedInstructions): Promise<void> {
+    await this.ctx.storage.put(SHARED_INSTRUCTIONS, value);
   }
 
   async githubApp(): Promise<GitHubAppCredentials | null> {
