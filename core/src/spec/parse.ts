@@ -29,6 +29,7 @@ export function renderFeature(spec: FeatureSpec): string {
     ...(frontmatter.flow ? { flow: frontmatter.flow } : {}),
     revision: frontmatter.revision,
     ...(frontmatter.shared.length > 0 ? { shared: frontmatter.shared } : {}),
+    ...(frontmatter.env.length > 0 ? { env: frontmatter.env } : {}),
     acceptance: frontmatter.acceptance,
   };
   return `---\n${stringifyYaml(ordered).trimEnd()}\n---\n\n${body.trim()}\n`;

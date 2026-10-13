@@ -9,7 +9,8 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, PreviewKeeper, readSpec, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { ControlError, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, PreviewKeeper, readSpec, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, revealEnv, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
@@ -18,7 +19,7 @@ import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
-import { SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
+import { previewName, SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder } from "./sandbox-coder.ts";
 import { buildingPage, CloudflareWorkerSpace, previewPath } from "./preview-space.ts";
 import { gitHubApp } from "./github.ts";
@@ -31,6 +32,7 @@ const PREVIEW_ROUTE = /^\/preview\/[a-z][a-z0-9-]{1,30}\/([a-z0-9-]{1,80})\/?$/;
 const PROJECT_SETTINGS = "project/settings";
 const ORIGIN = "project/origin";
 const OVERVIEW = "project/overview";
+const ENV = "project/env";
 const READING_TIMEOUT_MS = 10 * 60_000;
 const POLL_SECONDS = 300;
 const BUSY_SWEEP_SECONDS = 600;
@@ -39,7 +41,8 @@ const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object
 
 export class ProjectAgent extends Agent<Env> {
   private readonly calls = new Map<string, VoiceCall>();
-  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
+  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; space: CloudflareWorkerSpace | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
+  private cipher: Promise<EnvCipher> | null = null;
 
   private async build() {
     const settings = await currentSettings(this.env);
@@ -58,9 +61,10 @@ export class ProjectAgent extends Agent<Env> {
     const store = new DurableStore(this.ctx.storage);
     const clock = { now: () => Date.now() };
     const grant = settings.cloudflare ? { accountId: settings.cloudflare.accountId, worker: `${env.PREVIEW_WORKER}-${this.name}` } : null;
+    const space = settings.cloudflare && grant ? new CloudflareWorkerSpace(grant, settings.cloudflare.apiToken) : null;
     const keeper =
-      settings.cloudflare && grant
-        ? new PreviewKeeper(new SandboxPreviewHost(env.SESSION, repos, grant, settings.cloudflare.apiToken), new CloudflareWorkerSpace(grant, settings.cloudflare.apiToken), { repos, store, clock, canonical: this.name, onActivity: () => void this.scheduleSweep() })
+      settings.cloudflare && grant && space
+        ? new PreviewKeeper(new SandboxPreviewHost(env.SESSION, repos, grant, settings.cloudflare.apiToken, () => this.prepareEnvironment(space)), space, { repos, store, clock, canonical: this.name, onActivity: () => void this.scheduleSweep() })
         : null;
     const orchestrator = new Orchestrator(
       {
@@ -85,13 +89,14 @@ export class ProjectAgent extends Agent<Env> {
         generated,
         specialization: { attempts: settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
+        environment: async () => envNames(await this.storedEnv()),
       },
     );
     const git = project.git;
     const installation = git?.installation;
     const tokenSource = app && installation !== undefined ? () => app.installationToken(installation) : undefined;
     const external = git ? orchestrator.external(new GitRemote({ url: git.url, branch: git.branch, token: git.token, ...(tokenSource ? { tokenSource } : {}) }, control), { mode: git.mode, syncBranch: git.syncBranch, ...(origin ? { previewLink: (key: string) => `${origin}/preview/${this.name}/${key}` } : {}) }) : null;
-    this.built = { orchestrator, bus, repos, keeper, external, settings, fingerprint };
+    this.built = { orchestrator, bus, repos, keeper, space, external, settings, fingerprint };
     return this.built;
   }
 
@@ -106,6 +111,7 @@ export class ProjectAgent extends Agent<Env> {
     const preview = PREVIEW_ROUTE.exec(url.pathname);
     if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")));
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
+    if (action === "env" && url.pathname.endsWith(`/projects/${this.name}/env`)) return this.envRequest(request);
     if (request.method === "GET" && url.pathname.endsWith("/git")) return Response.json({ settings: viewProjectSettings(await this.projectSettings()).git, state: external ? await external.state() : null });
     if (request.method === "POST" && url.pathname.endsWith("/git/sync")) {
       if (!external) return Response.json({ error: "this project has no linked repository" }, { status: 409 });
@@ -271,6 +277,59 @@ export class ProjectAgent extends Agent<Env> {
     return Response.json(viewProjectSettings(saved));
   }
 
+  private async storedEnv(): Promise<StoredEnv> {
+    return (await this.ctx.storage.get<StoredEnv>(ENV)) ?? {};
+  }
+
+  private envCipher(): Promise<EnvCipher> {
+    this.cipher ??= settingsStub(this.env)
+      .envKey()
+      .then((key) => aesCipher(envKeyBytes(key)));
+    this.cipher.catch(() => (this.cipher = null));
+    return this.cipher;
+  }
+
+  private async envRequest(request: Request): Promise<Response> {
+    const stored = await this.storedEnv();
+    if (request.method === "GET") return Response.json(await this.envView(stored));
+    if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
+    const result = await applyEnvUpdate(stored, await request.json().catch(() => null), await this.envCipher(), Date.now());
+    if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+    await this.ctx.storage.put(ENV, result.env);
+    const { orchestrator } = await this.build();
+    if ((await orchestrator.environmentChanged()).length > 0) await this.schedule(1, "drive");
+    await this.schedule(0, "pushEnvironment");
+    return Response.json(await this.envView(result.env));
+  }
+
+  private async envView(stored: StoredEnv) {
+    const { orchestrator } = await this.build();
+    const features = [...readSpec((await orchestrator.mainTree()).tree), ...(await orchestrator.sessions()).filter((s) => !isTerminal(s.machine.state)).map((s) => s.plan.feature)];
+    return viewEnv(stored, await this.envCipher(), envNeeds(features, envNames(stored)));
+  }
+
+  private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<void> {
+    const vars = await revealEnv(await this.storedEnv(), await this.envCipher());
+    if (vars.length === 0) return;
+    try {
+      await space.applyEnvironment(vars, { create: true });
+    } catch (error) {
+      throw new Error(`giving the preview this project's keys failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
+  }
+
+  async pushEnvironment(): Promise<void> {
+    const { keeper, space } = await this.build();
+    if (!keeper || !space || !(await keeper.live())) return;
+    try {
+      const patch = await space.applyEnvironment(await revealEnv(await this.storedEnv(), await this.envCipher()), { create: false });
+      if (!patch || Object.keys(patch).length === 0) return;
+      for (const branch of await keeper.liveBranches()) await space.refreshPreview(previewName(branch), patch).catch((error: unknown) => console.error(`updating the environment of preview ${branch} failed`, error));
+    } catch (error) {
+      console.error(`updating ${this.name}'s preview environment failed`, error);
+    }
+  }
+
   private async scheduleSweep(): Promise<void> {
     const { previewIdleMinutes } = await this.projectSettings();
     await this.schedule(previewIdleMinutes * 60, "sweepPreviews", undefined, { idempotent: true });
@@ -377,7 +436,7 @@ export class ProjectAgent extends Agent<Env> {
     await orchestrator.reclaim();
     const sessions = await orchestrator.drain(1);
     await this.pushExternal();
-    if (sessions.some((s) => !isTerminal(s.machine.state))) await this.schedule(1, "drive");
+    if (sessions.some(runnable)) await this.schedule(1, "drive");
   }
 
   async onMainPushed(event: PushedEvent): Promise<void> {

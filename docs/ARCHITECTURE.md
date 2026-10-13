@@ -65,6 +65,16 @@ A failed gate or rejected review sends the session back to coding with the failu
 - The coder runs in a Cloudflare Sandbox whose only network path is `SandboxOutbound`: it adds the read token for Artifacts, swaps a placeholder for the provider's API key on the provider's host, blocks `git-receive-pack`, and refuses other hosts. The sandbox returns changed files as data; it never commits or pushes.
 - Capabilities are separate objects (`core/src/orchestrator/capabilities.ts`): `PreviewPublisher` can only push `preview/*`, `MainWriter` can only merge or revert `main`.
 
+## Environment and secrets
+
+Apps chef builds often need keys for outside services (payments, maps, email) or plain settings like an API base URL. Each project keeps its own set under "Environment and secrets" in the Project settings dialog (`GET`/`PUT /api/projects/:name/env`, `adapters/src/project-env.ts`).
+
+- **Storage.** `ProjectAgent` stores each value sealed with AES-GCM under a key the `Settings` object creates once per deployment. A secret is never returned again; a plain value is shown. Nothing goes into git, Artifacts or a sandbox.
+- **Agents see names only.** The planner gets the names already set and lists the ones a feature reads in its spec entry (`env:` in the frontmatter, validated by `ENV_NAME` in `core/src/env/env.ts`). Each coder turn's prompt lists the project's names, the feature's names, and which are still missing. The app reads them from `context.env`; tests pass fake values to `createApp(features, store, env)`.
+- **Previews get values.** Before each preview build, the Worker itself (not the sandbox) makes sure the project Worker `chef-project-<project>` exists and writes the values into its previews' base config through the Cloudflare API (`PATCH /workers/workers/<worker>` with `previews_base_config.env`), so every `wrangler preview` deployment inherits them. Saving a change also updates the base config and patches the latest deployment of every preview that is awake.
+- **Needs a key.** A session whose feature lists a name that is not set stops before its gate, records `needs` and emits `session.needs`; the proof would only fail without it. It no longer counts as runnable, so `drive` stops rescheduling it. The dashboard shows it under "Needs you" with a field per missing key on the feature page. Saving a value calls `Orchestrator.environmentChanged`, which resumes every session that now has what it needs.
+- **Local and PC modes.** The local app forwards `/api/*` to the engine, so the same dialog works from a computer.
+
 ## Resources
 
 chef serves many projects from one Cloudflare account, so nothing stays up that nobody uses.
@@ -83,7 +93,7 @@ chef serves many projects from one Cloudflare account, so nothing stays up that 
 
 ## External git
 
-The project's code always lives on Artifacts, and every session, gate and preview works there. A project can be linked to an outside repository (GitHub first, any https git host for the branch mode) from the dashboard's "Project and repository" dialog. The link is optional and only keeps the two in sync; unlinking leaves the project on Artifacts as it is.
+The project's code always lives on Artifacts, and every session, gate and preview works there. A project can be linked to an outside repository (GitHub first, any https git host for the branch mode) from the dashboard's "Project settings" dialog. The link is optional and only keeps the two in sync; unlinking leaves the project on Artifacts as it is.
 
 - **Connect GitHub.** Like Vercel or Cloudflare's own Git integration, "Connect GitHub" sends the person to GitHub and back instead of asking for a token. Each chef deployment owns its own GitHub App, created on first use through GitHub's [manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest): `GET /api/github/connect` posts a manifest (contents and pull requests write, push events, webhook and redirect URLs on this deployment) to GitHub for the person's account or an organization; GitHub calls back `GET /api/github/created` with a code that chef trades for the app's id, private key and webhook secret, stored in the `Settings` object. chef then sends the person to the app's install page, where they pick repositories, and GitHub returns them to `GET /api/github/installed`, which reopens the project's dialog. The dialog lists every repository the app's installations can reach; linking one stores the installation id instead of a token, and chef mints a one-hour installation token (signed with the app's key, cached until five minutes before expiry) whenever it pulls, pushes or opens a pull request. Pushes reach chef through the app's webhook, `POST /api/github/webhook`, which routes them to the projects linked to that repository. Other hosts, or a person who prefers it, still link with a URL and an access token.
 

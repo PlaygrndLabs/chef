@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FeatureFrontmatter, type AnswerInput, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@chef/core";
+import { envProblem, FeatureFrontmatter, type AnswerInput, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@chef/core";
 import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
 const TriageSchema = z.object({
@@ -16,6 +16,7 @@ const PlanSchema = z.object({
     title: z.string(),
     entrypoint: z.string(),
     shared: z.array(z.string()),
+    env: z.array(z.string()),
     acceptance: z.array(z.object({ id: z.string(), text: z.string() })),
     body: z.string(),
   }),
@@ -28,6 +29,7 @@ const SYSTEM = `You are the planner of chef, a spec-driven builder. The spec is 
 Projects use vertical slices: features/<id>/ holds a feature's code, its tests named after acceptance criterion ids ("AC1: ..."), and flow.ts, which drives the entrypoint. shared/ holds contracts; list a shared path only when the feature must change it.
 Feature ids are lowercase kebab-case, at most 40 characters. Acceptance criterion ids are AC1, AC2 and so on.
 Never remove or weaken an existing acceptance criterion; add new ones with the next free id.
+When a feature talks to an outside service or needs a key or setting the person provides, list the environment variable names it reads in env, in capital snake case like STRIPE_SECRET_KEY; reuse a name the project already has when it fits. The app reads them at runtime from context.env; their values never go in the code or the spec.
 Work items run in order. Write a "test" item first whenever behavior changes, then the implementation items.`;
 
 export class LlmPlanner implements Planner {
@@ -58,6 +60,7 @@ export class LlmPlanner implements Planner {
       prompt: [
         `Intent: ${input.intent}${input.changeKind ? ` (${input.changeKind})` : ""}`,
         existing ? `Current spec entry:\n${JSON.stringify(existing, null, 2)}` : `Existing feature ids: ${input.spec.map((f) => f.id).join(", ") || "none"}`,
+        `Environment variables set in this project: ${input.env?.map((v) => v.name).join(", ") || "none"}`,
         `Request:\n${input.prompt}`,
         "Write the full spec entry for this feature and the work items.",
       ].join("\n\n"),
@@ -91,6 +94,7 @@ export function toPlan(result: z.infer<typeof PlanSchema>, existing: FeatureSpec
     entrypoint: result.feature.entrypoint,
     revision: existing ? existing.revision + 1 : 1,
     shared: result.feature.shared,
+    env: [...new Set([...(existing?.env ?? []), ...result.feature.env.map((name) => name.trim()).filter((name) => envProblem(name) === null)])],
     acceptance,
   });
   const feature: FeatureSpec = { ...frontmatter, body: result.feature.body };
