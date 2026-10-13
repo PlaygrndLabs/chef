@@ -75,7 +75,7 @@ function cloudflareFromEnv(env: SettingsEnv): CloudflareSettings | null {
 
 function attemptsFromEnv(env: SettingsEnv): number {
   const value = Number(env.ATTEMPTS);
-  return Number.isInteger(value) && value >= 1 && value <= MAX_ATTEMPTS ? value : 2;
+  return Number.isInteger(value) && value >= 1 && value <= MAX_ATTEMPTS ? value : 1;
 }
 
 export function resolveSettings(saved: AppSettings, env: SettingsEnv): Resolved {
