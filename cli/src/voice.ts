@@ -24,7 +24,7 @@ export interface VoiceRun {
   readonly voiceSessionId: string;
 }
 
-const nodeConnect: Connect = (url, headers) =>
+export const nodeConnect: Connect = (url, headers) =>
   new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { headers } as unknown as string[]);
     socket.addEventListener("open", () => resolve(socket as unknown as SocketLike));

@@ -2,7 +2,7 @@ import { routeAgentRequest } from "agents";
 import { guard } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
 import { gitHubRequest, gitHubWebhook } from "./github.ts";
-import { projectsRequest } from "./projects.ts";
+import { projectsRequest } from "@chef/adapters/projects";
 import { claimPassword, credential, settingsRequest, settingsStub } from "./settings.ts";
 
 export { ProjectAgent } from "./project-agent.ts";

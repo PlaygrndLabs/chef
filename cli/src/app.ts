@@ -127,8 +127,17 @@ export interface LocalApp {
   close(): Promise<void>;
 }
 
+export interface LocalEngineLike {
+  handle(request: Request): Promise<Response>;
+  upgrade(incoming: IncomingMessage, socket: Duplex): boolean;
+  close(): Promise<void>;
+}
+
+export const RUNS_HERE = "chef runs fully on this computer, so there is nothing to connect";
+
 export interface AppOptions {
   readonly port: number;
+  readonly engine?: LocalEngineLike;
   readonly host?: string;
   readonly store?: ConnectionStore;
   readonly assets?: string;
@@ -152,7 +161,10 @@ export async function startApp(options: AppOptions): Promise<LocalApp> {
     return site === null || site === "same-origin" || site === "none" || !PROXIED.test(new URL(request.url).pathname);
   };
 
+  const engine = options.engine;
+
   const appRequest = async (request: Request, path: string): Promise<Response> => {
+    if (engine) return path === "/api/app" && request.method === "GET" ? Response.json({ mode: "computer", engine: null, fixed: true }) : Response.json({ error: RUNS_HERE }, { status: 409 });
     const connection = store.read();
     if (path === "/api/app" && request.method === "GET") return Response.json({ mode: "local", engine: connection?.url ?? null, fixed: store.fixed });
     if (path === "/api/app/connection" && request.method === "PUT") {
@@ -213,6 +225,7 @@ export async function startApp(options: AppOptions): Promise<LocalApp> {
     const path = new URL(request.url).pathname;
     if (path === "/api/app" || path.startsWith("/api/app/")) return appRequest(request, path);
     if (PROXIED.test(path)) {
+      if (engine) return engine.handle(request);
       const connection = store.read();
       if (!connection) return Response.json({ error: "connect this app to your chef first" }, { status: 503 });
       return proxy(request, connection);
@@ -227,6 +240,10 @@ export async function startApp(options: AppOptions): Promise<LocalApp> {
     socket.on("close", () => tunnels.delete(socket));
     const connection = store.read();
     const origin = incoming.headers.origin;
+    if (engine) {
+      if (!hosts.has(incoming.headers.host ?? "") || (origin !== undefined && !origins.has(origin)) || !engine.upgrade(incoming, socket)) socket.end("HTTP/1.1 403 Forbidden\r\nconnection: close\r\n\r\n");
+      return;
+    }
     if (!connection || !hosts.has(incoming.headers.host ?? "") || (origin !== undefined && !origins.has(origin)) || !(incoming.url ?? "").startsWith("/agents/")) {
       socket.end("HTTP/1.1 403 Forbidden\r\nconnection: close\r\n\r\n");
       return;
@@ -244,12 +261,14 @@ export async function startApp(options: AppOptions): Promise<LocalApp> {
   return {
     url: `http://localhost:${port}`,
     server,
-    close: () =>
-      new Promise<void>((resolve) => {
+    close: async () => {
+      await new Promise<void>((resolve) => {
         for (const socket of tunnels) socket.destroy();
         server.closeAllConnections();
         server.close(() => resolve());
-      }),
+      });
+      await engine?.close();
+    },
   };
 }
 

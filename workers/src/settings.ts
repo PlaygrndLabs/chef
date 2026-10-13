@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
-import type { ProjectEntry } from "./projects.ts";
+import type { ProjectEntry } from "@chef/adapters/projects";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import { deploymentPassword, hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
 

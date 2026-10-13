@@ -90,11 +90,11 @@ export class ExternalSync {
     const state = await this.state();
     if (head === state.pulled) return { status: "up-to-date" };
     if (head === state.failed) return { status: "waiting", commitId: head };
-    await this.ensureRepo();
+    const imported = await this.ensureRepo();
     const merged = await this.ctx.lock(async () => {
       const mainBefore = await this.ctx.repos.resolveRef(this.ctx.canonical, "main");
       return this.withToken(this.ctx.canonical, async (token) => {
-        if (!mainBefore) {
+        if (!mainBefore || (imported && mainBefore === head)) {
           await this.remote.pull({ token, ref: "main" });
           await this.remote.pull({ token, ref: this.externalRef });
           return { status: "imported" as const, commitId: head };
@@ -279,18 +279,19 @@ export class ExternalSync {
     }
   }
 
-  private async ensureRepo(): Promise<void> {
-    if (await this.ctx.repos.info(this.ctx.canonical)) return;
+  private async ensureRepo(): Promise<boolean> {
+    if (await this.ctx.repos.info(this.ctx.canonical)) return false;
     const source = await this.remote.importSource?.();
     if (source && this.ctx.repos.importRepo) {
       try {
         await this.ctx.repos.importRepo(this.ctx.canonical, source);
-        return;
+        return true;
       } catch {
-        if (await this.ctx.repos.info(this.ctx.canonical)) return;
+        if (await this.ctx.repos.info(this.ctx.canonical)) return false;
       }
     }
     await this.ctx.repos.createRepo(this.ctx.canonical, { defaultBranch: "main" });
+    return false;
   }
 
   private async stuck(head: string, reason: string): Promise<PullOutcome> {
