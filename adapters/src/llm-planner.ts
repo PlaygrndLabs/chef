@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { envProblem, FeatureFrontmatter, renderTurn, type AnswerInput, type BuilderRole, type CompactInput, type FeatureSpec, type Plan, type PlanInput, type Planner, type SplitInput, type SplitPart, type Triage, type TriageInput, type WorkItem } from "@chef/core";
+import { envProblem, FeatureFrontmatter, renderTurn, withGuidance, type AnswerInput, type BuilderRole, type CompactInput, type FeatureSpec, type Plan, type PlanInput, type Planner, type SplitInput, type SplitPart, type Triage, type TriageInput, type WorkItem } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
 const TriageSchema = z.object({
@@ -95,7 +95,7 @@ export class LlmPlanner implements Planner {
     const builders = input.roles?.length ? input.roles : DEFAULT_BUILDERS;
     const result = await structured(this.llm, {
       model: this.model,
-      system: this.system,
+      system: withGuidance(this.system, input.guidance),
       schema: planSchema(builders.map((b) => b.role)),
       prompt: [
         `Intent: ${input.intent}${input.changeKind ? ` (${input.changeKind})` : ""}`,

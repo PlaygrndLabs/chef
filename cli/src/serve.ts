@@ -4,6 +4,7 @@ import { extname, join, normalize } from "node:path";
 import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
+import { instructionsRequest, memoryRequest, sharedInstructionsRequest, type GuidanceHost, type SharedInstructions } from "@chef/adapters/guidance";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type SettingsEnv } from "@chef/adapters/settings";
 import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, mergeEnv, newEnvKey, viewEnv, viewProjectEnv, type StoredEnv } from "@chef/adapters/project-env";
@@ -58,8 +59,9 @@ export async function serve(options: { readonly port: number; readonly project?:
   const log = options.log ?? (() => {});
   let env: StoredEnv = {};
   let shared: StoredEnv = {};
+  let instructions: SharedInstructions | null = null;
   const cipher = await aesCipher(envKeyBytes(newEnvKey()));
-  const w = localWorld({ script: script(), presets: presets(), splits: splits(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
+  const w = localWorld({ script: script(), presets: presets(), splits: splits(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), instructions: async () => instructions?.text ?? "", ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
   await w.orchestrator.bootstrap(templateTree());
   let driving: Promise<void> | null = null;
   const drive = () => {
@@ -164,6 +166,9 @@ export async function serve(options: { readonly port: number; readonly project?:
     return Response.json(describeSettings(saved, env));
   };
 
+  const guidance: GuidanceHost = { main: () => w.orchestrator.mainTree(), edit: (edit) => w.orchestrator.editGuidance(edit), shared: async () => instructions };
+  const sharedInstructions = { get: async () => instructions, put: async (value: SharedInstructions) => void (instructions = value) };
+
   const agentStore = new MemoryStore();
   const agents = new AgentSettings(agentStore);
   const projectAgents = new AgentSettings(agentStore, Date.now, "project/agents/");
@@ -171,6 +176,7 @@ export async function serve(options: { readonly port: number; readonly project?:
     const url = new URL(request.url);
     if (url.pathname === "/api/settings" && options.settings) return settings(request, options.settings);
     if (url.pathname === "/api/env") return sharedEnvRequest(request);
+    if (url.pathname === "/api/instructions") return sharedInstructionsRequest(request, sharedInstructions);
     if (url.pathname === "/api/agents" || url.pathname === "/api/agents/restore") {
       const resolved = resolveSettings(saved, options.settings ?? {});
       return agentsRequest(request, { store: agents, defaults: repoProfiles(), models: resolved.models, jev: resolved.jev !== null });
@@ -193,6 +199,8 @@ export async function serve(options: { readonly port: number; readonly project?:
       if (request.method === "GET" && action === "sessions") return Response.json(await w.orchestrator.sessions());
       if (action === "settings") return projectSettingsRequest(request);
       if (action === "env") return envRequest(request);
+      if (action === "instructions") return instructionsRequest(request, guidance);
+      if (action === "memory") return memoryRequest(request, guidance);
       if (project && (action === "agents" || action === "agents/restore")) {
         const resolved = resolveSettings(saved, options.settings ?? {});
         return projectAgentsRequest(request, { project: project.name, store: projectAgents, shared: agents, defaults: repoProfiles(), models: resolved.models, jev: resolved.jev !== null });

@@ -12,6 +12,7 @@ import { RealtimeHost } from "@chef/adapters/realtime";
 import { AgentSettings, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
+import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
@@ -37,6 +38,8 @@ const OVERVIEW = "project/overview";
 const ENV = "project/env";
 const AGENTS = "project/agents/";
 const LIVE = "project/live";
+const UI_KIT = "project/ui-kit";
+const UI_KIT_FILES = ["shared/ui.ts", "shared/ui.md"];
 const LEGACY_REMOVED = "project/legacy-worker-removed";
 const LEGACY_WORKER_PREFIX = "chef-project-";
 
@@ -122,6 +125,7 @@ export class ProjectAgent extends Agent<Env> {
         specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
         environment: async () => envNames(await this.effectiveEnv()),
+        instructions: async () => (await settingsStub(env).sharedInstructions())?.text ?? "",
       },
     );
     const git = project.git;
@@ -150,6 +154,8 @@ export class ProjectAgent extends Agent<Env> {
     if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")));
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
     if (action === "env" && url.pathname.endsWith(`/projects/${this.name}/env`)) return this.envRequest(request);
+    if (action === "instructions" && url.pathname.endsWith(`/projects/${this.name}/instructions`)) return instructionsRequest(request, await this.guidanceHost());
+    if (action === "memory" && url.pathname.endsWith(`/projects/${this.name}/memory`)) return memoryRequest(request, await this.guidanceHost());
     if (url.pathname.endsWith(`/projects/${this.name}/agents`) || url.pathname.endsWith(`/projects/${this.name}/agents/restore`)) {
       return projectAgentsRequest(request, { project: this.name, store: this.agentSettings(), shared: agentStore(this.env), defaults: loadProfiles(agentFiles), models: settings.models, jev: settings.jev !== null });
     }
@@ -163,6 +169,7 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
       if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
+      if (main.commitId && !(await this.ctx.storage.get<boolean>(UI_KIT))) await this.schedule(0, "addUiKit", undefined, { idempotent: true });
       return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await orchestrator.layout(), live: (await this.ctx.storage.get<LiveState>(LIVE)) ?? null });
     }
     if (request.method === "POST" && action === "live") {
@@ -342,6 +349,24 @@ export class ProjectAgent extends Agent<Env> {
       await this.schedule(0, "syncExternal");
     } else await this.stopPolling();
     return Response.json(viewProjectSettings(saved));
+  }
+
+  private async guidanceHost(): Promise<GuidanceHost> {
+    const { orchestrator } = await this.build();
+    return {
+      main: () => orchestrator.mainTree(),
+      shared: () => settingsStub(this.env).sharedInstructions(),
+      edit: async (edit) => {
+        const before = (await orchestrator.mainTree()).commitId;
+        const result = await orchestrator.editGuidance(edit);
+        if (result.ok && result.commitId && result.commitId !== before) {
+          const live = await this.ctx.storage.get<LiveState>(LIVE);
+          if (live?.status === "ready" && live.commitId === before) await this.ctx.storage.put<LiveState>(LIVE, { ...live, commitId: result.commitId });
+          await this.schedule(1, "drive");
+        }
+        return result;
+      },
+    };
   }
 
   private async storedEnv(): Promise<StoredEnv> {
@@ -538,6 +563,18 @@ export class ProjectAgent extends Agent<Env> {
     const head = await repos.resolveRef(this.name, "main");
     const live = await this.ctx.storage.get<LiveState>(LIVE);
     return head !== null && head !== live?.commitId;
+  }
+
+  async addUiKit(): Promise<void> {
+    if (await this.ctx.storage.get<boolean>(UI_KIT)) return;
+    const { orchestrator } = await this.build();
+    const files = Object.fromEntries(UI_KIT_FILES.flatMap((path) => (templateFiles[path] === undefined ? [] : [[path, templateFiles[path]]])));
+    const added = await orchestrator.addMissingFiles(files, "Add the UI kit so pages look polished", (tree) => tree["shared/http.ts"] !== undefined);
+    await this.ctx.storage.put<boolean>(UI_KIT, true);
+    if (added.length) {
+      await this.schedule(0, "deployLive", undefined, { idempotent: true });
+      await this.schedule(1, "drive");
+    }
   }
 
   async deployLive(): Promise<void> {
