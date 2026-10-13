@@ -88,14 +88,6 @@ const idle = {
   readCode: () => Promise.resolve({ status: "none" as const }),
 };
 
-export function returningToNewProject(): boolean {
-  const params = new URLSearchParams(location.search);
-  if (params.get("connect") !== "new") return false;
-  params.delete("connect");
-  history.replaceState(null, "", `?${params.toString()}`);
-  return true;
-}
-
 export function NewProjectForm(props: { readonly onCreated: (name: string) => void; readonly onBusy?: (busy: boolean) => void; readonly autoFocus?: boolean; readonly fromGitHub?: boolean }) {
   const [source, setSource] = useState<Source>(props.fromGitHub ? "github" : "fresh");
   const [name, setName] = useState("");
