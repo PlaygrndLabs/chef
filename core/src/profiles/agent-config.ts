@@ -80,15 +80,19 @@ const BUILDER_SCOPE = ["features/{feature}/**", "!features/{feature}/**/*.test.t
 
 export function applyAgentConfig(defaults: Profiles, config: AgentConfig): Profiles {
   const library = new Map(config.skills.map((skill) => [skill.name, skill]));
-  const out: Record<string, AgentProfile> = { ...defaults };
+  const everyone = config.skills.filter((skill) => skill.everyone);
+  const withShared = (profile: AgentProfile, own: readonly Skill[]): AgentProfile => (profile.runs === "rules" || everyone.length === 0 ? { ...profile, skills: [...own] } : { ...profile, skills: [...everyone, ...own.filter((skill) => !skill.everyone)] });
+  const out: Record<string, AgentProfile> = {};
+  for (const [role, profile] of Object.entries(defaults)) out[role] = everyone.length && profile.runs !== "rules" ? withShared(profile, profile.skills) : profile;
   for (const [role, setting] of Object.entries(config.roles)) {
     if (RESERVED_ROLES.includes(role)) continue;
     const base = defaults[role];
-    const skills = setting.skills.map((name) => library.get(name)).filter((skill): skill is Skill => Boolean(skill));
-    const shared = { label: setting.label, description: setting.description, instructions: setting.instructions, skills };
-    out[role] = base
+    const own = setting.skills.map((name) => library.get(name)).filter((skill): skill is Skill => Boolean(skill));
+    const shared = { label: setting.label, description: setting.description, instructions: setting.instructions };
+    const profile = base
       ? { ...base, ...shared, model: setting.model ?? base.model }
       : AgentProfile.parse({ role, ...shared, model: setting.model ?? "coder-default", runs: "agent", plannable: true, sharedAccess: true, writeScope: BUILDER_SCOPE });
+    out[role] = withShared(profile, own);
   }
   return out;
 }
@@ -213,7 +217,7 @@ export function agentsView(defaults: Profiles, stored: StoredAgents, history: re
         plannable: profile.plannable,
         writeScope: profile.writeScope,
         tools: profile.tools,
-        skills: profile.skills.map((skill) => skill.name),
+        skills: (setting?.skills ?? []).filter((name) => !stored.config.skills.some((skill) => skill.name === name && skill.everyone)),
         custom: base === null,
         edited: setting !== null,
         defaults: base ? { label: base.label ?? base.role, description: base.description, instructions: base.instructions, model: resolveModel(base.model, models) } : null,

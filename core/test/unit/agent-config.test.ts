@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../../src/fakes/runtime.ts";
-import { AgentSettings, agentsView, applyAgentConfig, EMPTY_AGENT_CONFIG, parseAgentConfig, routerConfigOf, DEFAULT_ROUTER_SETTINGS, type AgentConfig } from "../../src/profiles/agent-config.ts";
+import { AgentSettings, agentsView, applyAgentConfig, EMPTY_AGENT_CONFIG, parseAgentConfig, routerConfigOf, DEFAULT_ROUTER_SETTINGS, type AgentConfig, type RoleSetting } from "../../src/profiles/agent-config.ts";
 import { customAgent, parseProfile, withSkills } from "../../src/profiles/profile.ts";
 
 const backend = parseProfile(`---
@@ -26,7 +26,8 @@ Plan it.`);
 
 const defaults = { backend, planner };
 const models = { planner: "opus", reviewer: "opus", coder: "sonnet" };
-const skill = { name: "tidy-sql", description: "Use when writing SQL", body: "Keep queries short." };
+const skill = { name: "tidy-sql", description: "Use when writing SQL", body: "Keep queries short.", everyone: false };
+const house = { name: "house-style", description: "Use for any code", body: "Small functions.", everyone: true };
 
 const config: AgentConfig = {
   roles: {
@@ -47,6 +48,17 @@ describe("agent settings", () => {
     expect(agent.skills).toEqual([skill]);
     expect(agent.prompt).toContain("Build todo-add carefully.");
     expect(withSkills("Plan it.", [skill])).toBe("Plan it.\n\n## Skill: tidy-sql\nUse when: Use when writing SQL\n\nKeep queries short.");
+  });
+
+  it("gives skills meant for every role to every model-driven role, before its own", () => {
+    const gardener = parseProfile(`---\nrole: gardener\nmodel: planner-default\ndescription: Keeps the map.\nruns: rules\nwriteScope: []\n---\nGarden.`);
+    const profiles = applyAgentConfig({ ...defaults, gardener }, { ...config, skills: [skill, house] });
+    expect(profiles["backend"]?.skills.map((s) => s.name)).toEqual(["house-style", "tidy-sql"]);
+    expect(profiles["planner"]?.skills.map((s) => s.name)).toEqual(["house-style"]);
+    expect(profiles["data-modeler"]?.skills.map((s) => s.name)).toEqual(["house-style"]);
+    expect(profiles["gardener"]?.skills).toEqual([]);
+    const view = agentsView(defaults, { version: 1, at: 1, summary: "s", config: { ...config, skills: [skill, house], roles: { ...config.roles, backend: { ...(config.roles["backend"] as RoleSetting), skills: ["tidy-sql", "house-style"] } } } }, [], models, false);
+    expect(view.roles.find((r) => r.role === "backend")?.skills).toEqual(["tidy-sql"]);
   });
 
   it("rejects unknown skills, reserved names and bad models", () => {

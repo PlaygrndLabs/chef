@@ -7,6 +7,7 @@ export const Skill = z.strictObject({
   name: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/, "a skill name uses lower case letters, digits and dashes, starting with a letter"),
   description: z.string().trim().min(1, "say when the skill should be used").max(1024),
   body: z.string().trim().min(1, "the skill needs instructions").max(20_000),
+  everyone: z.boolean().default(false),
 });
 
 export type Skill = z.infer<typeof Skill>;

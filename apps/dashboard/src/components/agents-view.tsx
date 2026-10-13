@@ -17,9 +17,18 @@ import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
 const RUNS: Readonly<Record<RoleView["runs"], { readonly badge: string; readonly text: string }>> = {
-  agent: { badge: "Claude Code agent", text: "Runs as a Claude Code agent in its own sandbox. It reads the project, runs commands and edits files, but only inside the paths below. Skills are loaded when their description fits the task." },
-  api: { badge: "Claude call", text: "Runs as one Claude call. It reads what chef gives it and answers; it never edits files. Its skills are added to its system prompt." },
-  rules: { badge: "Code rules", text: "Runs as code rules after every merge. This prompt is not sent to a model yet." },
+  agent: {
+    badge: "Claude Code agent",
+    text: "Runs as a Claude Code agent in its own sandbox. It reads the project, runs commands and edits files, but only inside the paths below. Skills are loaded when their description fits the task.",
+  },
+  api: {
+    badge: "Claude call",
+    text: "Runs as one Claude call. It reads what chef gives it and answers; it never edits files. Its skills are added to its system prompt.",
+  },
+  rules: {
+    badge: "Code rules",
+    text: "Runs as code rules after every merge. This prompt is not sent to a model yet.",
+  },
 };
 
 function Field(props: { readonly label: string; readonly hint?: ReactNode; readonly children: ReactNode }) {
@@ -57,10 +66,12 @@ function ListItem(props: { readonly selected: boolean; readonly onClick: () => v
 
 function RoleList({ view, selected, pick }: { readonly view: View; readonly selected: string; readonly pick: (item: string) => void }) {
   const { sessions } = useWorkspace();
+  const shared = view.skills.filter((s) => s.everyone).length;
   return (
     <>
       {view.roles.map((r) => {
         const busy = sessions.filter((s) => workingRole(s) === r.role).length;
+        const count = r.runs === "rules" ? 0 : r.skills.length + shared;
         return (
           <ListItem
             key={r.role}
@@ -73,7 +84,7 @@ function RoleList({ view, selected, pick }: { readonly view: View; readonly sele
               <>
                 {RUNS[r.runs].badge}
                 {r.runs === "rules" ? "" : ` · ${r.model ?? r.defaultModel}`}
-                {r.skills.length ? ` · ${r.skills.length} ${r.skills.length === 1 ? "skill" : "skills"}` : ""}
+                {count ? ` · ${count} ${count === 1 ? "skill" : "skills"}` : ""}
               </>
             }
             badge={
@@ -110,13 +121,17 @@ function SkillPicker({ skills, value, onChange }: { readonly skills: readonly Sk
         .
       </p>
     );
+  const ordered = [...skills.filter((s) => s.everyone), ...skills.filter((s) => !s.everyone)];
   return (
     <div className="flex flex-col gap-1" role="group" aria-label="Skills">
-      {skills.map((s) => (
-        <label key={s.name} className="flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 hover:bg-muted/50">
-          <input type="checkbox" className="mt-0.5 size-4 accent-foreground" checked={value.includes(s.name)} onChange={(e) => onChange(e.target.checked ? [...value, s.name] : value.filter((n) => n !== s.name))} />
+      {ordered.map((s) => (
+        <label key={s.name} data-skill-option={s.name} data-shared={s.everyone || undefined} className={cn("flex items-start gap-2.5 rounded-lg border px-3 py-2", s.everyone ? "bg-muted/40" : "cursor-pointer hover:bg-muted/50")}>
+          <input type="checkbox" className="mt-0.5 size-4 accent-foreground" checked={s.everyone || value.includes(s.name)} disabled={s.everyone} onChange={(e) => onChange(e.target.checked ? [...value, s.name] : value.filter((n) => n !== s.name))} />
           <span className="min-w-0 flex-1">
-            <span className="block font-mono text-xs">{s.name}</span>
+            <span className="flex items-center gap-2">
+              <span className="font-mono text-xs">{s.name}</span>
+              {s.everyone ? <span className="text-[11px] text-muted-foreground">for every role</span> : null}
+            </span>
             <span className="block text-xs text-muted-foreground">{s.description}</span>
           </span>
         </label>
@@ -125,7 +140,13 @@ function SkillPicker({ skills, value, onChange }: { readonly skills: readonly Sk
   );
 }
 
-const BLANK: RoleSetting = { label: "", description: "", instructions: "Implement the feature inside `features/{feature}/` so its locked tests pass. Import other code only from `shared/`. Do not write comments.", model: null, skills: [] };
+const BLANK: RoleSetting = {
+  label: "",
+  description: "",
+  instructions: "Implement the feature inside `features/{feature}/` so its locked tests pass. Import other code only from `shared/`. Do not write comments.",
+  model: null,
+  skills: [],
+};
 
 function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleView | null }) {
   const { select, sessions, openSession, features } = useWorkspace();
@@ -145,7 +166,17 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
   const save = () => {
     const key = role?.role ?? id.trim();
     const current = configOf(view);
-    void run({ ...current, roles: { ...current.roles, [key]: { ...draft, model: draft.model?.trim() || null } } }, role ? `Edited ${draft.label}` : `Added ${draft.label}`, key);
+    void run(
+      {
+        ...current,
+        roles: {
+          ...current.roles,
+          [key]: { ...draft, model: draft.model?.trim() || null },
+        },
+      },
+      role ? `Edited ${draft.label}` : `Added ${draft.label}`,
+      key,
+    );
   };
   const remove = () => {
     if (!role) return;
@@ -215,10 +246,13 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
       <Field label="System prompt" hint="{feature} is replaced with the feature id.">
         <Textarea value={draft.instructions} onChange={(e) => change({ instructions: e.target.value })} aria-label="System prompt" className="max-h-[55vh] min-h-40 overflow-y-auto font-mono text-xs leading-relaxed md:text-xs" required />
       </Field>
-      <div className="grid gap-1.5 text-sm">
-        <span className="font-medium">Skills</span>
-        <SkillPicker skills={view.skills} value={draft.skills} onChange={(skills) => change({ skills })} />
-      </div>
+      {role?.runs === "rules" ? null : (
+        <div className="grid gap-1.5 text-sm">
+          <span className="font-medium">Skills</span>
+          <SkillPicker skills={view.skills} value={draft.skills} onChange={(skills) => change({ skills })} />
+          <span className="text-xs text-muted-foreground">Skills marked for every role come from the Skills tab. Tick others to give this role its own.</span>
+        </div>
+      )}
       {role?.runs === "agent" || !role ? (
         <div className="grid gap-1.5 text-sm">
           <span className="font-medium">May change</span>
@@ -247,11 +281,16 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
   );
 }
 
+function usedByText(count: number): string {
+  if (count === 0) return "Not used yet";
+  return `Used by ${count} ${count === 1 ? "role" : "roles"}`;
+}
+
 function SkillList({ view, selected, pick }: { readonly view: View; readonly selected: string; readonly pick: (item: string) => void }) {
   return (
     <>
       {view.skills.map((s) => (
-        <ListItem key={s.name} id={s.name} kind="skill" selected={selected === s.name} onClick={() => pick(s.name)} title={s.name} sub={`Used by ${view.roles.filter((r) => r.skills.includes(s.name)).length || "no"} roles`} />
+        <ListItem key={s.name} id={s.name} kind="skill" selected={selected === s.name} onClick={() => pick(s.name)} title={s.name} sub={s.everyone ? "Every role" : usedByText(view.roles.filter((r) => r.skills.includes(s.name)).length)} />
       ))}
       <Button variant="ghost" size="sm" className="mt-1 justify-start text-muted-foreground" onClick={() => pick("new")}>
         <Plus />
@@ -263,7 +302,7 @@ function SkillList({ view, selected, pick }: { readonly view: View; readonly sel
 
 function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Skill | null }) {
   const { select } = useWorkspace();
-  const blank: Skill = { name: "", description: "", body: "" };
+  const blank: Skill = { name: "", description: "", body: "", everyone: false };
   const [draft, setDraft] = useState<Skill>(skill ?? blank);
   const usedBy = (name: string) => view.roles.filter((r) => r.skills.includes(name)).map((r) => r.role);
   const [roles, setRoles] = useState<string[]>(skill ? usedBy(skill.name) : []);
@@ -283,19 +322,30 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
       const want = keep(r);
       if (has === want) continue;
       const setting = next[r.role] ?? settingOf(r);
-      next[r.role] = { ...setting, skills: want ? [...setting.skills.filter((n) => n !== name), name] : setting.skills.filter((n) => n !== name) };
+      next[r.role] = {
+        ...setting,
+        skills: want ? [...setting.skills.filter((n) => n !== name), name] : setting.skills.filter((n) => n !== name),
+      };
     }
     return { ...current, roles: next, skills };
   };
   const save = () => {
     const name = draft.name.trim();
     const skills = skill ? view.skills.map((s) => (s.name === skill.name ? draft : s)) : [...view.skills, { ...draft, name }];
-    void write(withRoles(name, (r) => roles.includes(r.role), skills), skill ? `Edited skill ${name}` : `Added skill ${name}`, name);
+    void write(
+      withRoles(name, (r) => !draft.everyone && roles.includes(r.role), skills),
+      skill ? `Edited skill ${name}` : `Added skill ${name}`,
+      name,
+    );
   };
   const remove = () => {
     if (!skill) return;
     void write(
-      withRoles(skill.name, () => false, view.skills.filter((s) => s.name !== skill.name)),
+      withRoles(
+        skill.name,
+        () => false,
+        view.skills.filter((s) => s.name !== skill.name),
+      ),
       `Removed skill ${skill.name}`,
       "",
     );
@@ -320,7 +370,7 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
           </Button>
         ) : null}
       </div>
-      <p className="text-sm text-muted-foreground">A skill is a short guide a role can follow, like a house style, a library's quirks or a checklist. Coding roles load it when its description fits the task; planner and reviewer always read it.</p>
+      <p className="text-sm text-muted-foreground">A skill is a short guide a role can follow, like a house style, a library's quirks or a checklist. Give it to every role to use it in all sessions of the project, or only to the roles that need it. Coding roles load it when its description fits the task; planner and reviewer always read it.</p>
       {skill ? null : (
         <Field label="Name" hint="Lower case letters, digits and dashes, for example tidy-sql.">
           <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value.toLowerCase() })} placeholder="tidy-sql" aria-label="Skill name" pattern="[a-z][a-z0-9-]{0,63}" required />
@@ -333,18 +383,38 @@ function SkillEditor({ view, skill }: { readonly view: View; readonly skill: Ski
         <Textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} aria-label="Instructions" className="max-h-[55vh] min-h-48 overflow-y-auto font-mono text-xs leading-relaxed md:text-xs" required />
       </Field>
       <div className="grid gap-1.5 text-sm">
-        <span className="font-medium">Roles that use it</span>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Roles that use it">
-          {view.roles
-            .filter((r) => r.runs !== "rules")
-            .map((r) => (
-              <label key={r.role} className={cn("inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-xs", roles.includes(r.role) && "border-foreground/40 bg-muted font-medium")}>
-                <input type="checkbox" className="size-3.5 accent-foreground" checked={roles.includes(r.role)} onChange={(e) => setRoles(e.target.checked ? [...roles, r.role] : roles.filter((n) => n !== r.role))} />
-                {r.label}
-              </label>
-            ))}
+        <span className="font-medium">Who uses it</span>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Who uses it">
+          {(
+            [
+              [true, "Every role", "All roles in every session of this project"],
+              [false, "Chosen roles", "Only the roles you tick below"],
+            ] as const
+          ).map(([everyone, label, hint]) => (
+            <label key={label} title={hint} className={cn("inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-xs", draft.everyone === everyone && "border-foreground/40 bg-muted font-medium")}>
+              <input type="radio" name="skill-scope" className="size-3.5 accent-foreground" checked={draft.everyone === everyone} onChange={() => setDraft({ ...draft, everyone })} />
+              {label}
+            </label>
+          ))}
         </div>
       </div>
+      {draft.everyone ? (
+        <p className="-mt-3 text-xs text-muted-foreground">Every role gets this skill in every session, including roles you add later.</p>
+      ) : (
+        <div className="grid gap-1.5 text-sm">
+          <span className="font-medium">Roles that use it</span>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Roles that use it">
+            {view.roles
+              .filter((r) => r.runs !== "rules")
+              .map((r) => (
+                <label key={r.role} className={cn("inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-xs", roles.includes(r.role) && "border-foreground/40 bg-muted font-medium")}>
+                  <input type="checkbox" className="size-3.5 accent-foreground" checked={roles.includes(r.role)} onChange={(e) => setRoles(e.target.checked ? [...roles, r.role] : roles.filter((n) => n !== r.role))} />
+                  {r.label}
+                </label>
+              ))}
+          </div>
+        </div>
+      )}
       <div className="sticky bottom-0 -mx-1 flex items-center gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
         <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : "Saved"}</span>
         <span className="flex-1" />
@@ -362,7 +432,9 @@ function HistoryMenu({ view }: { readonly view: View }) {
       setAgents(await agentsApi.restore(version));
       toast.success(version === 0 ? "Back to chef's defaults" : `Restored version ${version}`, { description: "The version you left is still in History." });
     } catch (error) {
-      toast.error("Could not restore", { description: error instanceof Error ? error.message : String(error) });
+      toast.error("Could not restore", {
+        description: error instanceof Error ? error.message : String(error),
+      });
     }
   };
   return (
@@ -392,7 +464,11 @@ function HistoryMenu({ view }: { readonly view: View }) {
   );
 }
 
-const TABS: readonly { readonly value: AgentTab; readonly label: string; readonly icon: typeof Bot }[] = [
+const TABS: readonly {
+  readonly value: AgentTab;
+  readonly label: string;
+  readonly icon: typeof Bot;
+}[] = [
   { value: "roles", label: "Roles", icon: Bot },
   { value: "skills", label: "Skills", icon: Wrench },
   { value: "router", label: "Router", icon: Route },

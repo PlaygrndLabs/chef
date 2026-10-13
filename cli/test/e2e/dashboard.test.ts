@@ -104,7 +104,7 @@ describe("dashboard in a browser", () => {
       const page = await browser.newPage();
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      const agents = async () => (await (await page.request.get(`${local.url}/api/agents`)).json()) as { version: number; roles: { role: string; instructions: string; skills: string[]; custom: boolean; edited: boolean }[]; router: { useJev: boolean } };
+      const agents = async () => (await (await page.request.get(`${local.url}/api/agents`)).json()) as { version: number; roles: { role: string; instructions: string; skills: string[]; custom: boolean; edited: boolean }[]; router: { useJev: boolean }; skills: { name: string; everyone: boolean }[] };
       await page.request.post(`${local.url}/api/projects/shop/prompts`, { data: { prompt: TODO_PROMPT } });
       await page.goto(`${local.url}/?project=shop`);
       await page.locator('#features [data-session="s1"][data-state="merged"]').waitFor({ timeout: 60_000 });
@@ -139,11 +139,31 @@ describe("dashboard in a browser", () => {
       expect(saved.version).toBe(3);
       expect(saved.roles.find((r) => r.role === "data-modeler")).toMatchObject({ custom: true, skills: ["tidy-sql"] });
 
+      await view.getByRole("button", { name: "New skill" }).click();
+      const shared = view.locator('[data-skill-editor="new"]');
+      await shared.getByLabel("Skill name").fill("house-style");
+      await shared.getByLabel("When to use it").fill("Use when naming anything");
+      await shared.getByLabel("Instructions").fill("Name things after what the user sees.");
+      await shared.getByRole("radio", { name: "Every role" }).click();
+      expect(await shared.getByRole("group", { name: "Roles that use it" }).count()).toBe(0);
+      await shared.getByRole("button", { name: "Save" }).click();
+      await view.locator('[data-skill-editor="house-style"]').waitFor({ timeout: 10_000 });
+      saved = await agents();
+      expect(saved.version).toBe(4);
+      expect(saved.skills.find((s) => s.name === "house-style")).toMatchObject({ everyone: true });
+      expect(await view.locator('[data-skill="house-style"]').innerText()).toContain("Every role");
+      await view.getByRole("tab", { name: /Roles/ }).click();
+      await view.locator('[data-role="backend"]').click();
+      const option = view.locator('[data-role-editor="backend"] [data-skill-option="house-style"]');
+      await expect.poll(() => option.getAttribute("data-shared")).toBe("true");
+      expect(await option.locator("input").isDisabled()).toBe(true);
+
       await view.getByRole("button", { name: "History" }).click();
       await page.locator('[data-version="1"]').click();
-      await expect.poll(async () => (await agents()).version, { timeout: 10_000 }).toBe(4);
+      await expect.poll(async () => (await agents()).version, { timeout: 10_000 }).toBe(5);
       saved = await agents();
       expect(saved.roles.some((r) => r.role === "data-modeler")).toBe(false);
+      expect(saved.skills).toEqual([]);
       expect(saved.roles.find((r) => r.role === "backend")?.instructions).toBe("Implement {feature}. Keep handlers small.");
 
       await view.getByRole("tab", { name: /Router/ }).click();
