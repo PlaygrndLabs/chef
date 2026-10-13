@@ -26,5 +26,6 @@ export * from "./memory/memory.ts";
 export * from "./guidance/guidance.ts";
 export * from "./gardener/gardener.ts";
 export * from "./voice/delegate.ts";
+export * from "./voice/turns.ts";
 export * from "./learning/review-prompt.ts";
 export * from "./learning/export.ts";

@@ -144,10 +144,12 @@ The Worker binds the index as `MEMORY` (index `chef-memory`, 768 dimensions, cos
 
 The voice front end hands spoken requests to the same router as typed prompts; GPT-Live only listens and speaks.
 
-1. The dashboard's Talk button opens a WebRTC connection with the microphone and an `oai-events` data channel, and posts its SDP offer to `POST /api/projects/:name/voice`.
+1. The live button in the chat composer (it takes the Send button's place while the box is empty) opens a WebRTC connection with the microphone and an `oai-events` data channel, and posts its SDP offer to `POST /api/projects/:name/voice`.
 2. `ProjectAgent` creates the GPT-Live session with `POST https://api.openai.com/v1/live/sessions` (`gpt-live-1`, client delegation, instructions listing the project's features), returns the SDP answer to the browser, and attaches a sideband WebSocket to `/v1/live/sessions/{id}/attach`. The OpenAI key never leaves the Worker.
 3. GPT-Live decides when the user asked for something and sends `session.delegation.created`. `VoiceDelegate` (`core/src/voice/delegate.ts`) takes the user's transcript up to the delegation point, calls `Orchestrator.submitSpoken`, which routes it like a typed prompt and emits `voice.request`, and answers with `session.commentary.append`, which GPT-Live speaks in the user's language.
-4. From there the session runs as any other; the dashboard shows the transcript and the spoken requests.
+4. `SpokenTurns` (`core/src/voice/turns.ts`) joins the transcript deltas into turns, one per speaker, and `Orchestrator.recordSpoken` emits each as `voice.turn`. The chat shows those turns as spoken messages in the same conversation as typed ones, so they stay after the call and on other devices. A spoken request shows only the feature cards it started, since the turn already shows what was said.
+5. While a call is live the composer is replaced by a panel with a pixel orb that follows the microphone and chef's voice, a Mute button and an End button (or Esc). Ending stops the microphone at once and closes the GPT-Live session in the background.
+6. From there each started session runs as any other.
 
 `chef voice --say "<request>"` runs the same path locally: scripted transcripts by default, or with `--live` the request is synthesized with OpenAI text to speech and streamed to a server-side GPT-Live session over WebSocket.
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RealtimeHost, REQUEST_TOOL, startRealtimeSession } from "../../src/realtime.ts";
+import { endpoint, RealtimeHost, REQUEST_TOOL, startRealtimeSession } from "../../src/realtime.ts";
 import type { SocketLike } from "../../src/gpt-live.ts";
 
 class FakeSocket implements SocketLike {
@@ -83,5 +83,13 @@ describe("Realtime adapter for a custom provider", () => {
     expect(urls).toEqual(["ws://127.0.0.1:1/v1/realtime?model=gpt-realtime"]);
     session.say("Add an item");
     expect(socket.sent.map((m) => m["type"])).toEqual(["session.update", "conversation.item.create", "response.create"]);
+  });
+});
+
+describe("realtime endpoints", () => {
+  it("joins a base URL with a trailing slash or a doubled slash into one clean path", () => {
+    expect(endpoint("https://gateway.example//v1", "/realtime/calls")).toBe("https://gateway.example/v1/realtime/calls");
+    expect(endpoint("https://gateway.example/v1/", "/realtime?model=gpt-realtime")).toBe("https://gateway.example/v1/realtime?model=gpt-realtime");
+    expect(endpoint("https://api.openai.com/v1", "/realtime?call_id=c1")).toBe("https://api.openai.com/v1/realtime?call_id=c1");
   });
 });

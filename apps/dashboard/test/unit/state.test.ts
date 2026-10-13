@@ -230,10 +230,10 @@ describe("voice transcript", () => {
       { type: "session.output_transcript.delta", delta: "On it." },
       { type: "session.output_audio.delta", delta: "AAAA" },
     ])
-      lines = transcript(lines, event);
+      lines = transcript(lines, event, 5);
     expect(lines).toEqual([
-      { speaker: "you", text: "Add an item" },
-      { speaker: "chef", text: "On it." },
+      { speaker: "you", text: "Add an item", at: 5 },
+      { speaker: "chef", text: "On it.", at: 5 },
     ]);
   });
 });
