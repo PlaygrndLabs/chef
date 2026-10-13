@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { RuleReviewer } from "../../src/fakes/rule-reviewer.ts";
 import { scopeFor } from "../../src/profiles/profile.ts";
 import { readSpec } from "../../src/spec/lint.ts";
 import { fixture, profiles, scriptFromFixture, templateTree, todoSpec, world } from "../harness.ts";
@@ -61,5 +62,36 @@ describe("splitting a request into features", () => {
     for (let i = 0; i < 3; i++) await w.orchestrator.step(record.id);
     const fork = await w.repos.readCommit(record.fork, (await w.orchestrator.session(record.id)).head as string);
     expect(readSpec(fork?.tree ?? {}).find((f) => f.id === record.featureId)?.parent).toBe("todo-add");
+  });
+
+  it("tells the reviewer a child feature may change its parent's files", async () => {
+    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add" }] as const]]);
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]), splits });
+    await w.orchestrator.bootstrap(templateTree());
+    await w.orchestrator.run((await w.orchestrator.submit(TODO)).sessionId as string);
+    const reviewer = w.deps.reviewer as RuleReviewer;
+    const before = reviewer.reviews.length;
+    await w.orchestrator.run((await w.orchestrator.submit("Let people delete an item")).sessionId as string);
+    const review = reviewer.reviews[before];
+    expect(review?.feature.parent).toBe("todo-add");
+    expect(review?.scope).toEqual(expect.arrayContaining(["features/let-people-delete-item/**", "features/todo-add/**"]));
+    expect(review?.scope?.some((pattern) => pattern.startsWith("!"))).toBe(false);
+  });
+});
+
+describe("the main chat's memory", () => {
+  it("sends earlier messages with a new request and reports how full the context is", async () => {
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]) });
+    await w.orchestrator.bootstrap(templateTree());
+    await w.orchestrator.submit(TODO);
+    await w.orchestrator.submit("Let people delete an item");
+    const asked = w.planner.splitAsked.at(-1);
+    expect(asked?.conversation).toContain(`Person: ${TODO}`);
+    expect(asked?.conversation).toContain("chef: Started the feature:");
+    expect(w.planner.splitAsked[0]?.conversation).toBeUndefined();
+    expect((await w.orchestrator.chatTurns()).map((t) => t.prompt)).toEqual([TODO, "Let people delete an item"]);
+    const contexts = w.bus.log.filter((e) => e.type === "chat.context");
+    expect(contexts).toHaveLength(2);
+    expect(contexts.at(-1)).toMatchObject({ turns: 2, dropped: 0, limit: 32_000 });
   });
 });

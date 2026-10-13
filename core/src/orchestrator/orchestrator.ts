@@ -14,6 +14,7 @@ import type { Clock, IdSource, KeyValueStore } from "../ports/runtime.ts";
 import { customAgent, outOfScope, scopeFor, type Profiles } from "../profiles/profile.ts";
 import type { RouteDecision } from "../router/decision.ts";
 import { DEFAULT_ROUTER_CONFIG, Router, withoutCommand, type RouterConfig } from "../router/router.ts";
+import { CHAT_TURNS_KEPT, conversation, type ChatTurn } from "../router/conversation.ts";
 import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type RejectionRule, type SessionEvent } from "../session/machine.ts";
 import type { SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
@@ -89,6 +90,7 @@ export interface GateOutcome {
 export class ControlError extends Error {}
 
 const LAYOUT_KEY = "layout/features";
+const CHAT_KEY = "chat/turns";
 
 interface Control {
   readonly type: "drop";
@@ -203,17 +205,19 @@ export class Orchestrator {
   async submit(prompt: string, options: { readonly attempts?: number } = {}): Promise<SubmitResult> {
     const { tree } = await this.mainTree();
     const spec = arrangedSpec(readSpec(tree), await this.layout());
+    const chat = conversation(await this.chatTurns(), spec).text;
     const decision = await this.router.route(prompt, spec);
     await this.emit({ type: "route.decided", prompt, decision });
     if (decision.intent === "question") {
       const answer = await this.answer(prompt);
       await this.emit({ type: "question.answered", prompt, answer: answer.text, sources: answer.sources });
+      await this.remember(prompt, answer.text, spec);
       return { decision, sessionId: null, sessionIds: [], answer };
     }
     const chore = decision.intent === "chore";
     const hotfix = decision.hotfix === true;
-    const parts = chore ? null : await this.router.split(prompt, spec, decision);
-    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, parts.length > 1 ? part.prompt : prompt)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec)];
+    const parts = chore ? null : await this.router.split(prompt, spec, decision, chat);
+    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, parts.length > 1 ? part.prompt : prompt, chat)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat)];
     const attempts = chore || hotfix ? 1 : Math.max(1, Math.floor(options.attempts ?? this.specialization.attempts));
     const created: string[] = [];
     for (const [at, plan] of plans.entries()) {
@@ -223,16 +227,27 @@ export class Orchestrator {
       created.push(...(await this.createSessions(prompt, own, plan, attempts, { chore, hotfix, ask })));
     }
     const first = plans[0]?.feature.id;
+    await this.remember(prompt, `${chore ? "Started a chore" : plans.length > 1 ? "Split it into features" : decision.intent === "change_feature" ? "Changing the feature" : "Started the feature"}: ${plans.map((p) => `${p.feature.title} (${p.feature.id})`).join(", ")}`, spec);
     return { decision, sessionId: created[0] ?? null, sessionIds: created, ...(first ? { featureId: first } : {}) };
   }
 
-  private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], prompt: string): Promise<Plan> {
+  async chatTurns(): Promise<readonly ChatTurn[]> {
+    return (await this.deps.store.get<ChatTurn[]>(CHAT_KEY)) ?? [];
+  }
+
+  private async remember(prompt: string, reply: string, spec: readonly FeatureSpec[]): Promise<void> {
+    const turns = [...(await this.chatTurns()), { prompt, reply, at: this.deps.clock.now() }].slice(-CHAT_TURNS_KEPT);
+    await this.deps.store.put(CHAT_KEY, turns);
+    await this.emit({ type: "chat.context", ...conversation(turns, spec).context });
+  }
+
+  private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], prompt: string, chat: string): Promise<Plan> {
     if (part.kind === "change") {
       const existing = spec.find((f) => f.id === part.featureId);
-      const plan = await this.planFeature(prompt, { ...decision, intent: "change_feature", featureId: part.featureId, changeKind: part.changeKind }, spec);
+      const plan = await this.planFeature(prompt, { ...decision, intent: "change_feature", featureId: part.featureId, changeKind: part.changeKind }, spec, null, chat);
       return withParent(plan, existing?.parent ?? null);
     }
-    const plan = await this.planFeature(prompt, { ...decision, intent: "new_feature", featureId: null, changeKind: null }, spec, part.parent);
+    const plan = await this.planFeature(prompt, { ...decision, intent: "new_feature", featureId: null, changeKind: null }, spec, part.parent, chat);
     return withParent(plan, part.parent);
   }
 
@@ -278,12 +293,12 @@ export class Orchestrator {
     return ids;
   }
 
-  private async planFeature(prompt: string, decision: RouteDecision, spec: readonly FeatureSpec[], parent: string | null = null): Promise<Plan> {
+  private async planFeature(prompt: string, decision: RouteDecision, spec: readonly FeatureSpec[], parent: string | null = null, chat = ""): Promise<Plan> {
     const roles = Object.values(this.config.profiles)
       .filter((p) => p.plannable)
       .map((p) => ({ role: p.role, description: p.description }));
     const intent = decision.intent === "change_feature" ? "change_feature" : "new_feature";
-    const planned = await this.deps.planner.plan({ prompt: withoutCommand(prompt), intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), spec, roles, env: await this.environment(), ...(await this.guidanceField()) });
+    const planned = await this.deps.planner.plan({ prompt: withoutCommand(prompt), intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), spec, roles, env: await this.environment(), ...(await this.guidanceField()) });
     return this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
   }
 
@@ -554,11 +569,21 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     const base = await this.commitOf(this.canonical, record.baseMain);
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: "reviewer", kind: "review", model: this.deps.reviewer.model ?? "reviewer" });
-    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "", ...(record.kind === "chore" ? { chore: true } : {}), ...(await this.guidanceField()) });
+    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "", scope: this.reviewScope(record, head.tree), ...(record.kind === "chore" ? { chore: true } : {}), ...(await this.guidanceField()) });
     record.verdict = { ...verdict, commitId: head.id };
     await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons, model: verdict.model, head: head.id, base: base.id });
     if (verdict.approve) await this.apply(record, { type: "review_approved" });
     else await this.apply(record, { type: "review_rejected", reasons: verdict.reasons, retest: this.specialization.lockTests && verdict.retest === true && record.plan.items.some((i) => i.kind === "test") });
+  }
+
+  private reviewScope(record: SessionRecord, tree: Tree): string[] {
+    const feature = readSpec(tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
+    const roles = new Set(record.plan.items.map((i) => i.role));
+    const scope = [...roles].flatMap((role) => {
+      const profile = this.config.profiles[role];
+      return profile ? scopeFor(profile, feature) : [];
+    });
+    return [...new Set(scope.filter((pattern) => !pattern.startsWith("!")))];
   }
 
   async environmentChanged(): Promise<string[]> {
@@ -1353,7 +1378,7 @@ const TRANSIENT_RETRIES = 5;
 
 export function transient(error: unknown): boolean {
   if ((error as { retryable?: unknown } | null)?.retryable === true) return true;
-  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)/i.test((error as Error | null)?.message ?? "");
+  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)|container service disconnected|sandbox container (stopped|did not start)/i.test((error as Error | null)?.message ?? "");
 }
 
 export function runnable(record: SessionRecord): boolean {
