@@ -24,9 +24,9 @@ export type RoleSetting = z.infer<typeof RoleSetting>;
 
 export const RouterSettings = z.strictObject({
   useJev: z.boolean(),
-  thresholds: z.strictObject({ new_feature: share, change_feature: share, chore: share.default(DEFAULT_ROUTER_CONFIG.thresholds.chore), question: share, feature: share }),
+  thresholds: z.strictObject({ new_feature: share, change_feature: share, chore: share, question: share, feature: share }),
   wording: z.strictObject({
-    intent: z.strictObject({ instructions: text(500, "the question needs text"), criteria: z.strictObject({ new_feature: text(300, "describe each answer"), change_feature: text(300, "describe each answer"), chore: text(300, "describe each answer").default(DEFAULT_WORDING.intent.criteria.chore), question: text(300, "describe each answer") }) }),
+    intent: z.strictObject({ instructions: text(500, "the question needs text"), criteria: z.strictObject({ new_feature: text(300, "describe each answer"), change_feature: text(300, "describe each answer"), chore: text(300, "describe each answer"), question: text(300, "describe each answer") }) }),
     feature: z.strictObject({ instructions: text(500, "the question needs text"), none: text(300, "describe each answer") }),
     change: z.strictObject({ instructions: text(500, "the question needs text"), criteria: z.strictObject({ bug: text(300, "describe each answer"), extend: text(300, "describe each answer"), refactor: text(300, "describe each answer") }) }),
   }),
@@ -113,17 +113,8 @@ export function applyAgentConfig(defaults: Profiles, config: AgentConfig): Profi
   return out;
 }
 
-export function withRouterDefaults(settings: RouterSettings): RouterSettings {
-  const d = DEFAULT_ROUTER_SETTINGS;
-  return {
-    ...settings,
-    thresholds: { ...d.thresholds, ...settings.thresholds },
-    wording: { ...settings.wording, intent: { ...settings.wording.intent, criteria: { ...d.wording.intent.criteria, ...settings.wording.intent.criteria } } },
-  };
-}
-
 export function routerConfigOf(settings: RouterSettings | null): RouterConfig {
-  const s = withRouterDefaults(settings ?? DEFAULT_ROUTER_SETTINGS);
+  const s = settings ?? DEFAULT_ROUTER_SETTINGS;
   const { feature, ...thresholds } = s.thresholds;
   return { thresholds, featureThreshold: feature, useClassifier: s.useJev, wording: s.wording as RoutingWording };
 }
@@ -270,7 +261,7 @@ export function agentsView(defaults: Profiles, stored: StoredAgents, history: re
     summary: stored.summary,
     roles,
     skills: stored.config.skills,
-    router: withRouterDefaults(stored.config.router ?? DEFAULT_ROUTER_SETTINGS),
+    router: stored.config.router ?? DEFAULT_ROUTER_SETTINGS,
     routerDefaults: DEFAULT_ROUTER_SETTINGS,
     routerEdited: stored.config.router !== null,
     jev,

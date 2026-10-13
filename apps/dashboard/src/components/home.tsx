@@ -56,7 +56,7 @@ export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
 }
 
 function replyFor(decision: RouteDecision, title: string | null, attempts: number, parts: number): string {
-  if (decision.intent === "question") return "chef answered this before answers were saved, so the answer is not shown here.";
+  if (decision.intent === "question") return "No answer was saved for this question.";
   if (parts > 1) return `On it. This is ${parts} features, so chef builds them at the same time.`;
   const parallel = attempts > 1 ? ` I'm trying ${attempts} approaches at once and will keep the best one.` : "";
   const hotfix = decision.hotfix ? " It's a hotfix, so it goes live before other builds." : "";

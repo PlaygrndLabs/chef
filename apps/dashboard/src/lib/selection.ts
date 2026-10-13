@@ -22,12 +22,10 @@ export interface Selection {
 const PANELS: readonly Panel[] = ["preview", "messages", "changes", "checks", "details"];
 const PROJECT = /^[a-z][a-z0-9-]{1,30}$/;
 const SECTION = /^[a-z][a-z-]{1,30}$/;
-const OLD_TABS: Readonly<Record<string, string>> = { roles: "agents", skills: "skills", router: "router" };
 
 function readSettings(params: URLSearchParams): SettingsPlace | null {
   const [scope, section] = (params.get("settings") ?? "").split(".");
   if ((scope === "app" || scope === "project") && section && SECTION.test(section)) return { scope, section };
-  if (params.get("view") === "agents") return { scope: "app", section: OLD_TABS[params.get("tab") ?? ""] ?? "agents" };
   return null;
 }
 

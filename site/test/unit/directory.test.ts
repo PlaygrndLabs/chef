@@ -14,11 +14,10 @@ describe("directory", () => {
     const dir = directory();
     const first = dir.signIn(sam, false);
     expect(first.userId).toMatch(/^usr_[A-Za-z0-9]{20}$/);
-    expect(first.created).toBe(true);
     expect(first.org).toMatchObject({ name: "sam's org", role: "owner" });
     expect(first.org.id).toMatch(/^org_[A-Za-z0-9]{20}$/);
     const again = dir.signIn({ ...sam, email: "sam@new.example" }, true);
-    expect(again).toEqual({ userId: first.userId, created: false, org: first.org, orgs: [first.org] });
+    expect(again).toEqual({ userId: first.userId, org: first.org, orgs: [first.org] });
     expect(dir.list().users).toMatchObject([{ id: first.userId, email: "sam@new.example", admin: true, orgs: 1 }]);
   });
 
