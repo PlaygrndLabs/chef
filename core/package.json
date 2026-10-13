@@ -11,7 +11,8 @@
     "./env": "./src/env/env.ts",
     "./brand": "./src/brand/brand.ts",
     "./replay": "./src/events/replay.ts",
-    "./setup": "./src/setup/progress.ts"
+    "./setup": "./src/setup/progress.ts",
+    "./chat": "./src/router/conversation.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

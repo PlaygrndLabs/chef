@@ -5,6 +5,7 @@ export interface ReviewInput {
   readonly feature: FeatureSpec;
   readonly diff: FileChanges;
   readonly checksLog: string;
+  readonly scope?: readonly string[];
   readonly chore?: boolean;
 }
 
