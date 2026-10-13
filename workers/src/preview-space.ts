@@ -7,7 +7,7 @@ export class CloudflareWorkerSpace implements PreviewSpace {
   constructor(
     private readonly grant: { readonly accountId: string; readonly worker: string },
     private readonly apiToken: string,
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly fetcher: typeof fetch = (input, init) => fetch(input, init),
   ) {}
 
   async remove(): Promise<void> {
