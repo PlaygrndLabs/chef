@@ -1,16 +1,18 @@
 # Architecture
 
-chef turns a prompt or a spec entry into a merged feature with no human step. The spec is the memory, git is the state, and chat is only input.
+chef turns a prompt or a spec entry into a merged feature on its own. The spec is the memory, git is the state, and chat is only input.
 
 ## Where things run
 
-chef has two halves. The engine is the chef Worker in the user's Cloudflare account: the HTTP API, the project and session Durable Objects, sandboxes, previews, Artifacts repos, memory and settings. Everything that does work or keeps state lives there, so work goes on when no client is open.
+chef has two halves, and both run on Cloudflare.
 
-The interface is a client of that API. In the cloud the Worker serves the dashboard itself. On a computer, `chef app` (`pnpm start`, `cli/src/app.ts`) serves the same dashboard on `localhost` and forwards `/api/*`, `/agents/*` (the live WebSocket) and `/preview/*` to the engine with the password as a Bearer token, so the browser never holds it. It keeps only where chef works and, for a chef in Cloudflare, its address and password (`~/.chef/connection.json`), and answers `/api/app` with `{ mode: "local", place, engine, computer, setup }`; the Worker answers the same path with `mode: "cloud"`. When no place is chosen the dashboard shows the place screen: connect to a chef in Cloudflare, check a Cloudflare account and deploy chef to it from this computer (`cli/src/cloudflare.ts`, the same `deploy` script as CI), or run here. Choosing again from Settings stops the local engine or drops the connection and returns to that screen. It only answers requests from its own pages: the `Host` must be its own, a cross-site `Origin` or `Sec-Fetch-Site` is refused, and writes need a same-origin signal. A terminal or desktop app would be another client of the same API.
+The site (`site/`, the `chef-site` Worker behind chef.playgrndlabs.com) is where people start. It shows the landing page, signs people in with Cloudflare (OAuth), and on setup installs a chef engine on the Cloudflare account they pick, through `chef deploy` in an installer container. It keeps only each member's email, their engine's address and the key it uses to reach that engine; the Cloudflare access used for setup is revoked when setup ends. Signed-in members get the dashboard from the site, which forwards `/api/*`, `/agents/*` (the live WebSocket) and `/preview/*` to their engine with that key. See `site/README.md`.
 
-The engine can also run on the computer itself: choosing **On this computer**, or `chef app --local` (`pnpm start --local`, `cli/src/engine/`), starts `LocalEngine` in the same process as the local app, which then hands `/api/*`, `/agents/*` and `/preview/*` to it instead of forwarding them, and answers `/api/app` with `place: "computer"`. `LocalEngine` serves the routes the Worker serves, with one `LocalProject` per project in place of the `ProjectAgent` Durable Object, and the same `Orchestrator` behind it. Its ports: project repos are bare git repositories under `~/.chef/local/repos`, served to `ArtifactsRepoHost` over smart HTTP by `LocalGitHost` (`adapters/src/local-git.ts`, also the test git server); the store and event log are append-only files; memory is the lexical index saved to a file; the coder, checks, proofs and previews run the sandbox image's `runner.mjs` and `checks.mjs` in Docker containers that mount the repos read-only, with a preview as `wrangler dev` on a `localhost` port behind the same `PreviewKeeper`. Each session runs in its own loop, so sessions never wait on each other.
+The engine is the chef Worker in the person's own account: the HTTP API, the project and session Durable Objects, sandboxes, previews, Artifacts repos, memory and settings. Everything that does work or keeps state lives there, so work goes on when no client is open. The engine also serves the same dashboard itself, behind its password. A terminal or desktop app would be another client of the same API.
 
-Every deploy goes through `chef deploy` (`pnpm run deploy`, `cli/src/deploy.ts`), from the Deploy to Cloudflare button's Workers Builds, from the `deploy` workflow, or from a computer. It reads the root `wrangler.jsonc`, creates the Vectorize index when it is missing, and runs `wrangler deploy`. With `--name`, it writes a copy of the config where the Artifacts namespace, Workflow, memory index and preview Worker prefix carry that name, so several chefs can share an account.
+Every deploy goes through `chef deploy` (`pnpm run deploy`, `cli/src/deploy.ts`), from the site's installer or from the `deploy` workflow. It reads the root `wrangler.jsonc`, creates the Vectorize index when it is missing, and runs `wrangler deploy`. With `--name`, it writes a copy of the config where the Artifacts namespace, Workflow, memory index and project Worker prefix carry that name, so several chefs can share an account.
+
+`cli/src/app.ts` (a local app that forwards to an engine) and `cli/src/engine` (an in-process engine with Docker sandboxes) are earlier ways to run chef from a computer. They are kept but no longer developed.
 
 ## Packages
 
@@ -18,10 +20,11 @@ Every deploy goes through `chef deploy` (`pnpm run deploy`, `cli/src/deploy.ts`)
 | --- | --- |
 | `core` | Spec format and lint, router, session state machine, orchestrator, merge, ports and their in-memory fakes, code rules. No I/O. |
 | `adapters` | Real implementations of the ports: Artifacts over isomorphic-git, Jev classifier, Claude planner and reviewer, and `ChefAgent`, the AG-UI agent CopilotKit streams sessions through. |
-| `workers` | The chef Worker: `ProjectAgent` and `SessionAgent` Durable Objects, the coder sandbox, the `upstream-sync` Workflow, the HTTP API. |
+| `site` | The hosted site: landing page, Sign in with Cloudflare, setup on the person's account (`Member` Durable Object and installer container), the admin members list, and the proxy to each member's engine. |
+| `workers` | The engine, the chef Worker: `ProjectAgent` and `SessionAgent` Durable Objects, the coder sandbox, the `upstream-sync` Workflow, the HTTP API. |
 | `template` | The vertical-slice template every project chef builds starts from, with its own `app` CLI (`gen`, `drive`, `proof`). |
-| `cli` | `chef` CLI: spec lint, code rules, routing, the local demo with real checks, the Jev spike, `chef serve` (the dashboard on the in-memory world), `chef app` (the local app) and its `--local` engine in `cli/src/engine`. |
-| `apps/dashboard` | Dashboard served by the chef Worker (React, built with Vite into `dist/`): the CopilotKit chat on the left is the only place a person asks for work, next to it the feature tree (child features under their parent, working ones first), and on the right the features opened as tabs, each opening on its preview with its messages, changes, checks and details one click away. |
+| `cli` | `chef` CLI: spec lint, code rules, routing, `chef deploy`, the local demo with real checks, benchmarks, the Jev spike, and `chef serve` (the dashboard on the in-memory world, used by the browser tests). |
+| `apps/dashboard` | Dashboard served by the chef Worker (React, built with Vite into `dist/`): the feature tree on the left (the app's live address on top, child features under their parent, working ones first; rename, move and delete in place), the features opened as tabs in the middle, each opening on its preview with its messages, changes, checks and details one click away, and on the right the CopilotKit chat, the only place a person asks for work. |
 | `agents` | Specialist profiles with write scopes. |
 
 ## Ports
@@ -52,7 +55,8 @@ The planner and reviewer call Claude through `adapters/src/anthropic.ts` with st
 4. **Session**. The orchestrator forks canonical `main` into `<project>--<feature>--<session>` and drives the state machine in `core/src/session/machine.ts`:
    `queued → planning → testing → coding → reviewing → gating → merged | stuck | dropped`.
    A prompt can start several attempts. Each attempt is its own session with its own fork and its own preview branch `preview/<feature>--<session>` until it wins.
-5. **Turns**. Each coder turn runs one work item under one profile. Its changed files become one commit on the fork with a note under `refs/notes/chef` (prompt, root prompt, run id, model, role, spec revision, paths). A turn is rejected before it is committed, and the reason fed back, when it writes outside its role's scope, when a non-test role changes a test the test role wrote (locked tests), when a test turn adds tests that pass against an empty stub of the feature (red check, using per-test results from node's TAP output), or when it breaks a project lint rule in `lint/rules/` (project-lint). Before each turn the orchestrator recalls up to three memory documents, lessons and feature memories of the same feature first, and appends them to the prompt. Each profile runs in the Claude Agent SDK as a subagent named `chef-<role>`; the profile model `coder-default` resolves to `CODER_MODEL`.
+5. **Turns**. Each coder turn runs one work item under one profile. Its changed files become one commit on the fork with a note under `refs/notes/chef` (prompt, root prompt, run id, model, role, spec revision, paths). A turn is rejected before it is committed, and the reason fed back, when it writes outside its role's scope, when a non-test role changes a test the test role wrote (locked tests), when a test turn adds tests that pass against an empty stub of the feature (red check, using per-test results from node's TAP output), or when it breaks a project lint rule in `lint/rules/` (project-lint). Before each turn the orchestrator recalls up to three memory documents, lessons and feature memories of the same feature first, and appends them to the prompt. Each profile runs in the Claude Agent SDK as a subagent named `chef-<role>`; the profile model `coder-default` resolves to `CODER_MODEL`. Every turn, and the planner and reviewer, also get the project's guidance (see [Memory](#memory)).
+   When a plan has build steps for two or more plannable roles, the roles work in lanes (`Orchestrator.laneRound`, `core/src/session/lanes.ts`): each role has a `lane/<role>` branch in the session's fork and its own sandbox (`SessionAgent` named `<session>--<role>`). Each round resets the lanes to the fork's head, runs one turn per lane in parallel, commits on each lane and merges the lanes back; lines two roles both changed go to the conflict-resolver. Tests are written before the lanes start, and chores never use lanes.
 6. **Preview**. After each commit, `PreviewPublisher` pushes the fork head to `preview/<feature>` on the canonical repo, and the preview host runs `wrangler preview --name <feature>` on that commit in a sandbox, on the project Worker named after the project, and reads the Preview URL back (`<feature>-<project>.<subdomain>.workers.dev`). The sandbox only sees a placeholder Cloudflare token; the outbound handler swaps in `CF_API_TOKEN` for that Worker's API paths and nothing else. People open previews through chef's own link, `/preview/<project>/<feature>`, so a preview can sleep (see [Resources](#resources)).
 7. **Review**. The reviewer compares the diff from the session's base to its head against the spec. When every live attempt of a prompt has reached the gate, each attempt's code runs against the tests of all attempts and the reviewer picks one; the others are `dropped`.
 8. **Gate** (`Orchestrator.gate`). Sync from `main`, then typecheck, lint (no comments, import boundaries), tests, generated files, spec lint, write scope of every commit by the role in its note, no coder commit touching a locked test, a reviewer approval from a model that wrote no code in the session of the current head, and a proof: the feature's flow driven against its preview, stored under `refs/notes/chef-proof`. Merges run one at a time through a mutex; if `main` moved, the session syncs and is gated again.
@@ -76,7 +80,6 @@ Apps chef builds often need keys for outside services (payments, maps, email) or
 - **Agents see names only.** The planner gets the names already set and lists the ones a feature reads in its spec entry (`env:` in the frontmatter, validated by `ENV_NAME` in `core/src/env/env.ts`). Each coder turn's prompt lists the project's names, the feature's names, and which are still missing. The app reads them from `context.env`; tests pass fake values to `createApp(features, store, env)`.
 - **Previews get values.** Before each preview build, the Worker itself (not the sandbox) makes sure the project Worker `<project>` exists and writes the values into its previews' base config through the Cloudflare API (`PATCH /workers/workers/<worker>` with `previews_base_config.env`), so every `wrangler preview` deployment inherits them. Saving a change also updates the base config and patches the latest deployment of every preview that is awake.
 - **Needs a key.** A session whose feature lists a name that is not set stops before its gate, records `needs` and emits `session.needs`; the proof would only fail without it. It no longer counts as runnable, so `drive` stops rescheduling it. The dashboard shows it under "Needs you" with a field per missing key on the feature page. Saving a value calls `Orchestrator.environmentChanged`, which resumes every session that now has what it needs.
-- **Local and PC modes.** The local app forwards `/api/*` to the engine, so the same dialog works from a computer.
 
 ## Resources
 
@@ -109,7 +112,7 @@ The project's code always lives on Artifacts, and every session, gate and previe
   - `branch`: `main` is mirrored to the sync branch (`chef` by default) after each merge.
   - `pull-request` (the default): the sync branch, plus one pull request that chef keeps up to date. It lists the features merged on chef but not yet on the repository's main branch, each with its preview link.
   - `feature-pull-requests`: the sync branch, plus one branch (`<sync branch>-<feature>`) and pull request per merged feature. Each is the feature's own diff applied on the repository's main branch.
-- **Access.** The link takes a token that can push branches and open pull requests. It is stored in the project's Durable Object, and only its last four characters come back to the dashboard. A GitHub App would let chef act without a personal token; that is the planned replacement.
+- **Access.** A link through Connect GitHub stores only the installation id. A link by URL takes a token that can push branches and open pull requests; it is stored in the project's Durable Object, and only its last four characters come back to the dashboard.
 
 ## Memory
 
@@ -118,6 +121,7 @@ The project repo is the memory; the index is a cache of it.
 | Kind | Where | Written by |
 | --- | --- | --- |
 | Project memory | `memory/**/*.md` with `kind` and `feature` frontmatter, and the spec | the gardener and the gate, through commits on `main` |
+| Notes | `memory/notes/<slug>.md` | a person, from Project settings > Memory, which also edits or removes any memory document |
 | Lessons | `memory/lessons/<feature>-<commit>.md`: the failing checks, the acceptance criteria and the prompts behind a reverted merge | the revert commit itself |
 | Feature memory | `memory/features/<id>.md`: one section per session (parent session, prompt, turns, corrections) | the gardener commit before each merge |
 | Learned lint rules | `lint/rules/<id>.json` (`files` glob, `forbid` line regex, evidence) | the gardener, from corrections |
@@ -127,6 +131,10 @@ The project repo is the memory; the index is a cache of it.
 After bootstrap, every merge and every revert, `syncMemory` compares content hashes of the memory documents on `main` with the last indexed set and upserts or removes only what changed. Sessions on the same feature form a tree: a new session's `parent` is the previous live session of its feature.
 
 A correction is a rejected or failed turn followed by the turn that was accepted. For red-test corrections the candidate lines are the bodies of the tests that passed against the stub; for others, the lines the accepted turn removed. Literals are generalized. A line becomes a rule when corrections from at least three sessions share it, no accepted turn and no file on `main` matches it, and no rule already forbids it. Turns rejected by a learned rule do not produce new rules. `checkTree` also enforces the rules, so the gate fails on any match.
+
+Guidance is read from `main` at each turn (`core/src/guidance`, `adapters/src/guidance.ts`): the instructions shared by every project (Settings > Instructions, kept in the `Settings` object), the project's `GOAL.md` and `AGENTS.md` at the repo root (Project settings > Instructions, committed to `main` under the merge lock), with the project's text winning where they disagree. The planner, every coder turn and the reviewer get it as one block.
+
+The main chat keeps its own memory under `chat/turns` in the project's store: the recent messages plus a running summary of older ones, which the planner writes when the chat passes its token limit. Each feature keeps its own context in its session.
 
 `verifyMain` adds a `feature-map` check after every merge: every `features/<id>/index.ts` has a spec entry and every merged spec entry has its folder.
 
@@ -152,7 +160,7 @@ Sessions reach the app through CopilotKit. The chef Worker hosts the CopilotKit 
 3. `SessionStream` maps each chef event of the sessions the prompt started to AG-UI: coder text deltas become assistant messages, coder tool calls become tool calls, every state change is a step (`<session>:<state>`), and the preview, review, gate, merge and stuck results update a shared state snapshot (`ChefState`) that the chat renders as session cards.
 4. The run ends with a summary line when every session has merged, got stuck or been dropped.
 
-`chef serve` runs the same runtime and dashboard on the Mac against the local world (fake coder, real or fake checks).
+`chef serve` runs the same runtime and dashboard on a computer against the local world (fake coder, real or fake checks).
 
 ## Learning
 
@@ -192,6 +200,11 @@ Served by the chef Worker (`workers/src/index.ts`):
 | `PUT /api/settings` | Saves any of `llm` (`{ kind: "anthropic", apiKey }` or `{ kind: "custom", baseUrl, apiKey }`), `voice` (`{ kind: "openai", apiKey }` or `{ kind: "custom", baseUrl, apiKey }`), `cloudflare` (`{ accountId, apiToken }`), `jev` (`{ apiKey }`), `models` (`{ planner, reviewer, coder }`) and `attempts`; `null` falls back to the deployment. `{ password }` alone changes the password and returns a new session cookie |
 | `GET /api/projects/:name/settings` | The project's own settings: `previewIdleMinutes`, and `git`, the linked repository (`url`, `branch`, `mode`, `syncBranch`, `webhookSecret`, the token's last four characters) or `null` |
 | `GET`/`PUT /api/env` | Environment values every project gets; same body as a project's `env` |
+| `GET`/`PUT /api/instructions` | Instructions shared by every project, with a `previous` check against overwriting a newer save |
+| `GET`/`PUT /api/projects/:name/instructions` | The project's goal (`GOAL.md`) and instructions (`AGENTS.md`), committed to `main` |
+| `GET`/`POST`/`PUT /api/projects/:name/memory` | Lists the project's memory documents, adds a note, or edits or removes one |
+| `GET /api/projects/:name/spec` | The feature map, with the project's live address and its state |
+| `POST /api/projects/:name/live` | Deploys `main` to the live address again after a failure |
 | `GET`/`PUT /api/projects/:name/agents`, `POST /api/projects/:name/agents/restore` | The project's own agent settings, versioned like `/api/agents`. Roles it sets replace the shared ones, its skills join the shared ones (same name replaces), and its router replaces the shared router. The view is the merged result plus `scope`, which lists what the project sets itself |
 | `PUT /api/projects/:name/settings` | Saves `previewIdleMinutes` (5 minutes to a week; `null` goes back to the default of 60), `attempts` (parallel tries for this project, 1 to 4; `null` uses the shared setting) and `git` (`{ url, branch, token, github, mode, syncBranch }`; `null` unlinks). With `github: true` chef links through its GitHub App and needs no token; otherwise a token is required for every mode but `off`, and the pull request modes need a github.com repository |
 | `GET /api/github` | chef's GitHub App (or `null`) and the repositories its installations can reach |
@@ -212,4 +225,4 @@ Served by the chef Worker (`workers/src/index.ts`):
 | `GET /api/projects/:name/events?after=<seq>` | Stored events after a sequence number |
 | `GET /api/projects/:name/cursor` | The last event sequence number |
 | `POST /api/projects/:name/copilotkit/*` | The CopilotKit runtime; `agent/default/run` streams a prompt's sessions as AG-UI events |
-| `WS /agents/project/:name` | Live events, replayed from the start on connect |
+| `WS /agents/project/:name?after=<seq>` | Live events: replays events after `seq`, sends a `caughtUp` marker, then streams new ones |
