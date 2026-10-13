@@ -1,4 +1,4 @@
-import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, FolderPlus, KeyRound, ListTree, Mic, Monitor, Moon, Settings, Settings2, Sun } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, KeyRound, ListTree, Mic, Monitor, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -107,7 +107,7 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
 }
 
 export function ProjectHeader({ onMenu }: { readonly onMenu?: () => void }) {
-  const { addProject, openSettings, selection } = useWorkspace();
+  const { openSettings, selection } = useWorkspace();
   return (
     <div className="flex h-11 shrink-0 items-center gap-1 border-b px-3">
       {onMenu ? (
@@ -120,12 +120,9 @@ export function ProjectHeader({ onMenu }: { readonly onMenu?: () => void }) {
       </a>
       <span className="pl-0.5 text-muted-foreground/60">/</span>
       <ProjectSwitcher />
-      <Button variant="ghost" size="icon-sm" className={cn("shrink-0 text-muted-foreground", selection.settings?.scope === "project" && "bg-sidebar-accent text-foreground")} onClick={() => openSettings("project")} id="project-settings-button" aria-label="Project settings" title={`Settings for ${selection.project}`}>
-        <Settings2 />
-      </Button>
       <span className="flex-1" />
-      <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground" onClick={addProject} id="new-project-button" aria-label="New project" title="New project">
-        <FolderPlus />
+      <Button variant="ghost" size="icon-sm" className={cn("shrink-0 text-muted-foreground", selection.settings?.scope === "project" && "bg-sidebar-accent text-foreground")} onClick={() => openSettings("project")} id="project-settings-button" aria-label="Project settings" title={`Settings for ${selection.project}`}>
+        <Settings />
       </Button>
     </div>
   );
