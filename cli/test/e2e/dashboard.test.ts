@@ -25,7 +25,7 @@ describe("dashboard in a browser", () => {
       await page.getByRole("button", { name: "Switch project" }).click();
       await page.getByRole("menuitem", { name: "shop" }).waitFor();
       await page.keyboard.press("Escape");
-      await page.locator("#new-project-button").waitFor();
+      expect(await page.locator("#new-project-button").count()).toBe(0);
       await page.locator("#project-settings-button").waitFor();
       await page.locator("#talk-button").waitFor();
       await page.locator("#app-menu").click();
