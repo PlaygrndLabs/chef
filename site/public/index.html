@@ -5,19 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>chef: the AI app builder that runs on your Cloudflare account</title>
 <meta name="description" content="chef is an open source AI app builder. Sign in with Cloudflare and start building: every feature gets its own sandbox and live preview, and ships when checks pass. Your code, keys and previews stay in your own Cloudflare account.">
-<meta name="theme-color" content="#1d1d1b">
+<meta name="theme-color" content="#004dfc">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:title" content="chef: the AI app builder that runs on your Cloudflare account">
 <meta property="og:description" content="Sessions that run themselves, no git chores and a live preview for every change. Sign in with Cloudflare and start building.">
-<meta property="og:image" content="/chef-logo.svg">
+<meta property="og:image" content="/logo.png">
 <meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/landing.css">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"chef","applicationCategory":"DeveloperApplication","operatingSystem":"Web","description":"An open source AI app builder that runs on your own Cloudflare account.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
 </head>
-<body>
+<body class="landing">
 <header class="top">
   <div class="wrap">
     <a class="logo" href="/" aria-label="chef home"><img class="light" src="/chef-logo.svg" alt="chef" width="105" height="30"><img class="dark" src="/chef-logo-dark.svg" alt="" width="105" height="30"></a>
@@ -27,88 +28,185 @@
       <a href="#pricing">Pricing</a>
       <a class="hide-sm" href="#faq">FAQ</a>
     </nav>
-    <a class="btn btn-primary btn-sm" href="/auth/start">Get started</a>
   </div>
 </header>
 
 <main>
-  <div class="hero wrap" id="get-started">
-    <p class="banner" id="notice" role="status" hidden></p>
-    <span class="eyebrow">Open source · Runs on your Cloudflare account</span>
-    <h1>Build apps with AI, in your own Cloudflare account</h1>
-    <p class="lead">Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass. Sign in with Cloudflare and start building; your code, keys and previews stay in your account.</p>
-    <div class="actions">
-      <a class="btn btn-primary btn-lg" href="/auth/start">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6 19z"/></svg>
-        Sign in with Cloudflare
-      </a>
-      <a class="btn btn-outline btn-lg" href="#how">See how it works</a>
-    </div>
-    <p class="fine">chef is free and open source. It runs on a Cloudflare account with the Workers Paid plan.</p>
-  </div>
-
-  <section id="features">
-    <div class="wrap">
-      <h2>What chef takes off your plate</h2>
-      <p class="sub">You describe the outcome. chef handles the busywork that usually comes with building software.</p>
-      <div class="grid">
-        <div class="card"><h3>Sessions run themselves</h3><p>Each request becomes a session that chef starts, tracks, keeps up to date and closes for you. Run many at once and none blocks another.</p></div>
-        <div class="card"><h3>No git chores</h3><p>No branches, merges, rebases or conflicts to handle. chef keeps every session in sync with main and merges finished work for you.</p></div>
-        <div class="card"><h3>A preview for everything</h3><p>Every change builds in its own isolated sandbox with a live link. Previews sleep when idle and wake on the next click.</p></div>
-        <div class="card"><h3>Checked before it ships</h3><p>Tests, typecheck and an AI review must pass before anything reaches main.</p></div>
-        <div class="card"><h3>Your keys stay yours</h3><p>Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.</p></div>
-        <div class="card"><h3>GitHub when you want it</h3><p>Projects live with chef in your Cloudflare account. Connect GitHub only if you want a repository kept in sync.</p></div>
+  <section class="hero frame">
+    <div class="hero-copy">
+      <p class="banner" id="notice" role="status" hidden></p>
+      <p class="crumbs"><span class="brand-text">Open source</span><span class="sep">/</span><span>Runs on your Cloudflare account</span></p>
+      <h1>Build apps with AI, on your own Cloudflare.</h1>
+      <p class="lead">Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass.</p>
+      <div class="actions">
+        <a class="btn btn-cf btn-lg" href="/auth/start"><svg class="cf-cloud" viewBox="0 0 64 30" aria-hidden="true"><path d="M43.6 28.6c.4-1.3.3-2.5-.4-3.4-.6-.8-1.6-1.3-2.8-1.4l-22.6-.3a.5.5 0 0 1-.4-.2.5.5 0 0 1 0-.4.6.6 0 0 1 .5-.4l22.8-.3c2.7-.1 5.6-2.3 6.6-4.9l1.3-3.4a.8.8 0 0 0 0-.5A14.8 14.8 0 0 0 20 12.5a6.7 6.7 0 0 0-10.5 7 9.4 9.4 0 0 0-9 10.8.4.4 0 0 0 .4.4h41.8a.6.6 0 0 0 .5-.4z"/><path d="M51.3 13h-.6a.4.4 0 0 0-.3.3l-.9 3.1c-.4 1.3-.2 2.5.4 3.4.6.8 1.6 1.3 2.8 1.4l4.8.3a.5.5 0 0 1 .4.2.5.5 0 0 1 0 .4.6.6 0 0 1-.5.4l-5 .3c-2.7.1-5.6 2.3-6.6 4.9l-.4.9a.3.3 0 0 0 .3.5h17.3a.5.5 0 0 0 .4-.3 12.4 12.4 0 0 0-12.1-16z"/></svg>Sign in with Cloudflare</a>
+        <a class="btn btn-pill btn-lg" href="#how">See how it works</a>
       </div>
+      <p class="fine">Free and open source. Needs a Cloudflare account on the Workers Paid plan.</p>
     </div>
+    <canvas class="build" data-app aria-hidden="true"></canvas>
   </section>
 
-  <section id="how">
-    <div class="wrap">
-      <h2>Set up in a few clicks</h2>
+  <section id="how" class="frame center">
+    <div class="intro">
+      <h2>How it works</h2>
       <p class="sub">No terminal, no Docker and nothing to install. chef sets up its engine in your Cloudflare account, and you use it right here.</p>
-      <div class="grid steps">
-        <div class="card"><h3>Sign in with Cloudflare</h3><p>Cloudflare shows exactly what chef asks for, and you pick the account it can use.</p></div>
-        <div class="card"><h3>Pick an account</h3><p>chef adds its engine there: the agents, sandboxes, previews and your projects. Then it hands the access back.</p></div>
-        <div class="card"><h3>Start building</h3><p>Describe what you want and watch each feature come together with its own live preview.</p></div>
+    </div>
+    <div class="cells">
+      <div class="cell reveal">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6 19z"/></svg>
+        <h3>Sign in with Cloudflare</h3>
+        <p>Cloudflare shows exactly what chef asks for, and you pick the account it can use.</p>
+      </div>
+      <div class="cell reveal">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 17.5h7M17.5 14v7"/></svg>
+        <h3>Set it up</h3>
+        <p>chef adds its engine to that account: the agents, sandboxes, previews and your projects.</p>
+      </div>
+      <div class="cell reveal">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>
+        <h3>Start building</h3>
+        <p>Describe what you want and watch each feature come together with its own live preview.</p>
       </div>
     </div>
   </section>
 
-  <section id="pricing">
-    <div class="wrap">
-      <h2>Pricing</h2>
-      <p class="sub">chef itself is free. It runs on services you already pay for, billed to you directly.</p>
-      <div class="grid">
-        <div class="card"><h3>chef</h3><p class="price">Free</p><p>Open source under the MIT license. Every feature, no seat or project limits.</p></div>
-        <div class="card"><h3>Cloudflare Workers Paid</h3><p class="price">$5 <small>/ month, from Cloudflare</small></p><p>Runs chef's agents, sandboxes and previews. It includes a monthly allowance; heavier use is billed by Cloudflare at its usage rates.</p></div>
-        <div class="card"><h3>Your model provider</h3><p class="price">Pay as you go</p><p>Use your Anthropic API key or any compatible provider. You pay them for what the agents use.</p></div>
+  <section id="features" class="frame">
+    <div class="intro left">
+      <h2>What chef takes off your plate.</h2>
+      <p class="sub">You describe the outcome. chef handles the busywork that usually comes with building software.</p>
+    </div>
+    <div class="bento">
+      <article class="tile wide dark reveal">
+        <div class="tile-copy">
+          <h3>Sessions run themselves</h3>
+          <p>Each request becomes a session that chef starts, tracks, keeps up to date and closes for you. Run many at once and none blocks another.</p>
+        </div>
+        <div class="mock sessions" aria-hidden="true">
+          <div class="mock-head"><span>todo app</span><span class="muted">4 sessions</span></div>
+          <div class="row"><i class="dot run"></i>Edit items<span class="tag">building</span></div>
+          <div class="row"><i class="dot run"></i>Delete items<span class="tag">checking</span></div>
+          <div class="row"><i class="dot ok"></i>Dark mode<span class="tag ok">merged</span></div>
+          <div class="row"><i class="dot ok"></i>Todo list<span class="tag ok">merged</span></div>
+        </div>
+      </article>
+      <article class="tile reveal">
+        <div class="mock flow" aria-hidden="true">
+          <div class="node"><b>Session finished</b><span>Edit items</span></div>
+          <div class="node right"><b>Synced with main</b><span>no conflicts</span></div>
+          <div class="node"><b>Checks passed</b><span>tests, types, review</span></div>
+          <div class="node right"><b>Merged</b><span>main</span></div>
+        </div>
+        <div class="tile-copy">
+          <h3>No git chores</h3>
+          <p>No branches, merges, rebases or conflicts to handle. chef keeps every session in sync with main and merges finished work for you.</p>
+        </div>
+      </article>
+      <article class="tile reveal">
+        <div class="mock browser" aria-hidden="true">
+          <div class="bar"><i></i><i></i><i></i><span>edit-items.preview</span></div>
+          <div class="page"><div class="line w60"></div><div class="line w80"></div><div class="check"><i></i>Buy milk</div><div class="check done"><i></i>Ship chef</div><div class="line w40"></div></div>
+        </div>
+        <div class="tile-copy">
+          <h3>A preview for everything</h3>
+          <p>Every change builds in its own isolated sandbox with a live link. Previews sleep when idle and wake on the next click.</p>
+        </div>
+      </article>
+      <article class="tile reveal">
+        <div class="mock checks" aria-hidden="true">
+          <div class="mock-head"><span>Before merge</span><span class="muted">3 of 3</span></div>
+          <div class="row"><i class="tick"></i>Tests</div>
+          <div class="row"><i class="tick"></i>Typecheck</div>
+          <div class="row"><i class="tick"></i>AI review</div>
+        </div>
+        <div class="tile-copy">
+          <h3>Checked before it ships</h3>
+          <p>Tests, typecheck and an AI review must pass before anything reaches main.</p>
+        </div>
+      </article>
+      <article class="tile reveal">
+        <div class="mock keys" aria-hidden="true">
+          <div class="mock-head"><span>Keys</span><span class="muted">your account</span></div>
+          <div class="row"><code>ANTHROPIC_API_KEY</code><span class="secret">••••••••</span></div>
+          <div class="row"><code>STRIPE_KEY</code><span class="secret">••••••••</span></div>
+        </div>
+        <div class="tile-copy">
+          <h3>Your keys stay yours</h3>
+          <p>Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.</p>
+        </div>
+      </article>
+      <article class="tile wide full reveal">
+        <div class="mock live" aria-hidden="true">
+          <div class="row"><i class="dot ok"></i><code>todo.workers.dev</code><span class="tag ok">live</span></div>
+          <div class="row"><i class="dot"></i><code>github.com/you/todo</code><span class="tag">synced</span></div>
+        </div>
+        <div class="tile-copy">
+          <h3>Live, with GitHub when you want it</h3>
+          <p>Every project's main is online at its own address. Connect GitHub only if you want a repository kept in sync.</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section id="pricing" class="frame">
+    <div class="split">
+      <div class="split-copy">
+        <p class="kicker">Pricing</p>
+        <h2>chef itself is</h2>
+        <p class="big">Free</p>
+        <p class="sub">Open source under the MIT license, with every feature and no seat or project limits. It runs on services you already pay for, billed to you directly.</p>
+      </div>
+      <div class="split-art"><canvas class="ascii" data-ascii aria-hidden="true"></canvas></div>
+    </div>
+    <div class="cards3">
+      <div class="lift reveal">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="8.5" width="7" height="7"/></svg>
+        <h3>chef</h3>
+        <p><strong>Free.</strong> Every feature, no limits.</p>
+      </div>
+      <div class="lift reveal">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6 19z"/></svg>
+        <h3>Cloudflare Workers Paid</h3>
+        <p><strong>$5 a month</strong>, from Cloudflare. Runs the agents, sandboxes and previews, with a monthly allowance.</p>
+      </div>
+      <div class="lift reveal">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg>
+        <h3>Your model provider</h3>
+        <p><strong>Pay as you go.</strong> Use your Anthropic API key or any compatible provider.</p>
       </div>
     </div>
   </section>
 
-  <section id="faq">
-    <div class="wrap">
+  <section id="faq" class="frame">
+    <div class="faq">
       <h2>Questions</h2>
-      <details><summary>Where do my code and data live?</summary><p>In your Cloudflare account. Projects are git repositories in Cloudflare Artifacts, and your model keys, settings and previews stay with your chef engine there. GitHub sync is optional.</p></details>
-      <details><summary>What does this site keep?</summary><p>Your Cloudflare user id and email, when you joined and last signed in, and where your chef engine runs with the key this site uses to reach it. Nothing else.</p></details>
-      <details><summary>Does chef keep access to my Cloudflare account?</summary><p>No. The access you grant at sign-in is used only while chef sets up or updates its engine, and it is revoked right after. You can review or remove apps any time in Cloudflare under My Profile, Access Management.</p></details>
-      <details><summary>What does setup create in my account?</summary><p>A Worker named chef with its Durable Objects, a container image for its sandboxes, a Vectorize index for project memory, an Artifacts namespace for your repositories, and one API token limited to Workers scripts so chef can publish previews. Everything is yours to inspect or remove.</p></details>
-      <details><summary>Which Cloudflare plan do I need?</summary><p>Workers Paid, because chef uses Containers and Artifacts. If your account is on the free plan, the setup page links you to the upgrade.</p></details>
+      <div>
+        <details><summary>Where do my code and data live?</summary><p>In your Cloudflare account. Projects are git repositories in Cloudflare Artifacts, and your model keys, settings and previews stay with your chef engine there. GitHub sync is optional.</p></details>
+        <details><summary>What does this site keep?</summary><p>Your Cloudflare user id and email, when you joined and last signed in, and where your chef engine runs with the key this site uses to reach it. Nothing else.</p></details>
+        <details><summary>Does chef keep access to my Cloudflare account?</summary><p>No. The access you grant at sign-in is used only while chef sets up or updates its engine, and it is revoked right after. You can review or remove apps any time in Cloudflare under My Profile, Access Management.</p></details>
+        <details><summary>What does setup create in my account?</summary><p>A Worker named chef with its Durable Objects, a container image for its sandboxes, a Vectorize index for project memory, an Artifacts namespace for your repositories, and one API token limited to Workers scripts so chef can publish previews. Everything is yours to inspect or remove.</p></details>
+        <details><summary>Which Cloudflare plan do I need?</summary><p>Workers Paid, because chef uses Containers and Artifacts. If your account is on the free plan, the setup page links you to the upgrade.</p></details>
+      </div>
     </div>
   </section>
 
-  <section class="cta">
-    <div class="wrap">
-      <h2>Your next app, one sign-in away</h2>
-      <p class="sub">Sign in with Cloudflare, pick an account and start building.</p>
-      <a class="btn btn-primary btn-lg" href="/auth/start">Sign in with Cloudflare</a>
+  <section class="cta-wrap">
+    <div class="cta-box">
+      <canvas class="dots" data-dots aria-hidden="true"></canvas>
+      <div class="cta-copy">
+        <p class="kicker">Get started</p>
+        <h2>Your next app, one sign-in away.</h2>
+        <p class="sub">Sign in with Cloudflare, pick an account and start building.</p>
+        <a class="btn btn-cf btn-lg" href="/auth/start"><svg class="cf-cloud" viewBox="0 0 64 30" aria-hidden="true"><path d="M43.6 28.6c.4-1.3.3-2.5-.4-3.4-.6-.8-1.6-1.3-2.8-1.4l-22.6-.3a.5.5 0 0 1-.4-.2.5.5 0 0 1 0-.4.6.6 0 0 1 .5-.4l22.8-.3c2.7-.1 5.6-2.3 6.6-4.9l1.3-3.4a.8.8 0 0 0 0-.5A14.8 14.8 0 0 0 20 12.5a6.7 6.7 0 0 0-10.5 7 9.4 9.4 0 0 0-9 10.8.4.4 0 0 0 .4.4h41.8a.6.6 0 0 0 .5-.4z"/><path d="M51.3 13h-.6a.4.4 0 0 0-.3.3l-.9 3.1c-.4 1.3-.2 2.5.4 3.4.6.8 1.6 1.3 2.8 1.4l4.8.3a.5.5 0 0 1 .4.2.5.5 0 0 1 0 .4.6.6 0 0 1-.5.4l-5 .3c-2.7.1-5.6 2.3-6.6 4.9l-.4.9a.3.3 0 0 0 .3.5h17.3a.5.5 0 0 0 .4-.3 12.4 12.4 0 0 0-12.1-16z"/></svg>Sign in with Cloudflare</a>
+      </div>
     </div>
   </section>
 </main>
 
 <footer>
   <div class="wrap">
-    <span>chef · MIT license</span>
+    <a class="logo" href="/" aria-label="chef home"><img class="light" src="/chef-logo.svg" alt="chef" width="84" height="24"><img class="dark" src="/chef-logo-dark.svg" alt="" width="84" height="24"></a>
+    <span>MIT license</span>
     <span class="spacer"></span>
     <a href="https://github.com/PlaygrndLabs/chef">GitHub</a>
   </div>
