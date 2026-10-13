@@ -33,18 +33,19 @@
 
 <main>
   <section class="hero frame">
+    <canvas class="field" data-app aria-hidden="true"></canvas>
     <div class="hero-copy">
       <p class="banner" id="notice" role="status" hidden></p>
       <p class="crumbs"><span class="brand-text">Open source</span><span class="sep">/</span><span>Runs on your Cloudflare account</span></p>
       <h1>Build apps with AI, on your own Cloudflare.</h1>
       <p class="lead">Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass.</p>
       <div class="actions">
-        <a class="btn btn-cf btn-lg" href="/auth/start"><svg class="cf-cloud" viewBox="0 0 64 30" aria-hidden="true"><path d="M43.6 28.6c.4-1.3.3-2.5-.4-3.4-.6-.8-1.6-1.3-2.8-1.4l-22.6-.3a.5.5 0 0 1-.4-.2.5.5 0 0 1 0-.4.6.6 0 0 1 .5-.4l22.8-.3c2.7-.1 5.6-2.3 6.6-4.9l1.3-3.4a.8.8 0 0 0 0-.5A14.8 14.8 0 0 0 20 12.5a6.7 6.7 0 0 0-10.5 7 9.4 9.4 0 0 0-9 10.8.4.4 0 0 0 .4.4h41.8a.6.6 0 0 0 .5-.4z"/><path d="M51.3 13h-.6a.4.4 0 0 0-.3.3l-.9 3.1c-.4 1.3-.2 2.5.4 3.4.6.8 1.6 1.3 2.8 1.4l4.8.3a.5.5 0 0 1 .4.2.5.5 0 0 1 0 .4.6.6 0 0 1-.5.4l-5 .3c-2.7.1-5.6 2.3-6.6 4.9l-.4.9a.3.3 0 0 0 .3.5h17.3a.5.5 0 0 0 .4-.3 12.4 12.4 0 0 0-12.1-16z"/></svg>Sign in with Cloudflare</a>
+        <a class="btn btn-primary btn-lg" href="/auth/start">Get started</a>
         <a class="btn btn-pill btn-lg" href="#how">See how it works</a>
       </div>
       <p class="fine">Free and open source. Needs a Cloudflare account on the Workers Paid plan.</p>
     </div>
-    <canvas class="build" data-app aria-hidden="true"></canvas>
+    <div class="stage" aria-hidden="true"></div>
   </section>
 
   <section id="how" class="frame center">
@@ -197,7 +198,7 @@
         <p class="kicker">Get started</p>
         <h2>Your next app, one sign-in away.</h2>
         <p class="sub">Sign in with Cloudflare, pick an account and start building.</p>
-        <a class="btn btn-cf btn-lg" href="/auth/start"><svg class="cf-cloud" viewBox="0 0 64 30" aria-hidden="true"><path d="M43.6 28.6c.4-1.3.3-2.5-.4-3.4-.6-.8-1.6-1.3-2.8-1.4l-22.6-.3a.5.5 0 0 1-.4-.2.5.5 0 0 1 0-.4.6.6 0 0 1 .5-.4l22.8-.3c2.7-.1 5.6-2.3 6.6-4.9l1.3-3.4a.8.8 0 0 0 0-.5A14.8 14.8 0 0 0 20 12.5a6.7 6.7 0 0 0-10.5 7 9.4 9.4 0 0 0-9 10.8.4.4 0 0 0 .4.4h41.8a.6.6 0 0 0 .5-.4z"/><path d="M51.3 13h-.6a.4.4 0 0 0-.3.3l-.9 3.1c-.4 1.3-.2 2.5.4 3.4.6.8 1.6 1.3 2.8 1.4l4.8.3a.5.5 0 0 1 .4.2.5.5 0 0 1 0 .4.6.6 0 0 1-.5.4l-5 .3c-2.7.1-5.6 2.3-6.6 4.9l-.4.9a.3.3 0 0 0 .3.5h17.3a.5.5 0 0 0 .4-.3 12.4 12.4 0 0 0-12.1-16z"/></svg>Sign in with Cloudflare</a>
+        <a class="btn btn-primary btn-lg" href="/auth/start">Get started</a>
       </div>
     </div>
   </section>
