@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chef: the AI app builder that runs on your Cloudflare account</title>
+<meta name="description" content="chef is an open source AI app builder. Sign in with Cloudflare and start building: every feature gets its own sandbox and live preview, and ships when checks pass. Your code, keys and previews stay in your own Cloudflare account.">
+<meta name="theme-color" content="#1d1d1b">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="chef: the AI app builder that runs on your Cloudflare account">
+<meta property="og:description" content="Sessions that run themselves, no git chores and a live preview for every change. Sign in with Cloudflare and start building.">
+<meta property="og:image" content="/chef-logo.svg">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/style.css">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"chef","applicationCategory":"DeveloperApplication","operatingSystem":"Web","description":"An open source AI app builder that runs on your own Cloudflare account.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+</script>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="chef home"><img class="light" src="/chef-logo.svg" alt="chef" width="76" height="26"><img class="dark" src="/chef-logo-dark.svg" alt="" width="76" height="26"></a>
+    <nav class="links" aria-label="Sections">
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a class="hide-sm" href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="/auth/start">Get started</a>
+  </div>
+</header>
+
+<main>
+  <div class="hero wrap" id="get-started">
+    <p class="banner" id="notice" role="status" hidden></p>
+    <span class="eyebrow">Open source · Runs on your Cloudflare account</span>
+    <h1>Build apps with AI, in your own Cloudflare account</h1>
+    <p class="lead">Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass. Sign in with Cloudflare and start building; your code, keys and previews stay in your account.</p>
+    <div class="actions">
+      <a class="btn btn-primary btn-lg" href="/auth/start">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6 19z"/></svg>
+        Sign in with Cloudflare
+      </a>
+      <a class="btn btn-outline btn-lg" href="#how">See how it works</a>
+    </div>
+    <p class="fine">chef is free and open source. It runs on a Cloudflare account with the Workers Paid plan.</p>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>What chef takes off your plate</h2>
+      <p class="sub">You describe the outcome. chef handles the busywork that usually comes with building software.</p>
+      <div class="grid">
+        <div class="card"><h3>Sessions run themselves</h3><p>Each request becomes a session that chef starts, tracks, keeps up to date and closes for you. Run many at once and none blocks another.</p></div>
+        <div class="card"><h3>No git chores</h3><p>No branches, merges, rebases or conflicts to handle. chef keeps every session in sync with main and merges finished work for you.</p></div>
+        <div class="card"><h3>A preview for everything</h3><p>Every change builds in its own isolated sandbox with a live link. Previews sleep when idle and wake on the next click.</p></div>
+        <div class="card"><h3>Checked before it ships</h3><p>Tests, typecheck and an AI review must pass before anything reaches main.</p></div>
+        <div class="card"><h3>Your keys stay yours</h3><p>Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.</p></div>
+        <div class="card"><h3>GitHub when you want it</h3><p>Projects live with chef in your Cloudflare account. Connect GitHub only if you want a repository kept in sync.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>Start in about five minutes</h2>
+      <p class="sub">No terminal, no Docker and nothing to install. chef sets up its engine in your Cloudflare account, and you use it right here.</p>
+      <div class="grid steps">
+        <div class="card"><h3>Sign in with Cloudflare</h3><p>Cloudflare shows exactly what chef asks for, and you pick the account it can use.</p></div>
+        <div class="card"><h3>Pick an account</h3><p>chef adds its engine there: the agents, sandboxes, previews and your projects. Then it hands the access back.</p></div>
+        <div class="card"><h3>Start building</h3><p>Describe what you want and watch each feature come together with its own live preview.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing">
+    <div class="wrap">
+      <h2>Pricing</h2>
+      <p class="sub">chef itself is free. It runs on services you already pay for, billed to you directly.</p>
+      <div class="grid">
+        <div class="card"><h3>chef</h3><p class="price">Free</p><p>Open source under the MIT license. Every feature, no seat or project limits.</p></div>
+        <div class="card"><h3>Cloudflare Workers Paid</h3><p class="price">$5 <small>/ month, from Cloudflare</small></p><p>Runs chef's agents, sandboxes and previews. It includes a monthly allowance; heavier use is billed by Cloudflare at its usage rates.</p></div>
+        <div class="card"><h3>Your model provider</h3><p class="price">Pay as you go</p><p>Use your Anthropic API key or any compatible provider. You pay them for what the agents use.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <h2>Questions</h2>
+      <details><summary>Where do my code and data live?</summary><p>In your Cloudflare account. Projects are git repositories in Cloudflare Artifacts, and your model keys, settings and previews stay with your chef engine there. GitHub sync is optional.</p></details>
+      <details><summary>What does this site keep?</summary><p>Your Cloudflare user id and email, and the address of your chef engine with the key this site uses to reach it. Nothing else.</p></details>
+      <details><summary>Does chef keep access to my Cloudflare account?</summary><p>No. The access you grant at sign-in is used only while chef sets up or updates its engine, and it is revoked right after. You can review or remove apps any time in Cloudflare under My Profile, Access Management.</p></details>
+      <details><summary>What does setup create in my account?</summary><p>A Worker named chef with its Durable Objects, a container image for its sandboxes, a Vectorize index for project memory, an Artifacts namespace for your repositories, and one API token limited to Workers scripts so chef can publish previews. Everything is yours to inspect or remove.</p></details>
+      <details><summary>Which Cloudflare plan do I need?</summary><p>Workers Paid, because chef uses Containers and Artifacts. If your account is on the free plan, the setup page links you to the upgrade.</p></details>
+      <details><summary>How does chef stay up to date?</summary><p>When a new version is out, chef updates its engine in your account the next time you sign in, and keeps your projects and settings.</p></details>
+      <details><summary>Can I host all of chef myself?</summary><p>Yes. chef is open source. The <a href="https://github.com/PlaygrndLabs/chef">repository</a> has a Deploy to Cloudflare button and a self-hosting guide.</p></details>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="wrap">
+      <h2>Your next app, one sign-in away</h2>
+      <p class="sub">Sign in with Cloudflare, pick an account and start building.</p>
+      <a class="btn btn-primary btn-lg" href="/auth/start">Sign in with Cloudflare</a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>chef · MIT license</span>
+    <span class="spacer"></span>
+    <a href="https://github.com/PlaygrndLabs/chef">GitHub</a>
+    <a href="https://github.com/PlaygrndLabs/chef/blob/main/docs/SELF_HOSTING.md">Self-hosting guide</a>
+  </div>
+</footer>
+<script src="/landing.js" defer></script>
+</body>
+</html>

@@ -57,6 +57,13 @@ export function instanceConfig(base: Json, name: string): Json {
   };
 }
 
+export function withImage(config: Json, image: string): Json {
+  return {
+    ...config,
+    containers: list(config["containers"]).map((c) => ({ ...c, images: Object.fromEntries(Object.keys((c["images"] as Json | undefined) ?? { coder: null }).map((key) => [key, { image }])) })),
+  };
+}
+
 export interface Run {
   readonly code: number;
   readonly output: string;
@@ -96,6 +103,7 @@ export async function ensureMemoryIndex(run: Runner, index: string, log: (line: 
 
 export interface DeployOptions {
   readonly name?: string;
+  readonly image?: string;
   readonly dryRun?: boolean;
   readonly passthrough?: readonly string[];
   readonly run?: Runner;
@@ -115,10 +123,12 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
   const base = parseJsonc(readFileSync(baseFile, "utf8"));
   const name = options.name ?? String(base["name"]);
   let config = baseFile;
-  if (name !== base["name"]) {
+  if (name !== base["name"] || options.image) {
     config = join(REPO_ROOT, `.wrangler.${name}.jsonc`);
-    writeFileSync(config, `${JSON.stringify(instanceConfig(base, name), null, 2)}\n`);
-    log(`deploying a separate chef named ${name}, with its own repos, memory and previews`);
+    const instance = instanceConfig(base, name);
+    writeFileSync(config, `${JSON.stringify(options.image ? withImage(instance, options.image) : instance, null, 2)}\n`);
+    if (name !== base["name"]) log(`deploying a separate chef named ${name}, with its own repos, memory and previews`);
+    if (options.image) log(`using the prebuilt sandbox image ${options.image}`);
   }
   const index = (list(parseJsonc(readFileSync(config, "utf8"))["vectorize"])[0]?.["index_name"] as string | undefined) ?? null;
   if (index && !options.dryRun) await ensureMemoryIndex(run, index, log);
