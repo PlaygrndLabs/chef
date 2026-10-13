@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, withImage, type Runner } from "../../src/deploy.ts";
+import { ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, movedConfig, parseJsonc, withImage, type Runner } from "../../src/deploy.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const base = parseJsonc(readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8"));
@@ -24,6 +24,28 @@ describe("deploy", () => {
       vars: { PROJECT_WORKER_PREFIX: "trial-", CODER_MODEL: (base["vars"] as Record<string, string>)["CODER_MODEL"] },
     });
     expect(copy["durable_objects"]).toEqual(base["durable_objects"]);
+  });
+
+  it("moves the main chef to a new name with its projects, repos, memory and live apps", () => {
+    const tags = (base["migrations"] as { tag: string }[]).map((m) => m.tag);
+    const moved = movedConfig(base, "chef-dev", `chef@${tags.at(-1) ?? ""}`);
+    expect(moved).toMatchObject({
+      name: "chef-dev",
+      artifacts: base["artifacts"],
+      vectorize: base["vectorize"],
+      vars: { PROJECT_WORKER_PREFIX: "" },
+      workflows: [{ binding: "UPSTREAM_SYNC", name: "chef-dev-upstream-sync" }],
+      triggers: { events: [{ filter: { namespace: "chef" }, targets: [{ workflow_name: "chef-dev-upstream-sync" }] }] },
+    });
+    expect(moved["migrations"]).toEqual([
+      {
+        tag: tags.at(-1),
+        transferred_classes: ["ProjectAgent", "SessionAgent", "Settings"].map((cls) => ({ from: cls, from_script: "chef", to: cls })),
+      },
+    ]);
+    const later = movedConfig({ ...base, migrations: [...(base["migrations"] as unknown[]), { tag: "v9", new_sqlite_classes: ["Later"] }] }, "chef-dev", "chef@v2");
+    expect((later["migrations"] as { tag: string }[]).map((m) => m.tag)).toEqual(["v2", "v9"]);
+    expect(() => movedConfig(base, "chef-dev", "chef@nope")).toThrow("--moved-from");
   });
 
   it("points every sandbox image at a prebuilt one, so a deploy needs no Docker", () => {
