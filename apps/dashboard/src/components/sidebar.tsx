@@ -7,7 +7,7 @@ import { WorkList } from "@/components/work-list";
 import { useTalkButton } from "@/lib/talk";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
-import { useWorkspace } from "@/lib/workspace";
+import { useWorkspace, type AppSettings } from "@/lib/workspace";
 import { Mark, Wordmark } from "@/components/logo";
 
 const CONNECTION = { live: ["ok", "Live"], polling: ["run", "Reconnecting, updates every few seconds"], connecting: ["idle", "Connecting"], offline: ["bad", "Offline"] } as const;
@@ -39,9 +39,8 @@ function ProjectSwitcher() {
   );
 }
 
-function AppMenu() {
+export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readonly onSettings: (section?: string) => void }) {
   const { setTheme } = useTheme();
-  const { openSettings, app } = useWorkspace();
   const [talk, setTalk] = useTalkButton();
   const missing = app.available && missingSettings(app.settings).length > 0;
   const host = location.host;
@@ -60,20 +59,20 @@ function AppMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-60">
         <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">{host}</DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => openSettings("app")}>
+        <DropdownMenuItem onClick={() => onSettings()}>
           <Settings />
           Settings
           <DropdownMenuShortcut>⌘,</DropdownMenuShortcut>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => openSettings("app", "models")}>
+        <DropdownMenuItem onClick={() => onSettings("models")}>
           <Cpu />
           Models and keys
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => openSettings("app", "agents")}>
+        <DropdownMenuItem onClick={() => onSettings("agents")}>
           <Bot />
           Agents and skills
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => openSettings("app", "environment")}>
+        <DropdownMenuItem onClick={() => onSettings("environment")}>
           <KeyRound />
           Shared environment
         </DropdownMenuItem>
@@ -108,7 +107,7 @@ function AppMenu() {
 }
 
 export function Sidebar() {
-  const { select, focusComposer, addProject, openSettings, selection } = useWorkspace();
+  const { select, focusComposer, addProject, openSettings, selection, app } = useWorkspace();
   return (
     <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex items-center gap-1 px-1.5">
@@ -137,7 +136,7 @@ export function Sidebar() {
       </Button>
       <WorkList />
       <div className="flex items-center gap-1 border-t pt-2.5">
-        <AppMenu />
+        <AppMenu app={app} onSettings={(section) => openSettings("app", section)} />
       </div>
     </div>
   );
