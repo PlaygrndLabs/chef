@@ -46,13 +46,20 @@ const options = (resume) => ({
   ...(resume ? { resume } : {}),
 });
 
+function toolDetail(input) {
+  const value = input?.file_path ?? input?.command ?? input?.pattern ?? input?.path ?? input?.description ?? "";
+  const text = String(value).replaceAll(`${dir}/`, "").replace(/\s+/g, " ").trim();
+  return text.length > 160 ? `${text.slice(0, 157)}...` : text;
+}
+
 async function turn(prompt, resume) {
   let result = null;
   for await (const message of query({ prompt, options: options(resume) })) {
     if (message.type === "stream_event" && message.parent_tool_use_id === null) {
       const event = message.event;
       if (event.type === "content_block_delta" && event.delta.type === "text_delta") emit({ type: "assistant.message_delta", delta: event.delta.text });
-      else if (event.type === "content_block_start" && event.content_block.type === "tool_use") emit({ type: "tool.execution_start", tool: event.content_block.name });
+    } else if (message.type === "assistant" && message.parent_tool_use_id === null) {
+      for (const block of message.message.content ?? []) if (block.type === "tool_use") emit({ type: "tool.execution_start", tool: block.name, detail: toolDetail(block.input) });
     } else if (message.type === "result") result = message;
   }
   if (!result || result.subtype !== "success" || result.is_error) {

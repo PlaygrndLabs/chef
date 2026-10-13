@@ -27,7 +27,7 @@ export function CommandPalette({ open, onOpenChange }: { readonly open: boolean;
           >
             New request
           </CommandItem>
-          <CommandItem onSelect={() => run(() => select({ view: "insights", feature: null, session: null, panel: null }))}>Health and memory</CommandItem>
+          <CommandItem onSelect={() => run(() => select({ view: "insights", feature: null, session: null, panel: null }))}>Memory and learning</CommandItem>
           <CommandItem onSelect={() => run(() => setTheme(resolvedTheme === "dark" ? "light" : "dark"))}>Switch to {resolvedTheme === "dark" ? "light" : "dark"} theme</CommandItem>
           <CommandItem onSelect={() => run(addProject)}>
             <Plus />

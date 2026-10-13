@@ -13,7 +13,7 @@ async function signsInWith(credential: Credential, password: string) {
   expect(login?.status).toBe(303);
   const session = (login?.headers.get("set-cookie") ?? "").split(";")[0] as string;
   expect(await guard(at("/api/projects/demo/sessions", { headers: { cookie: session } }), credential, never)).toBeNull();
-  expect(await guard(at("/agents/project-agent/demo", { headers: { authorization: `Bearer ${password}` } }), credential, never)).toBeNull();
+  expect(await guard(at("/agents/project/demo", { headers: { authorization: `Bearer ${password}` } }), credential, never)).toBeNull();
   expect((await guard(at("/", { headers: { cookie: "chef_access=forged" } }), credential, never))?.status).toBe(200);
 }
 

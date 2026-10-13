@@ -9,6 +9,7 @@ import { Home } from "@/components/home";
 import { AddProjectDialog, Setup } from "@/components/project-setup";
 import { InsightsView } from "@/components/insights-view";
 import { Panel } from "@/components/panel";
+import { ProjectBar } from "@/components/project-bar";
 import { Sidebar } from "@/components/sidebar";
 import { projectApi } from "@/lib/api";
 import { useProject } from "@/lib/live";
@@ -146,6 +147,7 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{selection.project}</span>
               </div>
             ) : null}
+            <ProjectBar />
             <main className="min-h-0 min-w-0 flex-1">
               <Center workspace={workspace} />
             </main>

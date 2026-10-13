@@ -55,6 +55,7 @@ export interface ProjectLive {
   readonly sessions: Record<string, SessionLive>;
   readonly order: string[];
   readonly routes: { readonly prompt: string; readonly decision: RouteDecision; readonly at: number }[];
+  readonly answers: { readonly prompt: string; readonly answer: string; readonly at: number }[];
   readonly merges: { readonly featureId: string; readonly sessionId: string; readonly commitId: string; readonly at: number }[];
   readonly reverts: { readonly featureId: string; readonly revertedCommit: string; readonly commitId: string; readonly log: string; readonly at: number }[];
   readonly lessons: { readonly featureId: string; readonly path: string; readonly at: number }[];
@@ -68,7 +69,7 @@ export interface ProjectLive {
 }
 
 export function emptyProject(): ProjectLive {
-  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], log: [], previews: {}, external: null };
+  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], answers: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], log: [], previews: {}, external: null };
 }
 
 const TIMELINE_LIMIT = 600;
@@ -99,6 +100,8 @@ export function summarize(event: ChefEvent): string {
   switch (event.type) {
     case "route.decided":
       return `${event.decision.intent} ${event.decision.featureId ?? ""} ${event.decision.confidence.toFixed(2)}`.trim();
+    case "question.answered":
+      return event.answer.slice(0, 200);
     case "session.created":
       return `fork ${event.fork} attempt ${event.attempt.index}/${event.attempt.of}`;
     case "session.state":
@@ -173,6 +176,9 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
   switch (event.type) {
     case "route.decided":
       keep(state.routes, { prompt: event.prompt, decision: event.decision, at }, 200);
+      return true;
+    case "question.answered":
+      keep(state.answers, { prompt: event.prompt, answer: event.answer, at }, 200);
       return true;
     case "session.created": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
