@@ -12,6 +12,7 @@ import { isActive } from "@/lib/events";
 import { ago, duration, previewHost, short, tokens } from "@/lib/format";
 import type { SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
+import { routesIn, type Route } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -42,15 +43,22 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, link, commitId }: { readonly url: string | null; readonly link: string | null; readonly commitId: string }) {
+function PreviewTab({ url, link, commitId, routes }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly routes: readonly Route[] }) {
   const [nonce, setNonce] = useState(0);
+  const [path, setPath] = useState("/");
   if (!url) return <Empty>The preview appears after chef's first step.</Empty>;
-  const href = link ?? url;
+  const base = link ?? url;
+  const href = path === "/" ? base : link ? `${link}?path=${encodeURIComponent(path)}` : `${url.replace(/\/$/, "")}${path}`;
+  const pages = routes.filter((r) => r.method === "GET" && r.path !== "/");
+  const others = routes.filter((r) => r.method !== "GET");
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex h-9 items-center gap-2 rounded-xl border px-3">
         <StatusDot tone="ok" />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{previewHost(url)}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+          {previewHost(url)}
+          {path === "/" ? "" : path}
+        </span>
         <Button variant="ghost" size="icon-xs" onClick={() => setNonce((n) => n + 1)} aria-label="Reload preview">
           <RefreshCw />
         </Button>
@@ -60,7 +68,22 @@ function PreviewTab({ url, link, commitId }: { readonly url: string | null; read
           </a>
         </Button>
       </div>
-      <iframe key={nonce} src={href} title="Preview" className="min-h-[460px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+      {pages.length || others.length ? (
+        <div className="flex flex-wrap items-center gap-1" data-routes>
+          <span className="mr-1 text-xs text-muted-foreground">Pages</span>
+          {["/", ...pages.map((r) => r.path)].map((p) => (
+            <button key={p} type="button" onClick={() => setPath(p)} className={cn("h-6 rounded-md border px-1.5 font-mono text-[11px] hover:bg-muted", p === path && "border-foreground/40 bg-muted")}>
+              {p}
+            </button>
+          ))}
+          {others.map((r) => (
+            <span key={`${r.method} ${r.path}`} className="h-6 rounded-md border border-dashed px-1.5 font-mono text-[11px] leading-6 text-muted-foreground" title="An API route. The tests call it; a browser cannot open it directly.">
+              {r.method} {r.path}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <iframe key={`${nonce}-${path}`} src={href} title="Preview" className="min-h-[460px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
       <p className="text-xs text-muted-foreground">This preview updates after every step chef takes. Built from {short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.</p>
     </div>
   );
@@ -157,6 +180,7 @@ function DetailsTab({ node }: { readonly node: SessionNode }) {
       <Section title="Steps saved as commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
         {turns.data?.length === 0 ? <p className="text-sm text-muted-foreground">No commits yet.</p> : null}
+        {turns.error ? <p className="text-sm text-muted-foreground">Could not load the commits: {turns.error}</p> : null}
         <ul className="flex flex-col gap-1.5">
           {(turns.data ?? []).map((t) => (
             <li key={t.commitId}>
@@ -190,7 +214,7 @@ function DetailsTab({ node }: { readonly node: SessionNode }) {
               "Container",
               <span className="inline-flex items-center gap-1.5">
                 <StatusDot tone={running ? "run" : "idle"} />
-                {sandbox.loading && !sandbox.data ? "Checking" : running ? "Running" : "Stopped"}
+                {sandbox.loading && !sandbox.data ? "Checking" : sandbox.error ? "Unknown" : running ? "Running" : "Stopped"}
               </span>,
             ],
             ["Internet", "Off, except allowed hosts"],
@@ -220,16 +244,68 @@ function DetailsTab({ node }: { readonly node: SessionNode }) {
   );
 }
 
+function ChecksTab({ node }: { readonly node: SessionNode }) {
+  const verdict = node.live?.verdict ?? node.record?.verdict ?? null;
+  const gate = node.live?.gate ?? null;
+  return (
+    <div className="flex flex-col gap-6">
+      <Section title="Review">
+        {verdict ? (
+          <div className={cn("flex flex-col gap-1.5 rounded-xl border p-3 text-sm", verdict.approve ? "border-ok/30" : "border-bad/30")}>
+            <span className={cn("font-medium", verdict.approve ? "text-ok" : "text-bad")}>{verdict.approve ? "Approved" : "Asked for changes"}</span>
+            {verdict.reasons.length ? (
+              <ul className="flex list-disc flex-col gap-1 pl-4 text-muted-foreground">
+                {verdict.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : (
+          <Empty>A second model reads the change after the code is written.</Empty>
+        )}
+      </Section>
+      <Section title="Final checks">
+        {gate ? (
+          <div className="overflow-hidden rounded-xl border">
+            {gate.checks.map((c) => (
+              <Collapsible key={c.name} className="border-b last:border-b-0" data-check={c.name} data-ok={c.ok}>
+                <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60">
+                  <StatusDot tone={c.ok ? "ok" : "bad"} />
+                  <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                  <span className={cn("text-xs", c.ok ? "text-muted-foreground" : "font-medium text-bad")}>{c.ok ? "passed" : "failed"}</span>
+                  {c.log ? <ChevronDown className="size-3.5 text-muted-foreground" /> : null}
+                </CollapsibleTrigger>
+                {c.log ? (
+                  <CollapsibleContent>
+                    <pre className="max-h-72 overflow-auto bg-muted/50 px-3 py-2 font-mono text-[11px] whitespace-pre-wrap">{c.log}</pre>
+                  </CollapsibleContent>
+                ) : null}
+              </Collapsible>
+            ))}
+          </div>
+        ) : (
+          <Empty>Lint, types, tests and the live preview are checked before anything goes live.</Empty>
+        )}
+      </Section>
+    </div>
+  );
+}
+
 const TABS: readonly { readonly value: PanelTab; readonly label: string }[] = [
   { value: "preview", label: "Preview" },
   { value: "changes", label: "Changes" },
+  { value: "checks", label: "Checks" },
   { value: "details", label: "Details" },
 ];
 
 export function Panel() {
-  const { selection, select, feature } = useWorkspace();
+  const { selection, select, feature, api } = useWorkspace();
   const node = feature ? currentSession(feature, selection.session) : null;
   const preview = node?.live?.preview ?? node?.record?.preview ?? feature?.preview ?? null;
+  const head = node?.live?.commits.at(-1)?.id ?? node?.record?.head ?? "";
+  const changes = useFetch(node ? () => api.changes(node.id) : null, `${node?.id ?? ""}:${head}`);
+  const routes = routesIn(changes.data?.files ?? []);
   return (
     <Tabs value={selection.panel ?? "preview"} onValueChange={(v) => select({ panel: v as PanelTab })} className="flex h-full min-h-0 flex-col gap-0 bg-background">
       <div className="flex h-15 shrink-0 items-center gap-2 border-b px-3">
@@ -247,9 +323,10 @@ export function Panel() {
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         <TabsContent value="preview" className="flex min-h-0 flex-1 flex-col">
-          <PreviewTab url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} />
+          <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} />
         </TabsContent>
         <TabsContent value="changes">{node ? <ChangesTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
+        <TabsContent value="checks">{node ? <ChecksTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
         <TabsContent value="details">{node ? <DetailsTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
       </div>
     </Tabs>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { lostCreateRace, parsePreview, previewName } from "../../src/sandbox-checks.ts";
 import { cloudflareAllowed } from "../../src/sandbox-grants.ts";
+import { previewPath } from "../../src/preview-space.ts";
 
 const grant = { accountId: "acc1", worker: "chef-project-demo" };
 const api = (path: string) => new URL(`https://api.cloudflare.com/client/v4/accounts/acc1${path}`);
@@ -34,5 +35,16 @@ describe("sandbox previews", () => {
     expect(cloudflareAllowed(api("/r2/buckets"), grant)).toBe(false);
     expect(cloudflareAllowed(new URL("https://api.cloudflare.com/client/v4/accounts/other/workers/workers"), grant)).toBe(false);
     expect(cloudflareAllowed(new URL("https://evil.example/client/v4/accounts/acc1/workers/workers"), grant)).toBe(false);
+  });
+});
+
+describe("preview paths", () => {
+  it("keeps a page path and refuses anything that leaves the preview", () => {
+    expect(previewPath("/notes")).toBe("/notes");
+    expect(previewPath("/api/notes?x=1")).toBe("/api/notes?x=1");
+    expect(previewPath(null)).toBe("");
+    expect(previewPath("notes")).toBe("");
+    expect(previewPath("//evil.example")).toBe("");
+    expect(previewPath("/\\evil.example")).toBe("");
   });
 });

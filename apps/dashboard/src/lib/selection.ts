@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type View = "project" | "feature" | "insights";
-export type Panel = "preview" | "changes" | "details";
+export type Panel = "preview" | "changes" | "checks" | "details";
 
 export interface Selection {
   readonly project: string;
@@ -11,7 +11,7 @@ export interface Selection {
   readonly panel: Panel | null;
 }
 
-const PANELS: readonly Panel[] = ["preview", "changes", "details"];
+const PANELS: readonly Panel[] = ["preview", "changes", "checks", "details"];
 const PROJECT = /^[a-z][a-z0-9-]{1,30}$/;
 
 function read(): Selection {

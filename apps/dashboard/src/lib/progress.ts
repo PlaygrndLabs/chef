@@ -15,7 +15,7 @@ const NOW: Readonly<Record<SessionState, string>> = {
   gating: "Running the final checks.",
   merged: "Live. Ask for a change below whenever you want.",
   stuck: "chef stopped and is waiting for you.",
-  dropped: "Stopped. Use Start over in the menu to try again.",
+  dropped: "Stopped. Press Start over to build it again.",
 };
 
 export interface Progress {
@@ -30,7 +30,10 @@ export function stoppedAt(timeline: readonly TimelineItem[]): SessionState {
   for (let i = timeline.length - 1; i >= 0; i--) {
     const item = timeline[i];
     if (item?.kind !== "state") continue;
-    if (item.to === "stuck" || item.to === "dropped") return item.from;
+    if (item.to === "stuck" || item.to === "dropped") {
+      if (item.from === "stuck" || item.from === "dropped") continue;
+      return item.from;
+    }
     return item.to;
   }
   return "planning";
@@ -59,7 +62,7 @@ export type Update =
       readonly mark: { readonly review?: "approved" | "rejected"; readonly gate?: "passed" | "failed" };
     };
 
-type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "retry" | "reopen" | null };
+type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "retry" | "reopen" | null; round: number };
 
 const PHASES: ReadonlySet<SessionState> = new Set(["planning", "testing", "coding", "reviewing", "gating"]);
 const AFTER: Readonly<Record<string, Step["after"]>> = { review_rejected: "review", gate_failed: "gate", retried: "retry", reopened: "reopen" };
@@ -87,6 +90,16 @@ function headline(step: Step, running: boolean): string {
   }
 }
 
+const TOOL_VERB: Readonly<Record<string, string>> = { Bash: "Ran", Read: "Read", Write: "Created", Edit: "Edited", MultiEdit: "Edited", NotebookEdit: "Edited", Grep: "Searched for", Glob: "Looked for files", LS: "Listed", view: "Looked at", Task: "Asked a helper to" };
+
+export function toolText(tool: string, detail: string): string {
+  if (tool === "TodoWrite") return "Updated its to-do list";
+  const verb = TOOL_VERB[tool];
+  if (!verb) return `${tool} ${detail}`.trim();
+  if (detail) return `${verb} ${detail}`;
+  return tool === "Bash" ? "Ran a command" : verb;
+}
+
 function lastLine(text: string): string {
   const line = text.trim().split("\n").filter(Boolean).at(-1) ?? "";
   return line.length > 160 ? `${line.slice(0, 157)}...` : line;
@@ -94,9 +107,10 @@ function lastLine(text: string): string {
 
 export function updates(timeline: readonly TimelineItem[], state: SessionState, root?: { readonly prompt: string; readonly at: number }): Update[] {
   const list: Update[] = [];
-  if (root) list.push({ kind: "you", key: "root", at: root.at, text: root.prompt, note: false });
+  if (root) list.push({ kind: "you", key: "root", at: root.at, text: stripFeatureTag(root.prompt).text, note: false });
   const steps: Step[] = [];
   let step: Step | null = null;
+  let round = 1;
   const tech = (line: string) => step?.tech.push(line);
   timeline.forEach((item, index) => {
     const key = `${index}`;
@@ -104,7 +118,8 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
       case "state": {
         if (PHASES.has(item.to)) {
           const after = AFTER[item.reason] ?? null;
-          step = { kind: "chef", key, at: item.at, icon: ICON[item.to] ?? "code", tone: "ok", text: "", detail: "", tech: [], mark: {}, phase: item.to, said: "", last: "", after };
+          if (after) round++;
+          step = { kind: "chef", key, at: item.at, icon: ICON[item.to] ?? "code", tone: "ok", text: "", detail: "", tech: [], mark: {}, phase: item.to, said: "", last: "", after, round };
           steps.push(step);
           list.push(step);
         } else if (item.to === "dropped") {
@@ -117,8 +132,8 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         if (step) step.said = item.text;
         return;
       case "tool":
-        tech(`> ${item.tool} ${item.detail}`.trim());
-        if (step) step.last = `${item.tool} ${item.detail}`.trim();
+        tech(toolText(item.tool, item.detail));
+        if (step) step.last = toolText(item.tool, item.detail);
         return;
       case "error":
         tech(`error: ${item.message}`);
@@ -172,7 +187,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         step = null;
         return;
       case "stuck":
-        list.push({ kind: "chef", key, at: item.at, icon: "alert", tone: "bad", text: `Stopped: ${item.reason}`, detail: "", tech: [], mark: {} });
+        list.push({ kind: "chef", key, at: item.at, icon: "alert", tone: "bad", text: `Stopped: ${plainReason(item.reason)}`, detail: "", tech: [item.reason], mark: {} });
         step = null;
         return;
       case "steered":
@@ -199,7 +214,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
   const open = steps.at(-1);
   for (const s of steps) {
     const current = running && s === open;
-    s.text = headline(s, current);
+    s.text = s.round > 1 ? `${headline(s, current)} (try ${s.round})` : headline(s, current);
     s.tone = current ? "run" : "ok";
     s.detail = current ? lastLine(s.said) || s.last : "";
   }
@@ -207,9 +222,22 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
   return list.filter((u) => !hidden.has(u));
 }
 
+export function plainReason(reason: string): string {
+  const tries = /^attempt budget exhausted \((\d+)\/\d+\)/.exec(reason);
+  if (tries) return `chef tried ${tries[1]} times and could not get past the review and checks.`;
+  if (reason.startsWith("token budget exhausted")) return "chef used up the tokens it may spend on one build.";
+  if (reason.startsWith("time budget exhausted")) return "chef ran out of the time it may spend on one build.";
+  return reason;
+}
+
+export function stripFeatureTag(prompt: string): { readonly text: string; readonly feature: string | null } {
+  const match = /^#([a-z0-9-]+)\s+([\s\S]*)$/.exec(prompt.trim());
+  return match ? { text: match[2] as string, feature: match[1] as string } : { text: prompt, feature: null };
+}
+
 export function activity(state: SessionState, timeline: readonly TimelineItem[], stuck: string | null): string {
   if (state === "merged") return "Passed every check and went live";
-  if (state === "stuck") return stuck ?? "Needs your help";
+  if (state === "stuck") return stuck ? plainReason(stuck) : "Needs your help";
   if (state === "dropped") return "Stopped";
   const last = [...updates(timeline, state)].reverse().find((u) => u.kind === "chef");
   if (!last || last.kind !== "chef") return NOW[state];
