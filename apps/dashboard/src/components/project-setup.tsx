@@ -263,8 +263,8 @@ export function Setup(props: { readonly projects: readonly string[]; readonly on
   }, [missing.length > 0]);
   return (
     <div className="flex h-dvh flex-col overflow-y-auto" data-view={projects.length ? "start" : "setup"}>
-      <div className="flex justify-end p-3">
-        {available ? (
+      <div className="flex h-14 shrink-0 justify-end p-3">
+        {available && settings ? (
           <Button variant="ghost" size="sm" onClick={() => setProviders(true)} className={missing.length ? "text-bad" : undefined}>
             <KeyRound />
             Settings
