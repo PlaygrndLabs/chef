@@ -1,11 +1,11 @@
-import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, FolderPlus, KeyRound, Monitor, Moon, Plus, Settings, Settings2, Sun } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, FolderPlus, KeyRound, Mic, Monitor, Moon, Plus, Settings, Settings2, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/status";
 import { missingSettings } from "@/components/settings-dialog";
-import { VoiceButton } from "@/components/voice-button";
 import { WorkList } from "@/components/work-list";
+import { useTalkButton } from "@/lib/talk";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 import { Mark, Wordmark } from "@/components/logo";
@@ -42,6 +42,7 @@ function ProjectSwitcher() {
 function AppMenu() {
   const { setTheme } = useTheme();
   const { openSettings, app } = useWorkspace();
+  const [talk, setTalk] = useTalkButton();
   const missing = app.available && missingSettings(app.settings).length > 0;
   const host = location.host;
   return (
@@ -76,6 +77,10 @@ function AppMenu() {
           <KeyRound />
           Shared environment
         </DropdownMenuItem>
+        <DropdownMenuCheckboxItem checked={talk} onCheckedChange={(checked) => setTalk(checked === true)} id="talk-button-toggle">
+          <Mic />
+          Talk button
+        </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
         <DropdownMenuItem onClick={() => setTheme("light")}>
@@ -131,7 +136,6 @@ export function Sidebar() {
       <WorkList />
       <div className="flex items-center gap-1 border-t pt-2.5">
         <AppMenu />
-        <VoiceButton />
       </div>
     </div>
   );
