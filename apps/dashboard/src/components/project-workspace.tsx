@@ -24,7 +24,7 @@ const CommandPalette = preloadable(() => import("@/components/command-palette").
 const NewProjectDialog = preloadable(() => import("@/components/project-setup").then((m) => m.NewProjectDialog));
 
 const CHAT = { initial: 440, min: 340, max: 720 } as const;
-const TREE = { initial: 260, min: 200, max: 440 } as const;
+const TREE = { initial: 280, min: 240, max: 440 } as const;
 const TABS_MIN = 420;
 const COMPOSE_DELAY_MS = 50;
 
@@ -45,7 +45,7 @@ function titleOf(selection: Selection, featureTitle: string | null): string {
 function ChatPane({ onMenu }: { readonly onMenu?: () => void }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ProjectHeader {...(onMenu ? { onMenu } : {})} />
+      {onMenu ? <ProjectHeader onMenu={onMenu} /> : <div className="flex h-11 shrink-0 items-center border-b px-4 text-xs font-medium text-muted-foreground">Chat</div>}
       <div className="min-h-0 flex-1">
         <Suspense fallback={<ChatViewSkeleton />}>
           <MainView />
@@ -189,18 +189,18 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
           </div>
         ) : (
           <div className="flex min-h-0 flex-1">
-            <section className="relative shrink-0 border-r" style={{ width: chat }} aria-label="Chat">
-              <ChatPane />
-              <ResizeHandle edge="right" width={chat} min={CHAT.min} max={chatMax} initial={CHAT.initial} onResize={setChatWidth} label="Resize the chat" />
-            </section>
             <aside className="relative shrink-0 border-r" style={{ width: tree }} aria-label="Features">
-              <TreePane />
+              <TreePane header />
               <ResizeHandle edge="right" width={tree} min={TREE.min} max={TREE.max} initial={TREE.initial} onResize={setTreeWidth} label="Resize the feature list" />
             </aside>
             <main className="relative min-w-0 flex-1" aria-label="Open features">
               {showTabs ? <SessionTabs /> : null}
               <TalkButton />
             </main>
+            <section className="relative shrink-0 border-l" style={{ width: chat }} aria-label="Chat">
+              <ChatPane />
+              <ResizeHandle edge="left" width={chat} min={CHAT.min} max={chatMax} initial={CHAT.initial} onResize={setChatWidth} label="Resize the chat" />
+            </section>
           </div>
         )}
         <ProjectBar />
