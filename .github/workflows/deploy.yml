@@ -57,8 +57,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          VOICE_BASE_URL: ${{ secrets.VOICE_BASE_URL }}
-          VOICE_API_KEY: ${{ secrets.VOICE_API_KEY }}
+          VOICE_BASE_URL: ${{ secrets.VOICE_BASE_URL || (secrets.LLM_BASE_URL && format('{0}/v1', secrets.LLM_BASE_URL)) || '' }}
+          VOICE_API_KEY: ${{ secrets.VOICE_API_KEY || secrets.LLM_API_KEY }}
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD || secrets.KARGAH_PASSWORD }}
