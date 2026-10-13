@@ -15,6 +15,7 @@ import { customAgent, outOfScope, scopeFor, type Profiles } from "../profiles/pr
 import type { RouteDecision } from "../router/decision.ts";
 import { DEFAULT_ROUTER_CONFIG, Router, withoutCommand, type RouterConfig } from "../router/router.ts";
 import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type RejectionRule, type SessionEvent } from "../session/machine.ts";
+import { laneBrief, laneItem, lanesBusy, planLanes, type Lane, type LaneLayoutFor, type LaneStatus } from "../session/lanes.ts";
 import type { SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
@@ -51,9 +52,11 @@ export interface Specialization {
   readonly lockTests: boolean;
   readonly attempts: number;
   readonly stub: ((feature: FeatureSpec) => FileChanges) | null;
+  readonly parallelRoles: boolean;
+  readonly laneLayout: LaneLayoutFor | null;
 }
 
-export const DEFAULT_SPECIALIZATION: Specialization = { lockTests: true, attempts: 1, stub: null };
+export const DEFAULT_SPECIALIZATION: Specialization = { lockTests: true, attempts: 1, stub: null, parallelRoles: true, laneLayout: null };
 
 export interface ProjectConfig {
   readonly name: string;
@@ -476,6 +479,7 @@ export class Orchestrator {
 
   private async coding(record: SessionRecord): Promise<void> {
     const conflict = record.machine.reason === "conflict";
+    if (!conflict && (await this.laneRound(record))) return;
     let item = this.nextItem(record, BUILD_KINDS);
     if (!item && record.lastCodeItem) item = record.plan.items.find((i) => i.id === record.lastCodeItem) ?? null;
     if (!item) item = record.plan.items.find((i) => BUILD_KINDS.includes(i.kind)) ?? null;
@@ -487,8 +491,98 @@ export class Orchestrator {
     record.lastCodeItem = item.id;
     const index = record.plan.items.indexOf(item);
     if (index >= record.cursor) record.cursor = index + 1;
-    if (this.nextItem(record, BUILD_KINDS)) return;
+    if (this.nextItem(record, BUILD_KINDS) || lanesBusy(record.lanes)) return;
     await this.apply(record, { type: "coded" });
+  }
+
+  private async laneRound(record: SessionRecord): Promise<boolean> {
+    if (!record.lanes) {
+      if (!this.specialization.parallelRoles || record.kind === "chore") return false;
+      const rest = record.plan.items.slice(record.cursor);
+      const lanes = planLanes(rest, BUILD_KINDS);
+      const last = rest.filter((i) => BUILD_KINDS.includes(i.kind)).at(-1);
+      if (lanes.length < 2 || !last) return false;
+      record.cursor = record.plan.items.indexOf(last) + 1;
+      record.lastCodeItem = last.id;
+      record.lanes = await this.layLanes(record, lanes);
+      await this.emit({ type: "lanes.started", sessionId: record.id, featureId: record.featureId, lanes: record.lanes.map((l) => ({ role: l.role, branch: l.branch, items: l.items.length })) });
+    } else if (!lanesBusy(record.lanes)) {
+      for (const lane of record.lanes) lane.rework = true;
+    }
+    const lanes = record.lanes;
+    const active = lanes.filter((lane) => laneItem(lane) !== null);
+    const shared = record.machine.feedback;
+    const steering = (await this.deps.store.get<string[]>(`steer/${record.id}`)) ?? [];
+    if (steering.length) await this.deps.store.put(`steer/${record.id}`, []);
+    for (const lane of active) await this.resetLane(record, lane);
+    const items = active.map((lane) => record.plan.items.find((i) => i.id === laneItem(lane)) as WorkItem);
+    const started = await Promise.allSettled(active.map((lane, i) => this.startTurn(record, items[i] as WorkItem, lane.feedback ?? shared, { lane, steering })));
+    const committed: Lane[] = [];
+    let failure: unknown = null;
+    for (const [i, lane] of active.entries()) {
+      const outcome = started[i] as PromiseSettledResult<StartedTurn>;
+      if (outcome.status === "rejected") {
+        failure ??= outcome.reason;
+        continue;
+      }
+      const result = await this.finishTurn(record, items[i] as WorkItem, outcome.value, lane);
+      if (result === "rejected") continue;
+      lane.feedback = null;
+      if (lane.done < lane.items.length) lane.done++;
+      else lane.rework = false;
+      if (result === "committed") committed.push(lane);
+      else await this.laneUpdate(record, lane, "unchanged");
+    }
+    if (committed.length) await this.mergeLanes(record, committed);
+    if (failure) throw failure;
+    if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(lanes)) await this.apply(record, { type: "coded" });
+    return true;
+  }
+
+  private async layLanes(record: SessionRecord, lanes: Lane[]): Promise<Lane[]> {
+    const layoutFor = this.specialization.laneLayout;
+    if (!layoutFor) return lanes;
+    const head = await this.commitOf(record.fork, record.head);
+    const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
+    const layout = layoutFor(feature, lanes.map((l) => l.role), head.tree);
+    if (!layout) return lanes;
+    const changes = diffTrees(head.tree, this.regenerate(applyChanges(head.tree, layout.changes)));
+    if (Object.keys(changes).length > 0) {
+      await this.commitTurn(record, { changes, role: "chef", kind: "scaffold", workItem: null, prompt: `Give each of the ${lanes.map((l) => l.role).join(", ")} roles its own files in ${feature.id}`, model: "chef", runId: this.deps.ids.next("run"), message: `scaffold(${feature.id}): one part per role` });
+    }
+    return lanes.map((lane) => ({ ...lane, part: layout.parts[lane.role] ?? null }));
+  }
+
+  private async resetLane(record: SessionRecord, lane: Lane): Promise<void> {
+    const head = record.head;
+    if (!head) return;
+    if ((await this.deps.repos.resolveRef(record.fork, lane.branch)) !== head) await this.withToken(record.fork, (token) => this.deps.repos.pushRef(token, { ref: lane.branch, commitId: head, force: true }));
+    lane.head = head;
+  }
+
+  private async mergeLanes(record: SessionRecord, lanes: readonly Lane[]): Promise<void> {
+    const conflicts = new Set<string>();
+    await this.withToken(record.fork, async (token) => {
+      for (const lane of lanes) {
+        const outcome = await this.deps.repos.merge(token, { into: "main", from: { repo: record.fork, ref: lane.branch }, message: `Merge ${lane.role} into ${record.featureId}`, author: this.config.author, resolvers: this.resolvers, onConflict: "commit-markers" });
+        if (outcome.status === "conflict") throw new Error(`merge of ${lane.branch} into ${record.fork} failed on ${outcome.paths.join(", ")}`);
+        if (outcome.status === "up-to-date") continue;
+        record.head = outcome.commitId;
+        const paths = outcome.status === "conflicted" ? outcome.paths : [];
+        if (outcome.status !== "fast-forward") {
+          record.commits.push(outcome.commitId);
+          await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "merge", workItem: null, prompt: `Merge ${lane.branch}`, runId: this.deps.ids.next("run"), model: "chef-sync", paths })) });
+        }
+        for (const path of paths) conflicts.add(path);
+        await this.laneUpdate(record, lane, paths.length ? "conflict" : "merged", outcome.commitId, paths);
+      }
+    });
+    await this.publishPreview(record);
+    if (conflicts.size > 0 && record.machine.state === "coding") await this.apply(record, { type: "conflict", paths: [...conflicts].sort(), between: (record.lanes ?? []).map((l) => l.role) });
+  }
+
+  private async laneUpdate(record: SessionRecord, lane: Lane, status: LaneStatus, commitId?: string, paths: readonly string[] = []): Promise<void> {
+    await this.emit({ type: "lane.updated", sessionId: record.id, featureId: record.featureId, role: lane.role, branch: lane.branch, status, ...(commitId ? { commitId } : {}), ...(paths.length ? { paths } : {}) });
   }
 
   private async reviewing(record: SessionRecord): Promise<void> {
@@ -715,7 +809,7 @@ export class Orchestrator {
     for (const commitId of record.commits) {
       const note = parseNote(await this.deps.repos.readNote(record.fork, NOTES_NAMESPACE, commitId));
       const commit = await this.deps.repos.readCommit(record.fork, commitId);
-      if (note && commit && note.kind !== "sync") turns.push({ role: note.role, message: commit.message });
+      if (note && commit && note.kind !== "sync" && note.kind !== "merge") turns.push({ role: note.role, message: commit.message });
     }
     const memory = renderFeatureMemory(tree[memoryPath], { feature: updated, sessionId: record.id, parent: record.parent, rootPrompt: record.rootPrompt, attempt: record.attempt, turns, feedback: record.history });
     const corrections = [...(await this.deps.store.list<Correction | null>("corrections/")).entries()].filter(([key, c]) => !key.startsWith("corrections/pending/") && c !== null).map(([, c]) => c as Correction);
@@ -803,7 +897,7 @@ export class Orchestrator {
         problems.push(`${commitId.slice(0, 12)} has no ${NOTES_NAMESPACE} note`);
         continue;
       }
-      if (note.kind === "sync" || note.kind === "merge") continue;
+      if (SKIPPED_KINDS.has(note.kind)) continue;
       const parent = await this.commitOf(record.fork, commit.parents[0] as string);
       const paths = changedPaths(diffTrees(parent.tree, commit.tree)).filter((p) => !generated.has(p));
       const profile = this.config.profiles[note.role];
@@ -825,7 +919,7 @@ export class Orchestrator {
       const commit = await this.commitOf(record.fork, commitId);
       if (commit.parents.length !== 1) continue;
       const note = parseNote(await this.deps.repos.readNote(record.fork, NOTES_NAMESPACE, commitId));
-      if (!note || note.kind === "sync" || note.kind === "merge") continue;
+      if (!note || SKIPPED_KINDS.has(note.kind)) continue;
       if (note.role === "test") {
         for (const path of note.paths) locked.add(path);
         continue;
@@ -969,9 +1063,14 @@ export class Orchestrator {
   }
 
   private async coderTurn(record: SessionRecord, item: WorkItem, feedback: string | null): Promise<"committed" | "empty" | "rejected"> {
+    return this.finishTurn(record, item, await this.startTurn(record, item, feedback));
+  }
+
+  private async startTurn(record: SessionRecord, item: WorkItem, feedback: string | null, context: { readonly lane?: Lane; readonly steering?: readonly string[] } = {}): Promise<StartedTurn> {
+    const { lane } = context;
     const profile = this.config.profiles[item.role];
     if (!profile) throw new Error(`no agent profile for role ${item.role}`);
-    const head = await this.commitOf(record.fork, record.head);
+    const head = await this.commitOf(record.fork, lane?.head ?? record.head);
     const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
     const scope = scopeFor(profile, feature);
     const agent = customAgent(profile, record.featureId, scope);
@@ -979,11 +1078,14 @@ export class Orchestrator {
     const info = await this.deps.repos.info(record.fork);
     const recalled = await this.recall(record, feature, item);
     if (recalled.length) await this.emit({ type: "memory.recalled", sessionId: record.id, featureId: record.featureId, paths: recalled.map((h) => h.doc.path) });
-    const steering = (await this.deps.store.get<string[]>(`steer/${record.id}`)) ?? [];
-    if (steering.length) await this.deps.store.put(`steer/${record.id}`, []);
+    const steering = context.steering ?? (await this.deps.store.get<string[]>(`steer/${record.id}`)) ?? [];
+    if (steering.length && !context.steering) await this.deps.store.put(`steer/${record.id}`, []);
     const notes = steering.length ? `A person added notes for this turn:\n${steering.map((n) => `- ${n}`).join("\n")}` : null;
-    const prompt = [item.prompt, feedback, notes, renderEnvironment(await this.environment(), feature), renderRecall(recalled)].filter(Boolean).join("\n\n");
-    await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: item.role, kind: item.kind, model: profile.model });
+    const brief = lane && record.lanes ? laneBrief(lane, record.lanes, record.plan.items, record.featureId) : null;
+    const prompt = [item.prompt, brief, feedback, notes, renderEnvironment(await this.environment(), feature), renderRecall(recalled)].filter(Boolean).join("\n\n");
+    const tag = lane ? { lane: lane.role } : {};
+    await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: item.role, kind: item.kind, model: profile.model, ...tag });
+    if (lane) await this.laneUpdate(record, lane, "working");
     let result;
     try {
       result = await this.deps.coder.runTurn({
@@ -996,40 +1098,53 @@ export class Orchestrator {
         writeScope: scope,
         agent,
         attempt: { index: record.attempt.index, of: record.attempt.of },
-        workspace: { repo: record.fork, remote: info?.remote ?? "", ref: "main", commitId: head.id, readToken: readToken.secret, tree: head.tree },
-        onEvent: (event) => void this.emit({ type: "coder.event", sessionId: record.id, featureId: record.featureId, event }),
+        ...tag,
+        workspace: { repo: record.fork, remote: info?.remote ?? "", ref: lane?.branch ?? "main", commitId: head.id, readToken: readToken.secret, tree: head.tree },
+        onEvent: (event) => void this.emit({ type: "coder.event", sessionId: record.id, featureId: record.featureId, event, ...tag }),
       });
     } finally {
       await this.deps.repos.revokeToken(readToken);
     }
+    return { head, feature, scope, prompt, result };
+  }
+
+  private async finishTurn(record: SessionRecord, item: WorkItem, turn: StartedTurn, lane?: Lane): Promise<"committed" | "empty" | "rejected"> {
+    const { head, feature, scope, prompt, result } = turn;
     record.machine = addTokens(record.machine, result.usage.inputTokens + result.usage.outputTokens);
     const generated = new Set(Object.keys(this.config.generated));
     const paths = changedPaths(result.changes).filter((p) => !generated.has(p));
     const outside = outOfScope(paths, scope);
-    if (outside.length > 0) return this.reject(record, item.role, "write-scope", outside, scope, undefined, result.changes);
+    if (outside.length > 0) return this.reject(record, item.role, "write-scope", outside, scope, undefined, result.changes, [], lane);
     if (this.specialization.lockTests && item.role !== "test") {
       const locked = await this.lockedPaths(record);
       const touched = paths.filter((p) => locked.has(p) && !hasMarkers(head.tree[p]));
-      if (touched.length > 0) return this.reject(record, item.role, "locked-tests", touched, scope, undefined, result.changes);
+      if (touched.length > 0) return this.reject(record, item.role, "locked-tests", touched, scope, undefined, result.changes, [], lane);
     }
     const tree = applyChanges(head.tree, result.changes);
     const linted = projectRuleProblems(tree, paths);
-    if (linted.length > 0) return this.reject(record, item.role, "project-lint", [...new Set(linted.map((p) => p.path))], scope, linted.map((p) => `${p.path}:${p.line} ${p.message}`).join("\n"), result.changes);
+    if (linted.length > 0) return this.reject(record, item.role, "project-lint", [...new Set(linted.map((p) => p.path))], scope, linted.map((p) => `${p.path}:${p.line} ${p.message}`).join("\n"), result.changes, [], lane);
     if (item.kind === "test" && !record.lastCodeItem) {
       const red = await this.redCheck(record, head, tree, feature);
-      if (red) return this.reject(record, item.role, "red-tests", red.paths, scope, red.detail, result.changes, red.passing);
+      if (red) return this.reject(record, item.role, "red-tests", red.paths, scope, red.detail, result.changes, red.passing, lane);
     }
     const changes = diffTrees(head.tree, this.regenerate(tree));
     if (Object.keys(changes).length === 0) return "empty";
     if (item.kind !== "conflict") await this.recordCorrection(record, item.role, head.tree, changes);
-    await this.commitTurn(record, { changes, role: item.role, kind: item.kind, workItem: item.id, prompt, model: result.model, runId: result.runId, message: `${item.kind}(${record.featureId}): ${firstLine(result.summary || item.prompt)}` });
+    await this.commitTurn(record, { changes, role: item.role, kind: item.kind, workItem: item.id, prompt, model: result.model, runId: result.runId, message: `${item.kind}(${record.featureId}): ${firstLine(result.summary || item.prompt)}` }, lane);
+    if (lane) await this.laneUpdate(record, lane, "committed", lane.head ?? undefined);
     return "committed";
   }
 
-  private async reject(record: SessionRecord, role: string, rule: RejectionRule, paths: readonly string[], scope: readonly string[], detail?: string, changes: FileChanges = {}, passing: readonly string[] = []): Promise<"rejected"> {
-    await this.emit({ type: "turn.rejected", sessionId: record.id, featureId: record.featureId, role, rule, paths });
+  private async reject(record: SessionRecord, role: string, rule: RejectionRule, paths: readonly string[], scope: readonly string[], detail?: string, changes: FileChanges = {}, passing: readonly string[] = [], lane?: Lane): Promise<"rejected"> {
+    await this.emit({ type: "turn.rejected", sessionId: record.id, featureId: record.featureId, role, rule, paths, ...(lane ? { lane: lane.role } : {}) });
     await this.deps.store.put(`corrections/pending/${record.id}/${role}`, { signature: rule, before: { ...changes }, passing: [...passing] });
+    const before = record.machine;
     await this.apply(record, { type: "turn_rejected", rule, paths, scope, ...(detail ? { detail } : {}) });
+    if (lane) {
+      lane.feedback = record.machine.feedback;
+      if (record.machine.state === "coding") record.machine = { ...record.machine, feedback: before.feedback, reason: before.reason };
+      await this.laneUpdate(record, lane, "rejected");
+    }
     return "rejected";
   }
 
@@ -1054,16 +1169,17 @@ export class Orchestrator {
     return { paths: tests, detail: `Passing without an implementation:\n${passing.map((n) => `- ${n}`).join("\n")}`, passing };
   }
 
-  private async commitTurn(record: SessionRecord, turn: { changes: FileChanges; role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; message: string }): Promise<void> {
+  private async commitTurn(record: SessionRecord, turn: { changes: FileChanges; role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; message: string }, lane?: Lane): Promise<void> {
     await this.withToken(record.fork, async (token) => {
-      const commit = await this.deps.repos.commit(token, { ref: "main", parent: record.head, changes: turn.changes, message: turn.message, author: this.config.author });
+      const commit = await this.deps.repos.commit(token, { ref: lane?.branch ?? "main", parent: lane ? lane.head : record.head, changes: turn.changes, message: turn.message, author: this.config.author });
       const note = this.note(record, { ...turn, paths: changedPaths(turn.changes) });
       await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: commit.id, note: renderNote(note) });
-      record.head = commit.id;
+      if (lane) lane.head = commit.id;
+      else record.head = commit.id;
       record.commits.push(commit.id);
-      await this.emit({ type: "commit.created", sessionId: record.id, featureId: record.featureId, repo: record.fork, commitId: commit.id, role: turn.role, message: turn.message });
+      await this.emit({ type: "commit.created", sessionId: record.id, featureId: record.featureId, repo: record.fork, commitId: commit.id, role: turn.role, message: turn.message, ...(lane ? { lane: lane.role } : {}) });
     });
-    await this.publishPreview(record);
+    if (!lane) await this.publishPreview(record);
   }
 
   private note(record: SessionRecord, turn: { role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; paths: readonly string[] }): TurnNote {
@@ -1168,7 +1284,7 @@ export class Orchestrator {
   }
 
   private async release(record: SessionRecord): Promise<boolean> {
-    await this.deps.coder.release?.(record.id).catch(() => undefined);
+    await this.deps.coder.release?.(record.id, (record.lanes ?? []).map((l) => l.role)).catch(() => undefined);
     const state = record.machine.state;
     if ((state !== "merged" && state !== "dropped") || record.forkDeleted) return true;
     try {
@@ -1195,6 +1311,16 @@ export class Orchestrator {
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 const RETRY_EVENTS: ReadonlySet<SessionEvent["type"]> = new Set(["review_rejected", "gate_failed", "turn_rejected", "reopened", "conflict"]);
+
+const SKIPPED_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["sync", "merge", "scaffold"]);
+
+interface StartedTurn {
+  readonly head: Commit;
+  readonly feature: FeatureSpec;
+  readonly scope: readonly string[];
+  readonly prompt: string;
+  readonly result: Awaited<ReturnType<Coder["runTurn"]>>;
+}
 
 const CODER_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["test", "code", "fix", "refactor", "chore", "conflict"]);
 

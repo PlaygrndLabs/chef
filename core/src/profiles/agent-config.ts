@@ -230,7 +230,7 @@ export interface AgentsView extends AgentVersion {
   readonly scope?: AgentScope;
 }
 
-const ORDER = ["planner", "test", "backend", "frontend", "chore", "reviewer", "conflict-resolver", "gardener"];
+const ORDER = ["planner", "test", "backend", "frontend", "designer", "chore", "reviewer", "conflict-resolver", "gardener"];
 
 export function resolveModel(model: string, models: Readonly<Record<"planner" | "reviewer" | "coder", string>>): string {
   if (model === "coder-default") return models.coder;
