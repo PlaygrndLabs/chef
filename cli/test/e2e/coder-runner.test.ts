@@ -110,7 +110,7 @@ describe("coder runner on the Claude Agent SDK", () => {
       const events = out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as { type: string } & Record<string, unknown>);
       const types = events.map((e) => e.type);
       expect(types).toContain("assistant.message_delta");
-      expect(events.find((e) => e.type === "tool.execution_start")?.["tool"]).toBe("Write");
+      expect(events.find((e) => e.type === "tool.execution_start")).toMatchObject({ tool: "Write", detail: "features/hello/index.ts" });
       expect(types.indexOf("session.idle")).toBeLessThan(types.indexOf("chef.result"));
       const result = events.at(-1) as { type: string; changes: Record<string, string | null>; summary: string; model: string };
       expect(result.type).toBe("chef.result");

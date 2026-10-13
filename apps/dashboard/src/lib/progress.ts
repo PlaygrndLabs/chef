@@ -90,6 +90,16 @@ function headline(step: Step, running: boolean): string {
   }
 }
 
+const TOOL_VERB: Readonly<Record<string, string>> = { Bash: "Ran", Read: "Read", Write: "Created", Edit: "Edited", MultiEdit: "Edited", NotebookEdit: "Edited", Grep: "Searched for", Glob: "Looked for files", LS: "Listed", view: "Looked at", Task: "Asked a helper to" };
+
+export function toolText(tool: string, detail: string): string {
+  if (tool === "TodoWrite") return "Updated its to-do list";
+  const verb = TOOL_VERB[tool];
+  if (!verb) return `${tool} ${detail}`.trim();
+  if (detail) return `${verb} ${detail}`;
+  return tool === "Bash" ? "Ran a command" : verb;
+}
+
 function lastLine(text: string): string {
   const line = text.trim().split("\n").filter(Boolean).at(-1) ?? "";
   return line.length > 160 ? `${line.slice(0, 157)}...` : line;
@@ -122,8 +132,8 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         if (step) step.said = item.text;
         return;
       case "tool":
-        tech(`> ${item.tool} ${item.detail}`.trim());
-        if (step) step.last = `${item.tool} ${item.detail}`.trim();
+        tech(toolText(item.tool, item.detail));
+        if (step) step.last = toolText(item.tool, item.detail);
         return;
       case "error":
         tech(`error: ${item.message}`);

@@ -72,6 +72,7 @@ describe("phase 4 memory on fakes", () => {
     expect(asked.sessionId).toBeNull();
     expect(asked.answer?.sources).toContain("memory/features/todo-add.md");
     expect(asked.answer?.text).toContain("memory/features/todo-add.md");
+    expect(w.bus.log.filter((e) => e.type === "question.answered")).toMatchObject([{ prompt: "What does the todo list feature do?", answer: asked.answer?.text }]);
   });
 
   it("rejects a turn that breaks a learned project rule and records the correction", async () => {

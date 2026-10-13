@@ -3,6 +3,9 @@ import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { projectApi } from "./api";
 import { apply, emptyProject, type LogEntry, type ProjectLive } from "./events";
 
+const EVENT_PAGE = 500;
+const PAGES_PER_POLL = 20;
+
 export type Connection = "connecting" | "live" | "polling" | "offline";
 
 const REFRESH_RECORDS: ReadonlySet<ChefEvent["type"]> = new Set(["session.created", "session.state", "session.stuck", "main.merged", "main.reverted", "commit.created", "sync.merged", "attempt.picked"]);
@@ -86,14 +89,32 @@ export function useProject(project: string): ProjectData {
     let closed = false;
     let socket: WebSocket | null = null;
     let poller: number | undefined;
-    const poll = async () => {
+    let polling = false;
+    let again = false;
+    let live = false;
+    const poll = async (): Promise<void> => {
+      if (polling) {
+        again = true;
+        return;
+      }
+      polling = true;
       try {
-        const response = await fetch(`/api/projects/${project}/events?after=${store.state.lastSeq}`);
-        if (!response.ok) throw new Error(String(response.status));
-        onEvents(store.receive((await response.json()) as LogEntry[]));
-        setConnection("polling");
+        for (let page = 0; page < PAGES_PER_POLL; page++) {
+          const response = await fetch(`/api/projects/${project}/events?after=${store.state.lastSeq}`);
+          if (!response.ok) throw new Error(String(response.status));
+          const entries = (await response.json()) as LogEntry[];
+          onEvents(store.receive(entries));
+          if (entries.length < EVENT_PAGE) break;
+        }
+        setConnection(live ? "live" : "polling");
       } catch {
         setConnection("offline");
+      } finally {
+        polling = false;
+        if (again) {
+          again = false;
+          void poll();
+        }
       }
     };
     const startPolling = () => {
@@ -103,18 +124,27 @@ export function useProject(project: string): ProjectData {
     };
     try {
       const scheme = location.protocol === "https:" ? "wss" : "ws";
-      socket = new WebSocket(`${scheme}://${location.host}/agents/project-agent/${project}`);
-      socket.addEventListener("open", () => setConnection("live"));
+      socket = new WebSocket(`${scheme}://${location.host}/agents/project/${project}`);
+      socket.addEventListener("open", () => {
+        live = true;
+        setConnection("live");
+      });
       socket.addEventListener("message", (message) => {
         try {
           const entry = JSON.parse(String(message.data)) as LogEntry;
-          onEvents(store.receive([entry]));
+          if (typeof entry?.seq !== "number") return;
+          if (entry.seq > store.state.lastSeq + 1) void poll();
+          else onEvents(store.receive([entry]));
         } catch {
           return;
         }
       });
-      socket.addEventListener("close", startPolling);
-      socket.addEventListener("error", startPolling);
+      const fallBack = () => {
+        live = false;
+        startPolling();
+      };
+      socket.addEventListener("close", fallBack);
+      socket.addEventListener("error", fallBack);
     } catch {
       startPolling();
     }
