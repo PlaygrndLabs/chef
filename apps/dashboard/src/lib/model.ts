@@ -1,4 +1,4 @@
-import type { FeatureSpec, SessionRecord, SessionState } from "@chef/core";
+import type { FeatureLayout, FeatureSpec, SessionRecord, SessionState } from "@chef/core";
 import { isActive, type ProjectLive, type SessionLive } from "./events";
 
 export type FeatureStatus = "building" | "stuck" | "merged" | "proposed" | "dropped";
@@ -59,24 +59,27 @@ function featureStatusOf(sessions: readonly SessionNode[], spec: FeatureSpec | n
   return sessions.length ? "dropped" : "proposed";
 }
 
-export function featureNodes(live: ProjectLive, records: readonly SessionRecord[], spec: readonly FeatureSpec[]): FeatureNode[] {
+export function featureNodes(live: ProjectLive, records: readonly SessionRecord[], spec: readonly FeatureSpec[], layout: FeatureLayout = {}): FeatureNode[] {
   const sessions = sessionNodes(live, records);
   const ids = new Set<string>([...spec.map((f) => f.id), ...sessions.map((s) => s.featureId)]);
   const nodes: FeatureNode[] = [];
   for (const id of ids) {
-    const own = sessions.filter((s) => s.featureId === id);
+    const place = layout[id];
+    const removedAt = place?.removedAt;
+    const own = sessions.filter((s) => s.featureId === id && (removedAt === undefined || s.createdAt > removedAt));
+    if (removedAt !== undefined && own.length === 0) continue;
     const fromMain = spec.find((f) => f.id === id) ?? null;
     const planned = [...own].reverse().find((s) => s.record)?.record?.plan.feature ?? null;
     const feature = fromMain ?? planned;
     const preview = live.previews[id] ?? null;
     nodes.push({
       id,
-      title: feature?.title ?? id,
+      title: place?.title ?? feature?.title ?? id,
       status: featureStatusOf(own, fromMain),
       flow: feature?.flow ?? id,
       spec: fromMain ?? planned,
       onMain: Boolean(fromMain),
-      parent: feature?.parent ?? null,
+      parent: place?.parent !== undefined ? place.parent : (feature?.parent ?? null),
       sessions: own,
       preview,
       updatedAt: Math.max(0, ...own.map((s) => s.updatedAt)),
