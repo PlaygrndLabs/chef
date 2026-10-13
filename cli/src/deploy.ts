@@ -57,26 +57,6 @@ export function instanceConfig(base: Json, name: string): Json {
   };
 }
 
-export function movedConfig(base: Json, name: string, from: string): Json {
-  const [script, tag] = from.split("@") as [string, string | undefined];
-  const migrations = list(base["migrations"]);
-  const at = migrations.findIndex((m) => m["tag"] === tag);
-  if (!script || at < 0) throw new Error(`--moved-from needs <worker>@<last migration tag>, such as chef@${String(migrations.at(-1)?.["tag"] ?? "v1")}`);
-  const classes = migrations.slice(0, at + 1).flatMap((m) => [...list(m["new_sqlite_classes"]), ...list(m["new_classes"])] as unknown as string[]);
-  const workflows = new Map(list(base["workflows"]).map((w) => [String(w["name"]), `${name}-${String(w["name"])}`]));
-  const triggers = base["triggers"] as Json | undefined;
-  return {
-    ...base,
-    name,
-    migrations: [{ tag, transferred_classes: classes.map((cls) => ({ from: cls, from_script: script, to: cls })) }, ...migrations.slice(at + 1)],
-    workflows: list(base["workflows"]).map((w) => ({ ...w, name: workflows.get(String(w["name"])) })),
-    containers: list(base["containers"]).map((c) => ({ ...c, name: c["name"] ?? `${script}-${String(c["class_name"])}`.toLowerCase() })),
-    ...(triggers
-      ? { triggers: { ...triggers, events: list(triggers["events"]).map((e) => ({ ...e, targets: list(e["targets"]).map((t) => ({ ...t, workflow_name: workflows.get(String(t["workflow_name"])) ?? t["workflow_name"] })) })) } }
-      : {}),
-  };
-}
-
 export function withImage(config: Json, image: string): Json {
   return {
     ...config,
@@ -124,7 +104,6 @@ export async function ensureMemoryIndex(run: Runner, index: string, log: (line: 
 export interface DeployOptions {
   readonly name?: string;
   readonly image?: string;
-  readonly movedFrom?: string;
   readonly dryRun?: boolean;
   readonly passthrough?: readonly string[];
   readonly run?: Runner;
@@ -146,10 +125,9 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
   let config = baseFile;
   if (name !== base["name"] || options.image) {
     config = join(REPO_ROOT, `.wrangler.${name}.jsonc`);
-    const instance = options.movedFrom ? movedConfig(base, name, options.movedFrom) : instanceConfig(base, name);
+    const instance = instanceConfig(base, name);
     writeFileSync(config, `${JSON.stringify(options.image ? withImage(instance, options.image) : instance, null, 2)}\n`);
-    if (options.movedFrom) log(`deploying chef as ${name}, keeping the projects, repos and memory of ${options.movedFrom.split("@")[0]}`);
-    else if (name !== base["name"]) log(`deploying a separate chef named ${name}, with its own repos, memory and previews`);
+    if (name !== base["name"]) log(`deploying a separate chef named ${name}, with its own repos, memory and previews`);
     if (options.image) log(`using the prebuilt sandbox image ${options.image}`);
   }
   const index = (list(parseJsonc(readFileSync(config, "utf8"))["vectorize"])[0]?.["index_name"] as string | undefined) ?? null;
@@ -157,14 +135,6 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
   const args = ["deploy", "--config", config, ...(options.dryRun ? ["--dry-run", "--outdir", join(REPO_ROOT, "dist", "worker")] : []), ...(options.passthrough ?? [])];
   mkdirSync(join(REPO_ROOT, "dist"), { recursive: true });
   let result = await run(args, { echo: true });
-  if (result.code !== 0 && options.movedFrom && !options.dryRun && result.output.includes("10074")) {
-    log(`moving the Durable Objects first, then turning on the sandbox containers`);
-    const first = join(REPO_ROOT, `.wrangler.${name}.move.jsonc`);
-    const { containers: _containers, ...withoutContainers } = parseJsonc(readFileSync(config, "utf8"));
-    writeFileSync(first, `${JSON.stringify(withoutContainers, null, 2)}\n`);
-    const moved = await run(["deploy", "--config", first, ...(options.passthrough ?? [])], { echo: true });
-    result = moved.code === 0 ? await run(args, { echo: true }) : moved;
-  }
   if (result.code !== 0 && !options.dryRun && result.output.includes("could not finish applying")) {
     log(`finishing the sandbox container settings`);
     result = await run(args, { echo: true });
