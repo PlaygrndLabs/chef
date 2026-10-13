@@ -1,6 +1,7 @@
 import { routeAgentRequest } from "agents";
 import { guard } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
+import { gitHubRequest, gitHubWebhook } from "./github.ts";
 import { projectsRequest } from "./projects.ts";
 import { claimPassword, credential, settingsRequest, settingsStub } from "./settings.ts";
 
@@ -18,11 +19,13 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const webhook = WEBHOOK.exec(new URL(request.url).pathname);
     if (webhook) return projectStub(env, webhook[1] as string, request);
+    if (new URL(request.url).pathname === "/api/github/webhook") return gitHubWebhook(request, env);
     const blocked = await guard(request, await credential(env), claimPassword(env));
     if (blocked) return blocked;
     const url = new URL(request.url);
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/projects") return projectsRequest(request, settingsStub(env), (project, path, init) => projectStub(env, project, new Request(`${url.origin}/api/projects/${project}/${path}`, init)));
+    if (url.pathname === "/api/github" || url.pathname.startsWith("/api/github/")) return gitHubRequest(request, env);
     const copilotKit = COPILOTKIT.exec(url.pathname);
     if (copilotKit) return copilotKitHandler(request, env, copilotKit[1] as string);
     const match = PROJECT.exec(url.pathname) ?? PREVIEW.exec(url.pathname);

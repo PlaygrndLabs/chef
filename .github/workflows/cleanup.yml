@@ -1,0 +1,55 @@
+name: cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      prefix:
+        description: Name prefix of the old Cloudflare resources (a Worker named exactly this, or starting with "<prefix>-")
+        required: true
+      confirm:
+        description: Type the prefix again to delete; leave empty to only list what would be deleted
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PREFIX: ${{ inputs.prefix }}
+      DELETE: ${{ inputs.confirm != '' && inputs.confirm == inputs.prefix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Find and remove resources
+        working-directory: workers
+        run: |
+          set -euo pipefail
+          case "$PREFIX" in ""|chef|chef-*) echo "refusing prefix '$PREFIX'"; exit 1;; esac
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
+          get() { curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1"; }
+          del() { curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1" | jq -c '{success, errors}'; }
+          match() { jq -r --arg p "$PREFIX" '.[] | select(. == $p or startswith($p + "-"))'; }
+          act() { if [ "$DELETE" = "true" ]; then echo "deleting $1"; else echo "would delete $1"; fi; [ "$DELETE" = "true" ]; }
+
+          workers=$(get "workers/scripts" | jq '[.result[].id]' | match)
+          workflows=$(get "workflows?per_page=100" | jq -r --arg p "$PREFIX" '.result[] | select(.script_name == $p or (.script_name | startswith($p + "-"))) | .name')
+          containers=$(get "containers/applications" | jq -r --arg p "$PREFIX" '.result[] | select(.name | startswith($p + "-")) | "\(.id) \(.name)"')
+          indexes=$(get "vectorize/v2/indexes" | jq '[.result[].name]' | match)
+          repos=$(npx wrangler artifacts repos list --namespace "$PREFIX" --json 2>/dev/null | jq -r '(if type == "array" then . else (.repos // .result // []) end)[] | .name // empty' || true)
+
+          for name in $workflows; do act "workflow $name" && del "workflows/$name"; done
+          for name in $workers; do act "worker $name" && del "workers/scripts/$name?force=true"; done
+          while read -r id name; do [ -n "${id:-}" ] || continue; act "container application $name" && del "containers/applications/$id"; done <<< "$containers"
+          for name in $indexes; do act "vectorize index $name" && del "vectorize/v2/indexes/$name"; done
+          for name in $repos; do act "artifacts repo $PREFIX/$name" && npx wrangler artifacts repos delete "$name" --namespace "$PREFIX" --force; done
+          echo "done (delete=$DELETE)"

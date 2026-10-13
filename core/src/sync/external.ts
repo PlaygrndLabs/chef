@@ -281,7 +281,7 @@ export class ExternalSync {
 
   private async ensureRepo(): Promise<void> {
     if (await this.ctx.repos.info(this.ctx.canonical)) return;
-    const source = this.remote.importSource;
+    const source = await this.remote.importSource?.();
     if (source && this.ctx.repos.importRepo) {
       try {
         await this.ctx.repos.importRepo(this.ctx.canonical, source);

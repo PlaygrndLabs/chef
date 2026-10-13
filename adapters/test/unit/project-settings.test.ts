@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyProjectUpdate, readProjectSettings, viewProjectSettings } from "../../src/project-settings.ts";
+import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings } from "../../src/project-settings.ts";
 
 const secret = () => "whsec";
 
@@ -9,7 +9,7 @@ describe("project settings", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const view = viewProjectSettings(readProjectSettings(result.settings));
-    expect(view.git).toEqual({ url: "https://github.com/acme/app.git", branch: "main", mode: "pull-request", syncBranch: "chef", webhookSecret: "whsec", tokenHint: "…1234", pullRequests: true });
+    expect(view.git).toEqual({ url: "https://github.com/acme/app.git", branch: "main", mode: "pull-request", syncBranch: "chef", webhookSecret: "whsec", tokenHint: "…1234", pullRequests: true, github: false });
     expect(JSON.stringify(view)).not.toContain("ghp_");
   });
 
@@ -33,6 +33,25 @@ describe("project settings", () => {
     expect(refuse({ url: "https://gitlab.com/acme/app", token: "t" })).toMatchObject({ ok: false, error: expect.stringContaining("github.com") });
     expect(refuse({ url: "https://gitlab.com/acme/app", token: "t", mode: "branch" })).toMatchObject({ ok: true });
     expect(refuse({ url: "https://gitlab.com/acme/app", mode: "off" })).toMatchObject({ ok: true });
+  });
+
+  it("links through chef's GitHub App without a token and drops an earlier token", () => {
+    const withToken = applyProjectUpdate(undefined, { git: { url: "https://github.com/acme/app", token: "ghp_abcdefgh1234" } }, secret);
+    if (!withToken.ok) throw new Error(withToken.error);
+    const body = { git: { url: "https://github.com/acme/app/", github: true, branch: "trunk" } };
+    expect(requestsGitHubApp(body)).toBe("https://github.com/acme/app");
+    expect(requestsGitHubApp({ git: { url: "https://github.com/acme/app", token: "t" } })).toBeNull();
+    expect(applyProjectUpdate(withToken.settings, body, secret)).toMatchObject({ ok: false, error: expect.stringContaining("GitHub App cannot reach") });
+    const linked = applyProjectUpdate(withToken.settings, body, secret, 99);
+    if (!linked.ok) throw new Error(linked.error);
+    expect(linked.settings.git).toMatchObject({ token: null, installation: 99, branch: "trunk", mode: "pull-request", webhookSecret: "whsec" });
+    const view = viewProjectSettings(readProjectSettings(linked.settings));
+    expect(view.git).toMatchObject({ github: true, tokenHint: null });
+    expect(JSON.stringify(view)).not.toContain("99");
+    const back = applyProjectUpdate(linked.settings, { git: { url: "https://github.com/acme/app", mode: "off" } }, secret);
+    if (!back.ok) throw new Error(back.error);
+    expect(back.settings.git).not.toHaveProperty("installation");
+    expect(applyProjectUpdate(undefined, { git: { url: "https://gitlab.com/acme/app", github: true, mode: "branch" } }, secret, 5)).toMatchObject({ ok: false, error: expect.stringContaining("github.com") });
   });
 
   it("unlinks and resets the preview idle time", () => {

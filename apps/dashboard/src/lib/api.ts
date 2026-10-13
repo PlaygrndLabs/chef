@@ -66,6 +66,33 @@ export const projectsApi = {
   create: (project: NewProject) => call<{ name: string; created: boolean; imported?: boolean }>("/api/projects", post(project)),
 };
 
+export interface GitHubAppView {
+  readonly slug: string;
+  readonly name: string;
+  readonly owner: string;
+  readonly htmlUrl: string;
+  readonly installUrl: string;
+}
+
+export interface InstalledRepository {
+  readonly fullName: string;
+  readonly url: string;
+  readonly defaultBranch: string;
+  readonly private: boolean;
+}
+
+export interface GitHubView {
+  readonly app: GitHubAppView | null;
+  readonly repositories: readonly InstalledRepository[];
+  readonly error?: string;
+}
+
+export const githubApi = {
+  get: () => call<GitHubView>("/api/github"),
+  forget: () => call<GitHubView>("/api/github", { method: "DELETE" }),
+  connectUrl: (returnTo: string, organization?: string) => `/api/github/connect?${new URLSearchParams({ returnTo, ...(organization ? { organization } : {}) }).toString()}`,
+};
+
 export interface GitLinkView {
   readonly url: string;
   readonly branch: string;
@@ -74,6 +101,7 @@ export interface GitLinkView {
   readonly syncBranch: string;
   readonly webhookSecret: string;
   readonly pullRequests: boolean;
+  readonly github: boolean;
 }
 
 export interface ProjectSettingsView {
@@ -85,6 +113,7 @@ export interface GitLinkUpdate {
   readonly url: string;
   readonly branch: string;
   readonly token?: string;
+  readonly github?: boolean;
   readonly mode: OutboundMode;
   readonly syncBranch: string;
 }

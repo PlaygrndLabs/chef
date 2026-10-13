@@ -31,6 +31,19 @@ describe("GitHub pull requests for the sync branch", () => {
     expect(calls[3]?.url).toBe("https://api.github.com/repos/o/r/pulls/7");
   });
 
+  it("asks for a fresh token each time it talks to GitHub when the link uses chef's app", async () => {
+    let minted = 0;
+    const seen: string[] = [];
+    const fetcher = (async (_url: string, init: RequestInit = {}) => {
+      seen.push(new Headers(init.headers).get("authorization") ?? "");
+      return (init.method ?? "GET") === "GET" ? Response.json([]) : Response.json({ number: 1, html_url: "https://github.com/o/r/pull/1" }, { status: 201 });
+    }) as unknown as typeof fetch;
+    const remote = new GitRemote({ url: "https://github.com/o/r", branch: "main", token: null, tokenSource: async () => `ghs_${++minted}` }, control, { fetcher });
+    await remote.pullRequest({ head: "chef", title: "t", body: "b" });
+    expect(seen).toEqual(["Bearer ghs_1", "Bearer ghs_1"]);
+    expect(await remote.importSource()).toEqual({ url: "https://github.com/o/r", branch: "main", token: "ghs_2" });
+  });
+
   it("refuses pull requests outside GitHub and pushes to the linked main", async () => {
     const remote = new GitRemote({ url: "https://gitlab.com/a/b", branch: "main", token: "tok" }, control);
     await expect(remote.pullRequest({ head: "chef", title: "t", body: "b" })).rejects.toThrow(/github.com/);
