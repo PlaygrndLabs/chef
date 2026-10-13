@@ -15,7 +15,7 @@ function useChefTalking(on: boolean): boolean {
   const [talking, setTalking] = useState(false);
   useEffect(() => {
     if (!on) return;
-    let quiet = 0;
+    let quiet = 4;
     const timer = window.setInterval(() => {
       const loud = levels().chef > TALKING;
       quiet = loud ? 0 : quiet + 1;
