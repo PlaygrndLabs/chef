@@ -60,6 +60,19 @@ export interface CloudflareSetup {
   readonly error: string | null;
 }
 
+export type OrgRole = "owner" | "admin" | "member";
+
+export interface OrgSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly role: OrgRole;
+}
+
+export interface OrgView extends OrgSummary {
+  readonly engine: string | null;
+  readonly members: number;
+}
+
 export interface AppMode {
   readonly mode: "local" | "cloud";
   readonly place: "computer" | "cloud" | null;
@@ -71,6 +84,8 @@ export interface AppMode {
   readonly claimed?: boolean;
   readonly account?: string | null;
   readonly admin?: boolean;
+  readonly org?: OrgView | null;
+  readonly orgs?: readonly OrgSummary[];
 }
 
 export interface CloudflareCheck {
@@ -88,6 +103,12 @@ export const appApi = {
   disconnect: () => call<AppMode>("/api/app/connection", { method: "DELETE" }),
   checkCloudflare: (accountId: string, apiToken: string) => call<CloudflareCheck>("/api/app/cloudflare/check", json("POST", { accountId, apiToken })),
   deployCloudflare: (accountId: string, apiToken: string, password: string) => call<AppMode>("/api/app/cloudflare/deploy", json("POST", { accountId, apiToken, password })),
+};
+
+export const orgApi = {
+  create: (name: string) => call<{ readonly org: OrgSummary }>("/site/api/orgs", json("POST", { name })),
+  use: (orgId: string) => call<{ readonly org: OrgSummary }>("/site/api/orgs/switch", json("POST", { orgId })),
+  rename: (name: string) => call<{ readonly org: OrgView }>("/site/api/org", json("PATCH", { name })),
 };
 
 export type SettingsUpdate = Readonly<Record<string, unknown>>;

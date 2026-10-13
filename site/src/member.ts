@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { directory, oauthClient, type Env } from "./env.ts";
-import { API, planFrom, randomToken, revokeRequest, type Granted, type InstallRequest, type Plan, type Profile } from "./oauth.ts";
+import { directory, oauthClient, organization, type Env } from "./env.ts";
+import { API, planFrom, randomToken, revokeRequest, type Granted, type Plan, type Profile } from "./oauth.ts";
 
 export interface Engine {
   readonly url: string;
@@ -21,6 +21,7 @@ export type StepId = "account" | "image" | "token" | "deploy";
 export type StepState = "waiting" | "running" | "done" | "failed" | "skipped";
 
 export interface InstallStatus {
+  readonly orgId: string | null;
   readonly status: "idle" | "running" | "done" | "failed";
   readonly update: boolean;
   readonly steps: Readonly<Record<StepId, StepState>>;
@@ -31,12 +32,24 @@ export interface InstallStatus {
 export interface MemberView {
   readonly email: string | null;
   readonly admin: boolean;
-  readonly engine: string | null;
   readonly canSetUp: boolean;
   readonly install: InstallStatus | null;
 }
 
+export interface OrgContext {
+  readonly id: string;
+  readonly canSetUp: boolean;
+  readonly engine: Engine | null;
+}
+
+export interface InstallJob {
+  readonly orgId: string;
+  readonly accountId: string;
+  readonly engine: Engine | null;
+}
+
 interface Job {
+  readonly orgId: string;
   readonly accountId: string;
   readonly secret: string;
   readonly update: boolean;
@@ -51,7 +64,7 @@ const ADMIN = "admin";
 const MAX_LOG = 400;
 const INSTANCE = "standard-2";
 
-const FRESH: InstallStatus = { status: "idle", update: false, steps: { account: "waiting", image: "waiting", token: "waiting", deploy: "waiting" }, log: [], error: null };
+const FRESH: InstallStatus = { orgId: null, status: "idle", update: false, steps: { account: "waiting", image: "waiting", token: "waiting", deploy: "waiting" }, log: [], error: null };
 
 interface Envelope<T> {
   readonly success?: boolean;
@@ -59,16 +72,15 @@ interface Envelope<T> {
 }
 
 export class Member extends DurableObject<Env> {
-  async signIn(profile: Profile, grant: Granted): Promise<void> {
+  async signIn(profile: Profile, grant: Granted, admin: boolean, org: OrgContext): Promise<void> {
     await this.ctx.storage.put(PROFILE, profile);
     await this.ctx.storage.put(TOKEN, grant);
-    await this.ctx.storage.put(ADMIN, await this.ownsSite(grant.token));
-    const engine = await this.ctx.storage.get<Engine>(ENGINE);
+    await this.ctx.storage.put(ADMIN, admin);
+    const engine = org.engine;
     const running = (await this.status()).status === "running";
     if (!running) await this.ctx.storage.delete(STATUS);
-    await this.report(true);
-    if (engine && !running && this.env.ENGINE_VERSION && engine.version !== this.env.ENGINE_VERSION && this.ready()) {
-      await this.start({ accountId: engine.accountId, secret: engine.secret, update: true });
+    if (engine && !running && org.canSetUp && this.env.ENGINE_VERSION && engine.version !== this.env.ENGINE_VERSION && this.ready()) {
+      await this.start({ orgId: org.id, accountId: engine.accountId, secret: engine.secret, update: true });
       return;
     }
     if (engine && !running) {
@@ -78,18 +90,17 @@ export class Member extends DurableObject<Env> {
     if (!running) await this.ctx.storage.setAlarm(grant.expiresAt);
   }
 
-  async view(): Promise<MemberView> {
+  async view(orgId: string): Promise<MemberView> {
     const profile = await this.ctx.storage.get<Profile>(PROFILE);
-    const engine = await this.ctx.storage.get<Engine>(ENGINE);
     const install = await this.status();
-    return { email: profile?.email ?? null, admin: await this.admin(), engine: engine?.url ?? null, canSetUp: (await this.grant()) !== null, install: install.status === "idle" ? null : install };
+    return { email: profile?.email ?? null, admin: await this.admin(), canSetUp: (await this.grant()) !== null, install: install.status === "idle" || install.orgId !== orgId ? null : install };
   }
 
   async admin(): Promise<boolean> {
     return (await this.ctx.storage.get<boolean>(ADMIN)) === true;
   }
 
-  async engine(): Promise<Engine | null> {
+  async legacyEngine(): Promise<Engine | null> {
     return (await this.ctx.storage.get<Engine>(ENGINE)) ?? null;
   }
 
@@ -115,14 +126,13 @@ export class Member extends DurableObject<Env> {
     );
   }
 
-  async install(request: InstallRequest): Promise<InstallStatus | string> {
+  async install(request: InstallJob): Promise<InstallStatus | string> {
     if (!(await this.grant())) return "your Cloudflare sign-in has ended; sign in again";
     const current = await this.status();
     if (current.status === "running") return current;
     if (!this.ready()) return "setup is not available right now";
-    const engine = await this.ctx.storage.get<Engine>(ENGINE);
-    const update = engine?.accountId === request.accountId;
-    return this.start({ accountId: request.accountId, secret: update && engine ? engine.secret : randomToken(), update });
+    const update = request.engine?.accountId === request.accountId;
+    return this.start({ orgId: request.orgId, accountId: request.accountId, secret: update && request.engine ? request.engine.secret : randomToken(), update });
   }
 
   async status(): Promise<InstallStatus> {
@@ -143,7 +153,7 @@ export class Member extends DurableObject<Env> {
       } catch (error) {
         await this.update((s) => ({ ...s, status: "failed", error: s.error ?? (error instanceof Error ? error.message : String(error)) }));
       }
-      await this.report(false, job.accountId);
+      await this.report(job);
     }
     await this.forgetToken();
   }
@@ -153,41 +163,25 @@ export class Member extends DurableObject<Env> {
   }
 
   private async start(job: Job): Promise<InstallStatus> {
-    const status: InstallStatus = { ...FRESH, status: "running", update: job.update };
+    const status: InstallStatus = { ...FRESH, orgId: job.orgId, status: "running", update: job.update };
     await this.ctx.storage.put(JOB, job);
     await this.ctx.storage.put(STATUS, status);
     await this.ctx.storage.setAlarm(Date.now());
-    await this.report(false);
+    await this.report(job);
     return status;
   }
 
-  private async ownsSite(token: string): Promise<boolean> {
-    const site = this.env.CF_ACCOUNT_ID;
-    if (!site) return false;
-    const accounts = await this.cf<readonly { id: string }[]>(token, "/accounts?per_page=50");
-    return (accounts.result ?? []).some((account) => account.id === site);
-  }
-
-  private async report(signedIn: boolean, accountId?: string): Promise<void> {
-    const profile = await this.ctx.storage.get<Profile>(PROFILE);
-    if (!profile) return;
-    const engine = await this.ctx.storage.get<Engine>(ENGINE);
+  private async report(job: Job): Promise<void> {
     const status = await this.status();
-    const job = await this.ctx.storage.get<Job>(JOB);
+    const engine = await organization(this.env, job.orgId).engine().catch(() => null);
     await directory(this.env)
-      .record(
-        {
-          id: profile.id,
-          email: profile.email,
-          admin: await this.admin(),
-          accountId: accountId ?? job?.accountId ?? engine?.accountId ?? null,
-          engine: engine?.url ?? null,
-          version: engine?.version ?? null,
-          install: status.status === "idle" && engine ? "done" : status.status,
-          error: status.status === "failed" ? status.error : null,
-        },
-        signedIn,
-      )
+      .recordSetup(job.orgId, {
+        accountId: job.accountId,
+        engine: engine?.url ?? null,
+        version: engine?.version ?? null,
+        install: status.status === "idle" && engine ? "done" : status.status,
+        error: status.status === "failed" ? status.error : null,
+      })
       .catch(() => undefined);
   }
 
@@ -215,7 +209,7 @@ export class Member extends DurableObject<Env> {
     } finally {
       await container.destroy().catch(() => undefined);
     }
-    await this.ctx.storage.put(ENGINE, { url, accountId: job.accountId, secret: job.secret, version: this.env.ENGINE_VERSION ?? "" } satisfies Engine);
+    await organization(this.env, job.orgId).setEngine({ url, accountId: job.accountId, secret: job.secret, version: this.env.ENGINE_VERSION ?? "" } satisfies Engine);
     await this.update((s) => ({ ...s, status: "done" }));
   }
 

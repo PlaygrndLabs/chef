@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const views = ["loading", "signed-out", "choose", "installing"];
+const views = ["loading", "signed-out", "ask-owner", "choose", "installing"];
 const show = (name) => views.forEach((view) => ($(view).hidden = view !== name));
 let accounts = [];
 let polling = null;
@@ -90,6 +90,11 @@ async function load() {
     return;
   }
   if (me.engine) return location.assign("/");
+  if (me.org) $("choose-title").textContent = `Set up chef for ${me.org.name}`;
+  if (me.org?.role === "member") {
+    $("ask-owner-sub").textContent = `chef isn't set up for ${me.org.name} yet. Ask an owner or admin of the organization to set it up, then open chef again.`;
+    return show("ask-owner");
+  }
   if (!me.canSetUp) return show("signed-out");
   accounts = me.accounts ?? [];
   renderAccounts();
