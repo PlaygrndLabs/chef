@@ -64,7 +64,7 @@ export function SettingsHost() {
             nav={nav("project")}
             sharedAttempts={app.settings?.attempts.value ?? null}
             onReadCode={() => {
-              select({ settings: null, item: null, view: "project", feature: null, session: null, panel: null });
+              select({ settings: null, item: null });
               window.setTimeout(() => window.dispatchEvent(new Event("chef:read-code")), 50);
             }}
           />

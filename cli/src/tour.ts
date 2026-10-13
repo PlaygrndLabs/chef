@@ -163,7 +163,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       if ((!running && (round > 1 || !options.prompt)) || Date.now() > deadline) {
         report.finished = !running;
         if (latest) {
-          for (const panel of ["preview", "changes", "details"]) {
+          for (const panel of ["preview", "messages", "changes", "details"]) {
             await go(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=${panel}`);
             await shot(`final-${panel}`);
           }
