@@ -4,8 +4,7 @@ import { chatContext, needsCompacting, plainSummary, readChatMemory, renderConve
 const turns = (n: number, size = 400) => Array.from({ length: n }, (_, i) => ({ prompt: `ask ${i} ${"x".repeat(size)}`, reply: `reply ${i}`, at: i }));
 
 describe("main chat memory", () => {
-  it("reads the old turn list and renders the summary before the recent messages", () => {
-    expect(readChatMemory([{ prompt: "a", reply: "b", at: 1 }])).toEqual({ summary: "", turns: [{ prompt: "a", reply: "b", at: 1 }] });
+  it("starts empty and renders the summary before the recent messages", () => {
     expect(readChatMemory(undefined)).toEqual({ summary: "", turns: [] });
     const text = renderConversation({ summary: "- built todo-list", turns: turns(2, 1) });
     expect(text.indexOf("Summary of the earlier chat")).toBeLessThan(text.indexOf("Recent messages"));

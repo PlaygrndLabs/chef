@@ -38,10 +38,6 @@ const OVERVIEW = "project/overview";
 const ENV = "project/env";
 const AGENTS = "project/agents/";
 const LIVE = "project/live";
-const UI_KIT = "project/ui-kit";
-const UI_KIT_FILES = ["shared/ui.ts", "shared/ui.md"];
-const LEGACY_REMOVED = "project/legacy-worker-removed";
-const LEGACY_WORKER_PREFIX = "chef-project-";
 
 export interface LiveState {
   readonly status: LiveStatus;
@@ -169,7 +165,6 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
       if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
-      if (main.commitId && !(await this.ctx.storage.get<boolean>(UI_KIT))) await this.schedule(0, "addUiKit", undefined, { idempotent: true });
       return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await orchestrator.layout(), live: (await this.ctx.storage.get<LiveState>(LIVE)) ?? null });
     }
     if (request.method === "POST" && action === "live") {
@@ -567,18 +562,6 @@ export class ProjectAgent extends Agent<Env> {
     return head !== null && head !== live?.commitId;
   }
 
-  async addUiKit(): Promise<void> {
-    if (await this.ctx.storage.get<boolean>(UI_KIT)) return;
-    const { orchestrator } = await this.build();
-    const files = Object.fromEntries(UI_KIT_FILES.flatMap((path) => (templateFiles[path] === undefined ? [] : [[path, templateFiles[path]]])));
-    const added = await orchestrator.addMissingFiles(files, "Add the UI kit so pages look polished", (tree) => tree["shared/http.ts"] !== undefined);
-    await this.ctx.storage.put<boolean>(UI_KIT, true);
-    if (added.length) {
-      await this.schedule(0, "deployLive", undefined, { idempotent: true });
-      await this.schedule(1, "drive");
-    }
-  }
-
   async deployLive(): Promise<void> {
     if (this.deploying) {
       this.deployAgain = true;
@@ -608,7 +591,6 @@ export class ProjectAgent extends Agent<Env> {
     await record({ status: "deploying", commitId, url: current?.url ?? null });
     try {
       await space.ensure();
-      await this.removeLegacyWorker(space);
       await live.deploy({ repo: this.name, commitId });
       await space.applyLiveEnvironment(await revealEnv(await this.effectiveEnv(), this.envCipher()));
       await record({ status: "ready", commitId, url: await space.liveUrl() });
@@ -616,12 +598,6 @@ export class ProjectAgent extends Agent<Env> {
       console.error(`deploying ${this.name}'s live app failed`, error);
       await record({ status: "failed", commitId, url: current?.url ?? null, error: error instanceof Error ? error.message : String(error) });
     }
-  }
-
-  private async removeLegacyWorker(space: CloudflareWorkerSpace): Promise<void> {
-    if (this.env.PROJECT_WORKER_PREFIX !== "" || (await this.ctx.storage.get<boolean>(LEGACY_REMOVED))) return;
-    await space.removeWorker(`${LEGACY_WORKER_PREFIX}${this.name}`);
-    await this.ctx.storage.put(LEGACY_REMOVED, true);
   }
 }
 
