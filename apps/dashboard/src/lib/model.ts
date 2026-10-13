@@ -3,6 +3,13 @@ import { isActive, type ProjectLive, type SessionLive } from "./events";
 
 export type FeatureStatus = "building" | "stuck" | "merged" | "proposed" | "dropped";
 
+export function statusOf(state: SessionState): FeatureStatus {
+  if (state === "merged") return "merged";
+  if (state === "stuck") return "stuck";
+  if (state === "dropped") return "dropped";
+  return "building";
+}
+
 export interface SessionNode {
   readonly id: string;
   readonly featureId: string;
@@ -42,7 +49,7 @@ export function sessionNodes(live: ProjectLive, records: readonly SessionRecord[
   return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
 }
 
-function statusOf(sessions: readonly SessionNode[], spec: FeatureSpec | null): FeatureStatus {
+function featureStatusOf(sessions: readonly SessionNode[], spec: FeatureSpec | null): FeatureStatus {
   if (sessions.some((s) => isActive(s.state))) return "building";
   const latest = [...sessions].reverse().find((s) => s.state !== "dropped");
   if (latest?.state === "stuck") return "stuck";
@@ -64,7 +71,7 @@ export function featureNodes(live: ProjectLive, records: readonly SessionRecord[
     nodes.push({
       id,
       title: feature?.title ?? id,
-      status: statusOf(own, fromMain),
+      status: featureStatusOf(own, fromMain),
       flow: feature?.flow ?? id,
       spec: fromMain ?? planned,
       onMain: Boolean(fromMain),

@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, type Ref } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { useAgent, useCopilotKit, UseAgentUpdate } from "@copilotkit/react-core/v2";
-import type { RouteDecision, SessionState } from "@chef/core";
+import type { RouteDecision } from "@chef/core";
 import { Check, ChevronRight, Loader2, Play } from "lucide-react";
 import { toast } from "sonner";
 import { Composer } from "@/components/composer";
+import { ChatSkeleton } from "@/components/loading";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/status";
-import { waitsForKey, type FeatureStatus, type SessionNode } from "@/lib/model";
+import { statusOf, waitsForKey, type FeatureStatus, type SessionNode } from "@/lib/model";
 import { activity, stripFeatureTag } from "@/lib/progress";
 import { isActive } from "@/lib/events";
 import type { OverviewState, Suggestion } from "@/lib/api";
@@ -17,13 +18,6 @@ import { Mark, Wordmark } from "@/components/logo";
 const sentHere = new Map<string, number>();
 
 const EXAMPLES = ["A todo list where I can add items", "Let me mark an item as done", "A page that lists my orders"];
-
-export function statusOf(state: SessionState): FeatureStatus {
-  if (state === "merged") return "merged";
-  if (state === "stuck") return "stuck";
-  if (state === "dropped") return "dropped";
-  return "building";
-}
 
 function Avatar() {
   return <Mark />;
@@ -217,8 +211,8 @@ function textOf(content: unknown): string {
 }
 
 export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaElement> }) {
-  const { data, sessions, features, api } = useWorkspace();
-  const { state: overview, readAgain } = useOverview(api);
+  const { data, sessions, features, api, selection } = useWorkspace();
+  const { state: overview, readAgain } = useOverview(api, selection.project);
   const [starting, setStarting] = useState<readonly string[]>([]);
   useEffect(() => {
     const again = () => void readAgain();
@@ -242,9 +236,10 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
       });
   const pending = [...sentHere].filter(([prompt, seen]) => routes.filter((r) => r.prompt === prompt).length <= seen).map(([prompt]) => prompt);
 
-  useEffect(() => {
-    if (history.length || pending.length) end.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, history.length, pending.length]);
+  const loading = !data.ready || overview === null;
+  useLayoutEffect(() => {
+    if (!loading && (history.length || pending.length)) end.current?.scrollIntoView({ block: "end" });
+  }, [loading, messages.length, history.length, pending.length]);
 
   const send = async (text: string) => {
     sentHere.delete(text);
@@ -265,31 +260,37 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
       });
   };
   const introduced = overview !== null && overview.status !== "none";
-  const welcome = !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0;
+  const welcome = !loading && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0;
   const busy = agent.isRunning || sessions.some((s) => isActive(s.state));
   return (
     <div className="flex h-full min-h-0 flex-col" data-view="project" id="chat">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 sm:px-6">
-          {welcome ? <Welcome onExample={(text) => setDraft((d) => ({ text, n: (d?.n ?? 0) + 1 }))} /> : null}
-          {overview && introduced ? <OverviewMessage state={overview} started={started} onStart={start} onReadAgain={() => void readAgain().catch((error: unknown) => toast.error("Could not start reading", { description: error instanceof Error ? error.message : String(error) }))} /> : null}
-          {!welcome && !introduced && history.length === 0 && pending.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature on the left, or describe a new one below.</p> : null}
-          {history.map((item) => (
-            <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
-              <You>{stripFeatureTag(item.prompt).text}</You>
-              <Reply text={item.reply} sessions={item.sessions} />
-            </div>
-          ))}
-          {pending.map((prompt) => (
-            <div key={`pending-${prompt}`} className="flex flex-col gap-4">
-              <You>{prompt}</You>
-              <div className="flex items-center gap-3">
-                <Avatar />
-                <span className="text-muted-foreground">{agent.isRunning ? "Thinking about where this belongs" : "No answer yet. Try sending it again."}</span>
-                {agent.isRunning ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
-              </div>
-            </div>
-          ))}
+          {loading ? (
+            <ChatSkeleton />
+          ) : (
+            <>
+              {welcome ? <Welcome onExample={(text) => setDraft((d) => ({ text, n: (d?.n ?? 0) + 1 }))} /> : null}
+              {overview && introduced ? <OverviewMessage state={overview} started={started} onStart={start} onReadAgain={() => void readAgain().catch((error: unknown) => toast.error("Could not start reading", { description: error instanceof Error ? error.message : String(error) }))} /> : null}
+              {!welcome && !introduced && history.length === 0 && pending.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature on the left, or describe a new one below.</p> : null}
+              {history.map((item) => (
+                <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
+                  <You>{stripFeatureTag(item.prompt).text}</You>
+                  <Reply text={item.reply} sessions={item.sessions} />
+                </div>
+              ))}
+              {pending.map((prompt) => (
+                <div key={`pending-${prompt}`} className="flex flex-col gap-4">
+                  <You>{prompt}</You>
+                  <div className="flex items-center gap-3">
+                    <Avatar />
+                    <span className="text-muted-foreground">{agent.isRunning ? "Thinking about where this belongs" : "No answer yet. Try sending it again."}</span>
+                    {agent.isRunning ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
           <div ref={end} />
         </div>
       </div>

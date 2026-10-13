@@ -1,4 +1,4 @@
-import { Agent, type Connection } from "agents";
+import { Agent, type Connection, type ConnectionContext } from "agents";
 import { ArtifactsRepoHost, bindingControl, type ArtifactsBindingLike } from "@chef/adapters/artifacts";
 import { JevClassifier } from "@chef/adapters/jev";
 import { llmFromProvider, providerBaseUrl, type LlmEndpoint, type MessagesClient } from "@chef/adapters/anthropic";
@@ -9,7 +9,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { AgentSettings, applyAgentConfig, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
@@ -384,9 +384,9 @@ export class ProjectAgent extends Agent<Env> {
     if (outcome.status === "awake") await this.schedule(Math.max(60, Math.ceil((idleMs - outcome.idleForMs) / 1000)), "sweepPreviews", undefined, { idempotent: true });
   }
 
-  override async onConnect(connection: Connection): Promise<void> {
+  override async onConnect(connection: Connection, context: ConnectionContext): Promise<void> {
     const { bus } = await this.build();
-    for (let after = 0; ; ) {
+    for (let after = replayFrom(context.request.url); ; ) {
       const entries = await bus.since(after);
       for (const entry of entries) connection.send(JSON.stringify(entry));
       const last = entries.at(-1);

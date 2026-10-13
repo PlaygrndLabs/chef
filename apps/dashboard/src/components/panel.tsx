@@ -127,7 +127,7 @@ function FileDiff({ path, before, after }: { readonly path: string; readonly bef
 function ChangesTab({ node }: { readonly node: SessionNode }) {
   const { api } = useWorkspace();
   const head = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
-  const changes = useFetch(() => api.changes(node.id), `${node.id}:${head}:${node.state}`);
+  const changes = useFetch(() => api.changes(node.id), `${node.id}:${head}:${node.state}`, node.id);
   if (changes.loading && !changes.data) return <Skeleton className="h-40" />;
   if (changes.error) return <Empty>{changes.error}</Empty>;
   const files = changes.data?.files ?? [];
@@ -161,9 +161,9 @@ function Meter({ label, value, max, text }: { readonly label: string; readonly v
 
 function DetailsTab({ node }: { readonly node: SessionNode }) {
   const { api, data, selection } = useWorkspace();
-  const detail = useFetch(() => api.session(node.id), `${node.id}:${node.state}:${node.record?.updatedAt ?? 0}`);
-  const turns = useFetch(() => api.turns(node.id), `${node.id}:${node.live?.commits.length ?? node.record?.commits.length ?? 0}`);
-  const sandbox = useFetch(() => api.sandbox(node.id), `${node.id}:${node.state}`);
+  const detail = useFetch(() => api.session(node.id), `${node.id}:${node.state}:${node.record?.updatedAt ?? 0}`, node.id);
+  const turns = useFetch(() => api.turns(node.id), `${node.id}:${node.live?.commits.length ?? node.record?.commits.length ?? 0}`, node.id);
+  const sandbox = useFetch(() => api.sandbox(node.id), `${node.id}:${node.state}`, node.id);
   const record = detail.data?.record ?? node.record;
   const budget = detail.data?.budget;
   const usage = record?.machine.usage;
@@ -307,7 +307,7 @@ export function Panel() {
   const node = feature ? currentSession(feature, selection.session) : null;
   const preview = node?.live?.preview ?? node?.record?.preview ?? feature?.preview ?? null;
   const head = node?.live?.commits.at(-1)?.id ?? node?.record?.head ?? "";
-  const changes = useFetch(node ? () => api.changes(node.id) : null, `${node?.id ?? ""}:${head}`);
+  const changes = useFetch(node ? () => api.changes(node.id) : null, `${node?.id ?? ""}:${head}`, node?.id ?? "");
   const found = routesIn(changes.data?.files ?? []);
   const entry = entryRoute(feature?.spec?.entrypoint);
   const routes = entry && !found.some((r) => r.method === entry.method && r.path === entry.path) ? [entry, ...found] : found;
