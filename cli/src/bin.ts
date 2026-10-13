@@ -227,7 +227,8 @@ async function llmCheck(args: readonly string[]): Promise<number> {
 
 async function serveCommand(args: readonly string[]): Promise<number> {
   const project = option(args, "project");
-  const local = await serve({ port: Number(option(args, "port") ?? 8787), ...(project ? { project } : {}), real: !args.includes("--fake-checks"), log: (line) => process.stderr.write(`${line}\n`) });
+  const attempts = Number(option(args, "attempts") ?? 1);
+  const local = await serve({ port: Number(option(args, "port") ?? 8787), ...(project ? { project } : {}), ...(attempts > 1 ? { attempts } : {}), real: !args.includes("--fake-checks"), log: (line) => process.stderr.write(`${line}\n`) });
   process.stdout.write(`chef is serving ${local.url}/\n`);
   await new Promise<void>((resolve) => process.once("SIGINT", resolve));
   await local.close();
@@ -270,7 +271,7 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "tune" && sub === "data") return tuneData(args);
   if (command === "serve") return serveCommand(args);
   if (command === "tour") return tourCommand(args);
-  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--fake-checks] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
   return 2;
 }
 

@@ -150,8 +150,9 @@ function ModelsForm(props: { readonly settings: SettingsView; readonly save: Sav
         {field("Coder model", coder, setCoder)}
       </div>
       <label className="grid gap-1 text-xs text-muted-foreground">
-        Parallel attempts per feature
+        Parallel tries per feature
         <Input value={count} onChange={(e) => setCount(e.target.value)} aria-label="Parallel attempts" type="number" min={1} max={4} required />
+        <span>With more than 1, chef builds each new feature that many ways at once and keeps the one that passes the most checks. Each try costs as much as a whole build.</span>
       </label>
       <Actions busy={busy} onRemove={models.source === "app" || attempts.source === "app" ? () => void run({ models: null, attempts: null }, "Back to the defaults") : undefined} />
     </form>

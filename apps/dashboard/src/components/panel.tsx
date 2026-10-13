@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { diffLines } from "diff";
-import { ChevronDown, ExternalLink, FileCode2, RefreshCw, X } from "lucide-react";
+import { ChevronDown, ExternalLink, FileCode2, Maximize2, Minimize2, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
@@ -12,7 +12,7 @@ import { isActive } from "@/lib/events";
 import { ago, duration, previewHost, short, tokens } from "@/lib/format";
 import type { SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
-import { routesIn, type Route } from "@/lib/routes";
+import { entryRoute, isPage, pagesFor, routesIn, type Route } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -43,14 +43,15 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, link, commitId, routes }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly routes: readonly Route[] }) {
+function PreviewTab({ url, link, commitId, routes, featureId }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly routes: readonly Route[]; readonly featureId: string | null }) {
   const [nonce, setNonce] = useState(0);
-  const [path, setPath] = useState("/");
+  const [chosen, setPath] = useState<string | null>(null);
+  const pages = pagesFor(routes, featureId);
+  const path = chosen ?? pages[0]?.path ?? "/";
   if (!url) return <Empty>The preview appears after chef's first step.</Empty>;
   const base = link ?? url;
   const href = path === "/" ? base : link ? `${link}?path=${encodeURIComponent(path)}` : `${url.replace(/\/$/, "")}${path}`;
-  const pages = routes.filter((r) => r.method === "GET" && r.path !== "/");
-  const others = routes.filter((r) => r.method !== "GET");
+  const others = routes.filter((r) => !isPage(r) && r.path !== "/");
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex h-9 items-center gap-2 rounded-xl border px-3">
@@ -77,14 +78,16 @@ function PreviewTab({ url, link, commitId, routes }: { readonly url: string | nu
             </button>
           ))}
           {others.map((r) => (
-            <span key={`${r.method} ${r.path}`} className="h-6 rounded-md border border-dashed px-1.5 font-mono text-[11px] leading-6 text-muted-foreground" title="An API route. The tests call it; a browser cannot open it directly.">
+            <span key={`${r.method} ${r.path}`} className="h-6 rounded-md border border-dashed px-1.5 font-mono text-[11px] leading-6 text-muted-foreground" title="An API route that the page and the tests call.">
               {r.method} {r.path}
             </span>
           ))}
         </div>
       ) : null}
       <iframe key={`${nonce}-${path}`} src={href} title="Preview" className="min-h-[460px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-      <p className="text-xs text-muted-foreground">This preview updates after every step chef takes. Built from {short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.</p>
+      <p className="text-xs text-muted-foreground">
+        {pages.length ? "" : "This build has not added a page yet, so you see the app's home. "}
+        This preview updates after every step chef takes. Built from {short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.</p>
     </div>
   );
 }
@@ -300,12 +303,14 @@ const TABS: readonly { readonly value: PanelTab; readonly label: string }[] = [
 ];
 
 export function Panel() {
-  const { selection, select, feature, api } = useWorkspace();
+  const { selection, select, feature, api, panelExpanded, expandPanel } = useWorkspace();
   const node = feature ? currentSession(feature, selection.session) : null;
   const preview = node?.live?.preview ?? node?.record?.preview ?? feature?.preview ?? null;
   const head = node?.live?.commits.at(-1)?.id ?? node?.record?.head ?? "";
   const changes = useFetch(node ? () => api.changes(node.id) : null, `${node?.id ?? ""}:${head}`);
-  const routes = routesIn(changes.data?.files ?? []);
+  const found = routesIn(changes.data?.files ?? []);
+  const entry = entryRoute(feature?.spec?.entrypoint);
+  const routes = entry && !found.some((r) => r.method === entry.method && r.path === entry.path) ? [entry, ...found] : found;
   return (
     <Tabs value={selection.panel ?? "preview"} onValueChange={(v) => select({ panel: v as PanelTab })} className="flex h-full min-h-0 flex-col gap-0 bg-background">
       <div className="flex h-15 shrink-0 items-center gap-2 border-b px-3">
@@ -317,13 +322,24 @@ export function Panel() {
           ))}
         </TabsList>
         <span className="flex-1" />
-        <Button variant="ghost" size="icon-sm" onClick={() => select({ panel: null })} aria-label="Close">
+        <Button variant="ghost" size="icon-sm" onClick={() => expandPanel(!panelExpanded)} aria-label={panelExpanded ? "Make smaller" : "Open large"} title={panelExpanded ? "Make smaller" : "Open large"}>
+          {panelExpanded ? <Minimize2 /> : <Maximize2 />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => {
+            expandPanel(false);
+            select({ panel: null });
+          }}
+          aria-label="Close"
+        >
           <X />
         </Button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         <TabsContent value="preview" className="flex min-h-0 flex-1 flex-col">
-          <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} />
+          <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} featureId={feature?.id ?? null} />
         </TabsContent>
         <TabsContent value="changes">{node ? <ChangesTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
         <TabsContent value="checks">{node ? <ChecksTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>

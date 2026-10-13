@@ -5,6 +5,8 @@ import { groupSessions } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
+const STARTING_MS = 5 * 60_000;
+
 const CONNECTION = {
   live: { label: "Live updates", icon: Wifi, tone: "text-muted-foreground" },
   polling: { label: "Updating every few seconds", icon: Wifi, tone: "text-muted-foreground" },
@@ -27,10 +29,11 @@ function Chip({ children, onClick, tone, label, id }: { readonly children: React
 
 export function ProjectBar() {
   const { data, sessions, features, openSession, select } = useWorkspace();
-  const now = useNow(15000);
+  const now = useNow(5000);
   const groups = groupSessions(sessions);
   const stuck = groups["needs-you"];
   const working = groups.working;
+  const starting = data.live.routes.filter((r) => r.decision.intent !== "question" && now - r.at < STARTING_MS && !sessions.some((s) => s.createdAt >= r.at)).length;
   const live = features.filter((f) => f.spec?.status === "merged" || f.sessions.some((s) => s.state === "merged")).length;
   const lastMerge = data.live.merges.at(-1);
   const reverts = data.live.reverts.length;
@@ -45,9 +48,9 @@ export function ProjectBar() {
           {stuck.length} {stuck.length === 1 ? "needs" : "need"} you
         </Chip>
       ) : null}
-      <Chip id="working" label="Builds running now" tone={working.length ? "text-run" : undefined} {...(working.length ? { onClick: () => openSession(working[0]?.id ?? "") } : {})}>
-        {working.length ? <Loader2 className="size-3.5 animate-spin" /> : <span className="size-2 rounded-full border border-muted-foreground" />}
-        {working.length ? `${working.length} working` : "Nothing running"}
+      <Chip id="working" label="Builds running now" tone={working.length || starting ? "text-run" : undefined} {...(working.length ? { onClick: () => openSession(working[0]?.id ?? "") } : {})}>
+        {working.length || starting ? <Loader2 className="size-3.5 animate-spin" /> : <span className="size-2 rounded-full border border-muted-foreground" />}
+        {[working.length ? `${working.length} working` : "", starting ? "getting a new build ready" : ""].filter(Boolean).join(", ") || "Nothing running"}
       </Chip>
       <Chip id="live" label="Features live in the app">
         <Rocket className="size-3.5 text-ok" />

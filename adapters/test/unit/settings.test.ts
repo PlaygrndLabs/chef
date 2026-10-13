@@ -31,7 +31,7 @@ describe("app settings", () => {
       jev: { apiKey: "ts" },
       cloudflare: { accountId: ACCOUNT, apiToken: "cf" },
     });
-    expect(describeSettings(NO_SETTINGS, {})).toMatchObject({ llm: null, voice: null, jev: null, cloudflare: null, attempts: { value: 2, source: "deployment" } });
+    expect(describeSettings(NO_SETTINGS, {})).toMatchObject({ llm: null, voice: null, jev: null, cloudflare: null, attempts: { value: 1, source: "deployment" } });
   });
 
   it("keeps the parts that are not updated, clears with null and rejects bad input", () => {

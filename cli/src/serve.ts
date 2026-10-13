@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { ControlError, DEFAULT_BUDGET, isTerminal, parseFeature, readSpec, type FeatureSpec } from "@chef/core";
+import { ControlError, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, isTerminal, parseFeature, readSpec, type FeatureSpec } from "@chef/core";
 import type { Script } from "@chef/core/fakes";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
 import { applyUpdate, describeSettings, NO_SETTINGS, type AppSettings, type SettingsEnv } from "@chef/adapters/settings";
@@ -42,9 +42,9 @@ export interface LocalServer {
   close(): Promise<void>;
 }
 
-export async function serve(options: { readonly port: number; readonly project?: string; readonly real: boolean; readonly assets?: string; readonly settings?: SettingsEnv; readonly log?: (line: string) => void }): Promise<LocalServer> {
+export async function serve(options: { readonly port: number; readonly project?: string; readonly real: boolean; readonly attempts?: number; readonly assets?: string; readonly settings?: SettingsEnv; readonly log?: (line: string) => void }): Promise<LocalServer> {
   const log = options.log ?? (() => {});
-  const w = localWorld({ script: script(), presets: presets(), real: options.real });
+  const w = localWorld({ script: script(), presets: presets(), real: options.real, ...(options.attempts ? { config: { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } } : {}) });
   await w.orchestrator.bootstrap(templateTree());
   let driving: Promise<void> | null = null;
   const drive = () => {
