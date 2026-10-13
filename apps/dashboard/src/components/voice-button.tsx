@@ -3,12 +3,14 @@ import { Mic, MicOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useTalkButton } from "@/lib/talk";
 import { startTalk, transcript, type Heard } from "@/lib/voice";
 import { useWorkspace } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
-export function VoiceButton({ compact = false }: { readonly compact?: boolean }) {
+export function TalkButton() {
   const { selection } = useWorkspace();
+  const [shown] = useTalkButton();
   const [status, setStatus] = useState("off");
   const [heard, setHeard] = useState<Heard[]>([]);
   const [open, setOpen] = useState(false);
@@ -32,15 +34,23 @@ export function VoiceButton({ compact = false }: { readonly compact?: boolean })
       toast.error("Voice did not start", { description: error instanceof Error ? error.message : String(error) });
     }
   };
+  if (!shown && !on) return null;
   return (
     <Popover open={open && on} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant={on ? "secondary" : compact ? "ghost" : "outline"} size={compact ? "icon" : "sm"} onClick={() => void toggle()} aria-label={on ? "Stop talking" : "Talk to chef"} className={cn(on && "text-run")}>
+        <Button
+          id="talk-button"
+          variant={on ? "secondary" : "outline"}
+          onClick={() => void toggle()}
+          aria-label={on ? "Stop talking" : "Talk to chef"}
+          title={on ? "Stop talking" : "Talk to chef"}
+          className={cn("absolute right-4 bottom-28 z-20 h-11 rounded-full bg-background px-4 shadow-lg md:right-6", on && "bg-secondary text-run")}
+        >
           {on ? <MicOff /> : <Mic />}
-          {compact ? null : on ? "Stop" : "Talk"}
+          {on ? "Stop" : "Talk"}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80">
+      <PopoverContent align="end" side="top" className="w-80">
         <div className="mb-2 text-xs text-muted-foreground">Voice is {status}</div>
         <div className="flex max-h-60 flex-col gap-1.5 overflow-auto text-sm">
           {heard.length === 0 ? <p className="text-muted-foreground">Say what you want built or changed.</p> : null}

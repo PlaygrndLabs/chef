@@ -36,10 +36,7 @@ export function useProjects() {
 }
 
 export function pickProject(projects: readonly string[], wanted: string): string | null {
-  if (projects.includes(wanted)) return wanted;
-  const last = lastProject();
-  if (last && projects.includes(last)) return last;
-  return projects[0] ?? null;
+  return projects.includes(wanted) ? wanted : null;
 }
 
 export function projectNameFrom(repository: string): string {

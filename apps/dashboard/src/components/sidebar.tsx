@@ -1,11 +1,11 @@
-import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, FolderPlus, KeyRound, Monitor, Moon, Plus, Settings, Settings2, Sun } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, FolderPlus, KeyRound, Mic, Monitor, Moon, Plus, Settings, Settings2, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/status";
 import { missingSettings } from "@/components/settings-dialog";
-import { VoiceButton } from "@/components/voice-button";
 import { WorkList } from "@/components/work-list";
+import { useTalkButton } from "@/lib/talk";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 import { Mark, Wordmark } from "@/components/logo";
@@ -13,7 +13,7 @@ import { Mark, Wordmark } from "@/components/logo";
 const CONNECTION = { live: ["ok", "Live"], polling: ["run", "Reconnecting, updates every few seconds"], connecting: ["idle", "Connecting"], offline: ["bad", "Offline"] } as const;
 
 function ProjectSwitcher() {
-  const { selection, select, data, projects, addProject, openSettings } = useWorkspace();
+  const { selection, select, data, projects } = useWorkspace();
   const [tone, label] = CONNECTION[data.connection];
   return (
     <DropdownMenu>
@@ -34,15 +34,6 @@ function ProjectSwitcher() {
             {p === selection.project ? <Check /> : null}
           </DropdownMenuItem>
         ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => openSettings("project")}>
-          <Settings2 />
-          Project settings
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={addProject}>
-          <Plus />
-          New project
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -51,6 +42,7 @@ function ProjectSwitcher() {
 function AppMenu() {
   const { setTheme } = useTheme();
   const { openSettings, app } = useWorkspace();
+  const [talk, setTalk] = useTalkButton();
   const missing = app.available && missingSettings(app.settings).length > 0;
   const host = location.host;
   return (
@@ -85,6 +77,10 @@ function AppMenu() {
           <KeyRound />
           Shared environment
         </DropdownMenuItem>
+        <DropdownMenuCheckboxItem checked={talk} onCheckedChange={(checked) => setTalk(checked === true)} id="talk-button-toggle">
+          <Mic />
+          Talk button
+        </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
         <DropdownMenuItem onClick={() => setTheme("light")}>
@@ -116,7 +112,9 @@ export function Sidebar() {
   return (
     <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex items-center gap-1 px-1.5">
-        <Wordmark className="h-[15px] translate-y-px" />
+        <a href="/" id="home-link" className="rounded-sm" aria-label="All projects" title="All projects">
+          <Wordmark className="h-[15px] translate-y-px" />
+        </a>
         <span className="pl-0.5 text-muted-foreground/60">/</span>
         <ProjectSwitcher />
         <Button variant="ghost" size="icon-sm" className={cn("shrink-0 text-muted-foreground", selection.settings?.scope === "project" && "bg-sidebar-accent text-foreground")} onClick={() => openSettings("project")} id="project-settings-button" aria-label="Project settings" title={`Settings for ${selection.project}`}>
@@ -140,7 +138,6 @@ export function Sidebar() {
       <WorkList />
       <div className="flex items-center gap-1 border-t pt-2.5">
         <AppMenu />
-        <VoiceButton />
       </div>
     </div>
   );
