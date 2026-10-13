@@ -167,6 +167,7 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
   const usage = record?.machine.usage;
   const elapsed = usage && record ? (isActive(record.machine.state) ? Date.now() : record.updatedAt) - usage.startedAt : 0;
   const running = sandbox.data?.running ?? false;
+  const lanes = node.live?.lanes.length ? node.live.lanes.map((l) => ({ role: l.role, branch: l.branch })) : (record?.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch }));
   return (
     <div className="flex flex-col gap-6">
       <Section title="Where the code lives">
@@ -182,6 +183,20 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
               ),
             ],
             ["Build", <span className="font-mono text-xs">{node.id}</span>],
+            ...(lanes.length
+              ? [
+                  [
+                    "Role branches",
+                    <span className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs" data-lanes>
+                      {lanes.map((l) => (
+                        <span key={l.role} data-lane={l.role}>
+                          {l.branch}
+                        </span>
+                      ))}
+                    </span>,
+                  ] as const,
+                ]
+              : []),
           ]}
         />
       </Section>
@@ -225,6 +240,7 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
                 {sandbox.loading && !sandbox.data ? "Checking" : sandbox.error ? "Unknown" : running ? "Running" : "Stopped"}
               </span>,
             ],
+            ...(lanes.length ? [["Per role", `${lanes.length} containers, one for each role's branch`] as const] : []),
             ["Internet", "Off, except allowed hosts"],
             ...(sandbox.data?.exit ? [["Last exit", sandbox.data.exit] as const] : []),
           ]}

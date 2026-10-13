@@ -1,4 +1,4 @@
-import type { SessionState } from "@chef/core";
+import type { LaneStatus, SessionState } from "@chef/core";
 import { isActive, type TimelineItem } from "./events";
 import { short } from "./format";
 
@@ -64,13 +64,21 @@ export type Update =
       role?: string | null;
     };
 
-type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "retry" | "reopen" | null; round: number };
+type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "retry" | "reopen" | null; round: number; lane?: string; open?: boolean; outcome?: LaneStatus };
 
 const PHASES: ReadonlySet<SessionState> = new Set(["planning", "testing", "coding", "reviewing", "gating"]);
 const AFTER: Readonly<Record<string, Step["after"]>> = { review_rejected: "review", gate_failed: "gate", retried: "retry", reopened: "reopen" };
 const ICON: Readonly<Partial<Record<SessionState, UpdateIcon>>> = { planning: "plan", testing: "test", coding: "code", reviewing: "review", gating: "check" };
 
+function laneHeadline(step: Step, running: boolean): string {
+  if (running) return "Working on its part on its own branch";
+  if (step.outcome === "rejected") return "A rule blocked its change, so it tries again";
+  if (step.outcome === "unchanged") return "Had nothing to change";
+  return "Did its part";
+}
+
 function headline(step: Step, running: boolean): string {
+  if (step.lane) return laneHeadline(step, running);
   switch (step.phase) {
     case "planning":
       return running ? "Planning the feature" : "Planned the feature";
@@ -113,11 +121,15 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
   const steps: Step[] = [];
   let step: Step | null = null;
   let round = 1;
+  const lanes = new Map<string, Step>();
   const tech = (line: string) => step?.tech.push(line);
+  const laneOf = (item: TimelineItem) => ("lane" in item && item.lane ? (lanes.get(item.lane) ?? null) : null);
   timeline.forEach((item, index) => {
     const key = `${index}`;
     switch (item.kind) {
       case "state": {
+        for (const lane of lanes.values()) lane.open = false;
+        lanes.clear();
         if (PHASES.has(item.to)) {
           const after = AFTER[item.reason] ?? null;
           if (after) round++;
@@ -134,29 +146,66 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         if (item.by) list.push({ kind: "chef", key, at: item.at, icon: "pick", tone: "idle", text: `Waiting for hotfix ${item.by} to go live first`, detail: "", tech: [`held by hotfix ${item.by}`], mark: {} });
         return;
       case "agent":
+        if (item.lane) {
+          const lane: Step = { kind: "chef", key, at: item.at, icon: "code", tone: "ok", text: "", detail: "", tech: [`${item.role} started on ${item.model} in lane/${item.lane}`], mark: {}, role: item.role, phase: "coding", said: "", last: "", after: null, round: 1, lane: item.lane, open: true };
+          lanes.set(item.lane, lane);
+          steps.push(lane);
+          list.push(lane);
+          return;
+        }
         if (step) step.role = item.role;
         tech(`${item.role} started on ${item.model}`);
         return;
-      case "text":
-        if (step) step.said = item.text;
+      case "text": {
+        const lane = laneOf(item);
+        if (lane) lane.said = item.text;
+        else if (step && !item.lane) step.said = item.text;
         return;
-      case "tool":
-        tech(toolText(item.tool, item.detail));
-        if (step) step.last = toolText(item.tool, item.detail);
+      }
+      case "tool": {
+        const lane = laneOf(item);
+        const target = lane ?? (item.lane ? null : step);
+        target?.tech.push(toolText(item.tool, item.detail));
+        if (target) target.last = toolText(item.tool, item.detail);
         return;
+      }
+      case "lanes":
+        list.push({ kind: "chef", key, at: item.at, icon: "code", tone: "ok", text: `${item.lanes.length} roles work at the same time, each on its own branch`, detail: "", tech: item.lanes.map((l) => `${l.branch}: ${l.items} ${l.items === 1 ? "step" : "steps"}`), mark: {} });
+        return;
+      case "lane": {
+        const lane = lanes.get(item.role);
+        if (lane && (item.status === "committed" || item.status === "unchanged" || item.status === "rejected")) {
+          lane.open = false;
+          lane.outcome = item.status;
+        }
+        if (item.status === "conflict") list.push({ kind: "chef", key, at: item.at, icon: "sync", tone: "bad", text: `Two roles changed the same lines in ${item.paths.join(", ")}, so the conflict fixer merges them`, detail: "", tech: [`merged ${item.branch} with conflicts${item.commitId ? ` as ${short(item.commitId)}` : ""}`], mark: {} });
+        else if (item.status === "merged") tech(`merged ${item.branch} into the feature${item.commitId ? ` as ${short(item.commitId)}` : ""}`);
+        return;
+      }
       case "error":
         tech(`error: ${item.message}`);
         return;
-      case "commit":
-        if (step && !step.role && item.role !== "sync") step.role = item.role;
-        tech(`commit ${short(item.commitId)} by ${item.role}: ${item.message.split("\n")[0] ?? ""}`);
+      case "commit": {
+        const line = `commit ${short(item.commitId)} by ${item.role}: ${item.message.split("\n")[0] ?? ""}`;
+        const lane = laneOf(item);
+        if (lane) {
+          lane.tech.push(line);
+          return;
+        }
+        if (step && !step.role && item.role !== "sync" && item.role !== "chef") step.role = item.role;
+        tech(line);
         return;
+      }
       case "preview":
         tech(`preview rebuilt from ${short(item.commitId)}`);
         return;
-      case "rejected":
-        tech(`rule ${item.rule} blocked a ${item.role} change to ${item.paths.join(", ")}`);
+      case "rejected": {
+        const line = `rule ${item.rule} blocked a ${item.role} change to ${item.paths.join(", ")}`;
+        const lane = laneOf(item);
+        if (lane) lane.tech.push(line);
+        else tech(line);
         return;
+      }
       case "recalled":
         tech(`recalled ${item.paths.join(", ")}`);
         return;
@@ -222,11 +271,11 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
     }
   });
   const running = isActive(state);
-  const open = steps.at(-1);
+  const open = steps.filter((s) => !s.lane).at(-1);
   for (const s of steps) {
-    const current = running && s === open;
+    const current = running && (s.lane ? s.open === true : s === open);
     s.text = s.round > 1 ? `${headline(s, current)} (try ${s.round})` : headline(s, current);
-    s.tone = current ? "run" : "ok";
+    s.tone = current ? "run" : s.outcome === "rejected" ? "bad" : "ok";
     s.detail = current ? lastLine(s.said) || s.last : "";
   }
   const hidden = new Set<Update>(steps.filter((s) => (s.phase === "reviewing" || s.phase === "gating") && !(running && s === open)));

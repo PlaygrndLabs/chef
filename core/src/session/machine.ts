@@ -11,7 +11,7 @@ export type SessionEvent =
   | { readonly type: "review_rejected"; readonly reasons: readonly string[]; readonly retest?: boolean }
   | { readonly type: "gate_passed" }
   | { readonly type: "gate_failed"; readonly log: string }
-  | { readonly type: "conflict"; readonly paths: readonly string[] }
+  | { readonly type: "conflict"; readonly paths: readonly string[]; readonly between?: readonly string[] }
   | { readonly type: "turn_rejected"; readonly rule: RejectionRule; readonly paths: readonly string[]; readonly scope: readonly string[]; readonly detail?: string }
   | { readonly type: "reopened"; readonly log: string; readonly charged?: boolean }
   | { readonly type: "dropped"; readonly reason: string }
@@ -102,7 +102,9 @@ function feedbackOf(event: SessionEvent): string | null {
     case "gate_failed":
       return `Merge gate failed:\n${event.log}`;
     case "conflict":
-      return `Merging main produced conflicts in:\n${event.paths.map((p) => `- ${p}`).join("\n")}`;
+      return event.between?.length
+        ? `The ${event.between.join(", ")} roles worked at the same time and changed the same lines. Merging their branches produced conflicts in:\n${event.paths.map((p) => `- ${p}`).join("\n")}\nKeep what every role meant to do.`
+        : `Merging main produced conflicts in:\n${event.paths.map((p) => `- ${p}`).join("\n")}`;
     case "turn_rejected":
       return rejectionFeedback(event);
     case "reopened":
@@ -125,7 +127,7 @@ export function addTokens(machine: MachineState, tokens: number): MachineState {
   return { ...machine, usage: { ...machine.usage, tokens: machine.usage.tokens + tokens } };
 }
 
-function rejectionFeedback(event: Extract<SessionEvent, { type: "turn_rejected" }>): string {
+export function rejectionFeedback(event: Extract<SessionEvent, { type: "turn_rejected" }>): string {
   const paths = event.paths.map((p) => `- ${p}`).join("\n");
   switch (event.rule) {
     case "write-scope":

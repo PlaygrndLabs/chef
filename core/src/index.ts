@@ -9,6 +9,7 @@ export * from "./router/router.ts";
 export * from "./router/no-classifier.ts";
 export * from "./session/machine.ts";
 export type * from "./session/record.ts";
+export * from "./session/lanes.ts";
 export type * from "./events/events.ts";
 export * from "./events/replay.ts";
 export type * from "./ports/index.ts";

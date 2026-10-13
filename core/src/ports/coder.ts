@@ -26,6 +26,7 @@ export interface CoderTurnInput {
   readonly writeScope: readonly string[];
   readonly agent: CustomAgent;
   readonly attempt: { readonly index: number; readonly of: number };
+  readonly lane?: string;
   readonly workspace: CoderWorkspace;
   readonly signal?: AbortSignal;
   readonly onEvent: (event: CoderEvent) => void;
@@ -41,5 +42,5 @@ export interface CoderTurnResult {
 
 export interface Coder {
   runTurn(input: CoderTurnInput): Promise<CoderTurnResult>;
-  release?(sessionId: string): Promise<void>;
+  release?(sessionId: string, lanes?: readonly string[]): Promise<void>;
 }
