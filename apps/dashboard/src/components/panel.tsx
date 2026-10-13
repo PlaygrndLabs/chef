@@ -220,9 +220,58 @@ function DetailsTab({ node }: { readonly node: SessionNode }) {
   );
 }
 
+function ChecksTab({ node }: { readonly node: SessionNode }) {
+  const verdict = node.live?.verdict ?? node.record?.verdict ?? null;
+  const gate = node.live?.gate ?? null;
+  return (
+    <div className="flex flex-col gap-6">
+      <Section title="Review">
+        {verdict ? (
+          <div className={cn("flex flex-col gap-1.5 rounded-xl border p-3 text-sm", verdict.approve ? "border-ok/30" : "border-bad/30")}>
+            <span className={cn("font-medium", verdict.approve ? "text-ok" : "text-bad")}>{verdict.approve ? "Approved" : "Asked for changes"}</span>
+            {verdict.reasons.length ? (
+              <ul className="flex list-disc flex-col gap-1 pl-4 text-muted-foreground">
+                {verdict.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : (
+          <Empty>A second model reads the change after the code is written.</Empty>
+        )}
+      </Section>
+      <Section title="Final checks">
+        {gate ? (
+          <div className="overflow-hidden rounded-xl border">
+            {gate.checks.map((c) => (
+              <Collapsible key={c.name} className="border-b last:border-b-0" data-check={c.name} data-ok={c.ok}>
+                <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60">
+                  <StatusDot tone={c.ok ? "ok" : "bad"} />
+                  <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                  <span className={cn("text-xs", c.ok ? "text-muted-foreground" : "font-medium text-bad")}>{c.ok ? "passed" : "failed"}</span>
+                  {c.log ? <ChevronDown className="size-3.5 text-muted-foreground" /> : null}
+                </CollapsibleTrigger>
+                {c.log ? (
+                  <CollapsibleContent>
+                    <pre className="max-h-72 overflow-auto bg-muted/50 px-3 py-2 font-mono text-[11px] whitespace-pre-wrap">{c.log}</pre>
+                  </CollapsibleContent>
+                ) : null}
+              </Collapsible>
+            ))}
+          </div>
+        ) : (
+          <Empty>Lint, types, tests and the live preview are checked before anything goes live.</Empty>
+        )}
+      </Section>
+    </div>
+  );
+}
+
 const TABS: readonly { readonly value: PanelTab; readonly label: string }[] = [
   { value: "preview", label: "Preview" },
   { value: "changes", label: "Changes" },
+  { value: "checks", label: "Checks" },
   { value: "details", label: "Details" },
 ];
 
@@ -250,6 +299,7 @@ export function Panel() {
           <PreviewTab url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} />
         </TabsContent>
         <TabsContent value="changes">{node ? <ChangesTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
+        <TabsContent value="checks">{node ? <ChecksTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
         <TabsContent value="details">{node ? <DetailsTab node={node} /> : <Empty>Nothing built yet.</Empty>}</TabsContent>
       </div>
     </Tabs>

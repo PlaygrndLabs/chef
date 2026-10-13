@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
-import { featureNodes, sortFeatures } from "../../src/lib/model.ts";
-import { activity, progress, updates } from "../../src/lib/progress.ts";
+import { featureNodes, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
+import { activity, plainReason, progress, stripFeatureTag, updates } from "../../src/lib/progress.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
 const base = { project: "demo", at: 1 };
@@ -116,7 +116,7 @@ describe("plain progress", () => {
       to("gating", "merged", "gate_passed"),
     ]);
     const texts = updates(items, "merged").map((u) => u.kind === "chef" ? u.text : u.text);
-    expect(texts).toEqual(["Wrote the code", "A reviewer asked for changes: missing test", "Fixed what the reviewer asked for", "A reviewer approved the change", "Passed all 2 checks", "Went live"]);
+    expect(texts).toEqual(["Wrote the code", "A reviewer asked for changes: missing test", "Fixed what the reviewer asked for (try 2)", "A reviewer approved the change", "Passed all 2 checks", "Went live"]);
     expect(progress("merged", items)).toMatchObject({ stage: 4, done: true });
   });
 
@@ -124,6 +124,37 @@ describe("plain progress", () => {
     const items = timeline([created, to("queued", "gating", "coded"), { type: "session.stuck", sessionId: "s1", featureId: "a", reason: "gate failed 4 times" }, to("gating", "stuck", "gate_failed")]);
     expect(progress("stuck", items)).toMatchObject({ stage: 3, failed: true });
     expect(activity("stuck", items, "gate failed 4 times")).toBe("gate failed 4 times");
+  });
+});
+
+describe("builds by status and how they relate", () => {
+  it("groups builds by what they need and links follow-ups and parallel tries", () => {
+    const state = run([
+      { type: "session.created", sessionId: "s1", featureId: "a", fork: "f1", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s1", featureId: "a", from: "gating", to: "merged", reason: "gate_passed" },
+      { type: "session.created", sessionId: "s2", featureId: "a", fork: "f2", reason: "change", attempt: { group: "s2", index: 1, of: 2 }, parent: "s1" },
+      { type: "session.created", sessionId: "s3", featureId: "a", fork: "f3", reason: "change", attempt: { group: "s2", index: 2, of: 2 }, parent: "s1" },
+      { type: "session.state", sessionId: "s2", featureId: "a", from: "queued", to: "coding", reason: "planned" },
+      { type: "session.stuck", sessionId: "s3", featureId: "a", reason: "attempt budget exhausted (4/4)" },
+      { type: "session.created", sessionId: "s4", featureId: "b", fork: "f4", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s4", featureId: "b", from: "queued", to: "dropped", reason: "stopped" },
+    ]);
+    const nodes = sessionNodes(state, []);
+    const groups = groupSessions(nodes);
+    expect(Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.map((n) => n.id)]))).toEqual({ "needs-you": ["s3"], working: ["s2"], live: ["s1"], stopped: ["s4"] });
+    const s2 = nodes.find((n) => n.id === "s2");
+    if (!s2) throw new Error("no s2");
+    const r = relationsOf(s2, nodes);
+    expect(r.parent?.id).toBe("s1");
+    expect(r.attempts.map((n) => n.id)).toEqual(["s2", "s3"]);
+    expect(r.chain.map((n) => n.id)).toEqual(["s1", "s2", "s3"]);
+  });
+
+  it("explains stop reasons and hides the feature tag of a change request", () => {
+    expect(plainReason("attempt budget exhausted (4/4)")).toBe("chef tried 4 times and could not get past the review and checks.");
+    expect(plainReason("gate failed")).toBe("gate failed");
+    expect(stripFeatureTag("#shout make it louder")).toEqual({ text: "make it louder", feature: "shout" });
+    expect(stripFeatureTag("Add a page")).toEqual({ text: "Add a page", feature: null });
   });
 });
 

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Composer } from "@/components/composer";
 import { StatusPill } from "@/components/status";
 import type { FeatureStatus, SessionNode } from "@/lib/model";
-import { activity } from "@/lib/progress";
+import { activity, stripFeatureTag } from "@/lib/progress";
 import { isActive } from "@/lib/events";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -176,7 +176,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
           {!welcome && history.length === 0 && pending.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature on the left, or describe a new one below.</p> : null}
           {history.map((item) => (
             <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
-              <You>{item.prompt}</You>
+              <You>{stripFeatureTag(item.prompt).text}</You>
               <Reply text={item.reply} sessions={item.sessions} />
             </div>
           ))}

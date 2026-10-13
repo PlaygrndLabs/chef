@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Ref } from "react";
-import { AlertTriangle, Check, ChevronDown, Code2, FlaskConical, GitMerge, ListChecks, Loader2, MessageSquareText, MoreHorizontal, OctagonX, PanelRight, RotateCcw, Rocket, ShieldCheck, Trophy, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Code2, FileCode2, FlaskConical, GitCommitHorizontal, GitFork, GitMerge, Globe, ListChecks, Loader2, MessageSquareText, MoreHorizontal, OctagonX, PanelRight, RotateCcw, Rocket, ShieldCheck, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -7,11 +7,14 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Composer } from "@/components/composer";
-import { StatusPill } from "@/components/status";
+import { StatusDot, StatusPill } from "@/components/status";
+import { statusOf } from "@/components/home";
 import { isActive } from "@/lib/events";
-import { clock, STATE_LABEL } from "@/lib/format";
-import type { FeatureNode, SessionNode } from "@/lib/model";
-import { progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
+import { clock, PLAIN_STATE, previewHost, stateTone } from "@/lib/format";
+import { relationsOf, type FeatureNode, type SessionNode } from "@/lib/model";
+import type { Panel as PanelTab } from "@/lib/selection";
+import { useFetch } from "@/lib/use-fetch";
+import { activity, plainReason, progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -63,11 +66,20 @@ function UpdateRow({ update }: { readonly update: Update }) {
       <Collapsible open={open} onOpenChange={setOpen} className="min-w-0 flex-1 pt-0.5">
         <div className="text-[15px]">{update.text}</div>
         {update.detail ? <div className="truncate text-sm text-muted-foreground">{update.detail}</div> : null}
+        {update.tone === "run" && !open && update.tech.length ? (
+          <ul className="mt-1 flex flex-col gap-0.5 font-mono text-xs text-muted-foreground" data-live-actions>
+            {update.tech.slice(-3).map((line, i) => (
+              <li key={i} className="truncate">
+                {line}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{clock(update.at)}</span>
           {update.tech.length ? (
             <CollapsibleTrigger className="inline-flex items-center gap-0.5 hover:text-foreground">
-              {open ? "Hide details" : "Details"}
+              {open ? "Hide" : `${update.tech.length} ${update.tech.length === 1 ? "action" : "actions"}`}
               <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
             </CollapsibleTrigger>
           ) : null}
@@ -106,7 +118,7 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-bad/30 bg-bad/5 p-4" data-needs-you={node.id}>
       <div className="font-semibold text-bad">chef needs your help</div>
-      <p>{node.live?.stuck ?? node.record?.machine.reason ?? "It stopped before finishing."}</p>
+      <p className="text-sm text-muted-foreground">Tell it what to do differently and press Try again, or stop this build. The live app is not affected.</p>
       {feedback ? (
         <Collapsible>
           <CollapsibleTrigger className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground">
@@ -125,7 +137,7 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
           Try again
         </Button>
         <Button variant="ghost" onClick={() => setStopping(true)}>
-          Stop this feature
+          Stop this build
         </Button>
       </div>
       <StopDialog node={node} open={stopping} onOpenChange={setStopping} />
@@ -162,6 +174,103 @@ function StopDialog({ node, open, onOpenChange }: { readonly node: SessionNode; 
   );
 }
 
+function BuildChip({ node, current }: { readonly node: SessionNode; readonly current: boolean }) {
+  const { openSession } = useWorkspace();
+  const tries = node.attempt && node.attempt.of > 1 ? ` · try ${node.attempt.index}` : "";
+  return (
+    <button
+      type="button"
+      onClick={() => openSession(node.id)}
+      aria-current={current ? "true" : undefined}
+      data-build={node.id}
+      className={cn("inline-flex h-7 items-center gap-1.5 rounded-lg border px-2 text-xs hover:bg-muted", current && "border-foreground/40 bg-muted font-medium")}
+    >
+      <StatusDot tone={stateTone(node.state)} />
+      <span className="font-mono">{node.id}</span>
+      <span className="text-muted-foreground">
+        {PLAIN_STATE[node.state]}
+        {tries}
+      </span>
+    </button>
+  );
+}
+
+function Related({ node }: { readonly node: SessionNode }) {
+  const { sessions } = useWorkspace();
+  const r = relationsOf(node, sessions);
+  if (r.chain.length < 2 && r.attempts.length < 2) return null;
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border p-4" data-related={node.id}>
+      {r.chain.length > 1 ? (
+        <div className="flex flex-col gap-1.5">
+          <h2 className="text-xs font-medium text-muted-foreground">Builds of this feature, oldest first</h2>
+          <ol className="flex flex-wrap items-center gap-1">
+            {r.chain.map((s, i) => (
+              <li key={s.id} className="flex items-center gap-1">
+                {i > 0 ? <ChevronRight className="size-3.5 text-muted-foreground" /> : null}
+                <BuildChip node={s} current={s.id === node.id} />
+              </li>
+            ))}
+          </ol>
+          <p className="text-xs text-muted-foreground">{r.parent ? `This build continues from ${r.parent.id}. ` : ""}Each new build starts from the live app, so earlier work that went live is kept.</p>
+        </div>
+      ) : null}
+      {r.attempts.length > 1 ? (
+        <div className="flex flex-col gap-1.5" data-attempts>
+          <h2 className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+            <GitFork className="size-3.5" />
+            Tried {r.attempts.length} ways at once
+          </h2>
+          <div className="flex flex-wrap gap-1">
+            {r.attempts.map((s) => (
+              <BuildChip key={s.id} node={s} current={s.id === node.id} />
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">chef keeps the try that passes the most checks and stops the others.</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function Pill({ icon: Icon, label, value, tone, panel, id }: { readonly icon: typeof Check; readonly label: string; readonly value: string; readonly tone: "ok" | "bad" | "idle" | "plain"; readonly panel: PanelTab; readonly id: string }) {
+  const { select } = useWorkspace();
+  return (
+    <button type="button" onClick={() => select({ panel })} data-artifact={id} title={`${label}: ${value}`} className="inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-lg border bg-card px-2 text-xs hover:bg-muted/60">
+      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("truncate font-medium", tone === "ok" && "text-ok", tone === "bad" && "text-bad", tone === "idle" && "font-normal text-muted-foreground")}>{value}</span>
+    </button>
+  );
+}
+
+const TEST_FILE = /(^|\/)(test|tests|__tests__)\/|\.(test|spec)\.[a-z]+$/;
+
+function Artifacts({ node, preview }: { readonly node: SessionNode; readonly preview: { readonly url: string } | null }) {
+  const { api } = useWorkspace();
+  const commits = node.live?.commits.length ?? node.record?.commits.length ?? 0;
+  const head = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
+  const changes = useFetch(commits ? () => api.changes(node.id) : null, `${node.id}:${head}`);
+  const files = changes.data?.files ?? [];
+  const tests = files.filter((f) => TEST_FILE.test(f.path)).length;
+  const verdict = node.live?.verdict ?? node.record?.verdict ?? null;
+  const gate = node.live?.gate ?? null;
+  const failed = gate ? gate.checks.filter((c) => !c.ok).length : 0;
+  const used = node.record?.machine.usage.attempts ?? 0;
+  const tries = node.state === "stuck" && /^attempt budget/.test(node.live?.stuck ?? node.record?.machine.reason ?? "") ? used - 1 : used;
+  return (
+    <div className="flex flex-wrap gap-1.5 max-sm:-mx-4 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-4" aria-label="What this build made" data-artifacts>
+      <Pill id="preview" icon={Globe} label="Preview" panel="preview" value={preview ? previewHost(preview.url) : "not ready"} tone={preview ? "plain" : "idle"} />
+      <Pill id="files" icon={FileCode2} label="Files" panel="changes" value={files.length ? `${files.length - tests} code, ${tests} test` : changes.loading ? "loading" : "none yet"} tone={files.length ? "plain" : "idle"} />
+      <Pill id="commits" icon={GitCommitHorizontal} label="Commits" panel="details" value={commits ? String(commits) : "none yet"} tone={commits ? "plain" : "idle"} />
+      <Pill id="review" icon={MessageSquareText} label="Review" panel="checks" value={verdict ? (verdict.approve ? "approved" : "asked for changes") : "not yet"} tone={verdict ? (verdict.approve ? "ok" : "bad") : "idle"} />
+      <Pill id="checks" icon={ShieldCheck} label="Checks" panel="checks" value={gate ? (gate.ok ? `${gate.checks.length} of ${gate.checks.length} passed` : `${failed} of ${gate.checks.length} failed`) : "not run yet"} tone={gate ? (gate.ok ? "ok" : "bad") : "idle"} />
+      {tries > 1 ? <Pill id="tries" icon={RotateCcw} label="Tries" panel="details" value={String(tries)} tone="plain" /> : null}
+      {node.live?.recalled.length ? <Pill id="lessons" icon={ListChecks} label="Lessons used" panel="details" value={String(node.live.recalled.length)} tone="plain" /> : null}
+    </div>
+  );
+}
+
 export function FeaturePage({ feature, composerRef }: { readonly feature: FeatureNode; readonly composerRef: Ref<HTMLTextAreaElement> }) {
   const { api, data, selection, select, openSession } = useWorkspace();
   const node = currentSession(feature, selection.session);
@@ -171,14 +280,14 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
   const list = node ? updates(timeline, node.state, node.record ? { prompt: node.record.rootPrompt, at: node.record.createdAt } : undefined) : [];
   const p = node ? progress(node.state, timeline) : null;
   const active = node ? isActive(node.state) : false;
-  const attempts = node ? feature.sessions.filter((s) => s.record?.attempt.group === node.record?.attempt.group || s.id === node.id) : [];
   const preview = node?.live?.preview ?? node?.record?.preview ?? feature.preview;
   const panel = selection.panel;
   const criteria = feature.spec?.acceptance ?? [];
+  const isLive = node ? node.state === "merged" : feature.status === "merged";
 
   useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
-  }, [list.length, node?.id]);
+    if (active) end.current?.scrollIntoView({ block: "end" });
+  }, [list.length, node?.id, active]);
 
   const startOver = async () => {
     try {
@@ -216,8 +325,26 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
     <div className="flex h-full min-h-0 flex-col" data-view="feature" data-feature={feature.id} data-session={node?.id} data-state={node?.state}>
       <header className="flex h-15 shrink-0 items-center gap-2.5 border-b px-4 sm:px-6">
         <h1 className="min-w-0 truncate text-base font-semibold">{feature.title}</h1>
-        <StatusPill status={feature.status} />
+        <StatusPill status={node ? statusOf(node.state) : feature.status} />
+        {node ? (
+          <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline" data-build-label>
+            build {node.id}
+            {node.attempt && node.attempt.of > 1 ? ` · try ${node.attempt.index} of ${node.attempt.of}` : ""}
+          </span>
+        ) : null}
         <span className="flex-1" />
+        {node && active ? (
+          <Button variant="outline" size="sm" onClick={() => setStopping(true)}>
+            <OctagonX />
+            Stop
+          </Button>
+        ) : null}
+        {node?.state === "dropped" ? (
+          <Button variant="outline" size="sm" onClick={() => void startOver()}>
+            <RotateCcw />
+            Start over
+          </Button>
+        ) : null}
         {preview ? (
           <Button variant={panel ? "outline" : "default"} size="sm" onClick={() => select({ panel: panel ? null : "preview" })}>
             <PanelRight />
@@ -248,7 +375,7 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
                   {[...feature.sessions].reverse().map((s, i) => (
                     <DropdownMenuRadioItem key={s.id} value={s.id}>
                       {i === 0 ? "Latest" : `Earlier build ${feature.sessions.length - i}`}
-                      <span className="ml-auto text-xs text-muted-foreground">{STATE_LABEL[s.state]}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">{PLAIN_STATE[s.state]}</span>
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
@@ -258,14 +385,17 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
         </DropdownMenu>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-7 sm:px-6">
-          {node && p ? (
-            <div className="flex flex-col gap-3 rounded-2xl border p-4">
+        {node && p ? (
+          <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" data-summary>
+            <div className="mx-auto flex max-w-3xl flex-col gap-2.5 px-4 py-3 sm:px-6">
               <Steps node={node} />
-              <p>{p.now}</p>
-              {attempts.length > 1 ? <p className="text-sm text-muted-foreground">chef is trying {attempts.length} approaches at once and keeps the one that passes the most tests.</p> : null}
+              <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : active ? activity(node.state, timeline, null) : p.now}</p>
+              <Artifacts node={node} preview={preview} />
             </div>
-          ) : (
+          </div>
+        ) : null}
+        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
+          {node ? null : (
             <div className="flex flex-col gap-2 rounded-2xl border p-4">
               <p>chef has not built this yet.</p>
               {feature.spec?.body ? <p className="text-muted-foreground">{feature.spec.body}</p> : null}
@@ -273,19 +403,21 @@ export function FeaturePage({ feature, composerRef }: { readonly feature: Featur
             </div>
           )}
           {node?.state === "stuck" ? <NeedsYou node={node} /> : null}
-          {feature.status === "merged" && criteria.length ? (
-            <section className="flex flex-col gap-2.5">
-              <h2 className="text-xs font-medium text-muted-foreground">What it does</h2>
+          {node ? <Related node={node} /> : null}
+          {criteria.length ? (
+            <section className="flex flex-col gap-2.5" data-criteria>
+              <h2 className="text-xs font-medium text-muted-foreground">{isLive ? "What it does" : "What it must do to go live"}</h2>
               <ul className="flex flex-col gap-2">
                 {criteria.map((c) => (
                   <li key={c.id} className="flex gap-2.5">
-                    <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} />
+                    {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 rounded-full border border-muted-foreground" />}
                     <span>{c.text}</span>
                   </li>
                 ))}
               </ul>
             </section>
           ) : null}
+          {list.length ? <h2 className="-mb-2 text-xs font-medium text-muted-foreground">What happened</h2> : null}
           {list.map((u) => (
             <UpdateRow key={u.key} update={u} />
           ))}

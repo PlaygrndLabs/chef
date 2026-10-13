@@ -3,11 +3,11 @@ import { Check, ChevronsUpDown, FolderGit2, KeyRound, Lightbulb, Monitor, Moon, 
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { FEATURE_LABEL, FEATURE_TONE, StatusDot } from "@/components/status";
+import { StatusDot } from "@/components/status";
 import { missingSettings, SettingsDialog, useSettings } from "@/components/settings-dialog";
 import { ProjectSettingsDialog } from "@/components/project-settings-dialog";
 import { VoiceButton } from "@/components/voice-button";
-import { sortFeatures } from "@/lib/model";
+import { WorkList } from "@/components/work-list";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -84,7 +84,7 @@ function SettingsMenu() {
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => select({ view: "insights", feature: null, session: null, panel: null })}>
             <Lightbulb />
-            Health and memory
+            Memory and learning
           </DropdownMenuItem>
           <DropdownMenuItem onClick={addProject}>
             <Plus />
@@ -113,10 +113,9 @@ function SettingsMenu() {
 }
 
 export function Sidebar() {
-  const { features, selection, select, openFeature, focusComposer } = useWorkspace();
-  const list = sortFeatures(features.filter((f) => f.status !== "dropped" || f.onMain));
+  const { select, focusComposer } = useWorkspace();
   return (
-    <div className="flex h-full flex-col gap-4 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
+    <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex items-center gap-1 px-1.5">
         <span className="grid size-6 shrink-0 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">c</span>
         <span className="pl-1 text-sm font-semibold">chef</span>
@@ -133,30 +132,7 @@ export function Sidebar() {
         <Plus />
         New request
       </Button>
-      <div className="flex min-h-0 flex-1 flex-col gap-1">
-        <div className="px-2 text-xs font-medium text-muted-foreground">Features</div>
-        <nav id="features" aria-label="Features" className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto">
-          {list.map((f) => {
-            const tone = FEATURE_TONE[f.status];
-            return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => openFeature(f.id)}
-                data-feature={f.id}
-                data-status={f.status}
-                aria-current={selection.view === "feature" && selection.feature === f.id ? "page" : undefined}
-                className={cn("flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-sidebar-accent", selection.view === "feature" && selection.feature === f.id && "bg-sidebar-accent")}
-              >
-                <StatusDot tone={tone} />
-                <span className="min-w-0 flex-1 truncate">{f.title}</span>
-                <span className={cn("shrink-0 text-xs text-muted-foreground", tone === "bad" && "font-medium text-bad")}>{FEATURE_LABEL[f.status]}</span>
-              </button>
-            );
-          })}
-          {list.length === 0 ? <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Your features show up here as chef builds them.</p> : null}
-        </nav>
-      </div>
+      <WorkList />
       <div className="flex items-center gap-1 border-t pt-2.5">
         <VoiceButton />
         <span className="flex-1" />

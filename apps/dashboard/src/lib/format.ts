@@ -45,6 +45,18 @@ export const STATE_LABEL: Readonly<Record<SessionState, string>> = {
   dropped: "Dropped",
 };
 
+export const PLAIN_STATE: Readonly<Record<SessionState, string>> = {
+  queued: "Waiting",
+  planning: "Planning",
+  testing: "Writing tests",
+  coding: "Writing code",
+  reviewing: "In review",
+  gating: "Final checks",
+  merged: "Live",
+  stuck: "Needs you",
+  dropped: "Stopped",
+};
+
 export function stateTone(state: SessionState): Tone {
   if (state === "merged") return "ok";
   if (state === "stuck") return "bad";
