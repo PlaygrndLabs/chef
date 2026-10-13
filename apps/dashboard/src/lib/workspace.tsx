@@ -26,6 +26,7 @@ export interface Workspace {
   readonly openSession: (id: string) => void;
   readonly openFeature: (id: string) => void;
   readonly openMemory: () => void;
+  readonly openLive: () => void;
   readonly tabs: readonly string[];
   readonly activeTab: string | null;
   readonly selectTab: (id: string) => void;
