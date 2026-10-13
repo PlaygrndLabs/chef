@@ -18,6 +18,7 @@ export * from "./previews/keeper.ts";
 export * from "./sync/external.ts";
 export * from "./util/glob.ts";
 export * from "./util/hash.ts";
+export * from "./setup/progress.ts";
 export * from "./memory/memory.ts";
 export * from "./gardener/gardener.ts";
 export * from "./voice/delegate.ts";

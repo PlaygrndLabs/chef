@@ -8,7 +8,7 @@ import { LlmPlanner } from "@chef/adapters/llm-planner";
 import { LlmReviewer } from "@chef/adapters/llm-reviewer";
 import { GptLiveHost } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, ControlError, mergeAgentConfig, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, resolveModel, routerConfigOf, runnable, startVoiceCall, withSkills, type AgentStore, type ExternalSync, type Profiles, type VoiceCall } from "@chef/core";
+import { AgentSettings, applyAgentConfig, ControlError, mergeAgentConfig, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, resolveModel, SetupError, setupResponse, routerConfigOf, runnable, startVoiceCall, withSkills, type AgentStore, type ExternalSync, type Profiles, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
@@ -140,18 +140,20 @@ export class LocalProject {
     return this.built;
   }
 
-  async bootstrap(): Promise<Response> {
+  async bootstrap(request: Request): Promise<Response> {
     const { orchestrator, external } = await this.build();
-    const existing = (await orchestrator.mainTree()).commitId;
-    if (existing) return json({ commitId: existing, created: false });
-    if (external) {
-      const pulled = await external.pull();
-      if (pulled.status !== "imported") return json({ error: `importing the linked repository did not finish: ${pulled.status}` }, 409);
-      this.startPolling();
-      await this.startReading();
-      return json({ commitId: pulled.commitId, created: true, imported: true });
-    }
-    return json({ commitId: await orchestrator.bootstrap(templateTree()), created: true });
+    return setupResponse(request, async (progress) => {
+      const existing = (await orchestrator.mainTree()).commitId;
+      if (existing) return { commitId: existing, created: false };
+      if (external) {
+        const pulled = await external.pull(progress);
+        if (pulled.status !== "imported") throw new SetupError(`importing the linked repository did not finish: ${pulled.status}`, 409);
+        this.startPolling();
+        await this.startReading();
+        return { commitId: pulled.commitId, created: true, imported: true };
+      }
+      return { commitId: await orchestrator.bootstrap(templateTree(), progress), created: true };
+    });
   }
 
   async request(request: Request, action: string): Promise<Response> {
@@ -163,7 +165,7 @@ export class LocalProject {
     if (action === "settings") return this.settingsRequest(request);
     if (action === "env") return this.envRequest(request);
     if (action === "agents" || action === "agents/restore") return projectAgentsRequest(request, { project: this.name, store: this.ownAgents(), shared: this.ctx.agents, defaults: repoProfiles(), models: settings.models, jev: settings.jev !== null });
-    if (action === "bootstrap" && request.method === "POST") return this.bootstrap();
+    if (action === "bootstrap" && request.method === "POST") return this.bootstrap(request);
     if (action === "git" && request.method === "GET") return json({ settings: viewProjectSettings(await this.projectSettings()).git, state: external ? await external.state() : null });
     if (action === "git/sync" && request.method === "POST") {
       if (!external) return json({ error: "this project has no linked repository" }, 409);
