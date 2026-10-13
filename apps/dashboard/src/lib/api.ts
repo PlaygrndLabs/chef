@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, Budget, FeatureSpec, LiveStatus, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, Budget, FeatureSpec, LiveStatus, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -255,6 +255,28 @@ export const sharedEnvApi: EnvApi = {
   saveEnv: (update) => call<ProjectEnvView>("/api/env", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
 };
 
+export interface SharedInstructionsView {
+  readonly text: string;
+  readonly at: number;
+}
+
+export const sharedInstructionsApi = {
+  get: () => call<SharedInstructionsView>("/api/instructions"),
+  save: (text: string, previous: string) => call<SharedInstructionsView>("/api/instructions", json("PUT", { text, previous })),
+};
+
+export interface InstructionsView {
+  readonly goal: string;
+  readonly instructions: string;
+  readonly shared: string;
+  readonly commitId: string | null;
+}
+
+export interface MemoryView {
+  readonly commitId: string | null;
+  readonly entries: readonly MemoryEntry[];
+}
+
 export interface LiveApp {
   readonly status: LiveStatus;
   readonly commitId: string;
@@ -290,6 +312,11 @@ export function projectApi(project: string) {
     syncGit: () => call<{ ok: boolean }>(`${base}/git/sync`, { method: "POST" }),
     env: () => call<ProjectEnvView>(`${base}/env`),
     saveEnv: (update: EnvUpdate) => call<ProjectEnvView>(`${base}/env`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
+    instructions: () => call<InstructionsView>(`${base}/instructions`),
+    saveInstructions: (next: { readonly goal: string; readonly instructions: string }, previous: { readonly goal: string; readonly instructions: string }) => call<InstructionsView>(`${base}/instructions`, json("PUT", { ...next, previous })),
+    memory: () => call<MemoryView>(`${base}/memory`),
+    addNote: (title: string, text: string) => call<MemoryView & { readonly path: string | null }>(`${base}/memory`, post({ title, text })),
+    editMemory: (path: string, text: string | null, previous: string) => call<MemoryView>(`${base}/memory`, json("PUT", { path, text, previous })),
     overview: () => call<OverviewState>(`${base}/overview`),
     readCode: () => call<OverviewState>(`${base}/overview`, { method: "POST" }),
   };

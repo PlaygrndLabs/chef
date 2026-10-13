@@ -63,6 +63,7 @@ export function SettingsHost() {
             item={selection.item ?? null}
             nav={nav("project")}
             sharedAttempts={app.settings?.attempts.value ?? null}
+            onEditShared={() => openSettings("app", "instructions")}
             onReadCode={() => {
               select({ settings: null, item: null });
               window.setTimeout(() => window.dispatchEvent(new Event("chef:read-code")), 50);

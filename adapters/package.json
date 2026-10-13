@@ -23,7 +23,8 @@
     "./local-git": "./src/local-git.ts",
     "./preview-page": "./src/preview-page.ts",
     "./projects": "./src/projects.ts",
-    "./agents": "./src/agents.ts"
+    "./agents": "./src/agents.ts",
+    "./guidance": "./src/guidance.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
