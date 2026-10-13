@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronsUpDown, FolderGit2, FolderPlus, ScanSearch, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
+import { Bot, Check, ChevronsUpDown, FolderGit2, FolderPlus, ScanSearch, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -78,6 +78,10 @@ function SettingsMenu() {
               Settings
             </DropdownMenuItem>
           ) : null}
+          <DropdownMenuItem onClick={() => select({ view: "agents", feature: null, session: null, panel: null, tab: "roles", item: null })}>
+            <Bot />
+            Agents, skills and router
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setProjectSettings(true)}>
             <FolderGit2 />
             Project and repository
@@ -117,6 +121,17 @@ function SettingsMenu() {
   );
 }
 
+function AgentsButton() {
+  const { select, selection } = useWorkspace();
+  const current = selection.view === "agents";
+  return (
+    <Button variant="ghost" size="sm" className={cn("h-8 gap-1.5 px-2 text-xs text-muted-foreground", current && "bg-sidebar-accent text-foreground")} aria-current={current ? "page" : undefined} onClick={() => select({ view: "agents", feature: null, session: null, panel: null, tab: "roles", item: null })} id="agents-button">
+      <Bot />
+      Agents
+    </Button>
+  );
+}
+
 export function Sidebar() {
   const { select, focusComposer, addProject } = useWorkspace();
   return (
@@ -143,6 +158,7 @@ export function Sidebar() {
       <WorkList />
       <div className="flex items-center gap-1 border-t pt-2.5">
         <VoiceButton />
+        <AgentsButton />
         <span className="flex-1" />
         <SettingsMenu />
       </div>

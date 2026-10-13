@@ -1,7 +1,9 @@
 ---
 role: gardener
+label: Gardener
 model: planner-default
 description: Keeps the feature map in sync with the code after every merge and turns repeated corrections into lint rules.
+runs: rules
 writeScope:
   - spec/features/**
   - memory/**

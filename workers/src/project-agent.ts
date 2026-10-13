@@ -9,7 +9,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, PreviewKeeper, readSpec, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { applyAgentConfig, ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
@@ -22,7 +22,7 @@ import { SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sa
 import { SandboxCoder } from "./sandbox-coder.ts";
 import { buildingPage, CloudflareWorkerSpace, previewPath } from "./preview-space.ts";
 import { gitHubApp } from "./github.ts";
-import { currentSettings, settingsStub } from "./settings.ts";
+import { agentStore, currentSettings, settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
 import type { SandboxStatus } from "./session-agent.ts";
 
@@ -37,6 +37,12 @@ const BUSY_SWEEP_SECONDS = 600;
 
 const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
 
+function role(profiles: Profiles, name: string) {
+  const profile = profiles[name];
+  if (!profile) throw new Error(`agents/${name}.md is missing`);
+  return profile;
+}
+
 export class ProjectAgent extends Agent<Env> {
   private readonly calls = new Map<string, VoiceCall>();
   private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
@@ -46,7 +52,8 @@ export class ProjectAgent extends Agent<Env> {
     const project = await this.projectSettings();
     const origin = (await this.ctx.storage.get<string>(ORIGIN)) ?? null;
     const app = project.git?.installation !== undefined ? await gitHubApp(this.env) : null;
-    const fingerprint = JSON.stringify([settings, project.git, origin, app?.credentials.id ?? null]);
+    const agents = await agentStore(this.env).current();
+    const fingerprint = JSON.stringify([settings, project.git, origin, app?.credentials.id ?? null, agents.version]);
     if (this.built?.fingerprint === fingerprint) return this.built;
     this.built?.orchestrator.dispose();
     const env = this.env;
@@ -54,7 +61,10 @@ export class ProjectAgent extends Agent<Env> {
     const repos = new ArtifactsRepoHost(control);
     const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message));
     const llm = settings.llm ? llmFromProvider(settings.llm) : missingLlm;
-    const llmReviewer = new LlmReviewer(llm, settings.models.reviewer);
+    const profiles = applyAgentConfig(loadProfiles(agentFiles), agents.config);
+    const reviewerRole = role(profiles, "reviewer");
+    const plannerRole = role(profiles, "planner");
+    const llmReviewer = new LlmReviewer(llm, resolveModel(reviewerRole.model, settings.models), withSkills(reviewerRole.instructions, reviewerRole.skills));
     const store = new DurableStore(this.ctx.storage);
     const clock = { now: () => Date.now() };
     const grant = settings.cloudflare ? { accountId: settings.cloudflare.accountId, worker: `${env.PREVIEW_WORKER}-${this.name}` } : null;
@@ -67,7 +77,7 @@ export class ProjectAgent extends Agent<Env> {
         repos,
         coder: new SandboxCoder(env.SESSION, { model: settings.models.coder, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
         classifier: settings.jev ? new JevClassifier(new TypeSafeClient({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL }), env.JEV_MODEL) : NO_CLASSIFIER,
-        planner: new LlmPlanner(llm, settings.models.planner),
+        planner: new LlmPlanner(llm, resolveModel(plannerRole.model, settings.models), withSkills(plannerRole.instructions, plannerRole.skills)),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
         previews: keeper ?? noPreviews,
         checks: new SandboxCheckRunner(env.SESSION, repos),
@@ -81,7 +91,8 @@ export class ProjectAgent extends Agent<Env> {
       {
         name: this.name,
         author: { name: "chef", email: "ma.karimi76@gmail.com" },
-        profiles: loadProfiles(agentFiles),
+        profiles,
+        router: routerConfigOf(agents.config.router),
         generated,
         specialization: { attempts: settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
@@ -142,6 +153,11 @@ export class ProjectAgent extends Agent<Env> {
       const result = await orchestrator.submit(prompt.trim());
       if (result.sessionId) await this.schedule(1, "drive");
       return Response.json(result, { status: 202 });
+    }
+    if (request.method === "POST" && action === "route") {
+      const { prompt } = (await request.json().catch(() => ({}))) as { prompt?: string };
+      if (!prompt?.trim()) return Response.json({ error: "prompt is required" }, { status: 400 });
+      return Response.json(await orchestrator.route(prompt.trim()));
     }
     if (request.method === "POST" && action === "voice") {
       const { sdp } = (await request.json()) as { sdp?: string };
