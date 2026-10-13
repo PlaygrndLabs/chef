@@ -70,25 +70,72 @@ function css(name, fallback) {
   return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback;
 }
 
-const prompts = [
-  { text: "Build a todo app with sign-in", lanes: ["Layout", "Todo list", "Sign-in"] },
-  { text: "Add edit and delete to each item", lanes: ["Header", "Edit items", "Delete items"] },
-  { text: "Make it work offline", lanes: ["Status bar", "Local store", "Sync on reconnect"] },
-];
+const COLS = 62;
+const ROWS = 36;
 
-const appCols = 14;
-const appRows = 15;
-const regions = [
-  (c, r) => r < 2 || (r === 3 && c > 1 && c < 9),
-  (c, r) => r >= 5 && r <= 9 && r !== 7 && (c < 1 || (c > 1 && c < 11 - (r % 3) * 2)),
-  (c, r) => r >= 11 && r <= 13 && ((c >= 0 && c < 6) || (c >= 7 && c < 13)) && r !== 12 || (r === 12 && (c === 0 || c === 5 || c === 7 || c === 12)),
-];
-
-function shape(r) {
-  return Array.from({ length: appCols * appRows }, (_, i) => regions[r](i % appCols, Math.floor(i / appCols))).map((on, i) => (on ? i : -1)).filter((i) => i >= 0);
+function layout(draw) {
+  const cells = new Map();
+  const rect = (c0, r0, w, h, kind = "solid") => {
+    for (let c = c0; c < c0 + w; c++) {
+      for (let r = r0; r < r0 + h; r++) {
+        if (c < 0 || r < 0 || c >= COLS || r >= ROWS) continue;
+        const edge = c === c0 || r === r0 || c === c0 + w - 1 || r === r0 + h - 1;
+        if (kind === "line" && !edge) continue;
+        if (kind === "soft" && !edge && (c + r) % 2) continue;
+        cells.set(r * COLS + c, kind === "solid" ? 1 : kind === "line" ? 0.75 : edge ? 0.6 : 0.35);
+      }
+    }
+  };
+  draw(rect);
+  return [...cells.entries()];
 }
 
-function build(ctx, width, height) {
+const apps = [
+  {
+    prompt: "Build a todo app",
+    host: "todo.workers.dev",
+    cells: layout((rect) => {
+      rect(0, 0, COLS, 4, "solid");
+      rect(3, 7, 40, 4, "line");
+      rect(46, 7, 13, 4, "solid");
+      [26, 34, 20, 30, 24].forEach((w, k) => {
+        rect(3, 14 + k * 4, 2, 2, k < 2 ? "solid" : "line");
+        rect(8, 14 + k * 4, w, 2, k < 2 ? "soft" : "solid");
+      });
+      rect(3, 34, 18, 1, "soft");
+    }),
+  },
+  {
+    prompt: "Make a sales dashboard",
+    host: "sales.workers.dev",
+    cells: layout((rect) => {
+      rect(0, 0, 12, ROWS, "soft");
+      [3, 7, 11, 15].forEach((r, k) => rect(2, r, k ? 7 : 8, 2, k ? "line" : "solid"));
+      [14, 30, 46].forEach((c) => {
+        rect(c, 2, 14, 8, "line");
+        rect(c + 2, 4, 6, 2, "solid");
+        rect(c + 2, 7, 9, 1, "soft");
+      });
+      [9, 14, 11, 18, 15, 21, 17, 23].forEach((h, k) => rect(16 + k * 5, 33 - h, 3, h, k === 7 ? "solid" : "soft"));
+      rect(14, 34, 46, 1, "solid");
+    }),
+  },
+  {
+    prompt: "Add a support chat",
+    host: "support.workers.dev",
+    cells: layout((rect) => {
+      rect(0, 0, COLS, 4, "solid");
+      rect(3, 7, 28, 5, "soft");
+      rect(29, 14, 30, 4, "solid");
+      rect(3, 20, 36, 7, "soft");
+      rect(39, 24, 20, 3, "solid");
+      rect(3, 31, 48, 4, "line");
+      rect(53, 31, 6, 4, "solid");
+    }),
+  },
+];
+
+function pixels(ctx, width, height) {
   const blue = brand();
   const fg = css("--foreground", "#111");
   const muted = css("--muted-foreground", "#777");
@@ -96,195 +143,146 @@ function build(ctx, width, height) {
   const card = css("--card", "#fff");
   const green = css("--success", "#16a34a");
   const W = 560;
-  const H = 400;
+  const H = 420;
   const scale = Math.min(width / W, height / H);
   const ox = (width - W * scale) / 2;
   const oy = (height - H * scale) / 2;
-  const lanes = [120, 205, 290];
-  const cycle = 11.5;
-  const cell = 14;
-  const app = { x: 334, y: 60, w: 222, h: 266 };
-  const grid = { x: app.x + 12, y: app.y + 36 };
-  const cells = regions.map((_, r) => shape(r));
-  const order = [0, 1, 2].map((i) => {
-    const rand = random(i + 21);
-    return Array.from({ length: 30 }, (_, k) => k).sort(() => rand() - 0.5);
-  });
-  const timing = [2.6, 3.4, 2.3].map((dur, i) => {
-    const start = 2.3 + i * 0.25;
-    const built = start + dur;
-    return { start, built, merged: built + 0.7, landed: built + 1.6 };
-  });
-  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(1 - x, 3));
-  const round = (x, y, w, h, r) => {
+  const win = { x: 20, y: 74, w: 520, h: 340 };
+  const step = 8;
+  const grid = { x: win.x + (win.w - COLS * step) / 2, y: win.y + 34 };
+  const cycle = 9;
+  const rand = random(5);
+  const count = Math.max(...apps.map((a) => a.cells.length));
+  const scatter = () => {
+    const a = rand() * Math.PI * 2;
+    const d = 0.55 + rand() * 0.6;
+    return { x: W / 2 + Math.cos(a) * W * d * 0.62, y: H / 2 + Math.sin(a) * H * d * 0.7 };
+  };
+  const dots = Array.from({ length: count }, () => ({ from: scatter(), to: scatter(), jitter: rand() }));
+  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+  const box = (x, y, w, h, r) => {
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, r);
   };
-  const mark = (x, y, s) => {
-    ctx.fillStyle = blue;
-    ctx.fillRect(x + s * 0.4, y, s * 0.6, s * 0.26);
-    ctx.fillRect(x, y + s * 0.26, s * 0.4, s * 0.48);
-    ctx.fillRect(x + s * 0.4, y + s * 0.74, s * 0.6, s * 0.26);
-  };
-  const chip = (x, y, label, tone) => {
-    ctx.font = "500 10px ui-sans-serif, system-ui, sans-serif";
-    const w = ctx.measureText(label).width + 14;
-    ctx.globalAlpha = 0.14;
-    ctx.fillStyle = tone;
-    round(x, y - 8, w, 16, 8);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = tone;
-    ctx.fillText(label, x + 7, y + 3.5);
-  };
   return (now) => {
-    const total = still ? 9.5 : (now / 1000) % (cycle * prompts.length);
-    const round_ = Math.floor(total / cycle);
-    const t = total - round_ * cycle;
-    const prompt = prompts[round_];
-    const fade = t > cycle - 0.6 ? (cycle - t) / 0.6 : t < 0.3 ? t / 0.3 : 1;
+    const total = still ? 5.5 : (now / 1000) % (cycle * apps.length);
+    const index = Math.floor(total / cycle);
+    const t = total - index * cycle;
+    const app = apps[index];
+    const ratio = ctx.canvas.width / width;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    const ratio = ctx.canvas.width / width;
     ctx.setTransform(ratio * scale, 0, 0, ratio * scale, ratio * ox, ratio * oy);
-    ctx.globalAlpha = 1;
-    ctx.textBaseline = "alphabetic";
 
-    ctx.strokeStyle = blue;
-    ctx.lineWidth = 1.2;
-    round(0.5, 8.5, 318, 38, 19);
+    box(win.x + 0.5, win.y + 0.5, win.w, win.h, 14);
     ctx.fillStyle = card;
     ctx.fill();
-    ctx.stroke();
-    ctx.font = "13px ui-sans-serif, system-ui, sans-serif";
-    ctx.fillStyle = fg;
-    const typed = prompt.text.slice(0, Math.floor(prompt.text.length * ease(t / 1.6)));
-    ctx.globalAlpha = fade;
-    ctx.fillText(typed, 18, 32);
-    if (t < 2 && Math.floor(now / 450) % 2 === 0) ctx.fillRect(18 + ctx.measureText(typed).width + 2, 21, 1.5, 15);
-    ctx.globalAlpha = 1;
-
-    mark(8, lanes[1] - 14, 28);
-    ctx.strokeStyle = line;
-    ctx.setLineDash([3, 4]);
-    ctx.beginPath();
-    ctx.moveTo(22, 47);
-    ctx.lineTo(22, lanes[1] - 18);
-    ctx.stroke();
-    const split = ease((t - 1.6) / 0.6);
-    lanes.forEach((y) => {
-      ctx.strokeStyle = split > 0 ? blue : line;
-      ctx.globalAlpha = 0.25 + 0.5 * split;
-      ctx.beginPath();
-      ctx.moveTo(38, lanes[1]);
-      ctx.bezierCurveTo(70, lanes[1], 70, y, 104, y);
-      ctx.moveTo(232, y);
-      ctx.lineTo(app.x, y);
-      ctx.stroke();
-    });
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
-
-    lanes.forEach((y, i) => {
-      const { start, built, merged, landed } = timing[i];
-      const progress = (t - start) / (built - start);
-      const box = { x: 104, y: y - 22, w: 128, h: 44 };
-      ctx.fillStyle = card;
-      ctx.strokeStyle = t > start ? blue : line;
-      ctx.lineWidth = 1;
-      round(box.x + 0.5, box.y + 0.5, box.w, box.h, 8);
-      ctx.fill();
-      ctx.stroke();
-      ctx.font = "500 11px ui-sans-serif, system-ui, sans-serif";
-      ctx.fillStyle = fade < 1 ? muted : fg;
-      ctx.globalAlpha = split * fade;
-      ctx.fillText(prompt.lanes[i], box.x, box.y - 8);
-      const label = ctx.measureText(prompt.lanes[i]).width;
-      if (t > start) chip(box.x + label + 8, box.y - 12, t < built ? "building" : t < merged ? "checking" : "merged", t < merged ? blue : green);
-      ctx.globalAlpha = fade;
-      const filled = Math.floor(30 * Math.max(0, Math.min(1, progress)));
-      for (let k = 0; k < 30; k++) {
-        const c = order[i][k];
-        const cx = box.x + 9 + (c % 10) * 11;
-        const cy = box.y + 7 + Math.floor(c / 10) * 11;
-        const on = k < filled && t < landed;
-        ctx.fillStyle = on ? blue : line;
-        ctx.globalAlpha = fade * (on ? 0.55 + 0.45 * ((c * 7) % 5) / 4 : 0.6);
-        ctx.fillRect(cx, cy, 8, 8);
-      }
-      if (t > built && t < merged) {
-        ctx.globalAlpha = fade;
-        ctx.strokeStyle = blue;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        const a = (now / 160) % (Math.PI * 2);
-        ctx.arc(box.x + box.w - 12, box.y + 12, 6, a, a + Math.PI * 1.4);
-        ctx.stroke();
-      }
-      if (t > merged && t < landed + 0.4) {
-        const targets = cells[i];
-        for (let k = 0; k < 14; k++) {
-          const p = ease((t - merged - k * 0.04) / 0.8);
-          if (p <= 0 || p >= 1) continue;
-          const dest = targets[(k * 5) % targets.length];
-          const tx = grid.x + (dest % appCols) * cell;
-          const ty = grid.y + Math.floor(dest / appCols) * cell;
-          const sx = box.x + box.w - 10;
-          const sy = y - 4 + (k % 3) * 4;
-          ctx.globalAlpha = fade * (1 - p * 0.3);
-          ctx.fillStyle = blue;
-          ctx.fillRect(sx + (tx - sx) * p, sy + (ty - sy) * p, 7, 7);
-        }
-      }
-      ctx.globalAlpha = 1;
-    });
-
-    ctx.fillStyle = card;
     ctx.strokeStyle = line;
     ctx.lineWidth = 1;
-    round(app.x + 0.5, app.y + 0.5, app.w, app.h, 12);
-    ctx.fill();
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(app.x, app.y + 24.5);
-    ctx.lineTo(app.x + app.w, app.y + 24.5);
+    ctx.moveTo(win.x, win.y + 26.5);
+    ctx.lineTo(win.x + win.w, win.y + 26.5);
     ctx.stroke();
     ctx.fillStyle = line;
     for (let d = 0; d < 3; d++) {
       ctx.beginPath();
-      ctx.arc(app.x + 12 + d * 10, app.y + 12.5, 3, 0, Math.PI * 2);
+      ctx.arc(win.x + 14 + d * 11, win.y + 13.5, 3.2, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+    ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
     ctx.fillStyle = muted;
-    ctx.fillText("todo.workers.dev", app.x + 46, app.y + 16);
-    for (let k = 0; k < appCols * appRows; k++) {
-      const region = cells.findIndex((list) => list.includes(k));
-      const x = grid.x + (k % appCols) * cell;
-      const y = grid.y + Math.floor(k / appCols) * cell;
-      let on = 0;
-      if (region >= 0) on = ease((t - timing[region].merged - 0.5 - ((k * 13) % 9) * 0.04) / 0.4);
-      ctx.fillStyle = line;
-      ctx.globalAlpha = 0.45;
-      ctx.fillRect(x, y, cell - 3, cell - 3);
-      if (on > 0) {
-        ctx.fillStyle = blue;
-        ctx.globalAlpha = on * fade * (region === 0 ? 1 : region === 1 ? 0.75 : 0.9);
-        ctx.fillRect(x, y, cell - 3, cell - 3);
+    ctx.textAlign = "center";
+    ctx.fillText(app.host, win.x + win.w / 2, win.y + 17.5);
+    ctx.textAlign = "start";
+
+    ctx.fillStyle = blue;
+    for (let k = 0; k < dots.length; k++) {
+      const dot = dots[k];
+      const cell = app.cells[k];
+      let x;
+      let y;
+      let alpha;
+      if (cell) {
+        const tx = grid.x + (cell[0] % COLS) * step;
+        const ty = grid.y + Math.floor(cell[0] / COLS) * step;
+        const delay = ((cell[0] % COLS) / COLS) * 0.6 + dot.jitter * 0.5;
+        const come = ease((t - 1.6 - delay) / 1.4);
+        const go = ease((t - 7.4 - dot.jitter * 0.4) / 1.2);
+        x = dot.from.x + (tx - dot.from.x) * come;
+        y = dot.from.y + (ty - dot.from.y) * come;
+        x += (dot.to.x - x) * go;
+        y += (dot.to.y - y) * go;
+        const shimmer = t > 3.6 && t < 7.4 ? 0.12 * Math.sin(t * 3 - (cell[0] % COLS) / 6) : 0;
+        alpha = (0.1 + 0.9 * come) * (1 - go) * Math.min(1, cell[1] + shimmer);
+      } else {
+        x = dot.from.x;
+        y = dot.from.y;
+        alpha = 0;
+      }
+      if (alpha <= 0.01) continue;
+      ctx.globalAlpha = alpha;
+      ctx.fillRect(x, y, step - 1.5, step - 1.5);
+    }
+    ctx.globalAlpha = 1;
+    if (t > 7.4 && !still) {
+      for (const dot of dots) {
+        dot.from = dot.to;
       }
     }
-    ctx.globalAlpha = 1;
-    const live = t - timing[2].landed;
-    if (live > 0.3) {
-      ctx.globalAlpha = fade;
-      chip(app.x + app.w - 52, app.y + 12.5, "● live", green);
-      const pulse = (live * 0.8) % 1;
-      ctx.globalAlpha = fade * (1 - pulse) * 0.5;
-      ctx.strokeStyle = green;
-      round(app.x - pulse * 8 + 0.5, app.y - pulse * 8 + 0.5, app.w + pulse * 16, app.h + pulse * 16, 12 + pulse * 8);
-      ctx.stroke();
+    if (t < 1 && !still) {
+      for (const dot of dots) {
+        if (dot.to === dot.from) dot.to = scatter();
+      }
     }
+
+    const typing = ease(Math.min(1, t / 1.3));
+    const sent = t > 1.5;
+    box(win.x + 0.5, 8.5, win.w, 42, 21);
+    ctx.fillStyle = card;
+    ctx.fill();
+    ctx.strokeStyle = blue;
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+    ctx.font = "15px ui-sans-serif, system-ui, sans-serif";
+    ctx.fillStyle = fg;
+    const typed = app.prompt.slice(0, Math.round(app.prompt.length * typing));
+    ctx.fillText(typed, win.x + 22, 35);
+    if (!sent && Math.floor(now / 450) % 2 === 0) ctx.fillRect(win.x + 23 + ctx.measureText(typed).width, 21, 1.5, 18);
+    ctx.fillStyle = blue;
+    ctx.globalAlpha = sent ? 1 : 0.35;
+    ctx.beginPath();
+    ctx.arc(win.x + win.w - 22, 29.5, 13, 0, Math.PI * 2);
+    ctx.fill();
     ctx.globalAlpha = 1;
+    ctx.strokeStyle = card;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(win.x + win.w - 22, 35);
+    ctx.lineTo(win.x + win.w - 22, 24);
+    ctx.moveTo(win.x + win.w - 27, 28.5);
+    ctx.lineTo(win.x + win.w - 22, 23.5);
+    ctx.lineTo(win.x + win.w - 17, 28.5);
+    ctx.stroke();
+
+    if (t > 3.6 && t < 8.2) {
+      const fade = Math.min(1, (t - 3.6) / 0.4, (8.2 - t) / 0.4);
+      ctx.globalAlpha = fade;
+      ctx.font = "500 11px ui-sans-serif, system-ui, sans-serif";
+      const label = "live";
+      const w = ctx.measureText(label).width + 26;
+      const x = win.x + win.w - w - 10;
+      ctx.fillStyle = green;
+      ctx.globalAlpha = fade * 0.14;
+      box(x, win.y + 5.5, w, 17, 8.5);
+      ctx.fill();
+      ctx.globalAlpha = fade;
+      ctx.beginPath();
+      ctx.arc(x + 10, win.y + 14, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillText(label, x + 17, win.y + 18);
+      ctx.globalAlpha = 1;
+    }
   };
 }
 
@@ -360,7 +358,7 @@ function dots(ctx, width, height) {
   };
 }
 
-const scenes = { build, ascii, dots };
+const scenes = { pixels, ascii, dots };
 for (const [name, setup] of Object.entries(scenes)) {
   document.querySelectorAll(`[data-${name}]`).forEach((canvas) => animate(canvas, setup));
 }
