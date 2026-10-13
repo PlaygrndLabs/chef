@@ -32,7 +32,8 @@ function You({ children }: { readonly children: React.ReactNode }) {
 export function FeatureCard({ node }: { readonly node: SessionNode }) {
   const { features, openSession } = useWorkspace();
   const title = features.find((f) => f.id === node.featureId)?.title ?? node.record?.plan.feature.title ?? node.featureId;
-  const line = activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null);
+  const tries = node.attempt && node.attempt.of > 1 && isActive(node.state) ? `Trying ${node.attempt.of} ways at once · ` : "";
+  const line = `${tries}${activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null)}`;
   return (
     <button type="button" onClick={() => openSession(node.id)} data-session={node.id} data-state={node.state} className="flex w-full items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:bg-muted/60">
       <span className="min-w-0 flex-1">
@@ -57,7 +58,7 @@ export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
 }
 
 function replyFor(decision: RouteDecision, title: string | null, attempts: number): string {
-  if (decision.intent === "question") return "Answered from what chef knows about this project.";
+  if (decision.intent === "question") return "chef answered this before answers were saved, so the answer is not shown here.";
   const parallel = attempts > 1 ? ` I'm trying ${attempts} approaches at once and will keep the best one.` : "";
   if (decision.intent === "change_feature") return `On it. This changes ${title ?? "an existing feature"}.${parallel}`;
   return `On it. This is a new feature.${parallel}`;
@@ -148,7 +149,8 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
         const next = list[index + 1]?.at ?? Number.POSITIVE_INFINITY;
         const own = sessions.filter((s) => s.record?.rootPrompt === route.prompt && s.createdAt >= route.at - 2000 && s.createdAt < next);
         const title = features.find((f) => f.id === (own[0]?.featureId ?? route.decision.featureId))?.title ?? null;
-        const answer = route.decision.intent === "question" ? answerFor(messages, route.prompt) : "";
+        const stored = data.live.answers.find((a) => a.prompt === route.prompt && a.at >= route.at && a.at < next)?.answer ?? "";
+        const answer = route.decision.intent === "question" ? stored || answerFor(messages, route.prompt) : "";
         return { ...route, sessions: own, reply: answer || replyFor(route.decision, title, own.length) };
       });
   const pending = [...sentHere].filter(([prompt, seen]) => routes.filter((r) => r.prompt === prompt).length <= seen).map(([prompt]) => prompt);

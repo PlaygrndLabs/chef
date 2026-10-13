@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
 import { featureNodes, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
-import { activity, plainReason, progress, stripFeatureTag, updates } from "../../src/lib/progress.ts";
+import { activity, plainReason, progress, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
+import { routesIn } from "../../src/lib/routes.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
 const base = { project: "demo", at: 1 };
@@ -177,5 +178,25 @@ describe("voice transcript", () => {
       { speaker: "you", text: "Add an item" },
       { speaker: "chef", text: "On it." },
     ]);
+  });
+});
+
+describe("pages a build added", () => {
+  it("reads routes from feature code and skips tests", () => {
+    const files = [
+      { path: "features/notes/index.ts", after: 'export const feature = { routes: [{ method: "GET", path: "/notes", handle }, { path: "/api/notes", method: "POST", handle }] };' },
+      { path: "features/notes/notes.test.ts", after: '{ method: "GET", path: "/test-only" }' },
+      { path: "shared/x.ts", after: '{ method: "GET", path: "/shared" }' },
+    ];
+    expect(routesIn(files)).toEqual([
+      { method: "GET", path: "/notes" },
+      { method: "POST", path: "/api/notes" },
+    ]);
+  });
+
+  it("describes tool calls in plain words", () => {
+    expect(toolText("Write", "features/notes/index.ts")).toBe("Created features/notes/index.ts");
+    expect(toolText("Bash", "")).toBe("Ran a command");
+    expect(toolText("Custom", "x")).toBe("Custom x");
   });
 });

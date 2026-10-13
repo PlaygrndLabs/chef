@@ -187,7 +187,11 @@ export class Orchestrator {
     const spec = readSpec(tree);
     const decision = await this.router.route(prompt, spec);
     await this.emit({ type: "route.decided", prompt, decision });
-    if (decision.intent === "question") return { decision, sessionId: null, sessionIds: [], answer: await this.answer(prompt) };
+    if (decision.intent === "question") {
+      const answer = await this.answer(prompt);
+      await this.emit({ type: "question.answered", prompt, answer: answer.text, sources: answer.sources });
+      return { decision, sessionId: null, sessionIds: [], answer };
+    }
     const planned = await this.deps.planner.plan({ prompt, intent: decision.intent, changeKind: decision.changeKind, featureId: decision.featureId, spec });
     const plan = this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
     const attempts = Math.max(1, Math.floor(options.attempts ?? this.specialization.attempts));

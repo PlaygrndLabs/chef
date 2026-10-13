@@ -13,6 +13,7 @@ import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, previewHost, stateTone } from "@/lib/format";
 import { relationsOf, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
+import { isTestFile } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
 import { activity, plainReason, progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
 import { cn } from "@/lib/utils";
@@ -244,15 +245,13 @@ function Pill({ icon: Icon, label, value, tone, panel, id }: { readonly icon: ty
   );
 }
 
-const TEST_FILE = /(^|\/)(test|tests|__tests__)\/|\.(test|spec)\.[a-z]+$/;
-
 function Artifacts({ node, preview }: { readonly node: SessionNode; readonly preview: { readonly url: string } | null }) {
   const { api } = useWorkspace();
   const commits = node.live?.commits.length ?? node.record?.commits.length ?? 0;
   const head = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
   const changes = useFetch(commits ? () => api.changes(node.id) : null, `${node.id}:${head}`);
   const files = changes.data?.files ?? [];
-  const tests = files.filter((f) => TEST_FILE.test(f.path)).length;
+  const tests = files.filter((f) => isTestFile(f.path)).length;
   const verdict = node.live?.verdict ?? node.record?.verdict ?? null;
   const gate = node.live?.gate ?? null;
   const failed = gate ? gate.checks.filter((c) => !c.ok).length : 0;

@@ -19,7 +19,7 @@ import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder } from "./sandbox-coder.ts";
-import { buildingPage, CloudflareWorkerSpace } from "./preview-space.ts";
+import { buildingPage, CloudflareWorkerSpace, previewPath } from "./preview-space.ts";
 import { gitHubApp } from "./github.ts";
 import { currentSettings, settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
@@ -101,7 +101,7 @@ export class ProjectAgent extends Agent<Env> {
     const session = SESSION_ROUTE.exec(url.pathname);
     if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
     const preview = PREVIEW_ROUTE.exec(url.pathname);
-    if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"));
+    if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")));
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
     if (request.method === "GET" && url.pathname.endsWith("/git")) return Response.json({ settings: viewProjectSettings(await this.projectSettings()).git, state: external ? await external.state() : null });
     if (request.method === "POST" && url.pathname.endsWith("/git/sync")) {
@@ -206,12 +206,12 @@ export class ProjectAgent extends Agent<Env> {
     return Response.json({ error: "not found" }, { status: 404 });
   }
 
-  private async previewRequest(key: string, retry: boolean): Promise<Response> {
+  private async previewRequest(key: string, retry: boolean, path: string): Promise<Response> {
     const { keeper } = await this.build();
     if (!keeper) return buildingPage({ status: "failed", key, error: NO_CLOUDFLARE });
     let visit = await keeper.visit(key);
     if (visit.status === "failed" && retry) visit = { status: "rebuild" };
-    if (visit.status === "ready") return new Response(null, { status: 302, headers: { location: visit.url, "cache-control": "no-store" } });
+    if (visit.status === "ready") return new Response(null, { status: 302, headers: { location: `${visit.url.replace(/\/$/, "")}${path}`, "cache-control": "no-store" } });
     if (visit.status === "rebuild") {
       await keeper.startRebuild(key);
       await this.schedule(0, "rebuildPreview", key);
@@ -280,7 +280,13 @@ export class ProjectAgent extends Agent<Env> {
 
   override async onConnect(connection: Connection): Promise<void> {
     const { bus } = await this.build();
-    for (const entry of await bus.since(0)) connection.send(JSON.stringify(entry));
+    for (let after = 0; ; ) {
+      const entries = await bus.since(after);
+      for (const entry of entries) connection.send(JSON.stringify(entry));
+      const last = entries.at(-1);
+      if (!last || entries.length < 500) break;
+      after = last.seq;
+    }
   }
 
   async syncExternal(): Promise<void> {

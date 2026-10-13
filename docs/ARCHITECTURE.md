@@ -189,4 +189,4 @@ Served by the chef Worker (`workers/src/index.ts`):
 | `GET /api/projects/:name/events?after=<seq>` | Stored events after a sequence number |
 | `GET /api/projects/:name/cursor` | The last event sequence number |
 | `POST /api/projects/:name/copilotkit/*` | The CopilotKit runtime; `agent/default/run` streams a prompt's sessions as AG-UI events |
-| `WS /agents/project-agent/:name` | Live events, replayed from the start on connect |
+| `WS /agents/project/:name` | Live events, replayed from the start on connect |
