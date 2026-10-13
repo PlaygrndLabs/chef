@@ -305,22 +305,26 @@ function app(ctx, width, height) {
   const blue = brand();
   const muted = css("--muted-foreground", "#777");
   const green = css("--success", "#16a34a");
-  const W = 560;
-  const H = 420;
-  const scale = Math.min(width / W, height / H);
-  const ox = (width - W * scale) / 2;
-  const oy = (height - H * scale) / 2;
-  const step = 8 / FINE;
-  const grid = { x: (W - COLS * step) / 2, y: 64 };
+  const canvas = ctx.canvas.getBoundingClientRect();
+  const stage = ctx.canvas.parentElement?.querySelector(".stage")?.getBoundingClientRect();
+  const box = stage && stage.width ? { x: stage.left - canvas.left, y: stage.top - canvas.top, w: stage.width, h: stage.height } : { x: width * 0.55, y: height * 0.2, w: width * 0.4, h: height * 0.6 };
+  const step = box.w / COLS;
+  const grid = { x: box.x, y: box.y + Math.max(36, (box.h - ROWS * step) / 2) };
   const cycle = 9;
   const rand = random(5);
   const count = Math.max(...apps.map((a) => a.cells.length));
-  const scatter = () => {
-    const a = rand() * Math.PI * 2;
-    const d = 0.55 + rand() * 0.6;
-    return { x: W / 2 + Math.cos(a) * W * d * 0.62, y: H / 2 + Math.sin(a) * H * d * 0.7 };
-  };
-  const dots = Array.from({ length: count }, () => ({ from: scatter(), to: scatter(), jitter: rand() }));
+  const loose = Math.round((width * height) / 2600);
+  const dots = Array.from({ length: count + loose }, () => ({
+    x: rand() * width,
+    y: rand() * height,
+    ax: 6 + rand() * 22,
+    ay: 6 + rand() * 18,
+    sx: 0.00012 + rand() * 0.00025,
+    sy: 0.0001 + rand() * 0.0002,
+    phase: rand() * 100,
+    size: 1.2 + rand() * 1.2,
+    jitter: rand(),
+  }));
   const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
   return (now) => {
     const total = still ? 5.5 : (now / 1000) % (cycle * apps.length);
@@ -328,63 +332,39 @@ function app(ctx, width, height) {
     const t = total - index * cycle;
     const app = apps[index];
     const ratio = ctx.canvas.width / width;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    ctx.setTransform(ratio * scale, 0, 0, ratio * scale, ratio * ox, ratio * oy);
-    const pointer = ctx.canvas.pointer ? { x: (ctx.canvas.pointer.x - ox) / scale, y: (ctx.canvas.pointer.y - oy) / scale } : null;
-    const near = (x, y, reach) => (pointer ? Math.max(0, 1 - Math.hypot(x - pointer.x, y - pointer.y) / reach) : 0);
-
-    ctx.fillStyle = blue;
-    ctx.globalAlpha = 0.07;
-    for (let x = 2; x < W; x += 12) {
-      for (let y = 2; y < H; y += 12) ctx.fillRect(x, y, 1, 1);
-    }
-    ctx.globalAlpha = 1;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const pointer = ctx.canvas.pointer;
+    const time = still ? 0 : now;
 
     ctx.fillStyle = blue;
     for (let k = 0; k < dots.length; k++) {
       const dot = dots[k];
-      const cell = app.cells[k];
-      let x;
-      let y;
-      let alpha;
+      let x = dot.x + Math.sin(time * dot.sx + dot.phase) * dot.ax;
+      let y = dot.y + Math.cos(time * dot.sy + dot.phase * 1.3) * dot.ay;
+      let alpha = 0.14 + 0.26 * (Math.sin(time / 900 + dot.phase) * 0.5 + 0.5);
+      let size = dot.size;
+      const cell = k < count ? app.cells[k] : undefined;
       if (cell) {
         const tx = grid.x + (cell[0] % COLS) * step;
         const ty = grid.y + Math.floor(cell[0] / COLS) * step;
-        const delay = ((cell[0] % COLS) / COLS) * 0.6 + dot.jitter * 0.5;
-        const come = ease((t - 1.6 - delay) / 1.4);
-        const go = ease((t - 7.4 - dot.jitter * 0.4) / 1.2);
-        x = dot.from.x + (tx - dot.from.x) * come;
-        y = dot.from.y + (ty - dot.from.y) * come;
-        x += (dot.to.x - x) * go;
-        y += (dot.to.y - y) * go;
-        const shimmer = t > 3.6 && t < 7.4 ? 0.12 * Math.sin(t * 3 - (cell[0] % COLS) / 6) : 0;
-        alpha = (0.1 + 0.9 * come) * (1 - go) * Math.min(1, cell[1] + shimmer);
-      } else {
-        x = dot.from.x;
-        y = dot.from.y;
-        alpha = 0;
+        const delay = ((cell[0] % COLS) / COLS) * 0.6 + dot.jitter * 0.6;
+        const here = ease((t - 1.4 - delay) / 1.5) * (1 - ease((t - 7.2 - dot.jitter * 0.5) / 1.3));
+        const shimmer = t > 3.6 && t < 7.2 ? 0.12 * Math.sin(t * 3 - (cell[0] % COLS) / 6) : 0;
+        x += (tx - x) * here;
+        y += (ty - y) * here;
+        alpha += (Math.min(1, cell[1] + shimmer) - alpha) * here;
+        size += (step * 0.55 - size) * here;
       }
-      if (alpha <= 0.01) continue;
-      const push = near(x, y, 60);
-      if (push) {
+      if (pointer) {
         const d = Math.hypot(x - pointer.x, y - pointer.y) || 1;
-        x += ((x - pointer.x) / d) * push * push * 14;
-        y += ((y - pointer.y) / d) * push * push * 14;
+        const push = Math.max(0, 1 - d / 90);
+        x += ((x - pointer.x) / d) * push * push * 18;
+        y += ((y - pointer.y) / d) * push * push * 18;
+        alpha = Math.min(1, alpha + push * 0.45);
       }
-      ctx.globalAlpha = Math.min(1, alpha + push * 0.4);
-      ctx.fillRect(x, y, 2.2, 2.2);
-    }
-    ctx.globalAlpha = 1;
-    if (t > 7.4 && !still) {
-      for (const dot of dots) {
-        dot.from = dot.to;
-      }
-    }
-    if (t < 1 && !still) {
-      for (const dot of dots) {
-        if (dot.to === dot.from) dot.to = scatter();
-      }
+      ctx.globalAlpha = alpha;
+      ctx.fillRect(x, y, size, size);
     }
 
     const typing = ease(Math.min(1, t / 1.3));
@@ -392,16 +372,16 @@ function app(ctx, width, height) {
     ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
     ctx.fillStyle = muted;
     ctx.globalAlpha = fade;
-    const typed = app.prompt.slice(0, Math.round(app.prompt.length * typing));
-    ctx.fillText(`> ${typed}`, grid.x, 30);
-    if (t < 1.5 && Math.floor(now / 450) % 2 === 0) ctx.fillRect(grid.x + ctx.measureText(`> ${typed}`).width + 2, 20, 6, 13);
+    const typed = `> ${app.prompt.slice(0, Math.round(app.prompt.length * typing))}`;
+    ctx.fillText(typed, grid.x, grid.y - 18);
+    if (t < 1.5 && Math.floor(now / 450) % 2 === 0) ctx.fillRect(grid.x + ctx.measureText(typed).width + 2, grid.y - 28, 6, 13);
     if (t > 3.6 && t < 8.2) {
-      const shown = Math.min(1, (t - 3.6) / 0.4, (8.2 - t) / 0.4);
-      ctx.globalAlpha = shown;
+      const below = grid.y + ROWS * step + 26;
+      ctx.globalAlpha = Math.min(1, (t - 3.6) / 0.4, (8.2 - t) / 0.4);
       ctx.fillStyle = green;
-      ctx.fillRect(grid.x, H - 22, 5, 5);
+      ctx.fillRect(grid.x, below - 6, 5, 5);
       ctx.fillStyle = muted;
-      ctx.fillText(`${app.host} · live`, grid.x + 12, H - 16);
+      ctx.fillText(`${app.host} · live`, grid.x + 12, below);
     }
     ctx.globalAlpha = 1;
   };
