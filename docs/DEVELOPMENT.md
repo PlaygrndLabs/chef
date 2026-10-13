@@ -38,7 +38,7 @@ node --import tsx cli/src/bin.ts demo --live         # one feature with the real
 
 ## Testing the local engine
 
-`cli/test/unit/engine.test.ts` runs the local engine with a stand-in for Docker. `CHEF_DOCKER_E2E=1 pnpm exec vitest run --project e2e cli/test/e2e/local-sandbox.test.ts` takes a feature through checks, a preview and its proof in real containers (it builds the sandbox image the first time). `CHEF_LIVE_LOCAL=1` with a model key runs `cli/test/e2e/local-live.test.ts`, a whole feature with a real model; CI runs it on pull requests labelled `live-local`. Behind a proxy on `localhost`, set `CHEF_SANDBOX_NETWORK=host`.
+`cli/test/unit/engine.test.ts` runs the local engine with a stand-in for Docker. `CHEF_DOCKER_E2E=1 pnpm exec vitest run --project e2e cli/test/e2e/local-sandbox.test.ts` takes a feature through checks, a preview and its proof in real containers (it builds the sandbox image the first time). `CHEF_LIVE_LOCAL=1` with a model key runs `cli/test/e2e/local-live.test.ts`, a whole feature with a real model; CI runs it on pull requests labelled `live-local`, and on a manual run of the `ci` workflow with `live` checked. Behind a proxy on `localhost`, set `CHEF_SANDBOX_NETWORK=host`.
 
 ## Model provider for the CLI
 
