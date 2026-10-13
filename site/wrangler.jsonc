@@ -1,19 +1,20 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
-  "name": "getchef",
+  "name": "chef-site",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
-  "assets": { "directory": "public", "binding": "ASSETS", "run_worker_first": ["/start", "/callback", "/api/*"] },
-  "durable_objects": { "bindings": [{ "name": "SETUP", "class_name": "Setup" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Setup"] }],
+  "build": { "command": "node scripts/build.mjs" },
+  "assets": { "directory": "dist", "binding": "ASSETS", "run_worker_first": true },
+  "durable_objects": { "bindings": [{ "name": "MEMBER", "class_name": "Member" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Member"] }],
   "containers": [
     {
-      "class_name": "Setup",
+      "class_name": "Member",
       "scheduling_policy": "durable_object",
       "images": { "installer": { "dockerfile": "./installer/Dockerfile", "build_context": ".." } }
     }
   ],
-  "vars": { "SANDBOX_IMAGE": "" }
+  "vars": { "SANDBOX_IMAGE": "", "ENGINE_VERSION": "" }
 }

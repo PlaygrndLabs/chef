@@ -51,7 +51,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["cli/src/bin.ts", "template/app/cli.ts", "workers/scripts/**", "workers/sandbox/**"],
+    files: ["cli/src/bin.ts", "template/app/cli.ts", "workers/scripts/**", "workers/sandbox/**", "site/scripts/**"],
     rules: { "no-console": "off" },
   },
 );

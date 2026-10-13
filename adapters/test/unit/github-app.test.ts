@@ -19,6 +19,12 @@ describe("chef's GitHub App", () => {
       default_permissions: { contents: "write", pull_requests: "write", metadata: "read" },
       default_events: ["push"],
     });
+    expect(appManifest("https://chef.acme.workers.dev", "chef-acme-ab12", "https://chef.example.com")).toMatchObject({
+      url: "https://chef.example.com",
+      hook_attributes: { url: "https://chef.acme.workers.dev/api/github/webhook" },
+      redirect_url: "https://chef.example.com/api/github/created",
+      setup_url: "https://chef.example.com/api/github/installed",
+    });
     expect(appName("chef.playgrndlabs.workers.dev", "ab12")).toBe("chef-playgrndlabs-ab12");
     expect(appName("chef.a-very-long-account-name-that-goes-on.workers.dev", "ab12").length).toBeLessThanOrEqual(34);
     expect(manifestAction(null, "s1")).toBe("https://github.com/settings/apps/new?state=s1");

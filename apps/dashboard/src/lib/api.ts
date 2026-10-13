@@ -69,6 +69,7 @@ export interface AppMode {
   readonly docker?: string | null;
   readonly setup?: CloudflareSetup;
   readonly claimed?: boolean;
+  readonly account?: string | null;
 }
 
 export interface CloudflareCheck {

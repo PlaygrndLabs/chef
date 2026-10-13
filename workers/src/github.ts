@@ -1,5 +1,5 @@
 import { appManifest, appName, convertManifest, GitHubApp, installUrl, manifestAction, viewApp, type GitHubAppCredentials } from "@chef/adapters/github-app";
-import { manifestPage, safeReturn } from "./github-pages.ts";
+import { manifestPage, publicOrigin, safeReturn } from "./github-pages.ts";
 import { settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
 
@@ -43,7 +43,7 @@ export async function gitHubRequest(request: Request, env: Env): Promise<Respons
     const organization = url.searchParams.get("organization")?.trim() || null;
     if (organization && !ORGANIZATION.test(organization)) return Response.json({ error: "that is not a GitHub organization name" }, { status: 400 });
     const suffix = crypto.randomUUID().slice(0, 4);
-    return manifestPage(manifestAction(organization, state), appManifest(url.origin, appName(url.hostname, suffix)));
+    return manifestPage(manifestAction(organization, state), appManifest(url.origin, appName(url.hostname, suffix), publicOrigin(request)));
   }
   if (action === "/created" && request.method === "GET") {
     const code = url.searchParams.get("code");

@@ -252,6 +252,21 @@ function ComputerSection(props: { readonly settings: SettingsView }) {
   );
 }
 
+function AccountSection(props: { readonly account: string | null }) {
+  return (
+    <Group title="Account" note="You signed in with Cloudflare. chef works in your Cloudflare account, and this site keeps only its address.">
+      <form method="post" action="/auth/signout" className="flex items-center gap-3">
+        <p className="text-xs text-muted-foreground" data-current="account">
+          {props.account ? `Signed in as ${props.account}` : "Signed in with Cloudflare"}
+        </p>
+        <Button type="submit" size="sm" variant="outline">
+          Sign out
+        </Button>
+      </form>
+    </Group>
+  );
+}
+
 function ConnectionForm() {
   const mode = useAppMode();
   if (!mode || mode.mode !== "local" || mode.place !== "cloud") return null;
@@ -350,6 +365,8 @@ export function SettingsDialog(props: {
   const { settings, onChange, nav } = props;
   const missing = missingSettings(settings);
   const computer = settings?.runsOn === "computer";
+  const mode = useAppMode();
+  const hosted = mode?.account !== undefined;
   const save: Save = async (update, done = "Saved") => {
     try {
       onChange(await settingsApi.save(update));
@@ -380,7 +397,8 @@ export function SettingsDialog(props: {
             <ThemeChoice />
           </Group>
           {settings && computer ? <ComputerSection settings={settings} /> : null}
-          {settings && !computer ? (
+          {hosted ? <AccountSection account={mode?.account ?? null} /> : null}
+          {settings && !computer && !hosted ? (
             <Group title="Password" note="Changing it signs out every other browser and script.">
               <PasswordForm settings={settings} save={save} />
             </Group>

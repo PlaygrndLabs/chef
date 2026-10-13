@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorizeUrl, challengeFor, cookies, decodePending, encodePending, planFrom, readGrant, readInstall, sessionId, setCookie, tokenRequest } from "../../src/oauth.ts";
+import { authorizeUrl, challengeFor, cookies, decodePending, encodePending, planFrom, readGrant, readInstall, readProfile, readSession, setCookie, signSession, tokenRequest } from "../../src/oauth.ts";
 
 const client = { clientId: "abc", clientSecret: "shh", scopes: "a.read b.write" };
 
@@ -34,20 +34,26 @@ describe("Cloudflare sign-in", () => {
 
   it("reads and writes its cookies", () => {
     expect(cookies("a=1; chef_oauth=st.ver; b=x%20y")).toEqual({ a: "1", chef_oauth: "st.ver", b: "x y" });
-    expect(setCookie("chef_setup", "v", 60)).toBe("chef_setup=v; Path=/; Max-Age=60; HttpOnly; Secure; SameSite=Lax");
+    expect(setCookie("chef_session", "v", 60)).toBe("chef_session=v; Path=/; Max-Age=60; HttpOnly; Secure; SameSite=Lax");
     expect(decodePending(encodePending({ state: "s", verifier: "v" }))).toEqual({ state: "s", verifier: "v" });
     expect(decodePending("nodot")).toBeNull();
-    expect(sessionId("x".repeat(43))).toBe("x".repeat(43));
-    expect(sessionId("../etc")).toBeNull();
   });
 
-  it("checks what the setup form sends", () => {
+  it("signs sessions so only this site can mint them, and lets them expire", async () => {
+    const cookie = await signSession("secret", "user1", 0);
+    expect(await readSession("secret", cookie, 1000)).toBe("user1");
+    expect(await readSession("other", cookie, 1000)).toBeNull();
+    expect(await readSession("secret", cookie.replace("user1", "user2"), 1000)).toBeNull();
+    expect(await readSession("secret", cookie, 31 * 24 * 3600 * 1000)).toBeNull();
+    expect(await readSession("secret", undefined, 0)).toBeNull();
+  });
+
+  it("reads who signed in and which account they chose", () => {
+    expect(readProfile({ result: { id: "abc123", email: "sam@example.com" } })).toEqual({ id: "abc123", email: "sam@example.com" });
+    expect(readProfile({ result: { id: "../x" } })).toBeNull();
     const accountId = "0123456789abcdef0123456789abcdef";
-    expect(readInstall({ accountId, password: "long enough" })).toEqual({ accountId, password: "long enough", name: "chef" });
-    expect(readInstall({ accountId })).toEqual({ accountId, password: null, name: "chef" });
-    expect(readInstall({ accountId, password: "short" })).toBe("use a password of at least 8 characters");
+    expect(readInstall({ accountId })).toEqual({ accountId });
     expect(readInstall({ accountId: "nope" })).toBe("choose a Cloudflare account");
-    expect(readInstall({ accountId, name: "Bad Name" })).toBe("the name uses lowercase letters, digits and dashes");
   });
 
   it("tells Workers Paid apart from a free account", () => {

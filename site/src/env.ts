@@ -1,13 +1,14 @@
+import type { Member } from "./member.ts";
 import type { OAuthClient } from "./oauth.ts";
-import type { Setup } from "./setup.ts";
 
 export interface Env {
   readonly ASSETS: Fetcher;
-  readonly SETUP: DurableObjectNamespace<Setup>;
+  readonly MEMBER: DurableObjectNamespace<Member>;
   readonly OAUTH_CLIENT_ID?: string;
   readonly OAUTH_CLIENT_SECRET?: string;
   readonly OAUTH_SCOPES?: string;
   readonly SANDBOX_IMAGE?: string;
+  readonly ENGINE_VERSION?: string;
   readonly CF_ACCOUNT_ID?: string;
   readonly CF_API_TOKEN?: string;
 }

@@ -22,9 +22,7 @@ function selected() {
 
 function refreshForm() {
   const account = selected();
-  const updating = Boolean(account?.chefUrl);
-  $("password-fields").hidden = updating;
-  $("go").textContent = updating ? "Update chef" : "Set up chef";
+  $("go").textContent = account?.hasChef ? "Connect and update chef" : "Set up chef";
   $("go").disabled = !account;
   $("form-error").textContent = "";
 }
@@ -38,10 +36,10 @@ function renderAccounts() {
   }
   for (const account of accounts) {
     const meta = el("div", { className: "meta" });
-    if (account.chefUrl) meta.append("chef is already here. Choosing this account updates it and keeps your projects. ", el("a", { href: account.chefUrl, target: "_blank", rel: "noopener", textContent: "Open it" }));
+    if (account.hasChef) meta.append("chef is already on this account. Choosing it updates chef and connects it here, keeping your projects. Its old password stops working; you sign in here from now on.");
     else if (account.plan === "free") meta.append("chef needs the Workers Paid plan on this account. ", el("a", { href: `https://dash.cloudflare.com/${account.id}/workers/plans`, target: "_blank", rel: "noopener", textContent: "Upgrade in Cloudflare" }), ", then come back here.");
-    else meta.append(account.subdomain ? `chef will open at chef.${account.subdomain}.workers.dev` : "chef will create a workers.dev address for this account");
-    const name = el("div", { className: "name" }, account.name, account.plan === "paid" ? badge("Workers Paid", "ok") : account.plan === "free" ? badge("Free plan", "warn") : null, account.chefUrl ? badge("chef installed", "ok") : null);
+    else meta.append("chef will set up its engine on this account.");
+    const name = el("div", { className: "name" }, account.name, account.plan === "paid" ? badge("Workers Paid", "ok") : account.plan === "free" ? badge("Free plan", "warn") : null, account.hasChef ? badge("chef installed", "ok") : null);
     const input = el("input", { type: "radio", name: "account", value: account.id });
     input.addEventListener("change", refreshForm);
     list.append(el("label", { className: "account" }, input, el("div", {}, name, meta)));
@@ -58,10 +56,10 @@ function renderInstall(install) {
   log.textContent = (install.log ?? []).join("\n");
   if (atBottom) log.scrollTop = log.scrollHeight;
   $("install-error").textContent = install.error ?? "";
+  if (install.update) $("install-title").textContent = "Updating chef";
   if (install.status === "done") {
     $("install-title").textContent = "chef is ready";
-    $("install-sub").textContent = "Open your chef and sign in with the password you chose. Cloudflare access for this setup has been handed back.";
-    $("open").href = install.url;
+    $("install-sub").textContent = "Your chef engine is running in your Cloudflare account. Cloudflare access for this setup has been handed back.";
     $("open").hidden = false;
   }
   if (install.status === "failed") {
@@ -74,26 +72,26 @@ function renderInstall(install) {
   if (install.status !== "running" && polling) {
     clearInterval(polling);
     polling = null;
-    $("signout").hidden = true;
   }
 }
 
 async function poll() {
-  const response = await fetch("/api/install", { cache: "no-store" }).catch(() => null);
+  const response = await fetch("/site/api/install", { cache: "no-store" }).catch(() => null);
   if (response?.ok) renderInstall(await response.json());
 }
 
 async function load() {
-  const response = await fetch("/api/session", { cache: "no-store" }).catch(() => null);
-  const session = response?.ok ? await response.json() : { signedIn: false };
-  if (session.install) {
-    renderInstall(session.install);
-    if (session.install.status === "running") polling = setInterval(poll, 2000);
+  const response = await fetch("/site/api/me", { cache: "no-store" }).catch(() => null);
+  if (response?.status === 401) return location.assign("/");
+  const me = response?.ok ? await response.json() : { canSetUp: false };
+  if (me.install) {
+    renderInstall(me.install);
+    if (me.install.status === "running") polling = setInterval(poll, 2000);
     return;
   }
-  if (!session.signedIn) return show("signed-out");
-  $("signout").hidden = false;
-  accounts = session.accounts ?? [];
+  if (me.engine) return location.assign("/");
+  if (!me.canSetUp) return show("signed-out");
+  accounts = me.accounts ?? [];
   renderAccounts();
   show("choose");
 }
@@ -102,12 +100,8 @@ $("choose").addEventListener("submit", async (event) => {
   event.preventDefault();
   const account = selected();
   if (!account) return;
-  const updating = Boolean(account.chefUrl);
-  const password = $("password").value;
-  if (!updating && password.length < 8) return ($("form-error").textContent = "Use a password of at least 8 characters.");
-  if (!updating && password !== $("password2").value) return ($("form-error").textContent = "The two passwords do not match.");
   $("go").disabled = true;
-  const response = await fetch("/api/install", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: account.id, password: updating ? null : password }) }).catch(() => null);
+  const response = await fetch("/site/api/install", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: account.id }) }).catch(() => null);
   const body = response ? await response.json().catch(() => ({})) : {};
   if (!response?.ok) {
     $("go").disabled = false;
@@ -118,15 +112,14 @@ $("choose").addEventListener("submit", async (event) => {
   polling = setInterval(poll, 2000);
 });
 
+$("open").addEventListener("click", async () => {
+  await fetch("/site/api/install", { method: "DELETE" }).catch(() => null);
+  location.assign("/");
+});
+
 $("toggle-log").addEventListener("click", () => {
   $("log").hidden = !$("log").hidden;
   $("toggle-log").textContent = $("log").hidden ? "Show log" : "Hide log";
-});
-
-$("signout").addEventListener("click", async (event) => {
-  event.preventDefault();
-  await fetch("/api/signout", { method: "POST" }).catch(() => null);
-  location.href = "/";
 });
 
 load();

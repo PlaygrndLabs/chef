@@ -7,7 +7,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "types": "wrangler types --config wrangler.jsonc worker-configuration.d.ts",
     "dev": "wrangler dev --config wrangler.jsonc",
-    "deploy": "wrangler deploy --config wrangler.jsonc"
+    "deploy": "wrangler deploy --config wrangler.jsonc",
+    "build": "node scripts/build.mjs"
   },
   "devDependencies": {
     "wrangler": "4.149.0"
