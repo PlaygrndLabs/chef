@@ -13,19 +13,17 @@ interface OrgState {
 interface Fake {
   orgs: Record<string, OrgState>;
   admins: string[];
-  legacy: Record<string, { url: string; secret: string; accountId: string; version: string }>;
   calls: { name: string; method: string; arg?: unknown }[];
 }
 
 const ENGINE = { url: "https://chef.sam.workers.dev", secret: "engine-secret" };
 
 function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Role } = {}, withClient = true) {
-  const fake: Fake = { orgs: { org1: { name: "sam's org", engine: state.engine ?? null, members: { user1: state.role ?? "owner", boss: "owner" } } }, admins: [], legacy: {}, calls: [], ...state };
+  const fake: Fake = { orgs: { org1: { name: "sam's org", engine: state.engine ?? null, members: { user1: state.role ?? "owner", boss: "owner" } } }, admins: [], calls: [], ...state };
   const summaries = (userId: string) => Object.entries(fake.orgs).flatMap(([id, org]) => (org.members[userId] ? [{ id, name: org.name, role: org.members[userId] }] : []));
   const member = (name: string) => ({
     signIn: async (profile: unknown, grant: unknown, admin: unknown, org: unknown) => void fake.calls.push({ name, method: "signIn", arg: { profile, grant, admin, org } }),
     admin: async () => fake.admins.includes(name),
-    legacyEngine: async () => fake.legacy[name] ?? null,
     view: async () => ({ email: "sam@example.com", admin: fake.admins.includes(name), canSetUp: true, install: null }),
     accounts: async () => [{ id: "a1", name: "Mine", plan: "paid", subdomain: "mine" }],
     status: async () => ({ status: "idle" }),
@@ -48,7 +46,7 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
   const dir = {
     signIn: async (identity: { subject: string; email: string }, admin: boolean) => {
       fake.calls.push({ name: "directory", method: "signIn", arg: { identity, admin } });
-      return { userId: "usr_new", created: true, org: { id: "org_new", name: "sam's org", role: "owner" }, orgs: [{ id: "org_new", name: "sam's org", role: "owner" }] };
+      return { userId: "usr_new", org: { id: "org_new", name: "sam's org", role: "owner" }, orgs: [{ id: "org_new", name: "sam's org", role: "owner" }] };
     },
     orgs: async (userId: string) => summaries(userId),
     createOrg: async (userId: string, name: string) => (fake.calls.push({ name: "directory", method: "createOrg", arg: { userId, name } }), { id: "org2", name, role: "owner" }),
@@ -119,16 +117,6 @@ describe("chef site", () => {
     ]);
     expect(fake.orgs["org_new"]?.members).toEqual({ usr_new: "owner" });
     expect(response.headers.getSetCookie().some((c) => c.startsWith("chef_session=usr_new.org_new."))).toBe(true);
-  });
-
-  it("moves a chef set up before organizations into the person's default organization", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => (String(input instanceof Request ? input.url : input).endsWith("/user") ? Response.json({ result: { id: "cfuser", email: "sam@example.com" } }) : Response.json({ access_token: "tok", expires_in: 600, result: [] }))));
-    const legacy = { url: "https://chef.sam.workers.dev", secret: "old", accountId: "a1", version: "v1" };
-    const { env, fake } = fakeEnv({ legacy: { cfuser: legacy } });
-    const response = await handle(new Request(`${origin}/auth/callback?code=c&state=mine`, { headers: { cookie: "chef_oauth=mine.verifier" } }), env);
-    expect(response.headers.get("location")).toBe("/");
-    expect(fake.orgs["org_new"]?.engine).toEqual(legacy);
-    expect(fake.calls).toContainEqual({ name: "directory", method: "recordSetup", arg: { orgId: "org_new", setup: { accountId: "a1", engine: legacy.url, version: "v1", install: "done", error: null } } });
   });
 
   it("starts setup only for a same-site request from an owner or admin of the organization", async () => {

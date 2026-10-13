@@ -13,13 +13,6 @@ const redirect = (location: string, setCookies: readonly string[] = []) => {
 const page = (env: Env, request: Request, path: string) => env.ASSETS.fetch(new Request(new URL(path, request.url), { headers: request.headers }));
 const sessionCookie = async (client: OAuthClient, session: Session) => setCookie(SESSION_COOKIE, await signSession(client.clientSecret, session, Date.now()), SESSION_SECONDS);
 
-async function adoptLegacyEngine(env: Env, cloudflareId: string, orgId: string): Promise<void> {
-  const engine = await memberOf(env, cloudflareId).legacyEngine().catch(() => null);
-  if (!engine) return;
-  await organization(env, orgId).setEngine(engine);
-  await directory(env).recordSetup(orgId, { accountId: engine.accountId, engine: engine.url, version: engine.version, install: "done", error: null });
-}
-
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -48,7 +41,6 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     const signed = await directory(env).signIn({ provider: "cloudflare", subject: profile.id, email: profile.email }, admin);
     const org = organization(env, signed.org.id);
     await org.setup({ id: signed.org.id, name: signed.org.name }, { userId: signed.userId, email: profile.email, role: signed.org.role });
-    if (signed.created) await adoptLegacyEngine(env, profile.id, signed.org.id);
     const engine = await org.engine();
     await memberOf(env, signed.userId).signIn(profile, grant, admin, { id: signed.org.id, canSetUp: can(signed.org.role, "setup"), engine });
     return redirect(engine ? "/" : "/setup", [clear, await sessionCookie(client, { userId: signed.userId, orgId: signed.org.id })]);

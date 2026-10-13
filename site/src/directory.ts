@@ -12,7 +12,6 @@ export interface Identity {
 
 export interface SignedIn {
   readonly userId: string;
-  readonly created: boolean;
   readonly org: OrgSummary;
   readonly orgs: readonly OrgSummary[];
 }
@@ -106,7 +105,7 @@ export class Members extends DurableObject<Env> {
       const last = sql.exec<{ last_org: string | null }>("SELECT last_org FROM users WHERE id = ?", userId).one().last_org;
       const org = orgs.find((o) => o.id === last) ?? (orgs[0] as OrgSummary);
       sql.exec("UPDATE users SET last_org = ? WHERE id = ?", org.id, userId);
-      return { userId, created: !found, org, orgs };
+      return { userId, org, orgs };
     });
   }
 

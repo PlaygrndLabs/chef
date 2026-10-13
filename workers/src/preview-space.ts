@@ -42,10 +42,6 @@ export class CloudflareWorkerSpace implements PreviewSpace {
     }
   }
 
-  async removeWorker(name: string): Promise<void> {
-    await this.api("DELETE", `/workers/scripts/${encodeURIComponent(name)}?force=true`, undefined, true);
-  }
-
   async liveUrl(): Promise<string> {
     const account = await this.api<{ subdomain?: string }>("GET", "/workers/subdomain");
     if (!account?.subdomain) throw new Error("this Cloudflare account has no workers.dev subdomain yet");
