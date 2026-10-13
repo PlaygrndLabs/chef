@@ -131,12 +131,13 @@ export function ProjectHeader({ onMenu }: { readonly onMenu?: () => void }) {
   );
 }
 
-export function TreePane() {
+export function TreePane({ header = false }: { readonly header?: boolean }) {
   const { openSettings, app, features } = useWorkspace();
   const count = features.filter((f) => f.sessions.length > 0).length;
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="flex h-11 shrink-0 items-center gap-1.5 border-b px-3.5 text-xs font-medium text-muted-foreground">
+      {header ? <ProjectHeader /> : null}
+      <div className={cn("flex shrink-0 items-center gap-1.5 px-3.5 text-xs font-medium text-muted-foreground", header ? "h-9" : "h-11 border-b")}>
         Features
         {count ? <span className="tabular-nums">{count}</span> : null}
       </div>
