@@ -1,3 +1,4 @@
+import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
 import type { AgentConfig, AgentsView, Budget, FeatureSpec, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
@@ -131,9 +132,32 @@ export type OverviewState =
   | { readonly status: "ready"; readonly commitId: string | null; readonly at: number; readonly overview: Overview }
   | { readonly status: "failed"; readonly at: number; readonly error: string };
 
+export type SetupNote = Extract<SetupEvent, { type: "step" | "log" }>;
+
+export interface CreatedProject {
+  readonly name: string;
+  readonly created: boolean;
+  readonly imported?: boolean;
+}
+
+async function createProject(project: NewProject, onNote: (note: SetupNote) => void = () => undefined): Promise<CreatedProject> {
+  const response = await fetch("/api/projects", { method: "POST", headers: { "content-type": "application/json", accept: SETUP_STREAM }, body: JSON.stringify(project) });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(body.error ?? `${response.status} ${response.statusText}`, response.status);
+  }
+  if (!(response.headers.get("content-type") ?? "").includes(SETUP_STREAM)) return (await response.json()) as CreatedProject;
+  for await (const event of readSetupStream(response)) {
+    if (event.type === "done") return event.result as unknown as CreatedProject;
+    if (event.type === "error") throw new ApiError(event.error, event.status);
+    onNote(event);
+  }
+  throw new ApiError("the connection closed before setup finished; reload to see whether the project was created", 502);
+}
+
 export const projectsApi = {
   list: () => call<{ projects: ProjectEntry[] }>("/api/projects").then((r) => r.projects),
-  create: (project: NewProject) => call<{ name: string; created: boolean; imported?: boolean }>("/api/projects", post(project)),
+  create: createProject,
 };
 
 export interface GitHubAppView {

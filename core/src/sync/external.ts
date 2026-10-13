@@ -9,6 +9,7 @@ import type { Clock, IdSource, KeyValueStore } from "../ports/runtime.ts";
 import { customAgent, outOfScope, type Profiles } from "../profiles/profile.ts";
 import type { SessionRecord } from "../session/record.ts";
 import { readSpec } from "../spec/lint.ts";
+import { quietSetup, type SetupProgress } from "../setup/progress.ts";
 
 export const OUTBOUND_MODES = ["off", "branch", "pull-request", "feature-pull-requests"] as const;
 
@@ -35,7 +36,7 @@ export interface ExternalContext {
   readonly ttl: number;
   lock<T>(task: () => Promise<T>): Promise<T>;
   emit(event: DistributiveOmit<ChefEvent, "project" | "at">): Promise<void>;
-  mainChanged(): Promise<void>;
+  mainChanged(): Promise<number>;
   regenerate(tree: Tree): Tree;
   sessions(): Promise<SessionRecord[]>;
 }
@@ -84,19 +85,29 @@ export class ExternalSync {
     await this.save({ failed: null });
   }
 
-  async pull(): Promise<PullOutcome> {
+  async pull(progress: SetupProgress = quietSetup): Promise<PullOutcome> {
+    progress.step(`Check ${this.remote.url}`);
+    progress.log(`Looking up the latest commit on ${this.remote.branch}`);
     const head = await this.remote.head();
-    if (!head) return { status: "empty" };
+    if (!head) {
+      progress.log(`${this.remote.branch} has no commits yet`);
+      return { status: "empty" };
+    }
+    progress.log(`Latest commit on ${this.remote.branch} is ${head.slice(0, 7)}`);
     const state = await this.state();
     if (head === state.pulled) return { status: "up-to-date" };
     if (head === state.failed) return { status: "waiting", commitId: head };
+    progress.step("Copy the repository into chef");
     const imported = await this.ensureRepo();
+    progress.log(imported ? "Imported the repository history in one go" : "Fetching the code over git");
     const merged = await this.ctx.lock(async () => {
       const mainBefore = await this.ctx.repos.resolveRef(this.ctx.canonical, "main");
       return this.withToken(this.ctx.canonical, async (token) => {
         if (!mainBefore || (imported && mainBefore === head)) {
           await this.remote.pull({ token, ref: "main" });
+          progress.log(`Copied ${this.remote.branch} to chef's main`);
           await this.remote.pull({ token, ref: this.externalRef });
+          progress.log(`Kept ${this.remote.branch} as ${this.externalRef} to track your changes`);
           return { status: "imported" as const, commitId: head };
         }
         await this.remote.pull({ token, ref: this.externalRef });
@@ -107,7 +118,9 @@ export class ExternalSync {
     });
     if (merged.status === "conflict") return this.resolve(head, merged.paths);
     await this.save({ pulled: head, failed: null });
-    await this.ctx.mainChanged();
+    progress.step("Index the project memory");
+    const indexed = await this.ctx.mainChanged();
+    progress.log(indexed === 1 ? "Indexed 1 document" : `Indexed ${indexed} documents`);
     const mainCommit = merged.status === "imported" ? head : merged.mainCommit;
     await this.ctx.emit({ type: "external.pulled", url: this.remote.url, branch: this.remote.branch, commitId: head, mainCommit, status: merged.status });
     return merged;

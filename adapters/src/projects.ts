@@ -1,3 +1,5 @@
+import { readSetupStream, SETUP_STREAM, SetupError, setupResponse, type SetupProgress } from "@chef/core";
+
 const PROJECT_NAME = /^[a-z][a-z0-9-]{1,30}$/;
 
 export interface ProjectEntry {
@@ -16,9 +18,30 @@ export interface ProjectRegistry {
 
 export type ProjectCall = (project: string, path: string, init: RequestInit) => Promise<Response>;
 
-async function failure(response: Response, fallback: string): Promise<Response> {
+async function failure(response: Response, fallback: string): Promise<SetupError> {
   const body = (await response.json().catch(() => ({}))) as { error?: string };
-  return Response.json({ error: body.error ?? fallback }, { status: response.status >= 500 ? 502 : response.status });
+  return new SetupError(body.error ?? fallback, response.status >= 500 ? 502 : response.status);
+}
+
+function describeLink(git: unknown): string {
+  const link = (git ?? {}) as { url?: unknown; branch?: unknown; mode?: unknown; syncBranch?: unknown };
+  const sendBack = link.mode === "off" || !link.mode ? "chef will not send work back" : `finished work goes to ${String(link.syncBranch ?? "chef")} as ${link.mode === "branch" ? "a branch" : "pull requests"}`;
+  return `Linked ${String(link.url ?? "the repository")} (${String(link.branch ?? "main")}); ${sendBack}`;
+}
+
+async function bootstrap(name: string, call: ProjectCall, progress: SetupProgress): Promise<Readonly<Record<string, unknown>>> {
+  const response = await call(name, "bootstrap", { method: "POST", headers: { accept: SETUP_STREAM } });
+  if (!(response.headers.get("content-type") ?? "").includes(SETUP_STREAM)) {
+    if (!response.ok) throw await failure(response, "could not create the project");
+    return (await response.json()) as Readonly<Record<string, unknown>>;
+  }
+  for await (const event of readSetupStream(response)) {
+    if (event.type === "step") progress.step(event.label);
+    else if (event.type === "log") progress.log(event.text);
+    else if (event.type === "done") return event.result;
+    else throw new SetupError(event.error, event.status >= 500 ? 502 : event.status);
+  }
+  throw new SetupError("project setup stopped before it finished", 502);
 }
 
 export async function projectsRequest(request: Request, registry: ProjectRegistry, call: ProjectCall, now: () => number = Date.now): Promise<Response> {
@@ -28,14 +51,21 @@ export async function projectsRequest(request: Request, registry: ProjectRegistr
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   if (!isProjectName(name)) return Response.json({ error: "project names are 2 to 31 lower case letters, digits and dashes, starting with a letter" }, { status: 400 });
   if ((await registry.projects()).some((p) => p.name === name)) return Response.json({ error: `there is already a project named ${name}` }, { status: 409 });
-  const json = { "content-type": "application/json" };
-  if (body?.git) {
-    const linked = await call(name, "settings", { method: "PUT", headers: json, body: JSON.stringify({ git: body.git }) });
-    if (!linked.ok) return failure(linked, "could not link the repository");
-  }
-  const created = await call(name, "bootstrap", { method: "POST" });
-  if (!created.ok) return failure(created, "could not create the project");
-  const result = (await created.json()) as { commitId: string; created: boolean; imported?: boolean };
-  await registry.addProject({ name, createdAt: now() });
-  return Response.json({ name, ...result }, { status: 201 });
+  return setupResponse(
+    request,
+    async (progress) => {
+      if (body?.git) {
+        progress.step("Link the repository");
+        const linked = await call(name, "settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ git: body.git }) });
+        if (!linked.ok) throw await failure(linked, "could not link the repository");
+        progress.log(describeLink(body.git));
+      }
+      const result = await bootstrap(name, call, progress);
+      await registry.addProject({ name, createdAt: now() });
+      progress.log(`Added ${name} to your projects`);
+      return { name, ...result };
+    },
+    201,
+    now,
+  );
 }

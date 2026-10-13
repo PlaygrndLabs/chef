@@ -9,7 +9,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { AgentSettings, applyAgentConfig, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
@@ -145,16 +145,18 @@ export class ProjectAgent extends Agent<Env> {
       return Response.json({ commitId: main.commitId, features: readSpec(main.tree) });
     }
     if (request.method === "POST" && action === "bootstrap") {
-      const existing = (await orchestrator.mainTree()).commitId;
-      if (existing) return Response.json({ commitId: existing, created: false });
-      if (external) {
-        const pulled = await external.pull();
-        if (pulled.status !== "imported") return Response.json({ error: `importing the linked repository did not finish: ${pulled.status}` }, { status: 409 });
-        await this.ensurePolling();
-        await this.startReading();
-        return Response.json({ commitId: pulled.commitId, created: true, imported: true });
-      }
-      return Response.json({ commitId: await orchestrator.bootstrap(templateFiles), created: true });
+      return setupResponse(request, async (progress) => {
+        const existing = (await orchestrator.mainTree()).commitId;
+        if (existing) return { commitId: existing, created: false };
+        if (external) {
+          const pulled = await external.pull(progress);
+          if (pulled.status !== "imported") throw new SetupError(`importing the linked repository did not finish: ${pulled.status}`, 409);
+          await this.ensurePolling();
+          await this.startReading();
+          return { commitId: pulled.commitId, created: true, imported: true };
+        }
+        return { commitId: await orchestrator.bootstrap(templateFiles, progress), created: true };
+      });
     }
     if (action === "overview" && request.method === "GET") return Response.json(await this.overview());
     if (action === "overview" && request.method === "POST") {

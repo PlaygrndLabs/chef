@@ -27,6 +27,7 @@ import { projectRuleProblems, renderRule, rulePath } from "../checks/project-rul
 import { hashHex } from "../util/hash.ts";
 import type { ExternalRemote } from "../ports/external-git.ts";
 import { ExternalSync, type ExternalSyncOptions } from "../sync/external.ts";
+import { quietSetup, type SetupProgress } from "../setup/progress.ts";
 
 export interface Deps {
   readonly repos: RepoHost;
@@ -165,13 +166,23 @@ export class Orchestrator {
     );
   }
 
-  async bootstrap(template: Tree): Promise<string> {
+  async bootstrap(template: Tree, progress: SetupProgress = quietSetup): Promise<string> {
+    progress.step("Create the project's git repository");
     await this.deps.repos.createRepo(this.canonical, { defaultBranch: "main" });
+    progress.log(`Created repository ${this.canonical} with branch main`);
     const token = await this.deps.repos.createToken(this.canonical, "write", this.ttl);
     try {
+      progress.step("Copy chef's starter app");
       const tree = this.regenerate(template);
+      const paths = Object.keys(tree).sort();
+      for (const path of paths.slice(0, SETUP_LOG_FILES)) progress.log(`+ ${path}`);
+      if (paths.length > SETUP_LOG_FILES) progress.log(`+ ${paths.length - SETUP_LOG_FILES} more files`);
+      progress.step("Save the first commit");
       const commit = await this.deps.repos.commit(token, { ref: "main", parent: null, changes: tree, message: "Create project from chef template", author: this.config.author });
-      await this.syncMemory();
+      progress.log(`Committed ${paths.length} files to main as ${commit.id.slice(0, 7)}`);
+      progress.step("Index the project memory");
+      const indexed = await this.syncMemory();
+      progress.log(indexed === 1 ? "Indexed 1 document" : `Indexed ${indexed} documents`);
       return commit.id;
     } finally {
       await this.deps.repos.revokeToken(token);
@@ -700,7 +711,7 @@ export class Orchestrator {
     for (const { rule, sessions } of mined) await this.emit({ type: "lint.rule.added", sessionId: record.id, featureId: record.featureId, ruleId: rule.id, message: rule.message, sessions, evidence: rule.evidence });
   }
 
-  private async syncMemory(): Promise<void> {
+  private async syncMemory(): Promise<number> {
     const { tree } = await this.mainTree();
     const docs = memoryDocs(tree);
     const indexed = (await this.deps.store.get<Record<string, string>>("memory-index/2")) ?? {};
@@ -713,6 +724,7 @@ export class Orchestrator {
     if (changed.length) await this.deps.memory.upsert(changed);
     if (removed.length) await this.deps.memory.remove(removed);
     await this.deps.store.put("memory-index/2", next);
+    return changed.length;
   }
 
   private async recall(record: SessionRecord, feature: FeatureSpec, item: WorkItem): Promise<MemoryHit[]> {
@@ -1166,6 +1178,8 @@ const BUILD_KINDS: readonly WorkItem["kind"][] = ["code", "fix", "refactor", "ch
 const CHORE_PROOFS = 6;
 
 const ADOPT_LIMIT = 20;
+
+const SETUP_LOG_FILES = 60;
 
 function hasMarkers(content: string | undefined): boolean {
   return content?.includes("<<<<<<<") ?? false;
