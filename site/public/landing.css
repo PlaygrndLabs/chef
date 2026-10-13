@@ -80,7 +80,7 @@ h1, h2, h3 { font-weight: 500; color: var(--foreground); }
 .hero .fine { font-size: 13px; color: var(--muted-foreground); margin-top: 18px; }
 .hero .banner { margin: 0 0 24px; }
 
-.build { width: 100%; aspect-ratio: 560 / 400; display: block; align-self: center; margin-bottom: 120px; }
+.build { width: 100%; aspect-ratio: 560 / 420; display: block; align-self: center; margin-bottom: 120px; }
 
 .center { text-align: center; }
 .intro { max-width: 700px; margin: 0 auto 56px; }
