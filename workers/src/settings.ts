@@ -3,6 +3,7 @@ import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSe
 import type { ProjectEntry } from "./projects.ts";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import { AgentSettings, type AgentConfig, type AgentVersion, type SaveResult, type StoredAgents } from "@chef/core";
+import { newEnvKey } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
 import { DurableStore } from "./do-store.ts";
 
@@ -12,6 +13,7 @@ const PROJECTS = "projects";
 const GITHUB_APP = "github/app";
 const GITHUB_LINKS = "github/links";
 const GITHUB_PENDING = "github/pending";
+const ENV_KEY = "env/key";
 const PENDING_MS = 60 * 60_000;
 
 export interface PendingConnect {
@@ -52,6 +54,14 @@ export class Settings extends DurableObject<Env> {
     if (list.some((p) => p.name === entry.name)) return false;
     await this.ctx.storage.put(PROJECTS, [...list, entry]);
     return true;
+  }
+
+  async envKey(): Promise<string> {
+    const existing = await this.ctx.storage.get<string>(ENV_KEY);
+    if (existing) return existing;
+    const key = newEnvKey();
+    await this.ctx.storage.put(ENV_KEY, key);
+    return key;
   }
 
   async githubApp(): Promise<GitHubAppCredentials | null> {

@@ -60,6 +60,7 @@ export function specFor(dataset: SpikeDataset): FeatureSpec[] {
     entrypoint: "",
     revision: 1,
     shared: [],
+    env: [],
     acceptance: [{ id: "AC1", text: f.title }],
     body: f.title,
   }));

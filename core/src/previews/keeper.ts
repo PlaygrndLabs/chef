@@ -111,6 +111,12 @@ export class PreviewKeeper implements PreviewHost {
     return { status: "removed", previews: [...entries.values()].filter(Boolean).length };
   }
 
+  async liveBranches(): Promise<string[]> {
+    if (!(await this.state()).live) return [];
+    const entries = await this.deps.store.list<PreviewEntry | null>(ENTRY);
+    return [...entries.values()].filter((entry): entry is PreviewEntry => entry !== null).map((entry) => entry.branch);
+  }
+
   async live(): Promise<boolean> {
     return (await this.state()).live;
   }

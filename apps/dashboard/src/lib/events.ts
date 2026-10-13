@@ -28,6 +28,7 @@ export type TimelineItem =
   | { readonly kind: "merged"; readonly at: number; readonly commitId: string }
   | { readonly kind: "picked"; readonly at: number; readonly won: boolean; readonly winner: string; readonly reasons: readonly string[]; readonly candidates: readonly { readonly sessionId: string; readonly passed: number; readonly total: number }[] }
   | { readonly kind: "steered"; readonly at: number; readonly message: string }
+  | { readonly kind: "needs"; readonly at: number; readonly names: readonly string[] }
   | { readonly kind: "agent"; readonly at: number; readonly role: string; readonly model: string; readonly work: string };
 
 export interface SessionLive {
@@ -43,6 +44,7 @@ export interface SessionLive {
   verdict: { readonly approve: boolean; readonly reasons: readonly string[] } | null;
   gate: { readonly ok: boolean; readonly checks: readonly CheckView[] } | null;
   stuck: string | null;
+  needs: readonly string[];
   merged: string | null;
   recalled: readonly string[];
   agent: { readonly role: string; readonly model: string; readonly at: number } | null;
@@ -89,7 +91,7 @@ function sessionOf(state: ProjectLive, sessionId: string, featureId: string, at:
     existing.updatedAt = at;
     return existing;
   }
-  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, merged: null, recalled: [], agent: null, agents: [], timeline: [], createdAt: at, updatedAt: at };
+  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], merged: null, recalled: [], agent: null, agents: [], timeline: [], createdAt: at, updatedAt: at };
   state.sessions[sessionId] = created;
   state.order.push(sessionId);
   return created;
@@ -152,6 +154,8 @@ export function summarize(event: ChefEvent): string {
       return `pull request #${event.number} from ${event.branch} (${event.features.length} features)`;
     case "session.steered":
       return event.message;
+    case "session.needs":
+      return event.names.length ? `needs ${event.names.join(", ")}` : "has every key it needs";
     case "turn.rejected":
       return `${event.role} ${event.rule} ${event.paths.join(", ")}`;
     case "voice.request":
@@ -278,6 +282,12 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
     case "session.steered": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
       keep(s.timeline, { kind: "steered", at, message: event.message }, TIMELINE_LIMIT);
+      return true;
+    }
+    case "session.needs": {
+      const s = sessionOf(state, event.sessionId, event.featureId, at);
+      s.needs = event.names;
+      keep(s.timeline, { kind: "needs", at, names: event.names }, TIMELINE_LIMIT);
       return true;
     }
     case "turn.rejected": {

@@ -59,6 +59,7 @@ export const todoSpec: FeatureSpec = {
   entrypoint: "POST /todos",
   revision: 1,
   shared: [],
+  env: [],
   acceptance: [
     { id: "AC1", text: "POST /todos adds an item and returns it" },
     { id: "AC2", text: "GET /todos lists added items in order" },

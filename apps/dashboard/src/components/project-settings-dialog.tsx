@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { GitHubPicker } from "@/components/github-picker";
+import { EnvironmentForm } from "@/components/environment";
 import { githubApi, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -229,7 +230,7 @@ export function ProjectSettingsDialog(props: { readonly open: boolean; readonly 
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg" data-dialog="project-settings">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg" data-dialog="project-settings">
         <DialogHeader>
           <DialogTitle>{project}</DialogTitle>
           <DialogDescription>chef always works on its own copy of the code. Linking a repository is optional and only keeps the two in sync.</DialogDescription>
@@ -238,6 +239,9 @@ export function ProjectSettingsDialog(props: { readonly open: boolean; readonly 
           <div className="grid gap-5">
             <Section title="Repository (optional)" note="chef takes in every push to the repository's main branch and sends finished features back the way you pick below.">
               <RepositoryForm key={settings.git?.url ?? "none"} project={project} api={api} current={settings.git} save={save} />
+            </Section>
+            <Section title="Environment and secrets" note="Keys and settings the app reads at runtime, like API keys for outside services. Previews get the values; agents only see the names. Secrets are hidden once saved and never go into the code.">
+              <EnvironmentForm api={api} />
             </Section>
             <Section title="Previews" note="A preview starts when someone opens its link, and is removed from your Cloudflare account after it sits unused.">
               <PreviewsForm key={settings.previewIdleMinutes} minutes={settings.previewIdleMinutes} save={save} />

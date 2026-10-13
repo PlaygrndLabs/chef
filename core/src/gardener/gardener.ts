@@ -41,6 +41,7 @@ export function gardenFeatureMap(tree: Tree): FileChanges {
       entrypoint: `features/${id}/index.ts`,
       revision: 1,
       shared: [],
+      env: [],
       acceptance: criteria.size ? [...criteria].map(([cid, text]) => ({ id: cid, text })) : [{ id: "AC1", text: `the tests in features/${id} pass` }],
       body: `Recorded by the gardener from the code in features/${id}; the planner should refine it.`,
     };

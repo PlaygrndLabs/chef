@@ -36,3 +36,9 @@ test("a feature that serves its own / page keeps it", async () => {
   const response = await app(new Request("http://app.test/", { headers: { accept: "text/html" } }));
   assert.equal(await response.text(), "landing");
 });
+
+test("routes read keys and settings from context.env", async () => {
+  const weather: Feature = { id: "weather", title: "Weather", routes: [{ method: "GET", path: "/api/weather", handle: (_request, context) => json({ configured: Boolean(context.env["WEATHER_API_KEY"]) }) }] };
+  assert.deepEqual(await (await createApp([weather], new MemoryStore(), { WEATHER_API_KEY: "test" })(new Request("http://app.test/api/weather"))).json(), { configured: true });
+  assert.deepEqual(await (await createApp([weather], new MemoryStore())(new Request("http://app.test/api/weather"))).json(), { configured: false });
+});

@@ -71,6 +71,7 @@ export class TemplatePlanner implements Planner {
         entrypoint: `GET /${id}`,
         revision: 1,
         shared: [],
+        env: [],
         acceptance: title.split(/\s*(?:;|\band then\b)\s*/).map((text, i) => ({ id: `AC${i + 1}`, text })),
         body: title,
       };

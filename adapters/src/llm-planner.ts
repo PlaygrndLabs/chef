@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FeatureFrontmatter, type AnswerInput, type BuilderRole, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@chef/core";
+import { envProblem, FeatureFrontmatter, type AnswerInput, type BuilderRole, type FeatureSpec, type Plan, type PlanInput, type Planner, type Triage, type TriageInput, type WorkItem } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
 const TriageSchema = z.object({
@@ -22,6 +22,7 @@ function planSchema(roles: readonly string[]) {
       title: z.string(),
       entrypoint: z.string(),
       shared: z.array(z.string()),
+      env: z.array(z.string()),
       acceptance: z.array(z.object({ id: z.string(), text: z.string() })),
       body: z.string(),
     }),
@@ -64,6 +65,7 @@ export class LlmPlanner implements Planner {
         `Intent: ${input.intent}${input.changeKind ? ` (${input.changeKind})` : ""}`,
         `Roles for code, fix and refactor items (pick the one that fits each item; "test" items use the test role):\n${builders.map((b) => `- ${b.role}: ${b.description}`).join("\n")}`,
         existing ? `Current spec entry:\n${JSON.stringify(existing, null, 2)}` : `Existing feature ids: ${input.spec.map((f) => f.id).join(", ") || "none"}`,
+        `Environment: when the feature talks to an outside service or needs a key or setting the person provides, list the environment variable names it reads in env, in capital snake case like STRIPE_SECRET_KEY, and reuse a name the project already has when it fits. The app reads them at runtime from context.env; their values never go in the code or the spec. Set in this project: ${input.env?.map((v) => v.name).join(", ") || "none"}.`,
         `Request:\n${input.prompt}`,
         "Write the full spec entry for this feature and the work items.",
       ].join("\n\n"),
@@ -97,6 +99,7 @@ export function toPlan(result: PlanResult, existing: FeatureSpec | undefined, mo
     entrypoint: result.feature.entrypoint,
     revision: existing ? existing.revision + 1 : 1,
     shared: result.feature.shared,
+    env: [...new Set([...(existing?.env ?? []), ...result.feature.env.map((name) => name.trim()).filter((name) => envProblem(name) === null)])],
     acceptance,
   });
   const feature: FeatureSpec = { ...frontmatter, body: result.feature.body };
