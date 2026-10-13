@@ -9,7 +9,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { applyAgentConfig, ControlError, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { applyAgentConfig, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, revealEnv, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
@@ -55,7 +55,9 @@ export class ProjectAgent extends Agent<Env> {
     const project = await this.projectSettings();
     const origin = (await this.ctx.storage.get<string>(ORIGIN)) ?? null;
     const app = project.git?.installation !== undefined ? await gitHubApp(this.env) : null;
-    const agents = await agentStore(this.env).current();
+    const agents = await agentStore(this.env)
+      .current()
+      .catch(() => DEFAULT_STORED_AGENTS);
     const fingerprint = JSON.stringify([settings, project.git, origin, app?.credentials.id ?? null, agents.version]);
     if (this.built?.fingerprint === fingerprint) return this.built;
     this.built?.orchestrator.dispose();

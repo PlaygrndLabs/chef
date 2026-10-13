@@ -20,4 +20,32 @@ describe("recovering from a restart in the middle of a step", () => {
     expect(record.machine.state).toBe("merged");
     expect(record.commits).toContain(pushed);
   });
+
+  it("redoes a step after a Durable Object reset instead of getting stuck", async () => {
+    const todo = scriptFromFixture(fixture("todo"));
+    let resets = 1;
+    const w = world({
+      script: (input, attempt) => {
+        if (input.role !== "test" && resets-- > 0) throw new Error("Durable Object reset because its code was updated.");
+        return todo(input, attempt);
+      },
+      presets: new Map([[PROMPT, todoSpec]]),
+    });
+    await w.orchestrator.bootstrap(templateTree());
+    const record = await w.orchestrator.run((await w.orchestrator.submit(PROMPT)).sessionId as string);
+    expect(record.machine.state).toBe("merged");
+    expect(resets).toBeLessThan(0);
+  });
+
+  it("still gives up when the reset keeps happening", async () => {
+    const w = world({
+      script: () => {
+        throw new Error("Durable Object reset because its code was updated.");
+      },
+      presets: new Map([[PROMPT, todoSpec]]),
+    });
+    await w.orchestrator.bootstrap(templateTree());
+    const record = await w.orchestrator.run((await w.orchestrator.submit(PROMPT)).sessionId as string);
+    expect(record.machine).toMatchObject({ state: "stuck", reason: expect.stringContaining("reset because its code was updated") });
+  });
 });

@@ -36,7 +36,10 @@ function presets(): Map<string, FeatureSpec> {
 function script(): Script {
   const todo = demoScript(readTree(join(REPO_ROOT, "core", "test", "fixtures", "todo")));
   const bench = benchScript(BENCH_ITEMS);
-  return (input, attempt) => (input.featureId === "todo-add" ? todo(input, attempt) : bench(input, attempt));
+  return (input, attempt) => {
+    if (input.role === "chore") return { changes: { "README.md": `${input.workspace.tree["README.md"] ?? ""}\n${input.prompt}\n` }, summary: input.prompt };
+    return input.featureId === "todo-add" ? todo(input, attempt) : bench(input, attempt);
+  };
 }
 
 export interface LocalServer {

@@ -130,6 +130,9 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         } else step = null;
         return;
       }
+      case "held":
+        if (item.by) list.push({ kind: "chef", key, at: item.at, icon: "pick", tone: "idle", text: `Waiting for hotfix ${item.by} to go live first`, detail: "", tech: [`held by hotfix ${item.by}`], mark: {} });
+        return;
       case "agent":
         if (step) step.role = item.role;
         tech(`${item.role} started on ${item.model}`);

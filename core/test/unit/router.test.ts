@@ -25,6 +25,15 @@ describe("router", () => {
     expect(await router.route("how does the todo list store items?", spec)).toMatchObject({ intent: "question", via: "rules" });
   });
 
+  it("routes /chore by rules and marks hotfixes as bug fixes in the hotfix lane", async () => {
+    const router = new Router({ classifier: new KeywordClassifier(), planner: new TemplatePlanner() });
+    expect(await router.route("/chore upgrade the test runner", spec)).toMatchObject({ intent: "chore", via: "rules" });
+    expect(await router.route("/hotfix @todo-add items vanish after adding", spec)).toMatchObject({ intent: "change_feature", featureId: "todo-add", changeKind: "bug", hotfix: true });
+    expect(await router.route("/hotfix /chore the deploy config is wrong", spec)).toMatchObject({ intent: "chore", hotfix: true });
+    expect(await router.route("@todo-add add a due date", spec)).not.toHaveProperty("hotfix");
+    expect(await router.route("/hotfix how does the todo list store items?", spec)).not.toHaveProperty("hotfix");
+  });
+
   it("accepts a confident classifier answer", async () => {
     const classifier = new FixedClassifier({ intent: { choice: "change_feature", confidence: 0.95 }, feature: { choice: "todo-add", confidence: 0.9 }, change: { choice: "extend", confidence: 0.9 } });
     const router = new Router({ classifier, planner: new TemplatePlanner() });

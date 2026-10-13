@@ -23,6 +23,7 @@ export const DEFAULT_WORDING: RoutingWording = {
     criteria: {
       new_feature: "add or build a new capability the product does not have yet",
       change_feature: "fix, extend or refactor an existing feature",
+      chore: "maintenance outside any one feature, like dependencies, config, shared code, docs or CI",
       question: "a question that needs an answer, not a code change",
     },
   },
@@ -34,7 +35,7 @@ export const DEFAULT_WORDING: RoutingWording = {
 };
 
 export const DEFAULT_ROUTER_CONFIG: RouterConfig = {
-  thresholds: { new_feature: 0.85, change_feature: 0.85, question: 0.6 },
+  thresholds: { new_feature: 0.85, change_feature: 0.85, chore: 0.85, question: 0.6 },
   featureThreshold: 0.85,
   useClassifier: true,
   wording: DEFAULT_WORDING,
@@ -48,9 +49,20 @@ export function changeKindFromText(text: string): ChangeKind {
   return "extend";
 }
 
+const HOTFIX = /^\/hotfix\b\s*/i;
+
+export function isHotfix(prompt: string): boolean {
+  return HOTFIX.test(prompt.trim()) || /\bhot ?fix\b/i.test(prompt);
+}
+
+export function withoutCommand(prompt: string): string {
+  return prompt.trim().replace(HOTFIX, "").replace(/^\/chore\b\s*/i, "").replace(/^\/new\b\s*/i, "");
+}
+
 export function routeByRules(prompt: string, spec: readonly FeatureSpec[]): RouteDecision | null {
-  const trimmed = prompt.trim();
+  const trimmed = prompt.trim().replace(HOTFIX, "");
   if (/^\/new\b/i.test(trimmed)) return { intent: "new_feature", featureId: null, changeKind: null, via: "rules", confidence: 1, reason: "explicit /new command" };
+  if (/^\/chore\b/i.test(trimmed)) return { intent: "chore", featureId: null, changeKind: null, via: "rules", confidence: 1, reason: "explicit /chore command" };
   const mention = /(?:^|\s)[@#]([a-z][a-z0-9-]*)\b/.exec(trimmed);
   if (mention) {
     const feature = spec.find((f) => f.id === mention[1]);
@@ -96,11 +108,18 @@ export class Router {
   ) {}
 
   async route(prompt: string, spec: readonly FeatureSpec[]): Promise<RouteDecision> {
+    const decision = await this.decide(prompt, spec);
+    if (!isHotfix(prompt) || decision.intent === "question") return decision;
+    return { ...decision, hotfix: true, changeKind: decision.intent === "change_feature" ? "bug" : decision.changeKind };
+  }
+
+  private async decide(prompt: string, spec: readonly FeatureSpec[]): Promise<RouteDecision> {
     const byRules = routeByRules(prompt, spec);
     if (byRules) return byRules;
-    const classified = await this.classify(prompt, spec);
+    const text = prompt.trim().replace(HOTFIX, "");
+    const classified = await this.classify(text, spec);
     if (classified?.decision) return { ...classified.decision, classifier: classified.trace };
-    const triage = await this.deps.planner.triage({ prompt, spec });
+    const triage = await this.deps.planner.triage({ prompt: text, spec });
     return { intent: triage.intent, featureId: triage.featureId, changeKind: triage.changeKind, via: "planner", confidence: triage.confidence, reason: triage.reason, classifier: classified?.trace ?? null };
   }
 

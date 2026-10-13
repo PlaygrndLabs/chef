@@ -64,8 +64,10 @@ export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
 function replyFor(decision: RouteDecision, title: string | null, attempts: number): string {
   if (decision.intent === "question") return "chef answered this before answers were saved, so the answer is not shown here.";
   const parallel = attempts > 1 ? ` I'm trying ${attempts} approaches at once and will keep the best one.` : "";
-  if (decision.intent === "change_feature") return `On it. This changes ${title ?? "an existing feature"}.${parallel}`;
-  return `On it. This is a new feature.${parallel}`;
+  const hotfix = decision.hotfix ? " It's a hotfix, so it goes live before other builds." : "";
+  if (decision.intent === "chore") return `On it. This is a chore outside any one feature, so every live feature gets checked again before it goes live.${hotfix}`;
+  if (decision.intent === "change_feature") return `On it. This changes ${title ?? "an existing feature"}.${hotfix || parallel}`;
+  return `On it. This is a new feature.${hotfix || parallel}`;
 }
 
 function Reply({ text, sessions }: { readonly text: string; readonly sessions: readonly SessionNode[] }) {
@@ -291,7 +293,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
           <div ref={end} />
         </div>
       </div>
-      <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to"} onSend={send} draft={draft} />
+      <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { envProblem, FeatureFrontmatter, type AnswerInput, type BuilderRole, typ
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
 const TriageSchema = z.object({
-  intent: z.enum(["new_feature", "change_feature", "question"]),
+  intent: z.enum(["new_feature", "change_feature", "chore", "question"]),
   featureId: z.string().nullable(),
   changeKind: z.enum(["bug", "extend", "refactor"]).nullable(),
   confidence: z.number(),
@@ -48,7 +48,7 @@ export class LlmPlanner implements Planner {
       system: this.system,
       effort: "low",
       schema: TriageSchema,
-      prompt: `Existing features:\n${JSON.stringify(features, null, 2)}\n\nRequest:\n${input.prompt}\n\nDecide whether the request is a new feature, a change to one existing feature (give its id and the kind of change), or a question. Confidence is from 0 to 1.`,
+      prompt: `Existing features:\n${JSON.stringify(features, null, 2)}\n\nRequest:\n${input.prompt}\n\nDecide whether the request is a new feature, a change to one existing feature (give its id and the kind of change), a chore (maintenance outside any one feature, like dependencies, config, shared code, docs or CI), or a question. Confidence is from 0 to 1.`,
     });
     const known = result.featureId && input.spec.some((f) => f.id === result.featureId);
     return { ...result, featureId: known ? result.featureId : null, confidence: Math.min(1, Math.max(0, result.confidence)) };

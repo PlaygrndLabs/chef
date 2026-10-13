@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import type { AgentConfig, AgentsView, RoleSetting, RoleView, SessionState } from "@chef/core";
 import { agentsApi } from "./api";
 import { isActive } from "./events";
-import type { SessionNode } from "./model";
+import { isChore, type SessionNode } from "./model";
 import { stoppedAt } from "./progress";
 
 const BUILT_IN: Readonly<Record<string, string>> = {
@@ -97,7 +97,7 @@ function stageOf(role: string): number {
 }
 
 export function teamOf(node: SessionNode): Member[] {
-  const roles: string[] = ["planner"];
+  const roles: string[] = isChore(node) ? [] : ["planner"];
   const add = (role: string) => {
     if (!HIDDEN.has(role) && !roles.includes(role)) roles.push(role);
   };
