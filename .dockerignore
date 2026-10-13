@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.wrangler
+.wrangler.*.jsonc
+.git
+.github
+.chef
+research
+docs/progress
+tune/out
