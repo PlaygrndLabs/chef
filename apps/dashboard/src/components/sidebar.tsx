@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronsUpDown, FolderGit2, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
+import { Check, ChevronsUpDown, FolderGit2, FolderPlus, ScanSearch, KeyRound, Lightbulb, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -19,7 +19,7 @@ function ProjectSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-foreground" aria-label="Switch project">
+        <button type="button" className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-medium hover:bg-sidebar-accent" aria-label="Switch project" title={selection.project}>
           <span className="truncate">{selection.project}</span>
           <span id="connection" data-connection={data.connection} title={label}>
             <StatusDot tone={tone} />
@@ -38,7 +38,7 @@ function ProjectSwitcher() {
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={addProject}>
           <Plus />
-          Add project
+          New project
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -62,7 +62,7 @@ function SettingsMenu() {
   useEffect(() => {
     if (missing) setProviders(true);
   }, [missing]);
-  const { select, api, data, selection, addProject } = useWorkspace();
+  const { select, api, data, selection } = useWorkspace();
   return (
     <>
       <DropdownMenu>
@@ -86,9 +86,14 @@ function SettingsMenu() {
             <Lightbulb />
             Memory and learning
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={addProject}>
-            <Plus />
-            Add project
+          <DropdownMenuItem
+            onClick={() => {
+              select({ view: "project", feature: null, session: null, panel: null });
+              window.setTimeout(() => window.dispatchEvent(new Event("chef:read-code")), 50);
+            }}
+          >
+            <ScanSearch />
+            Read the code and suggest tasks
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
@@ -113,14 +118,17 @@ function SettingsMenu() {
 }
 
 export function Sidebar() {
-  const { select, focusComposer } = useWorkspace();
+  const { select, focusComposer, addProject } = useWorkspace();
   return (
     <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
       <div className="flex items-center gap-1 px-1.5">
         <span className="grid size-6 shrink-0 place-items-center rounded-md bg-brand text-xs font-semibold text-brand-foreground">c</span>
-        <span className="pl-1 text-sm font-semibold">chef</span>
-        <span className="text-muted-foreground">/</span>
         <ProjectSwitcher />
+        <span className="flex-1" />
+        <Button variant="ghost" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={addProject} id="new-project-button">
+          <FolderPlus />
+          New project
+        </Button>
       </div>
       <Button
         className="h-9"

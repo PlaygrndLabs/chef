@@ -12,6 +12,7 @@ import { RealtimeHost } from "@chef/adapters/realtime";
 import { ControlError, DEFAULT_BUDGET, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, PreviewKeeper, readSpec, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
+import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
 import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
@@ -29,6 +30,8 @@ const SESSION_ROUTE = /^\/api\/projects\/[a-z][a-z0-9-]{1,30}\/sessions\/([a-z0-
 const PREVIEW_ROUTE = /^\/preview\/[a-z][a-z0-9-]{1,30}\/([a-z0-9-]{1,80})\/?$/;
 const PROJECT_SETTINGS = "project/settings";
 const ORIGIN = "project/origin";
+const OVERVIEW = "project/overview";
+const READING_TIMEOUT_MS = 10 * 60_000;
 const POLL_SECONDS = 300;
 const BUSY_SWEEP_SECONDS = 600;
 
@@ -121,9 +124,15 @@ export class ProjectAgent extends Agent<Env> {
         const pulled = await external.pull();
         if (pulled.status !== "imported") return Response.json({ error: `importing the linked repository did not finish: ${pulled.status}` }, { status: 409 });
         await this.ensurePolling();
+        await this.startReading();
         return Response.json({ commitId: pulled.commitId, created: true, imported: true });
       }
       return Response.json({ commitId: await orchestrator.bootstrap(templateFiles), created: true });
+    }
+    if (action === "overview" && request.method === "GET") return Response.json(await this.overview());
+    if (action === "overview" && request.method === "POST") {
+      if ((await this.overview()).status !== "reading") await this.startReading();
+      return Response.json(await this.overview(), { status: 202 });
     }
     if (request.method === "POST" && action === "prompts") {
       const { prompt } = (await request.json()) as { prompt?: string };
@@ -330,6 +339,32 @@ export class ProjectAgent extends Agent<Env> {
     const ref = (JSON.parse(body) as { ref?: string }).ref;
     if (event === "push" && ref === `refs/heads/${git.branch}`) await this.schedule(0, "syncExternal");
     return Response.json({ ok: true }, { status: 202 });
+  }
+
+  private async overview(): Promise<OverviewState> {
+    const state = (await this.ctx.storage.get<OverviewState>(OVERVIEW)) ?? { status: "none" };
+    if (state.status === "reading" && Date.now() - state.since > READING_TIMEOUT_MS) return { status: "failed", at: Date.now(), error: "reading the code took too long; try again" };
+    return state;
+  }
+
+  private async startReading(): Promise<void> {
+    await this.ctx.storage.put<OverviewState>(OVERVIEW, { status: "reading", since: Date.now() });
+    await this.schedule(0, "readProject");
+  }
+
+  async readProject(): Promise<void> {
+    const { orchestrator, settings } = await this.build();
+    let state: OverviewState;
+    try {
+      if (!settings.llm) throw new Error(NO_LLM);
+      const main = await orchestrator.mainTree();
+      const overview = await exploreProject(llmFromProvider(settings.llm), { name: this.name, tree: main.tree, model: settings.models.planner });
+      state = { status: "ready", commitId: main.commitId, at: Date.now(), overview };
+    } catch (error) {
+      console.error(`reading ${this.name} failed`, error);
+      state = { status: "failed", at: Date.now(), error: error instanceof Error ? error.message : String(error) };
+    }
+    await this.ctx.storage.put<OverviewState>(OVERVIEW, state);
   }
 
   async gitPushed(ref: string): Promise<void> {

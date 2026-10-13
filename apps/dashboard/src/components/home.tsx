@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, type Ref } from "react";
 import { useAgent, useCopilotKit, UseAgentUpdate } from "@copilotkit/react-core/v2";
 import type { RouteDecision, SessionState } from "@chef/core";
-import { ChevronRight, Loader2 } from "lucide-react";
+import { Check, ChevronRight, Loader2, Play } from "lucide-react";
 import { toast } from "sonner";
 import { Composer } from "@/components/composer";
+import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/status";
 import type { FeatureStatus, SessionNode } from "@/lib/model";
 import { activity, stripFeatureTag } from "@/lib/progress";
 import { isActive } from "@/lib/events";
+import type { OverviewState, Suggestion } from "@/lib/api";
+import { useOverview } from "@/lib/overview";
 import { useWorkspace } from "@/lib/workspace";
 
 const sentHere = new Map<string, number>();
@@ -109,6 +112,80 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
   );
 }
 
+function OverviewMessage(props: { readonly state: OverviewState; readonly started: (prompt: string) => boolean; readonly onStart: (suggestions: readonly Suggestion[]) => void; readonly onReadAgain: () => void }) {
+  const { state } = props;
+  if (state.status === "none") return null;
+  if (state.status === "reading")
+    return (
+      <div className="flex items-center gap-3" data-overview="reading">
+        <Avatar />
+        <span className="text-muted-foreground">Reading the code to see what this project does and what to pick up first</span>
+        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  if (state.status === "failed")
+    return (
+      <div className="flex gap-3" data-overview="failed">
+        <Avatar />
+        <div className="flex flex-col items-start gap-2 pt-0.5">
+          <p className="text-[15px]">I could not read the code: {state.error}</p>
+          <Button size="sm" variant="outline" onClick={props.onReadAgain}>
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  const { overview } = state;
+  const open = overview.suggestions.filter((s) => !props.started(s.prompt));
+  return (
+    <div className="flex gap-3" data-overview="ready">
+      <Avatar />
+      <div className="flex min-w-0 flex-1 flex-col gap-3 pt-0.5 text-[15px]">
+        <p className="whitespace-pre-wrap">{overview.summary}</p>
+        {overview.problems.length > 0 ? (
+          <div className="grid gap-1">
+            <p>What looks unfinished:</p>
+            <ul className="list-disc pl-5 text-muted-foreground">
+              {overview.problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {overview.suggestions.length > 0 ? (
+          <div className="grid gap-2">
+            <p>A few things I could pick up now:</p>
+            <div className="grid gap-1 rounded-xl border p-1.5" id="suggestions">
+              {overview.suggestions.map((s) => {
+                const started = props.started(s.prompt);
+                return (
+                  <button key={s.prompt} type="button" disabled={started} onClick={() => props.onStart([s])} data-suggestion={started ? "started" : "open"} className="group flex items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-muted/60 disabled:hover:bg-transparent">
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium">{s.title}</span>
+                      <span className="block text-sm text-muted-foreground">{s.why}</span>
+                    </span>
+                    {started ? <Check className="size-4 text-ok" aria-label="Started" /> : <Play className="size-4 text-muted-foreground group-hover:text-foreground" aria-label="Start" />}
+                  </button>
+                );
+              })}
+              {open.length > 1 ? (
+                <div className="px-1.5 pt-1 pb-0.5">
+                  <Button size="sm" variant="secondary" onClick={() => props.onStart(open)}>
+                    Start all {open.length}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <button type="button" onClick={props.onReadAgain} className="self-start text-xs text-muted-foreground underline">
+          Read the code again
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface ChatMessage {
   readonly id: string;
   readonly role: string;
@@ -137,7 +214,14 @@ function textOf(content: unknown): string {
 }
 
 export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaElement> }) {
-  const { data, sessions, features } = useWorkspace();
+  const { data, sessions, features, api } = useWorkspace();
+  const { state: overview, readAgain } = useOverview(api);
+  const [starting, setStarting] = useState<readonly string[]>([]);
+  useEffect(() => {
+    const again = () => void readAgain();
+    window.addEventListener("chef:read-code", again);
+    return () => window.removeEventListener("chef:read-code", again);
+  }, [readAgain]);
   const { agent } = useAgent({ agentId: "default", updates: [UseAgentUpdate.OnMessagesChanged, UseAgentUpdate.OnStateChanged, UseAgentUpdate.OnRunStatusChanged], throttleMs: 100 });
   const { copilotkit } = useCopilotKit();
   const [draft, setDraft] = useState<{ text: string; n: number } | null>(null);
@@ -168,14 +252,25 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
     return true;
   };
 
-  const welcome = history.length === 0 && pending.length === 0 && sessions.length === 0;
+  const started = (prompt: string) => starting.includes(prompt) || routes.some((r) => r.prompt === prompt);
+  const start = (suggestions: readonly Suggestion[]) => {
+    setStarting((list) => [...list, ...suggestions.map((s) => s.prompt)]);
+    for (const s of suggestions)
+      api.prompt(s.prompt).catch((error: unknown) => {
+        setStarting((list) => list.filter((p) => p !== s.prompt));
+        toast.error(`Could not start "${s.title}"`, { description: error instanceof Error ? error.message : String(error) });
+      });
+  };
+  const introduced = overview !== null && overview.status !== "none";
+  const welcome = !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0;
   const busy = agent.isRunning || sessions.some((s) => isActive(s.state));
   return (
     <div className="flex h-full min-h-0 flex-col" data-view="project" id="chat">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 sm:px-6">
           {welcome ? <Welcome onExample={(text) => setDraft((d) => ({ text, n: (d?.n ?? 0) + 1 }))} /> : null}
-          {!welcome && history.length === 0 && pending.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature on the left, or describe a new one below.</p> : null}
+          {overview && introduced ? <OverviewMessage state={overview} started={started} onStart={start} onReadAgain={() => void readAgain().catch((error: unknown) => toast.error("Could not start reading", { description: error instanceof Error ? error.message : String(error) }))} /> : null}
+          {!welcome && !introduced && history.length === 0 && pending.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature on the left, or describe a new one below.</p> : null}
           {history.map((item) => (
             <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
               <You>{stripFeatureTag(item.prompt).text}</You>

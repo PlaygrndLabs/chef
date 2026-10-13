@@ -24,7 +24,7 @@ describe("dashboard in a browser", () => {
       await setup.getByRole("button", { name: "Create project" }).click();
       await page.getByRole("button", { name: "Switch project" }).click();
       await page.getByRole("menuitem", { name: "shop" }).waitFor();
-      await page.getByRole("menuitem", { name: "Add project" }).waitFor();
+      await page.getByRole("menuitem", { name: "New project" }).waitFor();
       await page.keyboard.press("Escape");
       expect(new URL(page.url()).searchParams.get("project")).toBe("shop");
       const input = page.locator("#chat textarea");
