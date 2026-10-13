@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Composer } from "@/components/composer";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/status";
-import type { FeatureStatus, SessionNode } from "@/lib/model";
+import { waitsForKey, type FeatureStatus, type SessionNode } from "@/lib/model";
 import { activity, stripFeatureTag } from "@/lib/progress";
 import { isActive } from "@/lib/events";
 import type { OverviewState, Suggestion } from "@/lib/api";
@@ -36,7 +36,7 @@ export function FeatureCard({ node }: { readonly node: SessionNode }) {
   const { features, openSession } = useWorkspace();
   const title = features.find((f) => f.id === node.featureId)?.title ?? node.record?.plan.feature.title ?? node.featureId;
   const tries = node.attempt && node.attempt.of > 1 && isActive(node.state) ? `Trying ${node.attempt.of} ways at once · ` : "";
-  const line = `${tries}${activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null)}`;
+  const line = waitsForKey(node) ? `Needs ${node.needs.join(", ")}. Open it to add ${node.needs.length === 1 ? "the key" : "the keys"}.` : `${tries}${activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null)}`;
   return (
     <button type="button" onClick={() => openSession(node.id)} data-session={node.id} data-state={node.state} className="flex w-full items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:bg-muted/60">
       <span className="min-w-0 flex-1">

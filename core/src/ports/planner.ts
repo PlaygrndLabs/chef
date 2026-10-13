@@ -1,5 +1,6 @@
 import type { ChangeKind, RouteIntent } from "../router/decision.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
+import type { EnvVar } from "../env/env.ts";
 import type { MemoryHit } from "./memory-index.ts";
 
 export type WorkKind = "spec_change" | "test" | "code" | "fix" | "refactor" | "chore" | "conflict";
@@ -37,6 +38,7 @@ export interface PlanInput {
   readonly changeKind: ChangeKind | null;
   readonly featureId: string | null;
   readonly spec: readonly FeatureSpec[];
+  readonly env?: readonly EnvVar[];
   readonly roles?: readonly BuilderRole[];
 }
 
@@ -73,7 +75,7 @@ export function choreId(prompt: string, taken: ReadonlySet<string>): string {
 export function chorePlan(featureId: string, prompt: string, role: string): Plan {
   const title = (prompt.trim().split("\n")[0] ?? "").slice(0, 120) || "Chore";
   return {
-    feature: { id: featureId, title, status: "building", entrypoint: "src/index.ts", revision: 1, shared: [], acceptance: [{ id: "AC1", text: prompt.trim().slice(0, 500) || title }], body: prompt.trim() },
+    feature: { id: featureId, title, status: "building", entrypoint: "src/index.ts", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: prompt.trim().slice(0, 500) || title }], body: prompt.trim() },
     specChanged: false,
     items: [{ id: `${featureId}-chore`, featureId, kind: "chore", role, prompt: prompt.trim(), acceptance: ["AC1"] }],
     model: "chef",

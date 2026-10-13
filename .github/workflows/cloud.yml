@@ -15,6 +15,22 @@ on:
         description: How long to follow the sessions
         required: true
         default: "40"
+      env_now:
+        description: Project keys to set before the prompt, NAME=value separated by spaces (saved as secrets)
+        required: false
+        default: ""
+      env_later:
+        description: Keys to set once a session waits for them, NAME=value separated by spaces
+        required: false
+        default: ""
+      check_path:
+        description: Page of the feature's preview to open after it merges
+        required: false
+        default: ""
+      check_text:
+        description: Text that page must contain
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -31,6 +47,10 @@ jobs:
       PROJECT: ${{ inputs.project }}
       PROMPT: ${{ inputs.prompt }}
       MINUTES: ${{ inputs.minutes }}
+      ENV_NOW: ${{ inputs.env_now }}
+      ENV_LATER: ${{ inputs.env_later }}
+      CHECK_PATH: ${{ inputs.check_path }}
+      CHECK_TEXT: ${{ inputs.check_text }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

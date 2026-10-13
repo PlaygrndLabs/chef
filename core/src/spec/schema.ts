@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ENV_NAME } from "../env/env.ts";
 
 export const FEATURE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
@@ -17,6 +18,7 @@ export const FeatureFrontmatter = z.strictObject({
   flow: z.string().regex(FEATURE_ID).optional(),
   revision: z.number().int().positive().default(1),
   shared: z.array(z.string().regex(/^shared\/[A-Za-z0-9_./-]+$/)).default([]),
+  env: z.array(z.string().regex(ENV_NAME, "env names use capital letters, digits and _")).default([]),
   acceptance: z.array(AcceptanceCriterion).min(1),
 });
 
