@@ -42,7 +42,7 @@ export interface LocalServer {
   close(): Promise<void>;
 }
 
-export async function serve(options: { readonly port: number; readonly project: string; readonly real: boolean; readonly assets?: string; readonly settings?: SettingsEnv; readonly log?: (line: string) => void }): Promise<LocalServer> {
+export async function serve(options: { readonly port: number; readonly project?: string; readonly real: boolean; readonly assets?: string; readonly settings?: SettingsEnv; readonly log?: (line: string) => void }): Promise<LocalServer> {
   const log = options.log ?? (() => {});
   const w = localWorld({ script: script(), presets: presets(), real: options.real });
   await w.orchestrator.bootstrap(templateTree());
@@ -65,10 +65,20 @@ export async function serve(options: { readonly port: number; readonly project: 
     },
     events: async (after) => w.bus.log.slice(after, after + 500).map((event, i) => ({ seq: after + i + 1, event })),
   };
-  const base = `/api/projects/${options.project}`;
+  let project: { readonly name: string; readonly createdAt: number } | null = options.project ? { name: options.project, createdAt: Date.now() } : null;
   process.env["COPILOTKIT_TELEMETRY_DISABLED"] ??= "true";
   const runtime = new CopilotRuntime({ agents: () => ({ default: new ChefAgent({ link, pollMs: 200 }) }) });
-  const copilot = createCopilotRuntimeHandler({ runtime, basePath: `${base}/copilotkit` });
+  const copilotFor = (name: string) => createCopilotRuntimeHandler({ runtime, basePath: `/api/projects/${name}/copilotkit` });
+  let copilot = project ? copilotFor(project.name) : null;
+  const projects = async (request: Request): Promise<Response> => {
+    if (request.method === "GET") return Response.json({ projects: project ? [project] : [] });
+    const { name } = (await request.json().catch(() => ({}))) as { name?: string };
+    if (!name || !/^[a-z][a-z0-9-]{1,30}$/.test(name)) return Response.json({ error: "project names are 2 to 31 lower case letters, digits and dashes, starting with a letter" }, { status: 400 });
+    if (project) return Response.json({ error: project.name === name ? `there is already a project named ${name}` : "the local server runs a single project" }, { status: 409 });
+    project = { name, createdAt: Date.now() };
+    copilot = copilotFor(name);
+    return Response.json({ name, commitId: (await w.orchestrator.mainTree()).commitId, created: true }, { status: 201 });
+  };
   const assets = options.assets ?? join(REPO_ROOT, "apps", "dashboard", "dist");
   if (!existsSync(join(assets, "index.html"))) log(`no dashboard build in ${assets}; run pnpm build`);
 
@@ -111,10 +121,11 @@ export async function serve(options: { readonly port: number; readonly project: 
   const api = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (url.pathname === "/api/settings" && options.settings) return settings(request, options.settings);
-    if (url.pathname.startsWith(`${base}/copilotkit`)) return copilot(request);
+    if (url.pathname === "/api/projects") return projects(request);
+    const base = project ? `/api/projects/${project.name}` : null;
+    if (base && copilot && url.pathname.startsWith(`${base}/copilotkit`)) return copilot(request);
     if (url.pathname.startsWith("/api/")) {
-      const action = url.pathname.startsWith(`${base}/`) ? url.pathname.slice(base.length + 1) : null;
-      if (request.method === "POST" && action === "bootstrap") return Response.json({ commitId: (await w.orchestrator.mainTree()).commitId, created: false });
+      const action = base && url.pathname.startsWith(`${base}/`) ? url.pathname.slice(base.length + 1) : null;
       if (request.method === "POST" && action === "prompts") {
         const { prompt } = (await request.json()) as { prompt?: string };
         if (!prompt?.trim()) return Response.json({ error: "prompt is required" }, { status: 400 });

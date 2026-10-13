@@ -6,7 +6,7 @@ on:
       project:
         description: Project to bootstrap and build in
         required: true
-        default: demo
+        default: smoke
       prompt:
         description: Prompt to send
         required: true
