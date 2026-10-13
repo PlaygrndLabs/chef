@@ -9,7 +9,8 @@ import { CommandPalette } from "@/components/command-palette";
 import { PlaceScreen } from "@/components/place-screen";
 import { FeaturePage } from "@/components/feature-page";
 import { Home } from "@/components/home";
-import { NewProjectDialog, returningToNewProject, Setup } from "@/components/project-setup";
+import { NewProjectDialog, returningToNewProject } from "@/components/project-setup";
+import { Start } from "@/components/start";
 import { InsightsView } from "@/components/insights-view";
 import { SettingsHost } from "@/components/settings-host";
 import { useSettings } from "@/components/settings-dialog";
@@ -83,7 +84,7 @@ function ConnectedApp() {
       rememberProject(name);
       select({ project: name, view: "project", feature: null, session: null, panel: null, settings: null, item: null });
     };
-    return <Setup projects={projects} onOpen={open} onCreated={opened} />;
+    return <Start projects={projects} selection={selection} select={select} onOpen={open} onCreated={opened} />;
   }
   return <ProjectWorkspace key={project} selection={project === selection.project ? selection : { ...selection, project }} select={select} projects={projects} onCreated={opened} />;
 }

@@ -71,7 +71,8 @@ describe("local app in a browser", () => {
       const setup = page.locator('[data-view="setup"]');
       await setup.waitFor({ timeout: 10_000 });
       expect(store.read()).toEqual({ place: "cloud", url: engine.url, password: PASSWORD });
-      await setup.getByRole("button", { name: "Settings" }).click();
+      await setup.locator("#app-menu").click();
+      await page.getByRole("menuitem", { name: "Settings" }).click();
       const settings = page.locator('[data-dialog="settings"]');
       await settings.waitFor({ timeout: 10_000 });
       await settings.locator('[data-settings-nav="general"]').click();
