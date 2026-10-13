@@ -8,7 +8,7 @@ import { ResizeHandle, useStoredWidth } from "@/components/resize-handle";
 import { CommandPalette } from "@/components/command-palette";
 import { FeaturePage } from "@/components/feature-page";
 import { Home } from "@/components/home";
-import { AddProjectDialog, Setup } from "@/components/project-setup";
+import { NewProjectDialog, returningToNewProject, Setup } from "@/components/project-setup";
 import { InsightsView } from "@/components/insights-view";
 import { Panel } from "@/components/panel";
 import { ProjectBar } from "@/components/project-bar";
@@ -80,7 +80,8 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
   const compact = useMediaQuery("(max-width: 1023px)");
   const [palette, setPalette] = useState(false);
   const [sidebar, setSidebar] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [fromGitHub] = useState(returningToNewProject);
+  const [adding, setAdding] = useState(fromGitHub);
   const panel = selection.view === "feature" && feature !== null && selection.panel !== null;
   const [expanded, setExpanded] = useState(false);
   const [sideWidth, setSideWidth] = useStoredWidth("chef:sidebar-width", SIDEBAR.initial);
@@ -197,7 +198,7 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
           </DialogContent>
         </Dialog>
         <CommandPalette open={palette} onOpenChange={setPalette} />
-        <AddProjectDialog open={adding} onOpenChange={setAdding} onCreated={props.onCreated} />
+        <NewProjectDialog open={adding} fromGitHub={fromGitHub} onOpenChange={setAdding} onCreated={props.onCreated} />
       </WorkspaceContext.Provider>
     </CopilotKitProvider>
   );

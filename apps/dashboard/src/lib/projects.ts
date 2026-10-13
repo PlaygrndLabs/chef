@@ -41,3 +41,14 @@ export function pickProject(projects: readonly string[], wanted: string): string
   if (last && projects.includes(last)) return last;
   return projects[0] ?? null;
 }
+
+export function projectNameFrom(repository: string): string {
+  const base = (repository.split("/").at(-1) ?? repository)
+    .toLowerCase()
+    .replace(/\.git$/, "")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const named = /^[a-z]/.test(base) ? base : `app-${base}`;
+  return named.slice(0, 31).replace(/-$/, "").padEnd(2, "x");
+}
