@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { ChevronRight, Folder, Menu, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Wordmark } from "@/components/logo";
 import { NewProjectDialog, NewProjectForm } from "@/components/project-setup";
-import { SettingsDialog } from "@/components/settings-dialog";
 import { missingSettings, useSettings } from "@/lib/settings";
 import { AppMenu } from "@/components/sidebar";
+import { preloadable, useOpenedOnce } from "@/lib/lazy";
 import { lastProject, returningToNewProject } from "@/lib/projects";
 import type { Selection, SettingsScope } from "@/lib/selection";
 import type { AppSettings } from "@/lib/workspace";
+
+const SettingsDialog = preloadable(() => import("@/components/settings-dialog").then((m) => m.SettingsDialog));
 
 function StartSidebar(props: { readonly app: AppSettings; readonly onSettings: (section?: string) => void; readonly onNew: (() => void) | null }) {
   return (
@@ -87,6 +89,7 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
   const any = props.projects.length > 0;
   const place = selection.settings?.scope === "app" ? selection.settings : null;
   const missing = app.available ? missingSettings(app.settings) : [];
+  const settingsLoaded = useOpenedOnce(place !== null);
   const openSettings = (section?: string, item?: string | null, scope?: SettingsScope) => {
     if (scope === "project") return;
     setSidebar(false);
@@ -139,17 +142,21 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
         </SheetContent>
       </Sheet>
       <NewProjectDialog open={adding} fromGitHub={fromGitHub} onOpenChange={setAdding} onCreated={props.onCreated} />
-      <SettingsDialog
-        open={place !== null}
-        onOpenChange={(open) => (open ? undefined : select({ settings: null, item: null }))}
-        settings={app.settings}
-        available={app.available}
-        onChange={app.setSettings}
-        section={place?.section ?? "general"}
-        item={selection.item ?? null}
-        nav={{ go: (section, item, scope) => openSettings(section, item, scope), section: (section) => openSettings(section) }}
-        returnTo="/?settings=app.github"
-      />
+      {settingsLoaded ? (
+        <Suspense fallback={null}>
+          <SettingsDialog
+            open={place !== null}
+            onOpenChange={(open) => (open ? undefined : select({ settings: null, item: null }))}
+            settings={app.settings}
+            available={app.available}
+            onChange={app.setSettings}
+            section={place?.section ?? "general"}
+            item={selection.item ?? null}
+            nav={{ go: (section, item, scope) => openSettings(section, item, scope), section: (section) => openSettings(section) }}
+            returnTo="/?settings=app.github"
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }
