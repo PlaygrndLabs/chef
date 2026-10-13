@@ -12,8 +12,6 @@
 
 **Build apps with AI, in your own Cloudflare account.** Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass.
 
-Like ChatGPT or Claude Code, you talk to it. Unlike them, you own every part: the app, the code, the keys and the infrastructure.
-
 <p align="center"><strong><a href="https://chef.playgrndlabs.com">Sign in with Cloudflare and start building →</a></strong></p>
 
 ## Why chef
