@@ -129,7 +129,7 @@ export class LocalProject {
         profiles,
         router: routerConfigOf(agents.config.router),
         generated,
-        specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }), laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, Object.keys(tree)) },
+        specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }), laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
         environment: async () => envNames(await this.effectiveEnv()),
       },

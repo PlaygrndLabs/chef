@@ -4,6 +4,8 @@ import { applyChanges, threeWayMerge, type Author, type Commit, type CommitInput
 import { MemoryFs } from "./memory-fs.ts";
 
 const NOTE_ATTEMPTS = 8;
+const HTTP_ATTEMPTS = 3;
+const PUSH_ATTEMPTS = 3;
 
 export interface ControlRepo {
   readonly name: string;
@@ -144,6 +146,7 @@ const MAX_COMMIT_BYTES = 24 * 1024 * 1024;
 const MAX_BLOB_BYTES = 16 * 1024 * 1024;
 
 interface Cached {
+  readonly name: string;
   readonly fs: MemoryFs;
   readonly remote: string;
 }
@@ -195,6 +198,7 @@ export interface ArtifactsHostOptions {
   readonly readTtlSeconds?: number;
   readonly maxRepos?: number;
   readonly maxRepoBytes?: number;
+  readonly wait?: (ms: number) => Promise<void>;
 }
 
 export class ArtifactsRepoHost implements RepoHost {
@@ -207,11 +211,11 @@ export class ArtifactsRepoHost implements RepoHost {
   constructor(
     private readonly control: ArtifactsControl,
     private readonly options: ArtifactsHostOptions = {},
-  ) {}
-
-  private get http(): HttpClient {
-    return this.options.http ?? webHttp;
+  ) {
+    this.http = retryingHttp(options.http ?? webHttp, options.wait);
   }
+
+  private readonly http: HttpClient;
 
   get cachedRepos(): readonly string[] {
     return [...this.cache.keys()];
@@ -470,7 +474,7 @@ export class ArtifactsRepoHost implements RepoHost {
     const fs = new MemoryFs();
     await git.init({ fs, gitdir: GITDIR, bare: true, defaultBranch: info?.defaultBranch ?? "main" });
     await addRemote(fs, "origin", remote);
-    const cached = { fs, remote };
+    const cached = { name, fs, remote };
     this.cache.set(name, cached);
     for (const oldest of this.cache.keys()) {
       if (this.cache.size <= (this.options.maxRepos ?? MAX_REPOS)) break;
@@ -490,6 +494,14 @@ export class ArtifactsRepoHost implements RepoHost {
   }
 
   private async fetchRefs(cached: Cached, secret: string, wanted?: readonly string[]): Promise<void> {
+    try {
+      await this.fetchRefsOnce(cached, secret, wanted);
+    } catch (error) {
+      throw withContext(error, `fetch ${wanted?.map(shortRef).join(", ") ?? "every branch"} from ${cached.name}`);
+    }
+  }
+
+  private async fetchRefsOnce(cached: Cached, secret: string, wanted?: readonly string[]): Promise<void> {
     const refs = await git.listServerRefs({ http: this.http, url: cached.remote, onAuth: auth(secret) });
     if (refs.length === 0) return;
     for (const { ref, oid } of refs) {
@@ -572,9 +584,22 @@ export class ArtifactsRepoHost implements RepoHost {
 
   private async push(cached: Cached, token: RepoToken, ref: string, oid: string, force: boolean, before: string | null): Promise<void> {
     const local = `refs/chef/push/${shortRef(ref)}`;
+    const secret = tokenSecret(token.secret);
     await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: local, value: oid, force: true });
-    const result = await git.push({ fs: cached.fs, http: this.http, gitdir: GITDIR, url: cached.remote, ref: local, remoteRef: fullRef(ref), force, onAuth: auth(tokenSecret(token.secret)) });
-    if (!result.ok) throw new Error(`push to ${ref} rejected: ${result.error ?? JSON.stringify(result.refs)}`);
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const result = await git.push({ fs: cached.fs, http: this.http, gitdir: GITDIR, url: cached.remote, ref: local, remoteRef: fullRef(ref), force, onAuth: auth(secret) });
+        if (!result.ok) throw new Error(`push to ${ref} rejected: ${result.error ?? JSON.stringify(result.refs)}`);
+        break;
+      } catch (error) {
+        if (!serverError(error)) throw error;
+        const remote = await git.listServerRefs({ http: this.http, url: cached.remote, prefix: fullRef(ref), onAuth: auth(secret) }).catch(() => null);
+        const now = remote ? (remote.find((r) => r.ref === fullRef(ref))?.oid ?? null) : undefined;
+        if (now === oid) break;
+        if (attempt >= PUSH_ATTEMPTS || now === undefined || (!force && now !== before)) throw withContext(error, `push ${shortRef(ref)} to ${cached.name}`);
+        await (this.options.wait ?? sleep)(backoff(attempt));
+      }
+    }
     await git.writeRef({ fs: cached.fs, gitdir: GITDIR, ref: `refs/remotes/origin/${fullRef(ref).replace(/^refs\/(heads\/)?/, "")}`, value: oid, force: true });
     this.emitPush({ repo: token.repo, ref: shortRef(ref), before, after: oid });
   }
@@ -644,6 +669,53 @@ export class ArtifactsRepoHost implements RepoHost {
     for (const name of dirs) entries.push({ mode: "040000", path: name, oid: await this.writeTree(cached, tree, `${prefix}${name}/`), type: "tree" });
     return git.writeTree({ fs: cached.fs, gitdir: GITDIR, tree: entries });
   }
+}
+
+export function retryingHttp(inner: HttpClient, wait: (ms: number) => Promise<void> = sleep): HttpClient {
+  return {
+    async request(request) {
+      const chunks: Uint8Array[] = [];
+      if (request.body) for await (const chunk of request.body) chunks.push(chunk);
+      const once = request.method === "POST" && /\/git-receive-pack$/.test(new URL(request.url).pathname);
+      for (let attempt = 1; ; attempt++) {
+        const body = request.body ? { body: replay(chunks) } : {};
+        const last = once || attempt >= HTTP_ATTEMPTS;
+        try {
+          const response = await inner.request({ ...request, ...body });
+          if (last || !retryableStatus(response.statusCode)) return response;
+        } catch (error) {
+          if (last || (error as Error | null)?.name === "AbortError") throw error;
+        }
+        await wait(backoff(attempt));
+      }
+    },
+  };
+}
+
+async function* replay(chunks: readonly Uint8Array[]): AsyncIterableIterator<Uint8Array> {
+  yield* chunks;
+}
+
+function retryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+function serverError(error: unknown): boolean {
+  const status = (error as { data?: { statusCode?: unknown } } | null)?.data?.statusCode;
+  return typeof status === "number" && retryableStatus(status);
+}
+
+function withContext(error: unknown, label: string): unknown {
+  if (error instanceof Error && !error.message.startsWith(label)) error.message = `${label}: ${error.message}`;
+  return error;
+}
+
+function backoff(attempt: number): number {
+  return 250 * 4 ** (attempt - 1);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function addRemote(fs: MemoryFs, remote: string, url: string): Promise<void> {

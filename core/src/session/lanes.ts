@@ -11,6 +11,7 @@ export interface Lane {
   rework: boolean;
   feedback: string | null;
   head: string | null;
+  unmerged?: boolean;
 }
 
 export type LaneStatus = "working" | "committed" | "unchanged" | "rejected" | "merged" | "conflict";
