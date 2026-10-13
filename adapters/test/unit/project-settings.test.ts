@@ -59,6 +59,14 @@ describe("project settings", () => {
     if (!linked.ok) throw new Error(linked.error);
     const cleared = applyProjectUpdate(linked.settings, { previewIdleMinutes: null, git: null }, secret);
     if (!cleared.ok) throw new Error(cleared.error);
-    expect(readProjectSettings(cleared.settings)).toEqual({ previewIdleMinutes: 60, git: null });
+    expect(readProjectSettings(cleared.settings)).toEqual({ previewIdleMinutes: 60, attempts: null, git: null });
+    const tries = applyProjectUpdate(cleared.settings, { attempts: 3 }, secret);
+    if (!tries.ok) throw new Error(tries.error);
+    expect(readProjectSettings(tries.settings).attempts).toBe(3);
+    expect(viewProjectSettings(readProjectSettings(tries.settings)).attempts).toBe(3);
+    expect(applyProjectUpdate(tries.settings, { attempts: 9 }, secret).ok).toBe(false);
+    const back = applyProjectUpdate(tries.settings, { attempts: null }, secret);
+    if (!back.ok) throw new Error(back.error);
+    expect(readProjectSettings(back.settings).attempts).toBeNull();
   });
 });

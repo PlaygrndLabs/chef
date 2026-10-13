@@ -11,7 +11,8 @@ import { FeaturePage } from "@/components/feature-page";
 import { Home } from "@/components/home";
 import { NewProjectDialog, returningToNewProject, Setup } from "@/components/project-setup";
 import { InsightsView } from "@/components/insights-view";
-import { AgentsView } from "@/components/agents-view";
+import { SettingsHost } from "@/components/settings-host";
+import { useSettings } from "@/components/settings-dialog";
 import { Panel } from "@/components/panel";
 import { ProjectBar } from "@/components/project-bar";
 import { Sidebar } from "@/components/sidebar";
@@ -19,7 +20,7 @@ import { appApi, projectApi, type AppMode } from "@/lib/api";
 import { useProject } from "@/lib/live";
 import { featureNodes, sessionNodes } from "@/lib/model";
 import { pickProject, rememberProject, useProjects } from "@/lib/projects";
-import { useSelection, type Selection } from "@/lib/selection";
+import { useSelection, type Selection, type SettingsScope } from "@/lib/selection";
 import { WorkspaceContext, type Workspace } from "@/lib/workspace";
 import { Wordmark } from "@/components/logo";
 
@@ -53,7 +54,6 @@ function Center({ workspace }: { readonly workspace: Workspace }) {
   if (selection.view === "feature" && feature) return <FeaturePage feature={feature} composerRef={composer} />;
   if (selection.view === "feature") return <div className="grid h-full place-items-center text-muted-foreground">Loading</div>;
   if (selection.view === "insights") return <InsightsView />;
-  if (selection.view === "agents") return <AgentsView />;
   return <Home composerRef={composer} />;
 }
 
@@ -101,6 +101,11 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
   const [sideWidth, setSideWidth] = useStoredWidth("chef:sidebar-width", SIDEBAR.initial);
   const [panelWidth, setPanelWidth] = useStoredWidth("chef:panel-width", PANEL.initial);
   const wide = useMediaQuery("(min-width: 1024px)") ? window.innerWidth : 1024;
+  const app = useSettings();
+  const openSettings = useCallback((scope: SettingsScope, section = scope === "app" ? "general" : "general", item: string | null = null) => {
+    setSidebar(false);
+    select({ settings: { scope, section }, item });
+  }, [select]);
   const panelMax = Math.max(PANEL.min, wide - sideWidth - 360);
 
   const workspace: Workspace = {
@@ -132,6 +137,8 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
       setSidebar(false);
       window.setTimeout(() => window.dispatchEvent(new Event("chef:compose")), 50);
     },
+    openSettings,
+    app,
   };
 
   useEffect(() => {
@@ -152,8 +159,8 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
   useEffect(() => rememberProject(selection.project), [selection.project]);
 
   useEffect(() => {
-    document.title = feature && selection.view === "feature" ? `${feature.title} · chef` : selection.view === "agents" ? "Agents · chef" : `${selection.project} · chef`;
-  }, [feature, selection.view, selection.project]);
+    document.title = selection.settings ? `${selection.settings.scope === "app" ? "Settings" : `${selection.project} settings`} · chef` : feature && selection.view === "feature" ? `${feature.title} · chef` : `${selection.project} · chef`;
+  }, [feature, selection.view, selection.project, selection.settings]);
 
   return (
     <CopilotKitProvider key={selection.project} runtimeUrl={`/api/projects/${selection.project}/copilotkit`}>
@@ -213,6 +220,7 @@ function ProjectWorkspace(props: { readonly selection: Selection; readonly selec
           </DialogContent>
         </Dialog>
         <CommandPalette open={palette} onOpenChange={setPalette} />
+        <SettingsHost />
         <NewProjectDialog open={adding} fromGitHub={fromGitHub} onOpenChange={setAdding} onCreated={props.onCreated} />
       </WorkspaceContext.Provider>
     </CopilotKitProvider>

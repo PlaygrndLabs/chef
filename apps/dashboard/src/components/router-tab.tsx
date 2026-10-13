@@ -198,7 +198,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
           </li>
           <li className="rounded-lg bg-muted/50 p-3" data-jev={view.jev ? "on" : "off"}>
             <div className="font-medium">2. Jev</div>
-            <div className="text-xs text-muted-foreground">{view.jev ? "TypeSafe System One answers the three questions below in about 100 ms." : "Off: add a TypeSafe key in Settings > Routing to use it."}</div>
+            <div className="text-xs text-muted-foreground">{view.jev ? "TypeSafe System One answers the three questions below in about 100 ms." : "Off: add a TypeSafe key in Settings > Router to use it."}</div>
           </li>
           <li className="rounded-lg bg-muted/50 p-3">
             <div className="font-medium">3. Planner</div>
@@ -206,7 +206,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
           </li>
         </ol>
       </Section>
-      <TryIt />
+      {view.scope ? <TryIt /> : null}
       <form
         className="flex flex-col gap-5"
         data-router-form
@@ -242,12 +242,12 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
           <Answer label="refactor" value={w.change.criteria.refactor} onChange={(v) => wording({ change: { ...w.change, criteria: { ...w.change.criteria, refactor: v } } })} />
         </Section>
         <div className="sticky bottom-0 -mx-1 flex items-center gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
-          <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : view.routerEdited ? "Saved" : "Using chef's default"}</span>
+          <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : view.scope ? (view.scope.router ? "Saved for this project" : "Using the setting for all projects") : view.routerEdited ? "Saved" : "Using chef's default"}</span>
           <span className="flex-1" />
-          {view.routerEdited ? (
-            <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void save(null, "Reset the router to default")}>
+          {(view.scope ? view.scope.router : view.routerEdited) ? (
+            <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void save(null, view.scope ? "The router uses the setting for all projects" : "Reset the router to default")}>
               <RotateCcw />
-              Reset to default
+              {view.scope ? "Use the setting for all projects" : "Reset to default"}
             </Button>
           ) : null}
           <Button type="submit" size="sm" disabled={busy || !dirty}>
@@ -255,7 +255,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
           </Button>
         </div>
       </form>
-      <Recent />
+      {view.scope ? <Recent /> : null}
       <Section title="Kinds of work" note="What each answer starts. Every kind goes through the same tests, review and checks before it goes live, and chef reverts a merge that turns the app red." id="kinds">
         <ul className="flex flex-col divide-y text-sm">
           {KINDS.map((k) => (

@@ -256,16 +256,20 @@ export function NewProjectDialog(props: { readonly open: boolean; readonly onOpe
 export function Setup(props: { readonly onCreated: (name: string) => void }) {
   const { settings, setSettings, available } = useSettings();
   const [providers, setProviders] = useState(false);
+  const [section, setSection] = useState("models");
   const [fromGitHub] = useState(returningToNewProject);
-  const missing = available && missingSettings(settings).length > 0;
+  const missing = available ? missingSettings(settings) : [];
   useEffect(() => {
-    if (missing) setProviders(true);
-  }, [missing]);
+    if (missing[0]) {
+      setSection(missing[0]);
+      setProviders(true);
+    }
+  }, [missing.length > 0]);
   return (
     <div className="flex h-dvh flex-col overflow-y-auto" data-view="setup">
       <div className="flex justify-end p-3">
         {available ? (
-          <Button variant="ghost" size="sm" onClick={() => setProviders(true)} className={missing ? "text-bad" : undefined}>
+          <Button variant="ghost" size="sm" onClick={() => setProviders(true)} className={missing.length ? "text-bad" : undefined}>
             <KeyRound />
             Settings
           </Button>
@@ -279,7 +283,7 @@ export function Setup(props: { readonly onCreated: (name: string) => void }) {
           <NewProjectForm autoFocus fromGitHub={fromGitHub} onCreated={props.onCreated} />
         </div>
       </div>
-      {available ? <SettingsDialog open={providers} onOpenChange={setProviders} settings={settings} onChange={setSettings} /> : null}
+      {available ? <SettingsDialog open={providers} onOpenChange={setProviders} settings={settings} available onChange={setSettings} section={section} item={null} nav={{ go: (next) => setSection(next), section: setSection }} returnTo="/?settings=app.github" withoutProject /> : null}
     </div>
   );
 }

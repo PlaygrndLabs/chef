@@ -9,8 +9,9 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { applyAgentConfig, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
-import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, revealEnv, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
+import { AgentSettings, applyAgentConfig, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
+import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
@@ -24,7 +25,7 @@ import { SandboxCoder } from "./sandbox-coder.ts";
 import { buildingPage, previewPath } from "@chef/adapters/preview-page";
 import { CloudflareWorkerSpace } from "./preview-space.ts";
 import { gitHubApp } from "./github.ts";
-import { agentStore, currentSettings, settingsStub } from "./settings.ts";
+import { agentStore, currentSettings, envCipher, settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
 import type { SandboxStatus } from "./session-agent.ts";
 
@@ -34,6 +35,7 @@ const PROJECT_SETTINGS = "project/settings";
 const ORIGIN = "project/origin";
 const OVERVIEW = "project/overview";
 const ENV = "project/env";
+const AGENTS = "project/agents/";
 const READING_TIMEOUT_MS = 10 * 60_000;
 const POLL_SECONDS = 300;
 const BUSY_SWEEP_SECONDS = 600;
@@ -49,17 +51,19 @@ function role(profiles: Profiles, name: string) {
 export class ProjectAgent extends Agent<Env> {
   private readonly calls = new Map<string, VoiceCall>();
   private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; space: CloudflareWorkerSpace | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
-  private cipher: Promise<EnvCipher> | null = null;
+  private cipher: EnvCipher | null = null;
 
   private async build() {
     const settings = await currentSettings(this.env);
     const project = await this.projectSettings();
     const origin = (await this.ctx.storage.get<string>(ORIGIN)) ?? null;
     const app = project.git?.installation !== undefined ? await gitHubApp(this.env) : null;
-    const agents = await agentStore(this.env)
+    const shared = await agentStore(this.env)
       .current()
       .catch(() => DEFAULT_STORED_AGENTS);
-    const fingerprint = JSON.stringify([settings, project.git, origin, app?.credentials.id ?? null, agents.version]);
+    const own = await this.agentSettings().current();
+    const agents = { config: mergeAgentConfig(shared.config, own.config) };
+    const fingerprint = JSON.stringify([settings, project.git, project.attempts, origin, app?.credentials.id ?? null, shared.version, own.version]);
     if (this.built?.fingerprint === fingerprint) return this.built;
     this.built?.orchestrator.dispose();
     const env = this.env;
@@ -101,9 +105,9 @@ export class ProjectAgent extends Agent<Env> {
         profiles,
         router: routerConfigOf(agents.config.router),
         generated,
-        specialization: { attempts: settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
+        specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }) },
         previewLink: (key) => `/preview/${this.name}/${key}`,
-        environment: async () => envNames(await this.storedEnv()),
+        environment: async () => envNames(await this.effectiveEnv()),
       },
     );
     const git = project.git;
@@ -126,6 +130,9 @@ export class ProjectAgent extends Agent<Env> {
     if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")));
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
     if (action === "env" && url.pathname.endsWith(`/projects/${this.name}/env`)) return this.envRequest(request);
+    if (url.pathname.endsWith(`/projects/${this.name}/agents`) || url.pathname.endsWith(`/projects/${this.name}/agents/restore`)) {
+      return projectAgentsRequest(request, { project: this.name, store: this.agentSettings(), shared: agentStore(this.env), defaults: loadProfiles(agentFiles), models: settings.models, jev: settings.jev !== null });
+    }
     if (request.method === "GET" && url.pathname.endsWith("/git")) return Response.json({ settings: viewProjectSettings(await this.projectSettings()).git, state: external ? await external.state() : null });
     if (request.method === "POST" && url.pathname.endsWith("/git/sync")) {
       if (!external) return Response.json({ error: "this project has no linked repository" }, { status: 409 });
@@ -300,15 +307,23 @@ export class ProjectAgent extends Agent<Env> {
     return (await this.ctx.storage.get<StoredEnv>(ENV)) ?? {};
   }
 
+  private async effectiveEnv(): Promise<StoredEnv> {
+    return mergeEnv(await settingsStub(this.env).sharedEnv(), await this.storedEnv());
+  }
+
   private envCipher(): EnvCipher {
-    const sealed = (): Promise<EnvCipher> => {
-      this.cipher ??= settingsStub(this.env)
-        .envKey()
-        .then((key) => aesCipher(envKeyBytes(key)));
-      this.cipher.catch(() => (this.cipher = null));
-      return this.cipher;
-    };
-    return { encrypt: async (text) => (await sealed()).encrypt(text), decrypt: async (text) => (await sealed()).decrypt(text) };
+    this.cipher ??= envCipher(this.env);
+    return this.cipher;
+  }
+
+  private agentSettings(): AgentSettings {
+    return new AgentSettings(new DurableStore(this.ctx.storage), Date.now, AGENTS);
+  }
+
+  async sharedEnvironmentChanged(): Promise<void> {
+    const { orchestrator } = await this.build();
+    if ((await orchestrator.environmentChanged()).length > 0) await this.schedule(1, "drive");
+    await this.schedule(0, "pushEnvironment");
   }
 
   private async envRequest(request: Request): Promise<Response> {
@@ -327,11 +342,12 @@ export class ProjectAgent extends Agent<Env> {
   private async envView(stored: StoredEnv) {
     const { orchestrator } = await this.build();
     const features = [...readSpec((await orchestrator.mainTree()).tree), ...(await orchestrator.sessions()).filter((s) => !isTerminal(s.machine.state)).map((s) => s.plan.feature)];
-    return viewEnv(stored, this.envCipher(), envNeeds(features, envNames(stored)));
+    const shared = await settingsStub(this.env).sharedEnv();
+    return viewProjectEnv(stored, shared, this.envCipher(), envNeeds(features, envNames(mergeEnv(shared, stored))));
   }
 
   private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<void> {
-    const vars = await revealEnv(await this.storedEnv(), this.envCipher());
+    const vars = await revealEnv(await this.effectiveEnv(), this.envCipher());
     if (vars.length === 0) return;
     try {
       await space.applyEnvironment(vars, { create: true });
@@ -344,7 +360,7 @@ export class ProjectAgent extends Agent<Env> {
     const { keeper, space } = await this.build();
     if (!keeper || !space || !(await keeper.live())) return;
     try {
-      const patch = await space.applyEnvironment(await revealEnv(await this.storedEnv(), this.envCipher()), { create: false });
+      const patch = await space.applyEnvironment(await revealEnv(await this.effectiveEnv(), this.envCipher()), { create: false });
       if (!patch || Object.keys(patch).length === 0) return;
       for (const branch of await keeper.liveBranches()) await space.refreshPreview(previewName(branch), patch).catch((error: unknown) => console.error(`updating the environment of preview ${branch} failed`, error));
     } catch (error) {

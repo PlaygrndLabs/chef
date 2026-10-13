@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
 import { agentsRequest } from "@chef/adapters/agents";
-import { aesCipher, envKeyBytes, newEnvKey, type EnvCipher } from "@chef/adapters/project-env";
+import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { AgentSettings } from "@chef/core";
 import { LocalGitHost } from "@chef/adapters/local-git";
 import { buildingPage, previewPath } from "@chef/adapters/preview-page";
@@ -126,7 +126,7 @@ export class LocalEngine {
     let project = this.projects.get(name);
     if (!project) {
       project = (async () => {
-        const created = new LocalProject(name, { dir: this.dir, docker: this.docker, control: this.git.control({ read: true }), settings: () => this.settings(), agents: this.agents, cipher: () => this.envCipher(), vars: this.vars, log: this.log });
+        const created = new LocalProject(name, { dir: this.dir, docker: this.docker, control: this.git.control({ read: true }), settings: () => this.settings(), agents: this.agents, cipher: () => this.envCipher(), sharedEnv: async () => this.sharedEnv(), vars: this.vars, log: this.log });
         await created.open();
         return created;
       })();
@@ -147,6 +147,7 @@ export class LocalEngine {
   async handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/settings") return this.settingsRequest(request);
+    if (url.pathname === "/api/env") return this.sharedEnvRequest(request);
     if (url.pathname === "/api/agents" || url.pathname === "/api/agents/restore") {
       const settings = this.settings();
       return agentsRequest(request, { store: this.agents, defaults: repoProfiles(), models: settings.models, jev: settings.jev !== null });
@@ -192,6 +193,21 @@ export class LocalEngine {
       return buildingPage(visit.status === "failed" ? { status: "failed", key, error: visit.error } : { status: visit.status, key });
     }
     return Response.json({ error: "not found" }, { status: 404 });
+  }
+
+  private sharedEnv(): StoredEnv {
+    return readJson<StoredEnv>(join(this.dir, "env.shared.json"), {});
+  }
+
+  private async sharedEnvRequest(request: Request): Promise<Response> {
+    const cipher = await this.envCipher();
+    if (request.method === "GET") return Response.json(await viewEnv(this.sharedEnv(), cipher, []));
+    if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
+    const result = await applyEnvUpdate(this.sharedEnv(), await request.json().catch(() => null), cipher, Date.now());
+    if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+    writeAtomic(join(this.dir, "env.shared.json"), JSON.stringify(result.env, null, 1));
+    for (const entry of this.registry()) await (await this.project(entry.name)).sharedEnvironmentChanged().catch((error: unknown) => this.log(`telling ${entry.name} about the shared environment failed: ${error instanceof Error ? error.message : String(error)}`));
+    return Response.json(await viewEnv(result.env, cipher, []));
   }
 
   private async settingsRequest(request: Request): Promise<Response> {

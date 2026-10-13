@@ -12,6 +12,7 @@ export type StoredEnv = Readonly<Record<string, StoredEnvVar>>;
 export interface EnvVarView extends EnvVar {
   readonly value: string | null;
   readonly updatedAt: number;
+  readonly scope?: "shared" | "overrides";
 }
 
 export interface ProjectEnvView {
@@ -68,6 +69,15 @@ export function envNames(stored: StoredEnv): EnvVar[] {
 export async function viewEnv(stored: StoredEnv, cipher: EnvCipher, needs: readonly EnvNeed[]): Promise<ProjectEnvView> {
   const vars = await Promise.all(Object.entries(stored).map(async ([name, entry]) => ({ name, secret: entry.secret, value: entry.secret ? null : await cipher.decrypt(entry.value), updatedAt: entry.updatedAt })));
   return { vars: vars.sort((a, b) => a.name.localeCompare(b.name)), needs };
+}
+
+export function mergeEnv(shared: StoredEnv, own: StoredEnv): StoredEnv {
+  return { ...shared, ...own };
+}
+
+export async function viewProjectEnv(own: StoredEnv, shared: StoredEnv, cipher: EnvCipher, needs: readonly EnvNeed[]): Promise<ProjectEnvView> {
+  const view = await viewEnv(mergeEnv(shared, own), cipher, needs);
+  return { ...view, vars: view.vars.map((item) => (!(item.name in own) ? { ...item, scope: "shared" as const } : item.name in shared ? { ...item, scope: "overrides" as const } : item)) };
 }
 
 export async function revealEnv(stored: StoredEnv, cipher: EnvCipher): Promise<PlainEnvVar[]> {

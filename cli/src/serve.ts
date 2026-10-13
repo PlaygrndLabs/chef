@@ -1,12 +1,13 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, DEFAULT_BUDGET, DEFAULT_PREVIEW_IDLE_MINUTES, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec } from "@chef/core";
+import { AgentSettings, ControlError, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
-import { agentsRequest } from "@chef/adapters/agents";
+import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type SettingsEnv } from "@chef/adapters/settings";
-import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, newEnvKey, viewEnv, type StoredEnv } from "@chef/adapters/project-env";
+import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, mergeEnv, newEnvKey, viewEnv, viewProjectEnv, type StoredEnv } from "@chef/adapters/project-env";
+import { applyProjectUpdate, readProjectSettings, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { createNodeFetchHandler } from "@copilotkit/runtime/v2/node";
 import { benchScript } from "./bench/agent.ts";
@@ -51,8 +52,9 @@ export interface LocalServer {
 export async function serve(options: { readonly port: number; readonly project?: string; readonly real: boolean; readonly attempts?: number; readonly assets?: string; readonly settings?: SettingsEnv; readonly log?: (line: string) => void }): Promise<LocalServer> {
   const log = options.log ?? (() => {});
   let env: StoredEnv = {};
+  let shared: StoredEnv = {};
   const cipher = await aesCipher(envKeyBytes(newEnvKey()));
-  const w = localWorld({ script: script(), presets: presets(), real: options.real, config: { environment: async () => envNames(env), ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
+  const w = localWorld({ script: script(), presets: presets(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
   await w.orchestrator.bootstrap(templateTree());
   let driving: Promise<void> | null = null;
   const drive = () => {
@@ -119,7 +121,24 @@ export async function serve(options: { readonly port: number; readonly project?:
 
   const envView = async () => {
     const features = [...readSpec((await w.orchestrator.mainTree()).tree), ...(await w.orchestrator.sessions()).filter((s) => !isTerminal(s.machine.state)).map((s) => s.plan.feature)];
-    return viewEnv(env, cipher, envNeeds(features, envNames(env)));
+    return viewProjectEnv(env, shared, cipher, envNeeds(features, envNames(mergeEnv(shared, env))));
+  };
+  const sharedEnvRequest = async (request: Request): Promise<Response> => {
+    if (request.method === "GET") return Response.json(await viewEnv(shared, cipher, []));
+    if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
+    const result = await applyEnvUpdate(shared, await request.json().catch(() => null), cipher, Date.now());
+    if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+    shared = result.env;
+    if ((await w.orchestrator.environmentChanged()).length > 0) drive();
+    return Response.json(await viewEnv(shared, cipher, []));
+  };
+  let projectSettings: Partial<ProjectSettings> = {};
+  const projectSettingsRequest = async (request: Request): Promise<Response> => {
+    if (request.method === "GET") return Response.json(viewProjectSettings(readProjectSettings(projectSettings)));
+    const result = applyProjectUpdate(projectSettings, await request.json().catch(() => null), () => "local-webhook-secret");
+    if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+    projectSettings = result.settings;
+    return Response.json(viewProjectSettings(readProjectSettings(projectSettings)));
   };
   const envRequest = async (request: Request): Promise<Response> => {
     if (request.method === "GET") return Response.json(await envView());
@@ -140,10 +159,13 @@ export async function serve(options: { readonly port: number; readonly project?:
     return Response.json(describeSettings(saved, env));
   };
 
-  const agents = new AgentSettings(new MemoryStore());
+  const agentStore = new MemoryStore();
+  const agents = new AgentSettings(agentStore);
+  const projectAgents = new AgentSettings(agentStore, Date.now, "project/agents/");
   const api = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (url.pathname === "/api/settings" && options.settings) return settings(request, options.settings);
+    if (url.pathname === "/api/env") return sharedEnvRequest(request);
     if (url.pathname === "/api/agents" || url.pathname === "/api/agents/restore") {
       const resolved = resolveSettings(saved, options.settings ?? {});
       return agentsRequest(request, { store: agents, defaults: repoProfiles(), models: resolved.models, jev: resolved.jev !== null });
@@ -164,8 +186,12 @@ export async function serve(options: { readonly port: number; readonly project?:
         return Response.json(await w.orchestrator.route(prompt.trim()));
       }
       if (request.method === "GET" && action === "sessions") return Response.json(await w.orchestrator.sessions());
-      if (request.method === "GET" && action === "settings") return Response.json({ previewIdleMinutes: DEFAULT_PREVIEW_IDLE_MINUTES, git: null });
+      if (action === "settings") return projectSettingsRequest(request);
       if (action === "env") return envRequest(request);
+      if (project && (action === "agents" || action === "agents/restore")) {
+        const resolved = resolveSettings(saved, options.settings ?? {});
+        return projectAgentsRequest(request, { project: project.name, store: projectAgents, shared: agents, defaults: repoProfiles(), models: resolved.models, jev: resolved.jev !== null });
+      }
       if (request.method === "GET" && action === "spec") {
         const main = await w.orchestrator.mainTree();
         return Response.json({ commitId: main.commitId, features: readSpec(main.tree) });
