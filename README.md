@@ -32,11 +32,6 @@ chef is free. It needs the [Workers Paid plan](https://developers.cloudflare.com
 - **Your keys stay yours.** Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.
 - **GitHub when you want it.** Projects live in your Cloudflare account. Connect GitHub only if you want a repo kept in sync.
 
-## Coming soon
-
-- **Terminal app:** use chef from your terminal, like Claude Code.
-- **Desktop app:** the same chat-first interface as a native app.
-
 ## Develop
 
 Run `pnpm install` and `pnpm run verify`. Repository layout and the CLI: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
