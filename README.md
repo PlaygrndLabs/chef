@@ -30,9 +30,25 @@ chef takes that work off your plate, so you spend your time on what to build, no
 - **Your keys stay yours.** Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.
 - **GitHub when you want it.** Projects live in your Cloudflare account. Connect GitHub only if you want a repo kept in sync.
 
+## Under the hood
+
+chef is a TypeScript monorepo that runs entirely on Cloudflare's developer platform.
+
+- **Engine.** One Worker with Durable Objects: a `ProjectAgent` per project and a `SessionAgent` per session hold state and drive work, so nothing stops when the browser closes.
+- **Repos.** Every project is a git repository in Cloudflare Artifacts. Each session works on its own fork, and only the merge gate can write `main`.
+- **Routing.** Rules first, then Jev (TypeSafe's System One) answers typed choice questions with calibrated confidence. When it is unsure, a Claude planner writes the spec and splits the work into parallel sessions.
+- **Coding.** The Claude Agent SDK runs inside a Cloudflare Sandbox (Containers) with role-scoped subagents for tests, code and review. The sandbox gets a read-only token, and its outbound proxy swaps in real keys only on approved hosts.
+- **History.** Each agent turn is one commit, with its prompt, model and role stored in git notes (`refs/notes/chef`).
+- **Gate.** Typecheck, lint, tests, spec lint, write-scope checks per role, locked tests, an independent AI review and a proof run against the live preview. Merges are serialized; if `main` moved, the session syncs and is gated again.
+- **Previews.** `wrangler preview` publishes each feature branch as a Worker preview. Idle previews are removed and rebuilt on the next visit.
+- **Memory.** Lessons and feature summaries are indexed in Vectorize with Workers AI embeddings and recalled before each turn.
+- **Live UI.** Sessions stream to a React dashboard over AG-UI with CopilotKit: coder output, tool calls, steps, preview, review and merge.
+
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Develop
 
-Run `pnpm install` and `pnpm run verify`. Repository layout and the CLI: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Run `pnpm install` and `pnpm run verify`. Repository layout and the CLI: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License
 
