@@ -11,6 +11,7 @@ import { useOverview } from "@/lib/overview";
 import { projectNameFrom } from "@/lib/projects";
 import { isProjectName } from "@/lib/selection";
 import { cn } from "@/lib/utils";
+import { Wordmark } from "@/components/logo";
 
 type Source = "fresh" | "github" | "other";
 
@@ -271,7 +272,7 @@ export function Setup(props: { readonly onCreated: (name: string) => void }) {
         ) : null}
       </div>
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-3 px-4 pt-10 pb-16 text-center sm:pt-20">
-        <span className="grid size-11 place-items-center rounded-xl bg-brand text-lg font-semibold text-brand-foreground">c</span>
+        <Wordmark className="mb-2 h-9" />
         <h1 className="text-2xl font-semibold tracking-tight">Create your first project</h1>
         <p className="text-muted-foreground">Start fresh, or bring a repository you already have and chef reads it first.</p>
         <div className="mt-4 w-full">
