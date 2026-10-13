@@ -30,7 +30,6 @@ export function renderTurn(turn: ChatTurn): string {
 }
 
 export function readChatMemory(stored: unknown): ChatMemory {
-  if (Array.isArray(stored)) return { summary: "", turns: stored as ChatTurn[] };
   if (stored && typeof stored === "object" && "turns" in stored) return stored as ChatMemory;
   return { summary: "", turns: [] };
 }

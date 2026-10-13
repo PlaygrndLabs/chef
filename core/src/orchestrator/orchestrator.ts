@@ -199,19 +199,6 @@ export class Orchestrator {
     }
   }
 
-  async addMissingFiles(files: Tree, message: string, when: (tree: Tree) => boolean = () => true): Promise<string[]> {
-    const added = await this.mergeQueue.run(async () => {
-      const { commitId, tree } = await this.mainTree();
-      if (!commitId || !when(tree)) return [];
-      const missing: FileChanges = Object.fromEntries(Object.entries(files).filter(([path]) => tree[path] === undefined));
-      if (Object.keys(missing).length === 0) return [];
-      await this.withToken(this.canonical, (token) => this.deps.repos.commit(token, { ref: "main", parent: commitId, changes: missing, message, author: this.config.author }));
-      return Object.keys(missing).sort();
-    });
-    if (added.length) await this.syncMemory();
-    return added;
-  }
-
   async mainTree(): Promise<{ commitId: string | null; tree: Tree }> {
     const commitId = await this.deps.repos.resolveRef(this.canonical, "main");
     const commit = commitId ? await this.deps.repos.readCommit(this.canonical, commitId) : null;
@@ -988,7 +975,7 @@ export class Orchestrator {
   private async syncMemory(): Promise<number> {
     const { tree } = await this.mainTree();
     const docs = memoryDocs(tree);
-    const indexed = (await this.deps.store.get<Record<string, string>>("memory-index/2")) ?? {};
+    const indexed = (await this.deps.store.get<Record<string, string>>("memory-index")) ?? {};
     const next: Record<string, string> = {};
     const changed = docs.filter((doc) => {
       next[doc.path] = hashHex(`${doc.kind}\n${doc.feature ?? ""}\n${doc.text}`);
@@ -997,7 +984,7 @@ export class Orchestrator {
     const removed = Object.keys(indexed).filter((path) => !(path in next));
     if (changed.length) await this.deps.memory.upsert(changed);
     if (removed.length) await this.deps.memory.remove(removed);
-    await this.deps.store.put("memory-index/2", next);
+    await this.deps.store.put("memory-index", next);
     return changed.length;
   }
 
