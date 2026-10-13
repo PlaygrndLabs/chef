@@ -1,13 +1,11 @@
 [
-  "User Details Read",
-  "Account Settings Read",
-  "Workers Scripts Write",
-  "Containers Write",
-  "Artifacts Write",
-  "Vectorize Write",
-  "Workers AI Read",
-  "Workflows Write",
-  "Event Subscriptions Write",
-  "Account API Tokens Write",
-  "Billing Read"
+  "user-details.read",
+  "account-settings.read",
+  "workers-scripts.write",
+  "containers.write",
+  "cloudchamber.write",
+  "artifacts.write",
+  "vectorize.write",
+  "ai.write",
+  "account-api-tokens.write"
 ]
