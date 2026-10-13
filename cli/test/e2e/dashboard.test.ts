@@ -299,7 +299,7 @@ describe("dashboard in a browser", () => {
       for (const [name, value] of [
         ["SUPPORT_EMAIL", "help@shop.example"],
         ["API_BASE_URL", "https://api.shared.example"],
-      ]) {
+      ] as const) {
         await shared.getByLabel("Name").fill(name);
         await shared.getByLabel("Value").fill(value);
         await shared.getByRole("radio", { name: "Plain" }).click();

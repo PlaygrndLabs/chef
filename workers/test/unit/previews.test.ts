@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { lostCreateRace, parsePreview, previewName } from "../../src/sandbox-checks.ts";
 import { cloudflareAllowed } from "../../src/sandbox-grants.ts";
-import { previewPath } from "../../src/preview-space.ts";
+import { previewPath } from "@chef/adapters/preview-page";
 
 const grant = { accountId: "acc1", worker: "chef-project-demo" };
 const api = (path: string) => new URL(`https://api.cloudflare.com/client/v4/accounts/acc1${path}`);

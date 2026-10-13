@@ -2,7 +2,7 @@ import { getAgentByName, routeAgentRequest } from "agents";
 import { guard } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
 import { gitHubRequest, gitHubWebhook } from "./github.ts";
-import { projectsRequest } from "./projects.ts";
+import { projectsRequest } from "@chef/adapters/projects";
 import { agentsRequest } from "@chef/adapters/agents";
 import { loadProfiles } from "@chef/core";
 import { agentFiles } from "./embedded.gen.ts";
@@ -26,7 +26,7 @@ export default {
     const blocked = await guard(request, await credential(env), claimPassword(env));
     if (blocked) return blocked;
     const url = new URL(request.url);
-    if (url.pathname === "/api/app" && request.method === "GET") return Response.json({ mode: "cloud", engine: url.origin, fixed: true });
+    if (url.pathname === "/api/app" && request.method === "GET") return Response.json({ mode: "cloud", place: "cloud", engine: url.origin, fixed: true });
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/env") return sharedEnvRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).sharedEnvironmentChanged());
     if (url.pathname === "/api/agents" || url.pathname === "/api/agents/restore") {
