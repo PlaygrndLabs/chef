@@ -12,6 +12,7 @@ import { isActive } from "@/lib/events";
 import type { OverviewState, Suggestion } from "@/lib/api";
 import { useOverview } from "@/lib/overview";
 import { useWorkspace } from "@/lib/workspace";
+import { Mark, Wordmark } from "@/components/logo";
 
 const sentHere = new Map<string, number>();
 
@@ -25,7 +26,7 @@ export function statusOf(state: SessionState): FeatureStatus {
 }
 
 function Avatar() {
-  return <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand text-xs font-semibold text-brand-foreground">c</span>;
+  return <Mark />;
 }
 
 function You({ children }: { readonly children: React.ReactNode }) {
@@ -63,8 +64,10 @@ export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
 function replyFor(decision: RouteDecision, title: string | null, attempts: number): string {
   if (decision.intent === "question") return "chef answered this before answers were saved, so the answer is not shown here.";
   const parallel = attempts > 1 ? ` I'm trying ${attempts} approaches at once and will keep the best one.` : "";
-  if (decision.intent === "change_feature") return `On it. This changes ${title ?? "an existing feature"}.${parallel}`;
-  return `On it. This is a new feature.${parallel}`;
+  const hotfix = decision.hotfix ? " It's a hotfix, so it goes live before other builds." : "";
+  if (decision.intent === "chore") return `On it. This is a chore outside any one feature, so every live feature gets checked again before it goes live.${hotfix}`;
+  if (decision.intent === "change_feature") return `On it. This changes ${title ?? "an existing feature"}.${hotfix || parallel}`;
+  return `On it. This is a new feature.${hotfix || parallel}`;
 }
 
 function Reply({ text, sessions }: { readonly text: string; readonly sessions: readonly SessionNode[] }) {
@@ -85,7 +88,7 @@ function Reply({ text, sessions }: { readonly text: string; readonly sessions: r
 function Welcome({ onExample }: { readonly onExample: (text: string) => void }) {
   return (
     <div className="flex flex-col items-center gap-3 pt-16 pb-4 text-center sm:pt-24" data-view="welcome">
-      <span className="grid size-11 place-items-center rounded-xl bg-brand text-lg font-semibold text-brand-foreground">c</span>
+      <Wordmark className="mb-2 h-9" />
       <h2 className="text-2xl font-semibold tracking-tight">What should we build?</h2>
       <p className="max-w-md text-muted-foreground">Describe a feature in plain words. chef plans it, writes the tests and the code, checks it, and puts it live.</p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
@@ -240,7 +243,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const pending = [...sentHere].filter(([prompt, seen]) => routes.filter((r) => r.prompt === prompt).length <= seen).map(([prompt]) => prompt);
 
   useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
+    if (history.length || pending.length) end.current?.scrollIntoView({ block: "end" });
   }, [messages.length, history.length, pending.length]);
 
   const send = async (text: string) => {
@@ -290,7 +293,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
           <div ref={end} />
         </div>
       </div>
-      <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to"} onSend={send} draft={draft} />
+      <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} />
     </div>
   );
 }

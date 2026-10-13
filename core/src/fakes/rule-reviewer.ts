@@ -6,6 +6,7 @@ export class RuleReviewer implements Reviewer {
 
   async review(input: ReviewInput): Promise<ReviewVerdict> {
     this.reviews.push(input);
+    if (input.chore) return this.reviewChore(input);
     const reasons: string[] = [];
     let retest = false;
     const tests = Object.entries(input.diff).filter(([path, content]) => path.endsWith(".test.ts") && content !== null);
@@ -19,6 +20,16 @@ export class RuleReviewer implements Reviewer {
     if (!touched.some((p) => p.startsWith(`features/${input.feature.id}/`) && !p.endsWith(".test.ts"))) reasons.push(`no implementation under features/${input.feature.id}/`);
     for (const [path, content] of Object.entries(input.diff)) if (content?.includes("<<<<<<<")) reasons.push(`unresolved conflict markers in ${path}`);
     return { approve: reasons.length === 0, reasons, retest, model: this.model };
+  }
+
+  private reviewChore(input: ReviewInput): ReviewVerdict {
+    const reasons: string[] = [];
+    if (Object.keys(input.diff).length === 0) reasons.push("the chore changed nothing");
+    for (const [path, content] of Object.entries(input.diff)) {
+      if (path.endsWith(".test.ts") && content === null) reasons.push(`a chore must not delete the test ${path}`);
+      if (content?.includes("<<<<<<<")) reasons.push(`unresolved conflict markers in ${path}`);
+    }
+    return { approve: reasons.length === 0, reasons, retest: false, model: this.model };
   }
 
   async pick(input: PickInput): Promise<PickVerdict> {

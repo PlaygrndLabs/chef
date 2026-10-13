@@ -123,3 +123,16 @@ export function relationsOf(node: SessionNode, sessions: readonly SessionNode[])
 export function sessionLabel(node: SessionNode): string {
   return node.attempt && node.attempt.of > 1 ? `${node.id} · try ${node.attempt.index} of ${node.attempt.of}` : node.id;
 }
+
+export function isChore(node: SessionNode): boolean {
+  return node.record?.kind === "chore" || node.live?.kind === "chore";
+}
+
+export function isHotfix(node: SessionNode): boolean {
+  return node.record?.hotfix === true || node.live?.hotfix === true;
+}
+
+export function heldBy(node: SessionNode): string | null {
+  if (node.state !== "gating") return null;
+  return node.live ? node.live.heldBy : (node.record?.heldBy ?? null);
+}

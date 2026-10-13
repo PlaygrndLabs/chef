@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { appApi, type AppMode, type CloudflareCheck } from "@/lib/api";
+import { Wordmark } from "@/components/logo";
 
 export const DEPLOY_BUTTON = "https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef";
 const TOKENS = "https://dash.cloudflare.com/profile/api-tokens";
@@ -196,7 +197,7 @@ export function PlaceScreen(props: { readonly mode: AppMode; readonly onChange: 
     <div className="flex h-dvh flex-col overflow-y-auto" data-view="place">
       <div className="mx-auto grid w-full max-w-4xl gap-6 px-4 pt-10 pb-16 sm:pt-16">
         <div className="grid justify-items-center gap-2 text-center">
-          <span className="grid size-11 place-items-center rounded-xl bg-brand text-lg font-semibold text-brand-foreground">c</span>
+          <Wordmark className="mb-2 h-9" />
           <h1 className="text-2xl font-semibold tracking-tight">Where should chef work?</h1>
           <p className="max-w-xl text-muted-foreground">This app runs on your computer either way. Pick where the agents, sandboxes and previews run. You can change it later in Settings.</p>
         </div>

@@ -11,7 +11,7 @@ import { ago } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
-const INTENT: Readonly<Record<string, string>> = { new_feature: "New feature", change_feature: "Change", question: "Question" };
+const INTENT: Readonly<Record<string, string>> = { new_feature: "New feature", change_feature: "Change", chore: "Chore", question: "Question" };
 const CHANGE: Readonly<Record<string, string>> = { bug: "bug fix", extend: "extend", refactor: "refactor" };
 const VIA: Readonly<Record<RouteDecision["via"], string>> = { rules: "Rules", classifier: "Jev", planner: "Planner" };
 
@@ -20,6 +20,8 @@ const KINDS: readonly { readonly kind: string; readonly how: string }[] = [
   { kind: "Change: bug fix", how: "A new spec revision, then a test that shows the bug, the fix, review and checks." },
   { kind: "Change: extend", how: "New acceptance criteria on the same feature, tests first, then the code." },
   { kind: "Change: refactor", how: "Restructures the feature's code. Its existing tests must keep passing." },
+  { kind: "Chore", how: "Work outside one feature, like dependencies, config, shared code, docs or CI. Start it with /chore. The Chore worker may change anything but specs and feature tests, every test must keep passing, and every live feature is proved again on its preview." },
+  { kind: "Hotfix", how: "Start a fix with /hotfix. It runs one try, and other builds wait to go live until it is live, so it reaches the app first. Same tests, review and checks." },
   { kind: "Question", how: "Answered from the project's memory. No code changes." },
 ];
 
@@ -88,6 +90,7 @@ export function Decision({ decision }: { readonly decision: RouteDecision }) {
           {decision.changeKind ? `: ${CHANGE[decision.changeKind] ?? decision.changeKind}` : ""}
         </span>
         {feature ? <span className="text-muted-foreground">to {feature}</span> : null}
+        {decision.hotfix ? <ToneBadge tone="bad">hotfix</ToneBadge> : null}
         <ToneBadge tone={decision.via === "classifier" ? "ok" : "idle"}>decided by {VIA[decision.via]}</ToneBadge>
         <span className="text-xs text-muted-foreground tabular-nums">{Math.round(decision.confidence * 100)}% sure</span>
       </div>
@@ -191,7 +194,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
         <ol className="grid gap-2 text-sm sm:grid-cols-3">
           <li className="rounded-lg bg-muted/50 p-3">
             <div className="font-medium">1. Rules</div>
-            <div className="text-xs text-muted-foreground">/new, a @feature mention, or a plain question.</div>
+            <div className="text-xs text-muted-foreground">/new, /chore, /hotfix, a @feature mention, or a plain question.</div>
           </li>
           <li className="rounded-lg bg-muted/50 p-3" data-jev={view.jev ? "on" : "off"}>
             <div className="font-medium">2. Jev</div>
@@ -225,6 +228,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
           <Input value={w.intent.instructions} onChange={(e) => wording({ intent: { ...w.intent, instructions: e.target.value } })} aria-label="Question 1" required />
           <Answer label="new_feature" value={w.intent.criteria.new_feature} onChange={(v) => wording({ intent: { ...w.intent, criteria: { ...w.intent.criteria, new_feature: v } } })} threshold={threshold("new_feature")} />
           <Answer label="change_feature" value={w.intent.criteria.change_feature} onChange={(v) => wording({ intent: { ...w.intent, criteria: { ...w.intent.criteria, change_feature: v } } })} threshold={threshold("change_feature")} />
+          <Answer label="chore" value={w.intent.criteria.chore} onChange={(v) => wording({ intent: { ...w.intent, criteria: { ...w.intent.criteria, chore: v } } })} threshold={threshold("chore")} />
           <Answer label="question" value={w.intent.criteria.question} onChange={(v) => wording({ intent: { ...w.intent, criteria: { ...w.intent.criteria, question: v } } })} threshold={threshold("question")} />
         </Section>
         <Section title="Question 2: which feature?" note="The answers are this project's feature titles, plus the one below." id="feature">
