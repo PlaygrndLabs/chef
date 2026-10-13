@@ -9,7 +9,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { applyAgentConfig, ControlError, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
+import { applyAgentConfig, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type VoiceCall } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, revealEnv, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
@@ -56,7 +56,9 @@ export class ProjectAgent extends Agent<Env> {
     const project = await this.projectSettings();
     const origin = (await this.ctx.storage.get<string>(ORIGIN)) ?? null;
     const app = project.git?.installation !== undefined ? await gitHubApp(this.env) : null;
-    const agents = await agentStore(this.env).current();
+    const agents = await agentStore(this.env)
+      .current()
+      .catch(() => DEFAULT_STORED_AGENTS);
     const fingerprint = JSON.stringify([settings, project.git, origin, app?.credentials.id ?? null, agents.version]);
     if (this.built?.fingerprint === fingerprint) return this.built;
     this.built?.orchestrator.dispose();
@@ -298,19 +300,22 @@ export class ProjectAgent extends Agent<Env> {
     return (await this.ctx.storage.get<StoredEnv>(ENV)) ?? {};
   }
 
-  private envCipher(): Promise<EnvCipher> {
-    this.cipher ??= settingsStub(this.env)
-      .envKey()
-      .then((key) => aesCipher(envKeyBytes(key)));
-    this.cipher.catch(() => (this.cipher = null));
-    return this.cipher;
+  private envCipher(): EnvCipher {
+    const sealed = (): Promise<EnvCipher> => {
+      this.cipher ??= settingsStub(this.env)
+        .envKey()
+        .then((key) => aesCipher(envKeyBytes(key)));
+      this.cipher.catch(() => (this.cipher = null));
+      return this.cipher;
+    };
+    return { encrypt: async (text) => (await sealed()).encrypt(text), decrypt: async (text) => (await sealed()).decrypt(text) };
   }
 
   private async envRequest(request: Request): Promise<Response> {
     const stored = await this.storedEnv();
     if (request.method === "GET") return Response.json(await this.envView(stored));
     if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
-    const result = await applyEnvUpdate(stored, await request.json().catch(() => null), await this.envCipher(), Date.now());
+    const result = await applyEnvUpdate(stored, await request.json().catch(() => null), this.envCipher(), Date.now());
     if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
     await this.ctx.storage.put(ENV, result.env);
     const { orchestrator } = await this.build();
@@ -322,11 +327,11 @@ export class ProjectAgent extends Agent<Env> {
   private async envView(stored: StoredEnv) {
     const { orchestrator } = await this.build();
     const features = [...readSpec((await orchestrator.mainTree()).tree), ...(await orchestrator.sessions()).filter((s) => !isTerminal(s.machine.state)).map((s) => s.plan.feature)];
-    return viewEnv(stored, await this.envCipher(), envNeeds(features, envNames(stored)));
+    return viewEnv(stored, this.envCipher(), envNeeds(features, envNames(stored)));
   }
 
   private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<void> {
-    const vars = await revealEnv(await this.storedEnv(), await this.envCipher());
+    const vars = await revealEnv(await this.storedEnv(), this.envCipher());
     if (vars.length === 0) return;
     try {
       await space.applyEnvironment(vars, { create: true });
@@ -339,7 +344,7 @@ export class ProjectAgent extends Agent<Env> {
     const { keeper, space } = await this.build();
     if (!keeper || !space || !(await keeper.live())) return;
     try {
-      const patch = await space.applyEnvironment(await revealEnv(await this.storedEnv(), await this.envCipher()), { create: false });
+      const patch = await space.applyEnvironment(await revealEnv(await this.storedEnv(), this.envCipher()), { create: false });
       if (!patch || Object.keys(patch).length === 0) return;
       for (const branch of await keeper.liveBranches()) await space.refreshPreview(previewName(branch), patch).catch((error: unknown) => console.error(`updating the environment of preview ${branch} failed`, error));
     } catch (error) {

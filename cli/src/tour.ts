@@ -16,7 +16,7 @@ export interface TourOptions {
 interface SessionRow {
   readonly id: string;
   readonly featureId: string;
-  readonly machine: { readonly state: string };
+  readonly machine: { readonly state: string; readonly reason?: string; readonly feedback?: string | null };
 }
 
 const ACTIVE = new Set(["queued", "planning", "testing", "coding", "reviewing", "gating"]);
@@ -26,8 +26,12 @@ export interface TourReport {
   readonly errors: string[];
   readonly projects: string[];
   readonly states: Record<string, string>;
+  agents: { readonly version: number; readonly roles: string[]; readonly skills: number } | null;
+  routed: { readonly prompt: string; readonly intent: string; readonly via: string; readonly classifier: string | null } | null;
   finished: boolean;
 }
+
+const ROUTE_PROMPT = "Add a way to mark items as done";
 
 async function signIn(page: Page, url: string, password: string | undefined): Promise<void> {
   await page.goto(url);
@@ -50,7 +54,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
   const { chromium } = await import("playwright");
   mkdirSync(options.out, { recursive: true });
   const base = options.url.replace(/\/$/, "");
-  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, finished: false };
+  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, finished: false };
   const browser: Browser = await chromium.launch();
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
@@ -80,6 +84,11 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     };
     await signIn(page, `${base}/`, options.password);
     await shot("start");
+    const agents = await json<{ version: number; roles: { role: string }[]; skills: unknown[] }>(page, "/api/agents").catch((error: unknown) => {
+      report.errors.push(`agents ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    });
+    if (agents) report.agents = { version: agents.version, roles: agents.roles.map((r) => r.role), skills: agents.skills.length };
     const listed = await json<{ projects: { name: string }[] }>(page, "/api/projects").catch(() => ({ projects: [] }));
     report.projects.push(...listed.projects.map((p) => p.name));
     for (const name of report.projects.slice(0, 4)) {
@@ -94,7 +103,17 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     }
     await go(`/?project=${project}`);
     await shot(`open-${project}`);
+    const routed = await json<{ intent: string; via: string; classifier?: { model: string; accepted: boolean } | null }>(page, `/api/projects/${project}/route`, { method: "POST", data: { prompt: ROUTE_PROMPT } }).catch((error: unknown) => {
+      report.errors.push(`route ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    });
+    if (routed) report.routed = { prompt: ROUTE_PROMPT, intent: routed.intent, via: routed.via, classifier: routed.classifier ? `${routed.classifier.model} ${routed.classifier.accepted ? "accepted" : "not sure"}` : null };
+    for (const tab of ["roles", "skills", "router"]) {
+      await go(`/?project=${project}&view=agents&tab=${tab}`);
+      await shot(`agents-${tab}`);
+    }
     if (options.prompt) {
+      await go(`/?project=${project}`);
       const input = page.locator("#chat textarea");
       await input.fill(options.prompt);
       await input.press("Enter");
@@ -105,7 +124,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     for (;;) {
       round++;
       const sessions = await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[]);
-      for (const s of sessions) report.states[s.id] = s.machine.state;
+      for (const s of sessions) report.states[s.id] = s.machine.state === "stuck" ? `stuck: ${s.machine.reason ?? ""} ${(s.machine.feedback ?? "").slice(0, 1500)}`.trim() : s.machine.state;
       const latest = sessions.at(-1);
       await go(`/?project=${project}`);
       await shot(`round${round}-home`);

@@ -170,7 +170,8 @@ export function routeLine(result: SubmitResult): string {
   if (d.intent === "question") return result.answer?.text ?? "I could not find an answer in the project memory.";
   const target = result.featureId ?? d.featureId ?? "a new feature";
   const attempts = result.sessionIds.length > 1 ? ` with ${result.sessionIds.length} parallel attempts` : "";
-  return `Routed as ${d.intent.replace("_", " ")} for ${target}${attempts}. I will stream each session here until it merges or gets stuck.`;
+  const lane = d.hotfix ? " as a hotfix, ahead of other builds" : "";
+  return `Routed as ${d.intent.replace("_", " ")} for ${target}${attempts}${lane}. I will stream each session here until it merges or gets stuck.`;
 }
 
 export function summaryLine(state: ChefState): string {
