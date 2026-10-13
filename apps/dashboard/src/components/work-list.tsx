@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Bot, ChevronDown, CornerDownRight, GitFork } from "lucide-react";
+import { ListSkeleton } from "@/components/loading";
 import { FEATURE_LABEL, FEATURE_TONE, KindBadges, StatusDot } from "@/components/status";
 import { ago, PLAIN_STATE, stateTone } from "@/lib/format";
 import { groupSessions, heldBy, sortFeatures, waitsForKey, type FeatureNode, type SessionGroup, type SessionNode } from "@/lib/model";
@@ -154,7 +155,7 @@ function FeatureRow({ feature }: { readonly feature: FeatureNode }) {
 }
 
 export function WorkList() {
-  const { features, sessions } = useWorkspace();
+  const { features, sessions, data } = useWorkspace();
   const [mode, setMode] = useState<Mode>(readMode);
   const choose = (next: Mode) => {
     setMode(next);
@@ -185,7 +186,9 @@ export function WorkList() {
         ))}
       </div>
       <nav id="features" aria-label={mode === "status" ? "Builds by status" : "Features"} data-mode={mode} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto">
-        {mode === "status" ? (
+        {!data.ready ? (
+          <ListSkeleton />
+        ) : mode === "status" ? (
           <>
             <Group group="needs-you" list={groups["needs-you"]} open />
             <Group group="working" list={groups.working} open />
@@ -205,7 +208,7 @@ export function WorkList() {
         ) : (
           list.map((f) => <FeatureRow key={f.id} feature={f} />)
         )}
-        {features.length === 0 ? <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Your features and their builds show up here as chef works on them.</p> : null}
+        {data.ready && features.length === 0 ? <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Your features and their builds show up here as chef works on them.</p> : null}
       </nav>
     </div>
   );

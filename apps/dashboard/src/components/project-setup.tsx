@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { GitHubPicker } from "@/components/github-picker";
-import { missingSettings, SettingsDialog, useSettings } from "@/components/settings-dialog";
+import { SettingsDialog } from "@/components/settings-dialog";
+import { missingSettings, useSettings } from "@/lib/settings";
 import { githubApi, projectApi, projectsApi, type GitHubView, type GitLinkUpdate, type InstalledRepository } from "@/lib/api";
 import { useOverview } from "@/lib/overview";
-import { lastProject, projectNameFrom } from "@/lib/projects";
+import { lastProject, projectNameFrom, returningToNewProject } from "@/lib/projects";
 import { isProjectName } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 import { Wordmark } from "@/components/logo";
@@ -89,14 +90,6 @@ const idle = {
   overview: () => Promise.resolve({ status: "none" as const }),
   readCode: () => Promise.resolve({ status: "none" as const }),
 };
-
-export function returningToNewProject(): boolean {
-  const params = new URLSearchParams(location.search);
-  if (params.get("connect") !== "new") return false;
-  params.delete("connect");
-  history.replaceState(null, "", `?${params.toString()}`);
-  return true;
-}
 
 export function NewProjectForm(props: { readonly onCreated: (name: string) => void; readonly onBusy?: (busy: boolean) => void; readonly autoFocus?: boolean; readonly fromGitHub?: boolean }) {
   const [source, setSource] = useState<Source>(props.fromGitHub ? "github" : "fresh");

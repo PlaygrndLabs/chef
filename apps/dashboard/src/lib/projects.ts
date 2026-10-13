@@ -19,8 +19,16 @@ export function rememberProject(name: string) {
   }
 }
 
-export function useProjects() {
-  const [projects, setProjects] = useState<readonly string[] | null>(null);
+export function returningToNewProject(): boolean {
+  const params = new URLSearchParams(location.search);
+  if (params.get("connect") !== "new") return false;
+  params.delete("connect");
+  history.replaceState(null, "", `?${params.toString()}`);
+  return true;
+}
+
+export function useProjects(initial: readonly string[] | null = null) {
+  const [projects, setProjects] = useState<readonly string[] | null>(initial);
   const [failed, setFailed] = useState<string | null>(null);
   const refresh = useCallback(() => {
     projectsApi.list().then(
@@ -31,7 +39,10 @@ export function useProjects() {
       (e: unknown) => setFailed(e instanceof Error ? e.message : String(e)),
     );
   }, []);
-  useEffect(refresh, [refresh]);
+  const loaded = projects !== null;
+  useEffect(() => {
+    if (!loaded) refresh();
+  }, [loaded, refresh]);
   return { projects, failed, refresh };
 }
 

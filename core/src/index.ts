@@ -10,6 +10,7 @@ export * from "./router/no-classifier.ts";
 export * from "./session/machine.ts";
 export type * from "./session/record.ts";
 export type * from "./events/events.ts";
+export * from "./events/replay.ts";
 export type * from "./ports/index.ts";
 export * from "./orchestrator/capabilities.ts";
 export * from "./orchestrator/orchestrator.ts";
