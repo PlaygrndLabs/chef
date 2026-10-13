@@ -189,6 +189,19 @@ export class Orchestrator {
     }
   }
 
+  async addMissingFiles(files: Tree, message: string, when: (tree: Tree) => boolean = () => true): Promise<string[]> {
+    const added = await this.mergeQueue.run(async () => {
+      const { commitId, tree } = await this.mainTree();
+      if (!commitId || !when(tree)) return [];
+      const missing: FileChanges = Object.fromEntries(Object.entries(files).filter(([path]) => tree[path] === undefined));
+      if (Object.keys(missing).length === 0) return [];
+      await this.withToken(this.canonical, (token) => this.deps.repos.commit(token, { ref: "main", parent: commitId, changes: missing, message, author: this.config.author }));
+      return Object.keys(missing).sort();
+    });
+    if (added.length) await this.syncMemory();
+    return added;
+  }
+
   async mainTree(): Promise<{ commitId: string | null; tree: Tree }> {
     const commitId = await this.deps.repos.resolveRef(this.canonical, "main");
     const commit = commitId ? await this.deps.repos.readCommit(this.canonical, commitId) : null;

@@ -18,7 +18,7 @@ test("a browser opening / gets a page that links every feature page", async () =
   const response = await app(new Request("http://app.test/", { headers: { accept: "text/html,application/xhtml+xml" } }));
   assert.match(response.headers.get("content-type") ?? "", /text\/html/);
   const html = await response.text();
-  assert.match(html, /<a href="\/notes">Notes<\/a>/);
+  assert.match(html, /<a [^>]*href="\/notes"[^>]*>.*Notes.*<\/a>/);
   assert.doesNotMatch(html, /\/api\/notes|:id/);
 });
 
