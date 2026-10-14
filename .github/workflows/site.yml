@@ -72,22 +72,53 @@ jobs:
             exit 0
           fi
           echo "chef.playgrndlabs.com serves the site"
-      - name: Create the Sign in with Cloudflare app once
+      - name: Create the Sign in with Cloudflare app once, and keep its name and logo current
         if: ${{ !cancelled() && steps.image.outcome == 'success' }}
         run: |
           set -euo pipefail
-          if npx wrangler secret list --config site/wrangler.jsonc --format json | jq -e 'map(.name) | index("OAUTH_CLIENT_ID")' > /dev/null; then
-            echo "the sign-in app already exists"
-            exit 0
-          fi
           api="https://api.cloudflare.com/client/v4"
           auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
           host=$(curl -fsS -H "$auth" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r .result.subdomain)
           dev="https://chef-site.$host.workers.dev"
           site="https://chef.playgrndlabs.com"
+          # Cloudflare keeps its own copy of the logo, so the URL carries the file's hash and changes whenever the logo does.
+          version=$(sha256sum site/public/logo.png | cut -c1-12)
+          logo="$site/logo.png?v=$version"
+          if npx wrangler secret list --config site/wrangler.jsonc --format json | jq -e 'map(.name) | index("OAUTH_CLIENT_ID")' > /dev/null; then
+            client=$(curl -sS -H "$auth" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/oauth_clients?per_page=100" | jq -c --arg cb "$site/auth/callback" '[.result[]? | select((.redirect_uris // []) | index($cb))][0] // empty')
+            if [ -z "$client" ]; then
+              echo "::notice::The sign-in app exists but Cloudflare did not list it for this token."
+              exit 0
+            fi
+            id=$(echo "$client" | jq -r '.client_id // .id')
+            echo "sign-in app: $(echo "$client" | jq -c 'with_entries(select(.key | test("secret") | not))')"
+            if ! curl -fsS -o /dev/null "$site/logo.png"; then
+              echo "::notice::$site is not reachable, so the sign-in app keeps its logo."
+              exit 0
+            fi
+            patch=$(jq -nc --argjson client "$client" --arg site "$site" --arg logo "$logo" '{client_name: "chef", logo_uri: $logo, client_uri: $site} | with_entries(select(.value != ($client[.key] // null)))')
+            if [ "$patch" = "{}" ]; then
+              echo "the sign-in app is up to date"
+            else
+              echo "updating the sign-in app: $patch"
+              updated=$(curl -sS -X PATCH -H "$auth" -H "content-type: application/json" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/oauth_clients/$id" -d "$patch")
+              if [ "$(echo "$updated" | jq -r .success)" != "true" ]; then
+                echo "::notice::Cloudflare did not update the sign-in app: $(echo "$updated" | jq -c .errors)"
+                exit 0
+              fi
+              client=$(echo "$updated" | jq -c .result)
+              echo "sign-in app now: $(echo "$client" | jq -c 'with_entries(select(.key | test("secret") | not))')"
+            fi
+            code=$(echo "$client" | jq -r '[.. | strings | select(startswith("cloudflare_oauth_client_publisher="))][0] // empty')
+            if [ -n "$code" ]; then
+              echo "::notice::To verify playgrndlabs.com for the sign-in app, add this TXT record in the account that has playgrndlabs.com: $code"
+            fi
+            exit 0
+          fi
           if ! curl -fsS -o /dev/null "$site/logo.png"; then
             echo "::notice::$site is not reachable yet, so the sign-in app uses $dev as its home page."
             site="$dev"
+            logo="$dev/logo.png?v=$version"
           fi
           wanted=$(jq -c 'map(ascii_downcase)' site/oauth-scopes.json)
           available=$(curl -sS -H "$auth" "$api/oauth/scopes" | jq -c '[.result[]? | {id, name}]')
@@ -103,7 +134,7 @@ jobs:
             exit 0
           fi
           echo "scopes: $scopes"
-          body=$(jq -n --arg site "$site" --arg dev "$dev" --argjson scopes "$scopes" '{client_name: "chef", client_uri: $site, logo_uri: ($dev + "/logo.png"), redirect_uris: (["https://chef.playgrndlabs.com/auth/callback", $dev + "/auth/callback"] | unique), grant_types: ["authorization_code"], response_types: ["code"], token_endpoint_auth_method: "client_secret_basic", scopes: $scopes}')
+          body=$(jq -n --arg site "$site" --arg dev "$dev" --arg logo "$logo" --argjson scopes "$scopes" '{client_name: "chef", client_uri: $site, logo_uri: $logo, redirect_uris: (["https://chef.playgrndlabs.com/auth/callback", $dev + "/auth/callback"] | unique), grant_types: ["authorization_code"], response_types: ["code"], token_endpoint_auth_method: "client_secret_basic", scopes: $scopes}')
           created=$(curl -sS -X POST -H "$auth" -H "content-type: application/json" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/oauth_clients" -d "$body")
           if [ "$(echo "$created" | jq -r .success)" != "true" ]; then
             echo "::notice::Cloudflare did not create the sign-in app: $(echo "$created" | jq -c .errors)"
