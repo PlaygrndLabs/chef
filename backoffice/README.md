@@ -11,7 +11,7 @@ What it covers:
 
 How it works:
 
-1. Settings in chef shows admins a Backoffice button that opens `/backoffice` on the site. The site checks the person is signed in and an admin, stores a one-time ticket on their `Member` object (valid for a minute) and sends them to `/auth/callback?ticket=…` here.
+1. Opening the backoffice without a session sends you to `/backoffice` on the site (Settings in chef also has a Backoffice button for admins). If you are not signed in to chef, the site sends you straight to Sign in with Cloudflare and back. The site checks the person is an admin, stores a one-time ticket on their `Member` object (valid for a minute) and sends them to `/auth/callback?ticket=…` here.
 2. The backoffice redeems the ticket through the site's `Backoffice` entrypoint and sets its own signed session cookie (12 hours, `SESSION_SECRET`).
 3. Every page and API call needs that cookie. The API passes the admin's id to the entrypoint, which checks again on every call that they are still an admin. The entrypoint is reachable only through the `SITE` service binding, so the site has no admin endpoints on the internet. The backoffice keeps no data of its own and never sees an engine's key.
 
