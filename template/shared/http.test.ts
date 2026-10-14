@@ -29,6 +29,20 @@ test("API clients opening / get the list of pages", async () => {
   assert.deepEqual(await response.json(), { ok: true, pages: ["/notes"] });
 });
 
+test("scripts, styles and other files a page loads are not pages", async () => {
+  const deleteNote: Feature = {
+    id: "delete-note",
+    title: "Delete a note",
+    routes: [
+      { method: "GET", path: "/delete-note/client.js", handle: () => new Response("", { headers: { "content-type": "text/javascript" } }) },
+      { method: "GET", path: "/delete-note/style.css", handle: () => new Response("") },
+      { method: "DELETE", path: "/api/notes/:id", handle: () => json({}) },
+    ],
+  };
+  const app = createApp([notes, deleteNote], new MemoryStore());
+  assert.deepEqual(await (await app(new Request("http://app.test/"))).json(), { ok: true, pages: ["/notes"] });
+});
+
 test("an app with no features still answers on /", async () => {
   const app = createApp([], new MemoryStore());
   assert.equal((await app(new Request("http://app.test/"))).status, 200);
