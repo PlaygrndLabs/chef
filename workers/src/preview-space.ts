@@ -8,6 +8,7 @@ export const PROJECT_WORKER_TAG = "chef-project";
 const BULK_SECRETS = 100;
 
 interface WorkerInfo {
+  readonly id?: string;
   readonly tags?: readonly string[];
   readonly previews_base_config?: { readonly env?: Record<string, unknown> };
 }
@@ -40,6 +41,15 @@ export class CloudflareWorkerSpace implements PreviewSpace {
       const path = `${this.workerPath()}/previews/${encodeURIComponent(previewName(branch, this.grant.worker))}`;
       await this.api("DELETE", path, undefined, true);
     }
+  }
+
+  async removeWorker(): Promise<"removed" | "missing"> {
+    const worker = await this.api<WorkerInfo>("GET", this.workerPath(), undefined, true);
+    if (!worker) return "missing";
+    if (!(worker.tags ?? []).includes(PROJECT_WORKER_TAG)) throw new WorkerTakenError(`the Worker ${this.grant.worker} was not made by Chef, so Chef left it on your account`);
+    await this.api("DELETE", `${this.scriptPath()}?force=true`, undefined, true);
+    if (worker.id) await this.api("DELETE", `/workers/workers/${encodeURIComponent(worker.id)}`, undefined, true);
+    return "removed";
   }
 
   async liveUrl(): Promise<string> {

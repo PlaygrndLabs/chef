@@ -200,9 +200,16 @@ async function createProject(project: NewProject, onNote: (note: SetupNote) => v
   throw new ApiError("the connection closed before setup finished; reload to see whether the project was created", 502);
 }
 
+export interface RemovedProject {
+  readonly name: string;
+  readonly removed: readonly string[];
+  readonly kept: readonly string[];
+}
+
 export const projectsApi = {
   list: () => call<{ projects: ProjectEntry[] }>("/api/projects").then((r) => r.projects),
   create: createProject,
+  remove: (name: string) => call<RemovedProject>(`/api/projects/${name}`, json("DELETE", { confirm: name })),
 };
 
 export interface GitHubAppView {

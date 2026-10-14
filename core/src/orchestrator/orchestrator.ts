@@ -1014,6 +1014,13 @@ export class Orchestrator {
     for (const { rule, sessions } of mined) await this.emit({ type: "lint.rule.added", sessionId: record.id, featureId: record.featureId, ruleId: rule.id, message: rule.message, sessions, evidence: rule.evidence });
   }
 
+  async forgetMemory(): Promise<number> {
+    const paths = Object.keys((await this.deps.store.get<Record<string, string>>("memory-index")) ?? {});
+    if (paths.length) await this.deps.memory.remove(paths);
+    await this.deps.store.put("memory-index", {});
+    return paths.length;
+  }
+
   private async syncMemory(): Promise<number> {
     const { tree } = await this.mainTree();
     const docs = memoryDocs(tree);

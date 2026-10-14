@@ -131,6 +131,12 @@ export class SessionAgent extends Agent<Env> {
     return true;
   }
 
+  async discard(): Promise<void> {
+    const container = this.ctx.container;
+    if (container?.running) await container.destroy().catch(() => undefined);
+    await this.destroy();
+  }
+
   async sleepIfIdle(): Promise<void> {
     const container = this.ctx.container;
     if (!container?.running) return;

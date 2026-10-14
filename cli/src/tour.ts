@@ -9,6 +9,7 @@ export interface TourOptions {
   readonly prompt?: string | undefined;
   readonly minutes: number;
   readonly everySeconds: number;
+  readonly remove?: boolean;
   readonly out: string;
   readonly log: (line: string) => void;
 }
@@ -32,6 +33,7 @@ export interface TourReport {
   readonly setup: string[];
   finished: boolean;
   featureRoute?: number;
+  removed?: { readonly project: string; readonly listed: boolean; readonly ms: number };
   readonly sent: { readonly prompt: string; readonly answered: boolean; readonly retried: boolean }[];
   readonly previewLoads: { readonly name: string; readonly loadedMs: number | null; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
 }
@@ -93,6 +95,21 @@ async function createInDialog(page: Page, project: string, report: TourReport, s
     await page.waitForTimeout(150);
   }
   await shotTaken;
+}
+
+async function removeInSettings(page: Page, project: string, report: TourReport, shot: (name: string) => Promise<void>): Promise<void> {
+  const started = Date.now();
+  await page.goto(`/?project=${project}&settings=project.general`);
+  await page.getByRole("button", { name: "Delete project" }).first().click();
+  const dialog = page.locator('[data-dialog="delete-project"]');
+  await dialog.getByLabel("Project name to delete").fill(project);
+  await shot(`delete-${project}`);
+  await dialog.getByRole("button", { name: "Delete project" }).click();
+  await page.waitForURL((url) => !url.searchParams.has("project"), { timeout: 10 * 60_000 });
+  await shot(`deleted-${project}`);
+  const listed = (await json<{ projects: { name: string }[] }>(page, "/api/projects")).projects.some((p) => p.name === project);
+  report.removed = { project, listed, ms: Date.now() - started };
+  if (listed) report.errors.push(`remove: ${project} is still listed after deleting it`);
 }
 
 export async function tour(options: TourOptions): Promise<TourReport> {
@@ -268,6 +285,10 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       after = page500.at(-1)?.seq ?? after + page500.length;
     }
     writeFileSync(join(options.out, "events.jsonl"), events.map((e) => JSON.stringify(e)).join("\n"));
+    if (options.remove) {
+      if (report.projects.includes(project)) report.errors.push(`remove: ${project} was there before the tour, so the tour left it`);
+      else await removeInSettings(page, project, report, shot).catch((error: unknown) => void report.errors.push(`remove: ${error instanceof Error ? error.message : String(error)}`));
+    }
     return report;
   } finally {
     writeFileSync(join(options.out, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
