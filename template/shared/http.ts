@@ -39,10 +39,14 @@ export function matchPath(pattern: string, pathname: string): Record<string, str
   return params;
 }
 
+export function isPage(route: Pick<Route, "method" | "path">): boolean {
+  const { method, path } = route;
+  if (method !== "GET" || path === "/" || path.includes(":") || path === "/api" || path.startsWith("/api/")) return false;
+  return !/\.[A-Za-z0-9]+$/.test(path.split("/").pop() ?? "");
+}
+
 export function pagesOf(features: readonly Feature[]): { readonly title: string; readonly path: string }[] {
-  return features.flatMap((feature) =>
-    feature.routes.filter((route) => route.method === "GET" && route.path !== "/" && !route.path.includes(":") && !route.path.startsWith("/api/") && route.path !== "/api").map((route) => ({ title: feature.title, path: route.path })),
-  );
+  return features.flatMap((feature) => feature.routes.filter(isPage).map((route) => ({ title: feature.title, path: route.path })));
 }
 
 export function indexPage(features: readonly Feature[]): Response {
