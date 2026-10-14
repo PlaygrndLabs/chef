@@ -1,7 +1,7 @@
 import { directory, member as memberOf, oauthClient, organization, type Env } from "./env.ts";
 import { API, authorizeUrl, canSeeAccount, cookies, decodePending, encodePending, OAUTH_COOKIE, randomToken, readGrant, readInstall, readProfile, readSession, SESSION_COOKIE, SESSION_SECONDS, setCookie, signSession, tokenRequest, type OAuthClient, type Session } from "./oauth.ts";
 import type { OrgAccess } from "./organization.ts";
-import { can, isId, readOrgName, type OrgSummary } from "./orgs.ts";
+import { can, engineLabel, isId, readOrgName, type OrgSummary } from "./orgs.ts";
 import { ENGINE_PATH, proxy } from "./proxy.ts";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(body, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -40,7 +40,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     const admin = await canSeeAccount(grant.token, env.CF_ACCOUNT_ID);
     const signed = await directory(env).signIn({ provider: "cloudflare", subject: profile.id, email: profile.email }, admin);
     const org = organization(env, signed.org.id);
-    await org.setup({ id: signed.org.id, name: signed.org.name }, { userId: signed.userId, email: profile.email, role: signed.org.role });
+    await org.setup({ id: signed.org.id, name: signed.org.name, personal: signed.org.personal }, { userId: signed.userId, email: profile.email, role: signed.org.role });
     const engine = await org.engine();
     await memberOf(env, signed.userId).signIn(profile, grant, admin, { id: signed.org.id, canSetUp: can(signed.org.role, "setup"), engine });
     return redirect(engine ? "/" : "/setup", [clear, await sessionCookie(client, { userId: signed.userId, orgId: signed.org.id })]);
@@ -76,8 +76,8 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (!can(role, "setup")) return json({ error: "only owners and admins of this organization can set up chef" }, 403);
       const input = readInstall(await request.json().catch(() => null));
       if (typeof input === "string") return json({ error: input }, 400);
-      const current = await org.view(session.userId);
-      const started = await member.install({ orgId: session.orgId, orgName: current?.name ?? "org", accountId: input.accountId, engine: await org.engine() });
+      const [current, view] = await Promise.all([org.view(session.userId), member.view(session.orgId)]);
+      const started = await member.install({ orgId: session.orgId, orgName: current ? engineLabel(current, view.email) : "org", accountId: input.accountId, engine: await org.engine() });
       return typeof started === "string" ? json({ error: started }, 409) : json(started, 202);
     }
     if (path === "/site/api/install" && request.method === "DELETE") {
@@ -90,7 +90,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (!name) return json({ error: "give the organization a name of up to 60 characters" }, 400);
       const created = await directory(env).createOrg(session.userId, name);
       const view = await member.view(session.orgId);
-      await organization(env, created.id).setup({ id: created.id, name }, { userId: session.userId, email: view.email, role: "owner" });
+      await organization(env, created.id).setup({ id: created.id, name, personal: false }, { userId: session.userId, email: view.email, role: "owner" });
       await directory(env).use(session.userId, created.id);
       return switchTo(created);
     }
@@ -102,6 +102,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     }
     if (path === "/site/api/org" && request.method === "PATCH") {
       if (!can(role, "rename")) return json({ error: "only owners and admins can rename this organization" }, 403);
+      if ((await org.view(session.userId))?.personal) return json({ error: "your personal workspace keeps its name" }, 400);
       const name = readOrgName(await request.json().catch(() => null));
       if (!name) return json({ error: "give the organization a name of up to 60 characters" }, 400);
       await org.rename(name);

@@ -2,10 +2,16 @@ export type Role = "owner" | "admin" | "member";
 
 export const ROLES: readonly Role[] = ["owner", "admin", "member"];
 
+export type OrgPlan = "free";
+
+export const PERSONAL = "Personal";
+
 export interface OrgSummary {
   readonly id: string;
   readonly name: string;
   readonly role: Role;
+  readonly personal: boolean;
+  readonly plan: OrgPlan;
 }
 
 export type Action = "use" | "setup" | "rename" | "manage";
@@ -35,9 +41,8 @@ export function isId(value: unknown, prefix: "usr" | "org"): value is string {
   return typeof value === "string" && ID.test(value) && value.startsWith(`${prefix}_`);
 }
 
-export function defaultOrgName(email: string | null): string {
-  const local = (email ?? "").split("@")[0]?.trim();
-  return local ? `${local}'s org` : "My org";
+export function engineLabel(org: { readonly name: string; readonly personal: boolean }, email: string | null): string {
+  return org.personal ? (email ?? "").split("@")[0]?.trim() || "personal" : org.name;
 }
 
 const NAME_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";

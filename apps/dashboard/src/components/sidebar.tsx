@@ -1,9 +1,12 @@
-import { AppWindowMac, BookOpen, Bot, Check, ChevronsUpDown, Cpu, KeyRound, ListTree, Monitor, Moon, Settings, Sun } from "lucide-react";
+import { AppWindowMac, BookOpen, Bot, Check, ChevronsUpDown, Cpu, KeyRound, ListTree, LogOut, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
+import { toast } from "sonner";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/status";
 import { FeatureTree, useDropTarget } from "@/components/feature-tree";
+import { orgLabel, PLAN_LABEL, useAppMode } from "@/lib/account";
+import { orgApi } from "@/lib/api";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { LIVE_TAB } from "@/lib/tabs";
@@ -42,22 +45,47 @@ function ProjectSwitcher() {
 export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readonly onSettings: (section?: string) => void }) {
   const { setTheme } = useTheme();
   const missing = app.available && missingSettings(app.settings).length > 0;
-  const host = location.host;
+  const mode = useAppMode();
+  const org = mode && mode.account !== undefined ? (mode.org ?? null) : null;
+  const switchTo = async (orgId: string) => {
+    try {
+      await orgApi.use(orgId);
+      location.assign("/");
+    } catch (e) {
+      toast.error("Could not switch", { description: e instanceof Error ? e.message : String(e) });
+    }
+  };
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" id="app-menu" className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left hover:bg-sidebar-accent" aria-label="chef menu" title="Settings for every project, theme and help">
+        <button type="button" id="app-menu" className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left hover:bg-sidebar-accent" aria-label="chef menu" title={org ? "Workspaces, settings and help" : "Settings for every project, theme and help"}>
           <Mark className="size-6" />
           <span className="grid min-w-0 flex-1 leading-tight">
-            <span className="truncate text-xs font-medium">Settings</span>
-            <span className="truncate text-[11px] text-muted-foreground">{missing ? "Needs setup" : "For every project"}</span>
+            <span className="truncate text-xs font-medium" data-current="workspace">{org ? orgLabel(org) : "Settings"}</span>
+            <span className="truncate text-[11px] text-muted-foreground">{missing ? "Needs setup" : org ? (mode?.account ?? "Signed in with Cloudflare") : "For every project"}</span>
           </span>
           {missing ? <span className="size-1.5 shrink-0 bg-bad" aria-label="needs setup" /> : null}
           <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-60">
-        <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">{host}</DropdownMenuLabel>
+        <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">{org ? (mode?.account ?? "Signed in with Cloudflare") : location.host}</DropdownMenuLabel>
+        {org ? (
+          <>
+            {(mode?.orgs ?? []).map((o) => (
+              <DropdownMenuItem key={o.id} data-org={o.id} onClick={() => (o.id === org.id ? undefined : void switchTo(o.id))}>
+                <span className="min-w-0 flex-1 truncate">{orgLabel(o)}</span>
+                <span className="text-xs text-muted-foreground">{PLAN_LABEL[o.plan]}</span>
+                {o.id === org.id ? <Check /> : <span className="size-4" />}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem onClick={() => onSettings("general")}>
+              <Plus />
+              New organization
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         <DropdownMenuItem onClick={() => onSettings()}>
           <Settings />
           Settings
@@ -96,6 +124,16 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
             Help and docs
           </a>
         </DropdownMenuItem>
+        {org ? (
+          <form method="post" action="/auth/signout">
+            <DropdownMenuItem asChild>
+              <button type="submit" id="sign-out" className="w-full">
+                <LogOut />
+                Sign out
+              </button>
+            </DropdownMenuItem>
+          </form>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

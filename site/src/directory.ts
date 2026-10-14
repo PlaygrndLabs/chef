@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./env.ts";
-import { defaultOrgName, newId, type OrgSummary, type Role } from "./orgs.ts";
+import { newId, PERSONAL, type OrgSummary, type Role } from "./orgs.ts";
 
 export type SetupState = "idle" | "running" | "done" | "failed";
 
@@ -36,6 +36,7 @@ export interface UserRow {
 export interface OrgRow extends OrgSetup {
   readonly id: string;
   readonly name: string;
+  readonly personal: boolean;
   readonly owner: string | null;
   readonly members: number;
   readonly createdAt: number;
@@ -72,6 +73,7 @@ interface Membership extends Record<string, SqlStorageValue> {
   id: string;
   name: string;
   role: string;
+  personal: number;
 }
 
 export class Members extends DurableObject<Env> {
@@ -85,6 +87,7 @@ export class Members extends DurableObject<Env> {
     );
     sql.exec(`CREATE TABLE IF NOT EXISTS memberships (org_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (org_id, user_id))`);
     sql.exec(`CREATE INDEX IF NOT EXISTS memberships_by_user ON memberships (user_id)`);
+    sql.exec(`CREATE TABLE IF NOT EXISTS personal_orgs (user_id TEXT PRIMARY KEY, org_id TEXT NOT NULL UNIQUE)`);
   }
 
   signIn(identity: Identity, admin: boolean): SignedIn {
@@ -100,7 +103,8 @@ export class Members extends DurableObject<Env> {
         sql.exec("UPDATE users SET email = ?, admin = ?, last_seen = ? WHERE id = ?", identity.email, admin ? 1 : 0, now, userId);
         sql.exec("UPDATE identities SET email = ? WHERE provider = ? AND subject = ?", identity.email, identity.provider, identity.subject);
       }
-      if (this.memberships(userId).length === 0) this.insertOrg(userId, defaultOrgName(identity.email), now);
+      const personal = sql.exec<{ org_id: string }>("SELECT org_id FROM personal_orgs WHERE user_id = ?", userId).toArray()[0];
+      if (!personal) sql.exec("INSERT INTO personal_orgs (user_id, org_id) VALUES (?, ?)", userId, this.insertOrg(userId, PERSONAL, now));
       const orgs = this.memberships(userId);
       const last = sql.exec<{ last_org: string | null }>("SELECT last_org FROM users WHERE id = ?", userId).one().last_org;
       const org = orgs.find((o) => o.id === last) ?? (orgs[0] as OrgSummary);
@@ -116,7 +120,7 @@ export class Members extends DurableObject<Env> {
   createOrg(userId: string, name: string): OrgSummary {
     return this.ctx.storage.transactionSync(() => {
       const id = this.insertOrg(userId, name, Date.now());
-      return { id, name, role: "owner" };
+      return { id, name, role: "owner", personal: false, plan: "free" };
     });
   }
 
@@ -144,8 +148,8 @@ export class Members extends DurableObject<Env> {
       .toArray()
       .map((row) => ({ id: row.id, email: row.email, admin: row.admin === 1, orgs: row.orgs, firstSeen: row.first_seen, lastSeen: row.last_seen }));
     const orgs = sql
-      .exec<Org & { owner: string | null; members: number }>(
-        `SELECT orgs.*, (SELECT COUNT(*) FROM memberships WHERE memberships.org_id = orgs.id) AS members,
+      .exec<Org & { owner: string | null; members: number; personal: number }>(
+        `SELECT orgs.*, EXISTS (SELECT 1 FROM personal_orgs WHERE personal_orgs.org_id = orgs.id) AS personal, (SELECT COUNT(*) FROM memberships WHERE memberships.org_id = orgs.id) AS members,
          (SELECT users.email FROM memberships JOIN users ON users.id = memberships.user_id WHERE memberships.org_id = orgs.id AND memberships.role = 'owner' ORDER BY memberships.created_at LIMIT 1) AS owner
          FROM orgs ORDER BY created_at DESC`,
       )
@@ -153,6 +157,7 @@ export class Members extends DurableObject<Env> {
       .map((row) => ({
         id: row.id,
         name: row.name,
+        personal: row.personal === 1,
         owner: row.owner,
         members: row.members,
         createdAt: row.created_at,
@@ -174,8 +179,13 @@ export class Members extends DurableObject<Env> {
 
   private memberships(userId: string): OrgSummary[] {
     return this.ctx.storage.sql
-      .exec<Membership>("SELECT orgs.id AS id, orgs.name AS name, memberships.role AS role FROM memberships JOIN orgs ON orgs.id = memberships.org_id WHERE memberships.user_id = ? ORDER BY memberships.created_at, memberships.rowid", userId)
+      .exec<Membership>(
+        `SELECT orgs.id AS id, orgs.name AS name, memberships.role AS role, (personal_orgs.org_id IS NOT NULL) AS personal
+         FROM memberships JOIN orgs ON orgs.id = memberships.org_id LEFT JOIN personal_orgs ON personal_orgs.org_id = orgs.id
+         WHERE memberships.user_id = ? ORDER BY memberships.created_at, memberships.rowid`,
+        userId,
+      )
       .toArray()
-      .map((row) => ({ id: row.id, name: row.name, role: row.role as Role }));
+      .map((row) => ({ id: row.id, name: row.name, role: row.role as Role, personal: row.personal === 1, plan: "free" }));
   }
 }

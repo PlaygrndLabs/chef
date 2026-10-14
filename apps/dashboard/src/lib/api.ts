@@ -66,6 +66,8 @@ export interface OrgSummary {
   readonly id: string;
   readonly name: string;
   readonly role: OrgRole;
+  readonly personal: boolean;
+  readonly plan: "free";
 }
 
 export interface OrgView extends OrgSummary {
