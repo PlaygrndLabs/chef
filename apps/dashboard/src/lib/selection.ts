@@ -17,11 +17,13 @@ export interface Selection {
   readonly panel: Panel | null;
   readonly settings?: SettingsPlace | null;
   readonly item?: string | null;
+  readonly role?: string | null;
 }
 
 const PANELS: readonly Panel[] = ["preview", "messages", "changes", "checks", "details"];
 const PROJECT = /^[a-z][a-z0-9-]{1,30}$/;
 const SECTION = /^[a-z][a-z-]{1,30}$/;
+const ROLE = /^[a-z][a-z0-9-]{0,40}$/;
 
 function readSettings(params: URLSearchParams): SettingsPlace | null {
   const [scope, section] = (params.get("settings") ?? "").split(".");
@@ -38,6 +40,7 @@ function read(): Selection {
   const named = params.get("view");
   const view: View = named === "insights" || named === "live" ? named : feature || session ? "feature" : "project";
   const settings = readSettings(params);
+  const role = params.get("role");
   return {
     project: PROJECT.test(project) ? project : "",
     view,
@@ -46,6 +49,7 @@ function read(): Selection {
     panel: view === "feature" && panel && PANELS.includes(panel) ? panel : null,
     settings,
     item: settings ? params.get("item") : null,
+    role: view === "feature" && role && ROLE.test(role) ? role : null,
   };
 }
 
@@ -57,6 +61,7 @@ function write(selection: Selection) {
     if (selection.feature) params.set("feature", selection.feature);
     if (selection.session) params.set("session", selection.session);
     if (selection.panel) params.set("panel", selection.panel);
+    if (selection.role) params.set("role", selection.role);
   }
   if (selection.settings) {
     params.set("settings", `${selection.settings.scope}.${selection.settings.section}`);
@@ -75,7 +80,8 @@ export function useSelection() {
   }, []);
   const select = useCallback((patch: Partial<Selection>) => {
     setSelection((current) => {
-      const next = { ...current, ...patch };
+      const moved = (["view", "feature", "session"] as const).some((key) => key in patch && patch[key] !== current[key]);
+      const next = { ...current, ...patch, ...(moved && !("role" in patch) ? { role: null } : {}) };
       write(next);
       return next;
     });
