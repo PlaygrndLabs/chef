@@ -7,44 +7,47 @@ permissions:
   contents: read
 
 jobs:
-  inventory:
+  resume:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
-      CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
+      NAME: resume
+      CHEF_URL: https://resume.playgrndlabs.workers.dev
+      PROJECT: notes
+      PROMPT: Add a notes page where I can write a note, save it and see my saved notes in a list
+      MINUTES: "60"
+      DEPLOYS: "2"
     steps:
-      - name: Probe notes2
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy a separate chef copy
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
         run: |
-          set -uo pipefail
-          auth="authorization: Bearer $CHEF_PASSWORD"
-          api="$CHEF_URL/api/projects/notes2"
-          echo "## sessions"
-          curl -sS -m 60 -H "$auth" "$api/sessions" > s.json
-          jq -c '.[] | {id, featureId, state: .machine.state, reason: .machine.reason, lanes: [(.lanes // [])[] | {role, state: (.state // null)}], head, needs, overBudget, syncPending, updatedAt, items: [(.workItems // .plan.items // [])[]? | {id, kind, role, status}]}' s.json | cut -c1-3000
-          echo "## events"
-          last=0; : > e.jsonl
-          for i in $(seq 1 40); do
-            page=$(curl -sS -m 60 -H "$auth" "$api/events?after=$last")
-            n=$(echo "$page" | jq 'length'); [ "$n" = "0" ] && break
-            echo "$page" | jq -c '.[]' >> e.jsonl
-            last=$(echo "$page" | jq '.[-1].seq')
-          done
-          wc -l e.jsonl
-          q() {
-            body=$(jq -n --arg id "$1" --argjson filters "$2" --argjson from "$(date -d "$3" +%s000)" --argjson to "$(date -d "$4" +%s000)" '{queryId: $id, timeframe: {from: $from, to: $to}, view: "events", limit: 2000, parameters: {filterCombination: "and", filters: ([{key: "$metadata.service", operation: "eq", type: "string", value: "chef-dev"}] + $filters)}}')
-            curl -sS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'content-type: application/json' -d "$body" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/observability/telemetry/query" > "t-$1.json"
-            echo "## $1: $(jq -c '{success, errors, n: (.result.events.events // [] | length)}' "t-$1.json")"
-          }
-          q alarms '[{"key":"$workers.eventType","operation":"eq","type":"string","value":"alarm"}]' 2026-10-14T17:40:00Z 2026-10-14T19:30:00Z
-          q problems '[{"key":"$metadata.level","operation":"neq","type":"string","value":"info"}]' 2026-10-14T17:40:00Z 2026-10-14T19:30:00Z
-          q sessionagent '[{"key":"$workers.entrypoint","operation":"eq","type":"string","value":"SessionAgent"}]' 2026-10-14T17:40:00Z 2026-10-14T19:30:00Z
-          q notok '[{"key":"$workers.outcome","operation":"neq","type":"string","value":"ok"}]' 2026-10-14T17:40:00Z 2026-10-14T19:30:00Z
+          jq -n '{ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, LLM_BASE_URL: env.LLM_BASE_URL, LLM_API_KEY: env.LLM_API_KEY, TYPESAFE_API_KEY: env.TYPESAFE_API_KEY, CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, CHEF_PASSWORD: env.CHEF_PASSWORD} | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
+          pnpm run deploy --name "$NAME" --secrets-file "$RUNNER_TEMP/secrets.json" | tail -5
+      - name: Build a feature and deploy twice while its turns run
+        run: |
+          npx --prefix workers wrangler tail "$NAME" --format json > "$RUNNER_TEMP/tail.jsonl" 2> "$RUNNER_TEMP/tail.err" &
+          sleep 10
+          SECRETS="$RUNNER_TEMP/secrets.json" bash .github/scripts/resume-check.sh
+      - name: Worker logs
+        if: always()
+        run: |
+          jq -r 'select(.outcome != "ok" or (.logs | length) > 0 or (.exceptions | length) > 0) | [.eventTimestamp, .outcome, ((.event.request.url // .event.rpcMethod // "") | tostring), ((.exceptions // []) | map(.name + ": " + .message) | join(" | ")), ((.logs // []) | map(.message | map(tostring) | join(" ")) | join(" | "))] | @tsv' "$RUNNER_TEMP/tail.jsonl" | cut -c1-1000 | tail -200
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: probe
-          path: |
-            *.json
-            *.jsonl
+          name: resume
+          path: ${{ runner.temp }}/*.jsonl
