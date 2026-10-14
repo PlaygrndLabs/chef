@@ -310,7 +310,8 @@ export class Orchestrator {
       .filter((p) => p.plannable)
       .map((p) => ({ role: p.role, description: p.description }));
     const intent = decision.intent === "change_feature" ? "change_feature" : "new_feature";
-    const planned = await this.deps.planner.plan({ prompt: withoutCommand(prompt), intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), spec, roles, env: await this.environment(), ...(await this.guidanceField()) });
+    const request = withoutCommand(prompt);
+    const planned = described(await this.deps.planner.plan({ prompt: request, intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), spec, roles, env: await this.environment(), ...(await this.guidanceField()) }), request);
     return this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
   }
 
@@ -1537,6 +1538,11 @@ function formatChecks(checks: readonly CheckResult[]): string {
 
 function firstLine(text: string): string {
   return (text.split("\n")[0] ?? "").slice(0, 72);
+}
+
+export function described(plan: Plan, request: string): Plan {
+  if (plan.feature.body.trim() || !request.trim()) return plan;
+  return { ...plan, feature: { ...plan.feature, body: request.trim() } };
 }
 
 export function specProblems(tree: Tree): string[] {
