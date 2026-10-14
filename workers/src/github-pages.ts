@@ -1,3 +1,5 @@
+import { ORIGIN_HEADER } from "./access.ts";
+
 export function safeReturn(value: string | null): string {
   return value && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\") ? value : "/";
 }
@@ -11,7 +13,7 @@ export function manifestPage(action: string, manifest: unknown): Response {
 
 export function publicOrigin(request: Request): string {
   const own = new URL(request.url).origin;
-  const forwarded = request.headers.get("x-chef-origin");
+  const forwarded = request.headers.get(ORIGIN_HEADER);
   if (!forwarded) return own;
   try {
     const url = new URL(forwarded);

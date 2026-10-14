@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -u
-auth="authorization: Bearer $CHEF_PASSWORD"
+auth=$(bash "$(dirname "$0")/sign-in.sh" "$CHEF_URL") || exit 1
 api="$CHEF_URL/api/projects/$PROJECT"
 deploy() {
   echo "::group::deploy $NAME while a turn runs"

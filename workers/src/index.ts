@@ -1,5 +1,5 @@
 import { getAgentByName, routeAgentRequest } from "agents";
-import { guard, siteOrigin } from "./access.ts";
+import { guard, trusted } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
 import { gitHubRequest, gitHubWebhook } from "./github.ts";
 import { projectsRequest } from "@chef/adapters/projects";
@@ -8,7 +8,7 @@ import { sharedInstructionsRequest } from "@chef/adapters/guidance";
 import { loadProfiles } from "@chef/core";
 import { agentFiles } from "./embedded.gen.ts";
 import { projectOf } from "./routes.ts";
-import { agentStore, claimPassword, credential, currentSettings, settingsRequest, settingsStub, sharedEnvRequest } from "./settings.ts";
+import { access, agentStore, currentSettings, keysRequest, settingsRequest, settingsStub, sharedEnvRequest } from "./settings.ts";
 import { usageRequest } from "./usage.ts";
 
 export { ProjectAgent } from "./project-agent.ts";
@@ -20,13 +20,15 @@ const WEBHOOK = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/git\/webhook$/;
 const COPILOTKIT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/copilotkit(\/|$)/;
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const webhook = WEBHOOK.exec(new URL(request.url).pathname);
-    if (webhook) return projectStub(env, webhook[1] as string, request);
-    if (new URL(request.url).pathname === "/api/github/webhook") return gitHubWebhook(request, env);
-    const blocked = await guard(request, await credential(env), claimPassword(env), siteOrigin(env));
-    if (blocked) return blocked;
+  async fetch(incoming: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const webhook = WEBHOOK.exec(new URL(incoming.url).pathname);
+    if (webhook) return projectStub(env, webhook[1] as string, trusted(incoming, null));
+    if (new URL(incoming.url).pathname === "/api/github/webhook") return gitHubWebhook(trusted(incoming, null), env);
+    const caller = await guard(incoming, access(env, (work) => ctx.waitUntil(work)));
+    if (caller instanceof Response) return caller;
+    const request = trusted(incoming, caller);
     const url = new URL(request.url);
+    if (url.pathname === "/api/keys" || url.pathname.startsWith("/api/keys/")) return keysRequest(request, env, caller);
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/env") return sharedEnvRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).sharedEnvironmentChanged());
     if (url.pathname === "/api/usage") return usageRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).budgetChanged());

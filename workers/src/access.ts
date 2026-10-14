@@ -1,4 +1,10 @@
 import { faviconDataUri, wordmarkSvg } from "@chef/core/brand";
+import { tokenHash, tokenId } from "@chef/core/access";
+import { deploymentGrant, live, type Grant } from "./grants.ts";
+
+export const USER_HEADER = "x-chef-user";
+export const ORIGIN_HEADER = "x-chef-origin";
+const ACTS_FOR_PEOPLE = [USER_HEADER, ORIGIN_HEADER];
 
 const COOKIE = "chef_access";
 const ITERATIONS = 100_000;
@@ -10,9 +16,9 @@ export function deploymentPassword(env: { readonly CHEF_PASSWORD?: string }): st
   return password && password !== EXAMPLE_PASSWORD ? password : null;
 }
 
-export function siteOrigin(env: { readonly CHEF_SITE?: string }): string | null {
+export function homeOrigin(env: { readonly CHEF_HOME?: string }): string | null {
   try {
-    const url = new URL(env.CHEF_SITE?.trim() ?? "");
+    const url = new URL(env.CHEF_HOME?.trim() ?? "");
     return url.protocol === "https:" || url.protocol === "http:" ? url.origin : null;
   } catch {
     return null;
@@ -25,6 +31,19 @@ export interface StoredPassword {
 }
 
 export type Credential = { readonly kind: "deployment"; readonly password: string } | ({ readonly kind: "app" } & StoredPassword);
+
+export type Caller = { readonly kind: "browser" } | { readonly kind: "grant"; readonly grant: Grant };
+
+export interface Access {
+  readonly password: () => Promise<Credential | null>;
+  readonly deploymentKey: string | null;
+  readonly sealed: () => Promise<boolean>;
+  readonly grant: (id: string) => Promise<Grant | null>;
+  readonly claim: (password: StoredPassword) => Promise<boolean>;
+  readonly used: (grant: Grant) => void;
+  readonly home: string | null;
+  readonly now?: () => number;
+}
 
 const hex = (bytes: Uint8Array) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 const unhex = (text: string) => new Uint8Array((text.match(/../g) ?? []).map((pair) => parseInt(pair, 16)));
@@ -94,7 +113,7 @@ function loginPage(failed: boolean): Response {
 function setupPage(error: string | null): Response {
   const note = error ? `<p class="error">${error}</p>` : "";
   return page(
-    `<form method="post" action="/setup"><h1>Welcome to chef</h1><p class="note">Pick a password for this chef. You will use it to sign in, and scripts can send it as a Bearer token.</p>${note}<input type="password" name="password" placeholder="Password, at least ${MIN_PASSWORD} characters" autocomplete="new-password" minlength="${MIN_PASSWORD}" autofocus required><input type="password" name="confirm" placeholder="The same password again" autocomplete="new-password" required><button>Set the password</button></form>`,
+    `<form method="post" action="/setup"><h1>Welcome to chef</h1><p class="note">Pick a password for this chef. You will use it to sign in. Scripts use API keys, which you make in Settings.</p>${note}<input type="password" name="password" placeholder="Password, at least ${MIN_PASSWORD} characters" autocomplete="new-password" minlength="${MIN_PASSWORD}" autofocus required><input type="password" name="confirm" placeholder="The same password again" autocomplete="new-password" required><button>Set the password</button></form>`,
     error ? 400 : 200,
   );
 }
@@ -105,22 +124,42 @@ export function passwordProblem(password: string, confirm: string | null = passw
   return null;
 }
 
-export async function guard(request: Request, credential: Credential | null, claim: (password: StoredPassword) => Promise<boolean>, site: string | null = null): Promise<Response | null> {
+function closedPage(): Response {
+  return page(`<form><h1>${wordmarkSvg()}</h1><p class="note">This chef has no password, so it opens only through the app that manages it.</p></form>`, 403);
+}
+
+async function keyGrant(token: string, access: Access): Promise<Grant | null> {
+  if (access.deploymentKey && same(token, access.deploymentKey)) return deploymentGrant(token);
+  const id = tokenId(token);
+  const grant = id ? await access.grant(id) : null;
+  if (!grant || !live(grant, (access.now ?? Date.now)())) return null;
+  return same(await tokenHash(token), grant.hash) ? grant : null;
+}
+
+export async function guard(request: Request, access: Access): Promise<Response | Caller> {
   const url = new URL(request.url);
   const api = url.pathname.startsWith("/api/") || url.pathname.startsWith("/agents/");
-  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  if (site) {
-    if (credential && (await matches(bearer, credential))) return null;
-    return api ? Response.json({ error: `open chef at ${site}` }, { status: 401 }) : new Response(null, { status: 302, headers: { location: site, "cache-control": "no-store" } });
+  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "";
+  if (bearer && tokenId(bearer)) {
+    const grant = await keyGrant(bearer, access);
+    if (!grant) return Response.json({ error: "this API key is not valid: it was revoked, ran out or never existed" }, { status: 401 });
+    access.used(grant);
+    return { kind: "grant", grant };
   }
+  const refused = bearer ? "a password only signs in from a browser; scripts send an API key from Settings, API keys" : "sign in first";
+  const credential = await access.password();
   if (!credential) {
+    if (access.deploymentKey || (await access.sealed())) {
+      if (api) return Response.json({ error: access.home ? `open chef at ${access.home}` : "this chef answers only API keys" }, { status: 401 });
+      return access.home ? new Response(null, { status: 302, headers: { location: access.home, "cache-control": "no-store" } }) : closedPage();
+    }
     if (url.pathname === "/setup" && request.method === "POST") {
       const form = await request.formData();
       const password = String(form.get("password") ?? "");
       const problem = passwordProblem(password, String(form.get("confirm") ?? ""));
       if (problem) return setupPage(problem);
       const stored = await hashPassword(password);
-      if (!(await claim(stored))) return new Response(null, { status: 303, headers: { location: "/" } });
+      if (!(await access.claim(stored))) return new Response(null, { status: 303, headers: { location: "/" } });
       return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookie({ kind: "app", ...stored }) } });
     }
     return api ? Response.json({ error: "chef has no password yet: open it in a browser to set one" }, { status: 503 }) : setupPage(null);
@@ -130,6 +169,14 @@ export async function guard(request: Request, credential: Credential | null, cla
     if (!(await matches(String(form.get("password") ?? ""), credential))) return loginPage(true);
     return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookie(credential) } });
   }
-  if (same(cookie(request, COOKIE) ?? "", await sessionToken(credential)) || (await matches(bearer, credential))) return null;
-  return api ? Response.json({ error: "sign in first" }, { status: 401 }) : loginPage(false);
+  if (same(cookie(request, COOKIE) ?? "", await sessionToken(credential))) return { kind: "browser" };
+  return api ? Response.json({ error: refused }, { status: 401 }) : loginPage(false);
+}
+
+export function trusted(request: Request, caller: Caller | null): Request {
+  if (caller?.kind === "grant" && caller.grant.kind === "controller") return request;
+  if (!ACTS_FOR_PEOPLE.some((name) => request.headers.has(name))) return request;
+  const headers = new Headers(request.headers);
+  for (const name of ACTS_FOR_PEOPLE) headers.delete(name);
+  return new Request(request, { headers });
 }

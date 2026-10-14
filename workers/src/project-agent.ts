@@ -26,7 +26,8 @@ import { SandboxCheckRunner, SandboxLiveHost, SandboxPreviewHost, SandboxProofRu
 import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
 import { buildingPage, previewPath } from "@chef/adapters/preview-page";
 import { CloudflareWorkerSpace, WorkerTakenError } from "./preview-space.ts";
-import { siteOrigin } from "./access.ts";
+import { homeOrigin, ORIGIN_HEADER } from "./access.ts";
+import { publicOrigin } from "./github-pages.ts";
 import { gitHubApp } from "./github.ts";
 import { agentStore, currentSettings, envCipher, settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
@@ -142,7 +143,7 @@ export class ProjectAgent extends Agent<Env> {
     const url = new URL(request.url);
     const action = url.pathname.split("/").filter(Boolean).at(-1);
     if (url.pathname.endsWith("/git/webhook")) return this.webhook(request);
-    const origin = siteOrigin(this.env) ?? url.origin;
+    const origin = request.headers.has(ORIGIN_HEADER) ? publicOrigin(request) : (homeOrigin(this.env) ?? url.origin);
     if ((await this.ctx.storage.get<string>(ORIGIN)) !== origin) await this.ctx.storage.put(ORIGIN, origin);
     const { orchestrator, bus, settings, external, space } = await this.build();
     const session = SESSION_ROUTE.exec(url.pathname);

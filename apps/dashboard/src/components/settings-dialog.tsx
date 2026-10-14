@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Cloud, Cpu, GitBranch, KeyRound, Route, ScrollText, SlidersHorizontal, Wallet } from "lucide-react";
+import { Bot, BookOpen, Cloud, Cpu, GitBranch, Key, KeyRound, Route, ScrollText, SlidersHorizontal, Wallet } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { githubApi, settingsApi, sharedEnvApi, type GitHubView, type SettingsVie
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { UsageSection } from "@/components/usage";
+import { ApiKeysSection } from "@/components/api-keys";
 import { host } from "@/host";
 
 function ModelsForm(props: { readonly settings: SettingsView; readonly save: Save }) {
@@ -105,6 +106,7 @@ function PasswordForm(props: { readonly settings: SettingsView; readonly save: S
   const [confirm, setConfirm] = useState("");
   const { busy, run } = useBusy(props.save);
   if (props.settings.password === "deployment") return <p className="text-xs text-muted-foreground">The password comes from the deployment's CHEF_PASSWORD secret. Change it there.</p>;
+  const none = props.settings.password === "none";
   return (
     <form
       id="settings-password"
@@ -118,6 +120,7 @@ function PasswordForm(props: { readonly settings: SettingsView; readonly save: S
         void run({ password }, "Password changed").then((ok) => ok && (setPassword(""), setConfirm("")));
       }}
     >
+      {none ? <p className="text-xs text-muted-foreground">No password yet, so no one can sign in from a browser.</p> : null}
       <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="New password, at least 8 characters" aria-label="New password" type="password" autoComplete="new-password" minLength={8} required />
       <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="The same password again" aria-label="Repeat the password" type="password" autoComplete="new-password" required />
       <Actions busy={busy} />
@@ -240,7 +243,7 @@ export function SettingsDialog(props: {
           </Group>
           {host.General ? <host.General locked={props.locked === true} /> : null}
           {settings && !host.General ? (
-            <Group title="Password" note="Changing it signs out every other browser and script.">
+            <Group title="Password" note="For signing in from a browser. Changing it signs out every other browser.">
               <PasswordForm settings={settings} save={save} />
             </Group>
           ) : null}
@@ -316,9 +319,11 @@ export function SettingsDialog(props: {
         ),
     },
     { id: "github", label: "GitHub", icon: GitBranch, note: "One connection for every project that links a GitHub repository.", render: () => <GitHubSection returnTo={props.returnTo} /> },
+    { id: "api-keys", label: "API keys", icon: Key, note: "Keys for scripts and apps that use chef without a browser.", render: () => <ApiKeysSection /> },
   ];
+  const hidden = new Set(host.hiddenSections ?? []);
   const sections = all
-    .filter((s) => props.available || !needsSettings.has(s.id))
+    .filter((s) => (props.available || !needsSettings.has(s.id)) && !hidden.has(s.id))
     .map((s) => (props.locked && s.id !== "general" ? { ...s, fill: false, attention: false, render: () => (host.LockedSection ? <host.LockedSection /> : null) } : s));
   return (
     <SettingsShell
