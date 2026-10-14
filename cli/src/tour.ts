@@ -32,6 +32,7 @@ export interface TourReport {
   readonly setup: string[];
   finished: boolean;
   featureRoute?: number;
+  readonly previews: { readonly session: string; readonly state: string; readonly src: string | null; readonly note: string }[];
 }
 
 const SETTLE_MS = 15_000;
@@ -86,7 +87,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
   const { chromium } = await import("playwright");
   mkdirSync(options.out, { recursive: true });
   const base = options.url.replace(/\/$/, "");
-  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false };
+  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, previews: [] };
   const browser: Browser = await chromium.launch();
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
@@ -182,6 +183,14 @@ export async function tour(options: TourOptions): Promise<TourReport> {
             await shot(`final-${panel}`);
           }
           if (await reveal(page, '[data-cf="sandbox"]')) await shot("final-details-sandbox");
+        }
+        for (const s of sessions.slice(-4)) {
+          await go(`/?project=${project}&feature=${s.featureId}&session=${s.id}&panel=preview`);
+          const panel = page.locator("#sessions").getByRole("tabpanel", { name: "Preview" });
+          const src = await panel.locator("iframe").getAttribute("src", { timeout: SETTLE_MS }).catch(() => null);
+          const note = await panel.locator("p").last().innerText({ timeout: 1000 }).catch(() => "");
+          report.previews.push({ session: s.id, state: s.machine.state, src, note });
+          await shot(`preview-${s.id}`);
         }
         const laned = sessions.filter((s) => s.lanes?.length).at(-1);
         for (const lane of laned?.lanes ?? []) {
