@@ -63,6 +63,7 @@ main { overflow-x: clip; }
 .landing .hero .lead { font-size: 18px; color: var(--ink-2); max-width: 480px; margin: 0 0 36px; }
 .hero .actions { justify-content: flex-start; align-items: center; gap: 8px; }
 .hero .fine { font: 12px/1.5 var(--mono); color: var(--muted-foreground); margin-top: 20px; }
+.hero .fine + .fine { margin-top: 6px; }
 .hero .banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; max-width: none; margin: 0 0 28px; padding: 14px 18px; border: 1px solid var(--brand); border-left-width: 4px; background: color-mix(in srgb, var(--brand) 16%, var(--background)); color: var(--foreground); font-weight: 500; }
 .hero .banner a { color: var(--brand); font-family: var(--mono); font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; text-decoration: none; white-space: nowrap; }
 .hero .banner a::after { content: " \2192"; }
@@ -132,6 +133,7 @@ main { overflow-x: clip; }
 .cta-copy { width: 100%; }
 .cta-copy h2 { font-size: clamp(40px, 6vw, 80px) !important; letter-spacing: -0.045em !important; line-height: 1 !important; max-width: 760px; margin: 0 0 20px !important; }
 .cta-copy .sub { margin: 0 0 36px; }
+.cta-copy .fine { font: 12px/1.5 var(--mono); color: var(--muted-foreground); margin-top: 20px; max-width: 560px; }
 
 .landing footer { border-top: 1px dashed var(--dash); font-family: var(--mono); font-size: 13px; }
 .landing footer .wrap { max-width: var(--inner); padding: 0 40px; }
