@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readSetupStream, SETUP_STREAM, SetupError, setupResponse, type SetupEvent } from "@chef/core";
-import { projectsRequest, type ProjectEntry, type ProjectRegistry } from "../../src/projects.ts";
+import { projectsRequest, removeProjectRequest, type ProjectEntry, type ProjectRegistry } from "../../src/projects.ts";
 
 function registry(initial: ProjectEntry[] = []): ProjectRegistry & { list: ProjectEntry[] } {
   const list = [...initial];
@@ -110,5 +110,45 @@ describe("project setup progress", () => {
   it("still relays a project that answers with plain JSON", async () => {
     const response = await projectsRequest(streamed({ name: "shop" }), registry(), async () => Response.json({ commitId: "c1", created: true }));
     expect((await events(response)).map((e) => e.type)).toEqual(["log", "done"]);
+  });
+});
+
+describe("deleting a project", () => {
+  const del = (name: string, body: unknown) => new Request(`https://chef.test/api/projects/${name}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const listed = () => {
+    const projects = registry([{ name: "shop", createdAt: 1 }, { name: "blog", createdAt: 2 }]);
+    return Object.assign(projects, {
+      forgetProject: async (name: string) => {
+        projects.list.splice(projects.list.findIndex((p) => p.name === name), 1);
+      },
+    });
+  };
+
+  it("asks for the name, removes the project's resources, then takes it off the list", async () => {
+    const projects = listed();
+    let removed = 0;
+    const remove = async () => {
+      removed++;
+      return { removed: ["removed the app chef-shop"], kept: [] };
+    };
+    const unconfirmed = await removeProjectRequest(del("shop", { confirm: "shp" }), "shop", projects, remove);
+    expect(unconfirmed.status).toBe(400);
+    expect(removed).toBe(0);
+    const response = await removeProjectRequest(del("shop", { confirm: "shop" }), "shop", projects, remove);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ name: "shop", removed: ["removed the app chef-shop"], kept: [] });
+    expect(projects.list.map((p) => p.name)).toEqual(["blog"]);
+    expect((await removeProjectRequest(del("shop", { confirm: "shop" }), "shop", projects, remove)).status).toBe(404);
+    expect(removed).toBe(1);
+  });
+
+  it("keeps the project listed when removing its resources fails, so deleting again can finish", async () => {
+    const projects = listed();
+    const response = await removeProjectRequest(del("shop", { confirm: "shop" }), "shop", projects, async () => {
+      throw new Error("Cloudflare said no");
+    });
+    expect(response.status).toBe(502);
+    expect(((await response.json()) as { error: string }).error).toContain("Cloudflare said no");
+    expect(projects.list.map((p) => p.name)).toEqual(["shop", "blog"]);
   });
 });

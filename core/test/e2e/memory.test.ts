@@ -98,4 +98,15 @@ describe("phase 4 memory on fakes", () => {
     const main = await w.orchestrator.mainTree();
     expect(main.tree[TEST_PATH]).toBe(todo[TEST_PATH]);
   });
+
+  it("forgets everything it indexed for the project when the project is deleted", async () => {
+    const w = todoWorld(scriptFromFixture(todo));
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    expect((await w.orchestrator.run(sessionId as string)).machine.state).toBe("merged");
+    expect(await w.deps.memory.query("todo list item", 5)).not.toEqual([]);
+    expect(await w.orchestrator.forgetMemory()).toBeGreaterThan(0);
+    expect(await w.deps.memory.query("todo list item", 5)).toEqual([]);
+    expect(await w.orchestrator.forgetMemory()).toBe(0);
+  });
 });
