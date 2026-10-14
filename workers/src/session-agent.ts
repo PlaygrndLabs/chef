@@ -1,6 +1,7 @@
 import { Agent } from "agents";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { CoderEvent, CoderTurnResult, CustomAgent, FileChanges } from "@chef/core";
+import { PREVIEW_PASS_HEADER } from "@chef/adapters/preview-gate";
 import { cloudflareAllowed, PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
 
 export interface SandboxJob {
@@ -29,6 +30,12 @@ interface OutboundProps {
   readonly llmKey: string | null;
   readonly cloudflareToken: string | null;
   readonly cloudflare: CloudflareGrant | null;
+  readonly previewPass?: PreviewPass | null;
+}
+
+interface PreviewPass {
+  readonly host: string;
+  readonly token: string;
 }
 
 export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
@@ -48,6 +55,8 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
         const current = headers.get(name);
         if (current?.includes(PLACEHOLDER)) headers.set(name, current.replace(PLACEHOLDER, llmKey));
       }
+    } else if (this.ctx.props.previewPass && url.hostname === this.ctx.props.previewPass.host) {
+      headers.set(PREVIEW_PASS_HEADER, this.ctx.props.previewPass.token);
     } else if (!this.ctx.props.allowHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) {
       return new Response(`host ${url.hostname} is not allowed from the coder sandbox`, { status: 403 });
     }
@@ -65,6 +74,7 @@ export interface ChecksJob {
   readonly allowHosts?: readonly string[];
   readonly cloudflare?: CloudflareGrant;
   readonly overlay?: FileChanges;
+  readonly previewPass?: PreviewPass;
 }
 
 export interface CommandResult {
@@ -258,7 +268,7 @@ export class SessionAgent extends Agent<Env> {
     return results;
   }
 
-  private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null } = {}): Promise<{ code: number; tail: string }> {
+  private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant; previewPass?: PreviewPass }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null } = {}): Promise<{ code: number; tail: string }> {
     this.busy++;
     try {
       return await this.exec(script, job, onEvent, secrets);
@@ -269,12 +279,13 @@ export class SessionAgent extends Agent<Env> {
     }
   }
 
-  private async exec(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null }): Promise<{ code: number; tail: string }> {
+  private async exec(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant; previewPass?: PreviewPass }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null }): Promise<{ code: number; tail: string }> {
     const container = await this.ensureContainer();
     this.following = null;
-    await this.intercept({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cloudflare: job.cloudflare ?? null }, secrets);
-    const { readToken, ...visible } = job;
+    await this.intercept({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cloudflare: job.cloudflare ?? null, previewPass: job.previewPass ?? null }, secrets);
+    const { readToken, previewPass, ...visible } = job;
     void readToken;
+    void previewPass;
     const process = await container.exec(["node", `/opt/chef/${script}`], { env: { ...SANDBOX_ENV, CHEF_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" }).catch((error: unknown) => {
       throw new Error(`${String(error)} (the sandbox container stopped: ${this.exit ?? "no reason reported"})`);
     });
