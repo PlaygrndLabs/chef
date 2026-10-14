@@ -27,7 +27,7 @@ import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
 import { previewPath, previewResponse, type PreviewAnswer } from "@chef/adapters/preview-page";
 import { newPreviewKey, OWNER_COOKIE_SECONDS, previewEntry, previewPass, PREVIEW_KEY_VAR, SHARE_COOKIE_SECONDS } from "@chef/adapters/preview-gate";
 import { previewScope, sessionScope, SHARE_HEADER, type ShareKind } from "./shares.ts";
-import { CloudflareWorkerSpace, WorkerTakenError } from "./preview-space.ts";
+import { CloudflareWorkerSpace, WorkerTakenError, type EnvPatch } from "./preview-space.ts";
 import { homeOrigin, ORIGIN_HEADER } from "./access.ts";
 import { publicOrigin } from "./github-pages.ts";
 import { gitHubApp } from "./github.ts";
@@ -486,13 +486,21 @@ export class ProjectAgent extends Agent<Env> {
     return viewProjectEnv(stored, shared, this.envCipher(), envNeeds(features, envNames(mergeEnv(shared, stored))));
   }
 
-  private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<void> {
+  private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<(preview: string) => Promise<void>> {
     await space.ensure();
+    const failed = (error: unknown) => new Error(`giving the preview this project's keys failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    let patch: EnvPatch | null;
     try {
-      await space.applyEnvironment(await this.previewEnv(), { create: true });
+      patch = await space.applyEnvironment(await this.previewEnv(), { create: true });
     } catch (error) {
-      throw new Error(`giving the preview this project's keys failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      throw failed(error);
     }
+    return async (preview) => {
+      if (!patch || Object.keys(patch).length === 0) return;
+      await space.refreshPreview(preview, patch).catch((error: unknown) => {
+        throw failed(error);
+      });
+    };
   }
 
   async pushEnvironment(): Promise<void> {
