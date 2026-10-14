@@ -61,10 +61,25 @@ function wantsPage(request: Request): boolean {
   return request.method === "GET" && (request.headers.get("accept") ?? "").includes("text/html");
 }
 
+export function previewBridge(features: readonly Feature[]): string {
+  const pages = JSON.stringify(pagesOf(features)).replace(/</g, "\\u003c");
+  return `<script>(()=>{if(window.parent===window)return;const send=()=>parent.postMessage({chef:"page",path:location.pathname+location.search,title:document.title,pages:${pages}},"*");send();addEventListener("popstate",send);})();</script>`;
+}
+
+async function withBridge(response: Response, bridge: string): Promise<Response> {
+  if (!/text\/html/i.test(response.headers.get("content-type") ?? "")) return response;
+  const markup = await response.text();
+  const end = markup.search(/<\/body>/i);
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  return new Response(end === -1 ? markup + bridge : markup.slice(0, end) + bridge + markup.slice(end), { status: response.status, statusText: response.statusText, headers });
+}
+
 export function createApp(features: readonly Feature[], store: Store, env: Env = {}): (request: Request) => Promise<Response> {
   const routes = features.flatMap((feature) => feature.routes);
   const rootPage = routes.some((route) => route.method === "GET" && route.path === "/");
-  return async (request) => {
+  const bridge = previewBridge(features);
+  const answer = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (url.pathname === "/" && !rootPage && request.method === "GET") return wantsPage(request) ? indexPage(features) : json({ ok: true, pages: pagesOf(features).map((page) => page.path) });
     for (const route of routes) {
@@ -73,5 +88,9 @@ export function createApp(features: readonly Feature[], store: Store, env: Env =
       if (params) return route.handle(request, { store, params, env });
     }
     return json({ error: "not found" }, 404);
+  };
+  return async (request) => {
+    const response = await answer(request);
+    return request.method === "GET" ? withBridge(response, bridge) : response;
   };
 }

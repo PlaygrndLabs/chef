@@ -186,7 +186,7 @@ src/index.ts                 the Worker entry
 spec/features/<id>.md        the feature's spec
 ```
 
-A new project starts with no features. Until a feature serves its own `/`, browsers opening `/` get an index of the app's pages and API clients get `{ ok: true, pages }`, so a preview answers from the first commit.
+A new project starts with no features. Until a feature serves its own `/`, browsers opening `/` get an index of the app's pages and API clients get `{ ok: true, pages }`, so a preview answers from the first commit. A page is a GET route with no path params, outside `/api`, whose last segment has no file extension. Every HTML page the app serves also carries a small script (`previewBridge` in `template/shared/http.ts`): when the page is framed, it posts the open path, its title and the app's pages to the frame's parent. The dashboard's Preview tab uses that for its address bar, back and forward, and its Pages row, and opens the page named in the feature's entrypoint (`GET /notes`) first.
 
 Code rules (`core/src/checks/code-rules.ts`) parse the TypeScript AST: no comments except tool directives; a feature may not import another feature; `shared/` may not import features; the app shell imports only `features/<id>/index.ts`.
 

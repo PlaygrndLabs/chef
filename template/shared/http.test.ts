@@ -43,6 +43,17 @@ test("scripts, styles and other files a page loads are not pages", async () => {
   assert.deepEqual(await (await app(new Request("http://app.test/"))).json(), { ok: true, pages: ["/notes"] });
 });
 
+test("every page tells the chef preview around it which page is open and which pages exist", async () => {
+  const app = createApp([notes], new MemoryStore());
+  const page = await (await app(new Request("http://app.test/notes"))).text();
+  assert.match(page, /^<p>notes<\/p><script>.*postMessage\(\{chef:"page",path:location\.pathname\+location\.search,title:document\.title,pages:\[\{"title":"Notes","path":"\/notes"\}\]\}/);
+  assert.deepEqual(await (await app(new Request("http://app.test/api/notes"))).json(), []);
+  const titled: Feature = { id: "x", title: "</script><b>", routes: [{ method: "GET", path: "/x", handle: () => new Response("<body></body>", { headers: { "content-type": "text/html" } }) }] };
+  const escaped = await (await createApp([titled], new MemoryStore())(new Request("http://app.test/x"))).text();
+  assert.doesNotMatch(escaped, /<\/script><b>/);
+  assert.match(escaped, /<\/script><\/body>$/);
+});
+
 test("an app with no features still answers on /", async () => {
   const app = createApp([], new MemoryStore());
   assert.equal((await app(new Request("http://app.test/"))).status, 200);

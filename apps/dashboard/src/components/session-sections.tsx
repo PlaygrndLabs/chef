@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { diffLines } from "diff";
-import { ChevronDown, ExternalLink, FileCode2, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ExternalLink, FileCode2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
@@ -12,7 +12,7 @@ import { ago, duration, previewHost, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
-import { entryRoute, pagesFor, routesIn, type Route } from "@/lib/routes";
+import { addressPath, entryPage, frameReport, pageChips, step, visit, type AppPage, type Trail } from "@/lib/preview";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -43,44 +43,87 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, link, commitId, routes, featureId, entry, live }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly routes: readonly Route[]; readonly featureId: string | null; readonly entry: Route | null; readonly live: boolean }) {
-  const [nonce, setNonce] = useState(0);
-  const [chosen, setPath] = useState<string | null>(null);
-  const pages = pagesFor(routes, featureId, entry);
-  const path = chosen ?? pages[0]?.path ?? "/";
+function PreviewTab({ url, link, commitId, start, live }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly start: string; readonly live: boolean }) {
+  const [trail, setTrail] = useState<Trail>({ entries: [start], index: 0 });
+  const [load, setLoad] = useState({ path: start, count: 0 });
+  const [pages, setPages] = useState<readonly AppPage[]>([]);
+  const [draft, setDraft] = useState<string | null>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    const listen = (event: MessageEvent) => {
+      if (!frame.current || event.source !== frame.current.contentWindow) return;
+      const report = frameReport(event.data);
+      if (!report) return;
+      setPages(report.pages);
+      setTrail((current) => visit(current, report.path));
+    };
+    window.addEventListener("message", listen);
+    return () => window.removeEventListener("message", listen);
+  }, []);
   if (!url) return <Empty>The preview appears after chef's first step.</Empty>;
-  const base = link ?? url;
-  const href = path === "/" ? base : link ? `${link}?path=${encodeURIComponent(path)}` : `${url.replace(/\/$/, "")}${path}`;
+  const path = trail.entries[trail.index] ?? "/";
+  const target = (to: string) => (to === "/" ? (link ?? url) : link ? `${link}?path=${encodeURIComponent(to)}` : `${url.replace(/\/$/, "")}${to}`);
+  const open = (to: string) => setLoad((current) => ({ path: to, count: current.count + 1 }));
+  const go = (to: string) => {
+    setDraft(null);
+    setTrail((current) => visit(current, to));
+    open(to);
+  };
+  const move = (delta: number) => {
+    const next = step(trail, delta);
+    setTrail(next);
+    open(next.entries[next.index] ?? "/");
+  };
+  const shown = path.split(/[?#]/)[0];
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex h-9 items-center gap-2 rounded-xl border px-3">
-        <StatusDot tone="ok" />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-          {previewHost(url)}
-          {path === "/" ? "" : path}
-        </span>
-        <Button variant="ghost" size="icon-xs" onClick={() => setNonce((n) => n + 1)} aria-label="Reload preview">
+      <form
+        className="flex h-9 items-center gap-1 rounded-xl border px-1.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          go(addressPath(draft ?? path));
+        }}
+      >
+        <Button type="button" variant="ghost" size="icon-xs" disabled={trail.index === 0} onClick={() => move(-1)} aria-label="Back">
+          <ArrowLeft />
+        </Button>
+        <Button type="button" variant="ghost" size="icon-xs" disabled={trail.index >= trail.entries.length - 1} onClick={() => move(1)} aria-label="Forward">
+          <ArrowRight />
+        </Button>
+        <Button type="button" variant="ghost" size="icon-xs" onClick={() => open(path)} aria-label="Reload preview">
           <RefreshCw />
         </Button>
+        <span className="flex min-w-0 flex-1 items-center">
+          <StatusDot tone="ok" />
+          <span className="ml-2 max-w-[45%] shrink-0 truncate font-mono text-xs text-muted-foreground">{previewHost(url)}</span>
+          <input
+            value={draft ?? path}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => setDraft(null)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setDraft(null);
+            }}
+            spellCheck={false}
+            aria-label="Page address"
+            className="h-7 min-w-0 flex-1 bg-transparent font-mono text-xs outline-none"
+          />
+        </span>
         <Button variant="ghost" size="icon-xs" asChild>
-          <a href={href} target="_blank" rel="noreferrer" aria-label={live ? "Open the live app in a new tab" : "Open the preview in a new tab"}>
+          <a href={target(path)} target="_blank" rel="noreferrer" aria-label={live ? "Open the live app in a new tab" : "Open the preview in a new tab"}>
             <ExternalLink />
           </a>
         </Button>
+      </form>
+      <div className="flex flex-wrap items-center gap-1" data-pages>
+        <span className="mr-1 text-xs text-muted-foreground">Pages</span>
+        {pageChips(pages, start).map((p) => (
+          <button key={p.path} type="button" title={p.title || undefined} onClick={() => go(p.path)} className={cn("h-6 rounded-md border px-1.5 font-mono text-[11px] hover:bg-muted", p.path === shown && "border-foreground/40 bg-muted")}>
+            {p.path}
+          </button>
+        ))}
       </div>
-      {pages.length ? (
-        <div className="flex flex-wrap items-center gap-1" data-routes>
-          <span className="mr-1 text-xs text-muted-foreground">Pages</span>
-          {["/", ...pages.map((r) => r.path)].map((p) => (
-            <button key={p} type="button" onClick={() => setPath(p)} className={cn("h-6 rounded-md border px-1.5 font-mono text-[11px] hover:bg-muted", p === path && "border-foreground/40 bg-muted")}>
-              {p}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <iframe key={`${nonce}-${path}`} src={href} title={live ? "Live app" : "Preview"} className="min-h-[320px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+      <iframe ref={frame} key={load.count} src={target(load.path)} title={live ? "Live app" : "Preview"} className="min-h-[320px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
       <p className="text-xs text-muted-foreground">
-        {pages.length || live ? "" : "This build has not added a page yet, so you see the app's home. "}
         {live ? `This is the live app, at ${short(commitId)}. Everything chef merges shows up here.` : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
       </p>
     </div>
@@ -325,22 +368,16 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
 }
 
 export function SessionPreview({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
-  const { api, data } = useWorkspace();
+  const { data } = useWorkspace();
   const app = data.spec?.live;
   const live = node?.state === "merged" && app?.url ? { url: app.url, link: null, commitId: app.commitId } : null;
   const preview = live ?? node?.live?.preview ?? node?.record?.preview ?? feature.preview ?? null;
-  const head = node?.live?.commits.at(-1)?.id ?? node?.record?.head ?? "";
-  const changes = useFetch(node ? () => api.changes(node.id) : null, `${node?.id ?? ""}:${head}`, node?.id ?? "");
-  const found = routesIn(changes.data?.files ?? []);
-  const entry = entryRoute(feature.spec?.entrypoint);
-  const routes = entry && !found.some((r) => r.method === entry.method && r.path === entry.path) ? [entry, ...found] : found;
-  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} featureId={feature.id} entry={entry} live={live !== null} />;
+  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} start={entryPage(feature.spec?.entrypoint) ?? "/"} live={live !== null} />;
 }
 
 export function LiveApp() {
   const { data, selection } = useWorkspace();
   const live = data.spec?.live ?? null;
-  const routes = (data.spec?.features ?? []).map((f) => entryRoute(f.entrypoint)).filter((r): r is Route => r !== null);
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-view="live">
       <div className="flex items-center gap-2">
@@ -348,7 +385,7 @@ export function LiveApp() {
         <span className="font-mono text-xs text-muted-foreground">main {short(live?.commitId ?? data.spec?.commitId) || ""}</span>
       </div>
       {live?.url ? (
-        <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} routes={routes} featureId={null} entry={null} live />
+        <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} start="/" live />
       ) : (
         <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
       )}
