@@ -12,9 +12,11 @@ describe("phase 5 voice front end on fakes", () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[prompt, todoSpec]]) });
     await w.orchestrator.bootstrap(templateTree());
     const host = new ScriptedVoiceHost();
-    const call = await startVoiceCall({ host, target: w.orchestrator, spec: readSpec((await w.orchestrator.mainTree()).tree), sdp: "offer", ids: new SequentialIds() });
-    expect(call.sdp).toBe("answer for offer");
-    expect(host.offers[0]?.instructions).toContain("Delegate to the client");
+    const call = await startVoiceCall({ host, target: w.orchestrator, spec: readSpec((await w.orchestrator.mainTree()).tree), ids: new SequentialIds() });
+    expect(call.sessionId).toBe("voice1");
+    expect(host.instructions[0]).toContain("Delegate to the client");
+    call.sendAudio(new Uint8Array([1, 2]));
+    expect(host.audio).toEqual([new Uint8Array([1, 2])]);
 
     host.say("Add an item to a to-do list.");
     await call.delegate.idle();
@@ -63,5 +65,8 @@ describe("phase 5 voice front end on fakes", () => {
     await delegate.handle({ type: "session.input_transcript.delta", delta: "add a dark mode", start_ms: 2700 });
     await delegate.handle({ type: "session.delegation.created", offset_ms: 4000, delegation: { id: "d3", target: "client" } });
     expect(prompts.at(-1)).toBe("Also add a dark mode");
+    await delegate.handle({ type: "session.input_transcript.delta", delta: "uh, can you add search", start_ms: 5000 });
+    await delegate.handle({ type: "session.delegation.created", delegation: { id: "d4", target: "client", request: "Add search" } });
+    expect(prompts.at(-1)).toBe("Add search");
   });
 });

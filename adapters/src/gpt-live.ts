@@ -1,4 +1,4 @@
-import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceOffer } from "@chef/core";
+import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceStream } from "@chef/core";
 
 export interface SocketLike {
   send(data: string): void;
@@ -18,7 +18,6 @@ export interface LiveOptions {
   readonly model?: string;
   readonly voice?: string;
   readonly baseUrl?: string;
-  readonly fetchImpl?: typeof fetch;
 }
 
 function text(data: unknown): string {
@@ -68,34 +67,22 @@ function connection(socket: SocketLike, finished: Promise<void>): LiveConnection
   };
 }
 
+function normalized(event: LiveEvent): LiveEvent {
+  if (/output_audio\.delta$/.test(event.type)) return { type: "session.output_audio.delta", delta: event["delta"] ?? event["audio"] };
+  if (/speech[._]started$/.test(event.type)) return { type: "session.input_speech.started" };
+  return event;
+}
+
 export class GptLiveHost implements VoiceHost {
   readonly model: string;
-  private readonly baseUrl: string;
-  private readonly fetchImpl: typeof fetch;
 
   constructor(private readonly options: LiveOptions) {
     this.model = options.model ?? LIVE_MODEL;
-    this.baseUrl = options.baseUrl ?? OPENAI_BASE_URL;
-    this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
-  async open(offer: VoiceOffer): Promise<{ sessionId: string; sdp: string }> {
-    const session: Record<string, unknown> = { model: this.model, instructions: offer.instructions, delegation: { type: "client" } };
-    if (this.options.voice) session["audio"] = { output: { voice: this.options.voice } };
-    const response = await this.fetchImpl(`${this.baseUrl}/live/sessions`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ session, transport: { type: "webrtc", sdp: offer.sdp } }),
-    });
-    if (!response.ok) throw new Error(`GPT-Live session failed: ${response.status} ${(await response.text()).slice(0, 500)}`);
-    const body = (await response.json()) as { session?: { id?: string }; transport?: { sdp?: string } };
-    if (!body.session?.id || !body.transport?.sdp) throw new Error("GPT-Live session response has no session id or SDP answer");
-    return { sessionId: body.session.id, sdp: body.transport.sdp };
-  }
-
-  async attach(sessionId: string, onEvent: (event: LiveEvent) => void): Promise<LiveConnection> {
-    const socket = await this.options.connect(wsUrl(this.baseUrl, `/live/sessions/${encodeURIComponent(sessionId)}/attach`), { authorization: `Bearer ${this.options.apiKey}` });
-    return connection(socket, listen(socket, onEvent).finished);
+  async start(input: { readonly instructions: string; readonly onEvent: (event: LiveEvent) => void }): Promise<VoiceStream> {
+    const session = await startServerSession({ ...this.options, model: this.model, instructions: input.instructions, onEvent: (event) => input.onEvent(normalized(event)) });
+    return { sessionId: session.sessionId, connection: session.connection, sendAudio: (pcm) => session.sendAudio(pcm) };
   }
 }
 
@@ -106,7 +93,7 @@ export interface ServerSession {
   sendAudio(pcm: Uint8Array): void;
 }
 
-const encodeBase64 = (bytes: Uint8Array): string => {
+export const encodeBase64 = (bytes: Uint8Array): string => {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binary);
