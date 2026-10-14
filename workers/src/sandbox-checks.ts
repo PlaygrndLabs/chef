@@ -1,4 +1,4 @@
-import { parseTap } from "@chef/core/tap";
+import { parseTap, tapFailures } from "@chef/core/tap";
 import { diffTrees, lintSpecFiles, previewName, type CheckResult, type CheckRunner, type PreviewDeployment, type PreviewHost, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@chef/core";
 import { PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
 import type { ChecksJob, CommandResult } from "./session-agent.ts";
@@ -50,7 +50,7 @@ export class SandboxCheckRunner implements CheckRunner {
     for (const [path, content] of Object.entries(input.tree)) if (path.startsWith("spec/")) specFiles[path] = content;
     const spec = lintSpecFiles(specFiles).problems;
     return [
-      ...results.map((r) => ({ name: r.name, ok: r.code === 0, log: tail(`${r.stdout}\n${r.stderr}`) || `${r.name} ok`, ...(r.name === "test" ? { cases: parseTap(r.stdout) } : {}) })),
+      ...results.map((r) => ({ name: r.name, ok: r.code === 0, log: (r.name === "test" && r.code !== 0 ? tapFailures(r.stdout) : "") || tail(`${r.stdout}\n${r.stderr}`) || `${r.name} ok`, ...(r.name === "test" ? { cases: parseTap(r.stdout) } : {}) })),
       { name: "spec-lint", ok: spec.length === 0, log: spec.map((p) => `${p.path}: ${p.message}`).join("\n") || "spec ok" },
     ];
   }
