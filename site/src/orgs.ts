@@ -14,14 +14,47 @@ export interface OrgSummary {
   readonly plan: OrgPlan;
 }
 
-export type Action = "use" | "setup" | "rename" | "manage";
+export type Action = "use" | "setup" | "rename" | "members" | "manage";
 
 const ALLOWED: Readonly<Record<Action, readonly Role[]>> = {
   use: ["owner", "admin", "member"],
   setup: ["owner", "admin"],
   rename: ["owner", "admin"],
+  members: ["owner", "admin"],
   manage: ["owner"],
 };
+
+export function isRole(value: unknown): value is Role {
+  return typeof value === "string" && (ROLES as readonly string[]).includes(value);
+}
+
+export type ProjectLevel = "view" | "edit" | "manage";
+
+export const LEVELS: readonly ProjectLevel[] = ["view", "edit", "manage"];
+
+export type Visibility = "private" | "org";
+
+export function isLevel(value: unknown): value is ProjectLevel {
+  return typeof value === "string" && (LEVELS as readonly string[]).includes(value);
+}
+
+export function atLeast(level: ProjectLevel | null | undefined, need: ProjectLevel): boolean {
+  return level !== null && level !== undefined && LEVELS.indexOf(level) >= LEVELS.indexOf(need);
+}
+
+export function highest(...levels: readonly (ProjectLevel | null | undefined)[]): ProjectLevel | null {
+  let best: ProjectLevel | null = null;
+  for (const level of levels) if (level && !atLeast(best, level)) best = level;
+  return best;
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function readEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const email = value.trim().toLowerCase();
+  return email.length <= 254 && EMAIL.test(email) ? email : null;
+}
 
 export function can(role: Role | null | undefined, action: Action): boolean {
   return role !== null && role !== undefined && ALLOWED[action].includes(role);
