@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRight, ChevronRight, Folder, Menu, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -113,7 +113,14 @@ function FirstProject(props: { readonly fromGitHub: boolean; readonly step: bool
   );
 }
 
-export function Start(props: { readonly projects: readonly string[]; readonly selection: Selection; readonly select: (patch: Partial<Selection>) => void; readonly onOpen: (name: string) => void; readonly onCreated: (name: string) => void }) {
+export function Start(props: {
+  readonly projects: readonly string[];
+  readonly selection: Selection;
+  readonly select: (patch: Partial<Selection>) => void;
+  readonly onOpen: (name: string) => void;
+  readonly onCreated: (name: string) => void;
+  readonly updating?: ReactNode;
+}) {
   const { selection, select } = props;
   const app = useSettings();
   const [fromGitHub] = useState(returningToNewProject);
@@ -121,7 +128,8 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
   const [sidebar, setSidebar] = useState(false);
   const any = props.projects.length > 0;
   const place = selection.settings?.scope === "app" ? selection.settings : null;
-  const needsModel = app.available && missingSettings(app.settings).includes("models");
+  const locked = props.updating !== undefined;
+  const needsModel = !locked && app.available && missingSettings(app.settings).includes("models");
   const [onboarding] = useState(() => !any);
   const [stepped, setStepped] = useState(false);
   useEffect(() => {
@@ -146,7 +154,9 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
   useEffect(() => {
     document.title = place ? "Settings · chef" : "chef";
   }, [place]);
-  const onNew = any
+  const onNew = locked
+    ? null
+    : any
     ? () => {
         setSidebar(false);
         setAdding(true);
@@ -154,7 +164,7 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
     : null;
   const side = <StartSidebar app={app} onSettings={openSettings} onNew={onNew} />;
   return (
-    <div className="flex h-dvh overflow-hidden" data-view={needsModel ? "onboarding" : any ? "start" : "setup"}>
+    <div className="flex h-dvh overflow-hidden" data-view={locked ? "updating" : needsModel ? "onboarding" : any ? "start" : "setup"}>
       <aside className="hidden w-64 shrink-0 border-r lg:block" aria-label="chef">
         {side}
       </aside>
@@ -166,7 +176,9 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
           <Wordmark className="h-[17px]" />
         </div>
         <main className="min-h-0 flex-1 overflow-y-auto">
-          {app.available && app.settings === null ? null : needsModel ? (
+          {locked ? (
+            props.updating
+          ) : app.available && app.settings === null ? null : needsModel ? (
             <ConnectModel app={app} first={onboarding} />
           ) : any ? (
             <ProjectList projects={props.projects} onOpen={props.onOpen} onNew={() => setAdding(true)} />
@@ -194,6 +206,7 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
             item={selection.item ?? null}
             nav={{ go: (section, item, scope) => openSettings(section, item, scope), section: (section) => openSettings(section) }}
             returnTo="/?settings=app.github"
+            locked={locked}
           />
         </Suspense>
       ) : null}

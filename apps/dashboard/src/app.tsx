@@ -1,8 +1,9 @@
-import { Suspense, use, useCallback } from "react";
+import { Suspense, use, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Shown } from "@/components/loading";
 import { MainView, ProjectWorkspace } from "@/components/project-workspace";
 import { SessionView } from "@/components/session-tabs";
+import { UpdateProgress, UpdatePrompt } from "@/components/update";
 import { boot } from "@/lib/boot";
 import { preloadable } from "@/lib/lazy";
 import { pickProject, rememberProject, useProjects } from "@/lib/projects";
@@ -61,7 +62,25 @@ function ConnectedApp({ initial }: { readonly initial: readonly string[] | null 
   return <ProjectWorkspace key={project} selection={selection} select={select} projects={projects} onCreated={opened} />;
 }
 
+function Updating() {
+  const [selection, select] = useSelection();
+  const none = useCallback(() => undefined, []);
+  return (
+    <Suspense fallback={null}>
+      <Start projects={[]} selection={selection} select={select} onOpen={none} onCreated={none} updating={<UpdateProgress />} />
+      <Shown />
+    </Suspense>
+  );
+}
+
 export function App() {
   const start = use(boot());
-  return <ConnectedApp initial={start.projects} />;
+  const [updating, setUpdating] = useState(start.update?.running === true);
+  if (updating) return <Updating />;
+  return (
+    <>
+      <ConnectedApp initial={start.projects} />
+      {start.update?.ask ? <UpdatePrompt onStarted={() => setUpdating(true)} /> : null}
+    </>
+  );
 }
