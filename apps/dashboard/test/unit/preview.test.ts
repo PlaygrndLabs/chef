@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isPage } from "../../../../template/shared/http.ts";
-import { addressPath, entryPage, frameReport, isPagePath, loadView, pageChips, previewState, stateLink, step, visit, type FrameLoad, type Trail } from "../../src/lib/preview.ts";
+import { addressPath, enterAt, entryPage, frameReport, isPagePath, loadView, pageChips, previewState, stateLink, step, visit, type FrameLoad, type Trail } from "../../src/lib/preview.ts";
 
 describe("preview browser", () => {
   it("opens the page named in the feature's entrypoint, never a script or an API", () => {
@@ -100,6 +100,10 @@ describe("preview browser", () => {
   it("reads the engine's preview state and asks for it on the preview's own link", () => {
     expect(previewState({ status: "ready", url: "https://p.example.workers.dev", commitId: "abc" })).toEqual({ status: "ready", url: "https://p.example.workers.dev" });
     expect(previewState({ status: "ready", url: "javascript:alert(1)" })).toBeNull();
+    expect(previewState({ status: "ready", url: "https://p.example.workers.dev", enter: "https://p.example.workers.dev/__chef/enter?t=a.b&to=%2F" })).toEqual({ status: "ready", url: "https://p.example.workers.dev", enter: "https://p.example.workers.dev/__chef/enter?t=a.b&to=%2F" });
+    expect(previewState({ status: "ready", url: "https://p.example.workers.dev", enter: "https://evil.example/__chef/enter" })).toEqual({ status: "ready", url: "https://p.example.workers.dev" });
+    expect(previewState({ status: "ready", url: "https://" })).toBeNull();
+    expect(enterAt("https://p.example.workers.dev/__chef/enter?t=a.b&to=%2F", "/todos?x=1")).toBe("https://p.example.workers.dev/__chef/enter?t=a.b&to=%2Ftodos%3Fx%3D1");
     expect(previewState({ status: "building", since: 1, elapsedMs: 4200 })).toEqual({ status: "building", elapsedMs: 4200 });
     expect(previewState({ status: "failed", error: "" })).toEqual({ status: "failed", error: "The preview could not start." });
     expect(previewState({ status: "missing" })).toEqual({ status: "missing" });

@@ -66,19 +66,25 @@ export function pageChips(pages: readonly AppPage[], start: string): AppPage[] {
 }
 
 export type PreviewState =
-  | { readonly status: "ready"; readonly url: string }
+  | { readonly status: "ready"; readonly url: string; readonly enter?: string }
   | { readonly status: "building"; readonly elapsedMs: number }
   | { readonly status: "failed"; readonly error: string }
   | { readonly status: "missing" };
 
 export function previewState(data: unknown): PreviewState | null {
   if (!data || typeof data !== "object") return null;
-  const { status, url, elapsedMs, error } = data as Record<string, unknown>;
-  if (status === "ready" && typeof url === "string" && /^https?:\/\//.test(url)) return { status, url };
+  const { status, url, elapsedMs, error, enter } = data as Record<string, unknown>;
+  if (status === "ready" && typeof url === "string" && /^https?:\/\/[^/]/.test(url)) return typeof enter === "string" && enter.startsWith(`${new URL(url).origin}/`) ? { status, url, enter } : { status, url };
   if (status === "building") return { status, elapsedMs: typeof elapsedMs === "number" && elapsedMs > 0 ? elapsedMs : 0 };
   if (status === "failed") return { status, error: typeof error === "string" && error ? error : "The preview could not start." };
   if (status === "missing") return { status };
   return null;
+}
+
+export function enterAt(enter: string, path: string): string {
+  const url = new URL(enter);
+  url.searchParams.set("to", path || "/");
+  return url.toString();
 }
 
 export function stateLink(link: string, retry: boolean): string {

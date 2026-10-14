@@ -1,10 +1,11 @@
+import { SHARE_HEADER } from "./shares.ts";
 import { faviconDataUri, wordmarkSvg } from "@chef/core/brand";
 import { tokenHash, tokenId } from "@chef/core/access";
 import { deploymentGrant, live, type Grant } from "./grants.ts";
 
 export const USER_HEADER = "x-chef-user";
 export const ORIGIN_HEADER = "x-chef-origin";
-const ACTS_FOR_PEOPLE = [USER_HEADER, ORIGIN_HEADER];
+const ACTS_FOR_PEOPLE = [USER_HEADER, ORIGIN_HEADER, SHARE_HEADER];
 
 const COOKIE = "chef_access";
 const ITERATIONS = 100_000;

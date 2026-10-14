@@ -7,6 +7,7 @@ import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCap
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, homeOrigin, passwordProblem, sessionCookie, type Access, type Caller, type Credential, type StoredPassword } from "./access.ts";
 import { deploymentGrant, deploymentKey, mintGrant, readGrantRequest, viewGrant, type Grant, type GrantView } from "./grants.ts";
+import { mintShare, readShareRequest, SHARE_ROUTE, SHARES_ROUTE, viewShare, type ShareKind, type ShareView } from "./shares.ts";
 import { DurableStore } from "./do-store.ts";
 
 const SETTINGS = "providers";
@@ -233,7 +234,7 @@ async function listGrants(env: Env): Promise<GrantView[]> {
   const { grants, used } = await settingsStub(env).grants();
   const key = deploymentKey(env);
   const fromDeployment = key ? [await deploymentGrant(key)] : [];
-  return [...fromDeployment.map((grant) => viewGrant(grant, "deployment", used[grant.id] ?? null)), ...grants.sort((a, b) => a.createdAt - b.createdAt).map((grant) => viewGrant(grant, "app", used[grant.id] ?? null))];
+  return [...fromDeployment.map((grant) => viewGrant(grant, "deployment", used[grant.id] ?? null)), ...grants.filter((grant) => grant.kind !== "share").sort((a, b) => a.createdAt - b.createdAt).map((grant) => viewGrant(grant, "app", used[grant.id] ?? null))];
 }
 
 export async function keysRequest(request: Request, env: Env, caller: Caller): Promise<Response> {
@@ -256,6 +257,40 @@ export async function keysRequest(request: Request, env: Env, caller: Caller): P
     const grant = await settings.grant(id);
     if (!grant) return Response.json({ error: "no such key" }, { status: 404 });
     if (grant.kind === "controller" && caller.kind === "grant" && caller.grant.kind !== "controller") return Response.json({ error: "an API key cannot revoke the key of a managing app" }, { status: 403 });
+    await settings.removeGrant(id);
+    return new Response(null, { status: 204 });
+  }
+  return Response.json({ error: "method not allowed" }, { status: 405 });
+}
+
+export type DescribeShare = (project: string, kind: ShareKind, id: string) => Promise<{ readonly name: string; readonly scopes: readonly string[] } | { readonly error: string }>;
+
+export async function sharesRequest(request: Request, env: Env, describe: DescribeShare): Promise<Response> {
+  const url = new URL(request.url);
+  const settings = settingsStub(env);
+  const project = SHARES_ROUTE.exec(url.pathname)?.[1] ?? null;
+  if (project && request.method === "GET") {
+    const { grants, used } = await settings.grants();
+    const shares = grants
+      .map((grant) => viewShare(grant, used[grant.id] ?? null))
+      .filter((share): share is ShareView => share !== null && share.project === project)
+      .sort((a, b) => b.createdAt - a.createdAt);
+    return Response.json({ shares });
+  }
+  if (project && request.method === "POST") {
+    const now = Date.now();
+    const input = readShareRequest(await request.json().catch(() => null), now);
+    if (typeof input === "string") return Response.json({ error: input }, { status: 400 });
+    const target = await describe(project, input.kind, input.id);
+    if ("error" in target) return Response.json({ error: target.error }, { status: 404 });
+    const { grant, token } = await mintShare(input, target, now);
+    await settings.addGrant(grant);
+    return Response.json({ share: viewShare(grant, null), token }, { status: 201 });
+  }
+  const id = SHARE_ROUTE.exec(url.pathname)?.[1] ?? null;
+  if (id && request.method === "DELETE") {
+    const grant = await settings.grant(id);
+    if (!grant || grant.kind !== "share") return Response.json({ error: "no such link" }, { status: 404 });
     await settings.removeGrant(id);
     return new Response(null, { status: 204 });
   }

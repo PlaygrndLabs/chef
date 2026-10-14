@@ -24,6 +24,14 @@ export interface HostUsage {
   readonly people: readonly HostPerson[];
 }
 
+export interface HostShare {
+  readonly project: string;
+  readonly kind: "session" | "preview";
+  readonly id: string;
+  readonly title: string;
+  readonly onClose: () => void;
+}
+
 export interface Host {
   readonly start?: () => Promise<HostStart>;
   readonly Overlay?: ComponentType<{ readonly onLocked: () => void }>;
@@ -38,4 +46,5 @@ export interface Host {
   readonly useProjectLevel?: (project: string) => ProjectLevel | null;
   readonly projectSections?: (project: string) => readonly SettingsSection[];
   readonly hiddenSections?: readonly string[];
+  readonly Share?: ComponentType<HostShare> | false;
 }

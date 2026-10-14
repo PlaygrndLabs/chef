@@ -82,4 +82,5 @@ jobs:
           if [ -n "$CHEF_PASSWORD" ]; then
             curl -fsS --retry 5 --retry-all-errors --retry-delay 5 -o /dev/null -w 'projects after signing in: %{http_code}\n' -H "$(bash .github/scripts/sign-in.sh "$url")" "$url/api/projects"
             test "$(curl -sS -o /dev/null -w '%{http_code}' -H "authorization: Bearer $CHEF_PASSWORD" "$url/api/projects")" = 401
+            bash .github/scripts/share-check.sh "$url"
           fi

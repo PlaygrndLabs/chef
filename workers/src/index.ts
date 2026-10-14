@@ -1,5 +1,5 @@
 import { getAgentByName, routeAgentRequest } from "agents";
-import { guard, trusted } from "./access.ts";
+import { guard, trusted, type Caller } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
 import { gitHubRequest, gitHubWebhook } from "./github.ts";
 import { projectsRequest } from "@chef/adapters/projects";
@@ -8,7 +8,8 @@ import { sharedInstructionsRequest } from "@chef/adapters/guidance";
 import { loadProfiles } from "@chef/core";
 import { agentFiles } from "./embedded.gen.ts";
 import { projectOf } from "./routes.ts";
-import { access, agentStore, currentSettings, keysRequest, settingsRequest, settingsStub, sharedEnvRequest } from "./settings.ts";
+import { access, agentStore, currentSettings, keysRequest, settingsRequest, settingsStub, sharedEnvRequest, sharesRequest } from "./settings.ts";
+import { limited, OPEN_SHARE, reaches, SHARE_HEADER, SHARE_PAGE, SHARE_ROUTE, SHARES_ROUTE, targetOf } from "./shares.ts";
 import { usageRequest } from "./usage.ts";
 
 export { ProjectAgent } from "./project-agent.ts";
@@ -24,11 +25,18 @@ export default {
     const webhook = WEBHOOK.exec(new URL(incoming.url).pathname);
     if (webhook) return projectStub(env, webhook[1] as string, trusted(incoming, null));
     if (new URL(incoming.url).pathname === "/api/github/webhook") return gitHubWebhook(trusted(incoming, null), env);
+    if (new URL(incoming.url).pathname === SHARE_PAGE && incoming.method === "GET") return env.ASSETS.fetch(new Request(new URL("/", incoming.url), incoming));
     const caller = await guard(incoming, access(env, (work) => ctx.waitUntil(work)));
     if (caller instanceof Response) return caller;
-    const request = trusted(incoming, caller);
-    const url = new URL(request.url);
+    const url = new URL(incoming.url);
+    if (caller.kind === "grant" && limited(caller.grant)) {
+      const target = targetOf(caller.grant);
+      if (url.pathname === OPEN_SHARE && incoming.method === "GET" && target) return Response.json({ ...target, name: caller.grant.name, expiresAt: caller.grant.expiresAt });
+      if (!reaches(caller.grant, incoming.method, url.pathname)) return Response.json({ error: "this link opens only what was shared with it" }, { status: 403 });
+    }
+    const request = shared(trusted(incoming, caller), caller);
     if (url.pathname === "/api/keys" || url.pathname.startsWith("/api/keys/")) return keysRequest(request, env, caller);
+    if (SHARES_ROUTE.test(url.pathname) || SHARE_ROUTE.test(url.pathname)) return sharesRequest(request, env, async (project, kind, id) => (await getAgentByName(env.PROJECT, project)).shareTarget(kind, id));
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/env") return sharedEnvRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).sharedEnvironmentChanged());
     if (url.pathname === "/api/usage") return usageRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).budgetChanged());
@@ -51,6 +59,13 @@ export default {
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
+
+function shared(request: Request, caller: Caller): Request {
+  if (caller.kind !== "grant" || caller.grant.kind !== "share") return request;
+  const headers = new Headers(request.headers);
+  headers.set(SHARE_HEADER, "1");
+  return new Request(request, { headers });
+}
 
 function projectStub(env: Env, project: string, request: Request): Promise<Response> {
   const stub = env.PROJECT.get(env.PROJECT.idFromName(project));

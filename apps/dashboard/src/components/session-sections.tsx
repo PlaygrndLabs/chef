@@ -183,7 +183,7 @@ export function FileDiff({ path, before, after }: { readonly path: string; reado
   );
 }
 
-function CommitList({ turns }: { readonly turns: readonly SessionTurn[] }) {
+export function CommitList({ turns }: { readonly turns: readonly SessionTurn[] }) {
   return (
     <ul className="flex flex-col gap-1.5">
       {turns.map((t) => (
