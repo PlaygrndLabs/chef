@@ -63,6 +63,8 @@ function renderInstall(install) {
       $("install-sub").textContent = "chef is running, but previews need one more permission. Sign in again and, on Cloudflare's page, turn on Account API Tokens Write under Sensitive scopes.";
       $("retry").textContent = "Sign in again";
       $("retry").hidden = false;
+      $("open").className = "btn btn-outline";
+      $("open").before($("retry"));
     }
   }
   if (install.status === "failed") {
@@ -71,6 +73,7 @@ function renderInstall(install) {
     $("retry").hidden = false;
     log.hidden = false;
     $("toggle-log").textContent = "Hide log";
+    $("toggle-log").setAttribute("aria-expanded", "true");
   }
   if (install.status !== "running" && polling) {
     clearInterval(polling);
@@ -134,6 +137,7 @@ $("toggle-log").addEventListener("click", () => {
   const log = $("log");
   log.hidden = !log.hidden;
   $("toggle-log").textContent = log.hidden ? "Show log" : "Hide log";
+  $("toggle-log").setAttribute("aria-expanded", String(!log.hidden));
   if (!log.hidden) {
     stick = true;
     log.scrollTop = log.scrollHeight;
