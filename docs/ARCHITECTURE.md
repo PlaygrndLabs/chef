@@ -41,7 +41,7 @@ Every external service sits behind a small interface in `core/src/ports` with a 
 | `ExternalRemote` | `MemoryExternalRemote` | `GitRemote` (`adapters/src/external-git.ts`): any https git remote over smart HTTP, plus the GitHub pulls API |
 | `PreviewHost` | `MemoryPreviewHost` | `SandboxPreviewHost` (`workers/src/sandbox-checks.ts`): runs `wrangler preview` for the branch in the session sandbox |
 | `CheckRunner`, `ProofRunner` | `FakeCheckRunner`, `FakeProofRunner` | `LocalCheckRunner` and `LocalProofRunner` (`cli/src/local`), `SandboxCheckRunner` and `SandboxProofRunner` (`workers/src/sandbox-checks.ts`) |
-| `VoiceHost` | `ScriptedVoiceHost` | `GptLiveHost` (`adapters/src/gpt-live.ts`, GPT-Live `gpt-live-1`) |
+| `VoiceHost` | `ScriptedVoiceHost` | `GptLiveHost` (`adapters/src/gpt-live.ts`, GPT-Live `gpt-live-1`), `RealtimeHost` (`adapters/src/realtime.ts`, a provider that serves the OpenAI Realtime API) |
 | `MemoryIndex` | `LexicalIndex` (TF-IDF) | `VectorizeIndex` (`adapters/src/vectorize.ts`, Vectorize plus Workers AI `@cf/baai/bge-base-en-v1.5`) |
 | `EventBus`, `KeyValueStore`, `Clock`, `IdSource` | memory versions | `DurableEventBus`, `DurableStore` in `workers/src` |
 
@@ -142,16 +142,15 @@ The Worker binds the index as `MEMORY` (index `chef-memory`, 768 dimensions, cos
 
 ## Voice
 
-The voice front end hands spoken requests to the same router as typed prompts; GPT-Live only listens and speaks.
+The voice front end hands spoken requests to the same router as typed prompts; the voice model only listens and speaks.
 
-1. The live button in the chat composer (it takes the Send button's place while the box is empty) opens a WebRTC connection with the microphone and an `oai-events` data channel, and posts its SDP offer to `POST /api/projects/:name/voice`.
-2. `ProjectAgent` creates the GPT-Live session with `POST https://api.openai.com/v1/live/sessions` (`gpt-live-1`, client delegation, instructions listing the project's features), returns the SDP answer to the browser, and attaches a sideband WebSocket to `/v1/live/sessions/{id}/attach`. The OpenAI key never leaves the Worker.
-3. GPT-Live decides when the user asked for something and sends `session.delegation.created`. `VoiceDelegate` (`core/src/voice/delegate.ts`) takes the user's transcript up to the delegation point, calls `Orchestrator.submitSpoken`, which routes it like a typed prompt and emits `voice.request`, and answers with `session.commentary.append`, which GPT-Live speaks in the user's language.
+1. The live button in the chat composer (next to Send) opens a WebSocket to the project's agent (`/agents/project/:name?voice=1`). The browser captures the microphone with an AudioWorklet, resamples it to 24 kHz 16-bit PCM and sends it as binary frames; it plays chef's audio from the same socket and stops playback when the user starts speaking.
+2. `ProjectAgent` starts a server-side voice session with `VoiceHost.start` and relays the audio both ways: GPT-Live (`wss://api.openai.com/v1/live/sessions`) with an OpenAI key, or a custom provider's Realtime WebSocket (`/realtime?model=gpt-realtime`, server VAD, input transcription and a `chef_request` tool). Provider keys never leave the Worker. Browser WebRTC is not used, since the model gateway accepts Realtime voice only over WebSocket.
+3. The voice model decides when the user asked for something: GPT-Live sends `session.delegation.created`, and the Realtime adapter turns a `chef_request` tool call into the same event with the request attached. `VoiceDelegate` (`core/src/voice/delegate.ts`) takes that request (or the transcript up to the delegation point), calls `Orchestrator.submitSpoken`, which routes it like a typed prompt and emits `voice.request`, and answers with `session.commentary.append`, which the model speaks in the user's language.
 4. `SpokenTurns` (`core/src/voice/turns.ts`) joins the transcript deltas into turns, one per speaker, and `Orchestrator.recordSpoken` emits each as `voice.turn`. The chat shows those turns as spoken messages in the same conversation as typed ones, so they stay after the call and on other devices. A spoken request shows only the feature cards it started, since the turn already shows what was said.
-5. While a call is live the composer is replaced by a panel with a pixel orb that follows the microphone and chef's voice, a Mute button and an End button (or Esc). Ending stops the microphone at once and closes the GPT-Live session in the background.
-6. From there each started session runs as any other.
+5. While a call is live the composer is replaced by a panel with a pixel orb that follows the microphone and chef's voice, a Mute button and an End button (or Esc). Ending stops the microphone and closes the socket; the agent then closes the provider session.
 
-`chef voice --say "<request>"` runs the same path locally: scripted transcripts by default, or with `--live` the request is synthesized with OpenAI text to speech and streamed to a server-side GPT-Live session over WebSocket.
+`chef voice --say "<request>"` runs the same path locally: scripted transcripts by default, or with `--live` the request is synthesized to speech (OpenAI text to speech, or the Realtime provider reading it aloud) and streamed as audio to the same server-side voice session.
 
 ## Streaming to the app
 
@@ -221,7 +220,7 @@ Served by the chef Worker (`workers/src/index.ts`):
 | `POST /api/projects/:name/git/webhook` | GitHub push webhook; outside the password, checked with the `x-hub-signature-256` HMAC instead |
 | `GET /preview/:name/:feature` | Redirects to the feature's preview, or wakes it up and shows a page that refreshes until it is ready |
 | `POST /api/projects/:name/bootstrap` | Creates the canonical repo if it does not exist: from the linked repository when there is one, otherwise from the template |
-| `POST /api/projects/:name/voice` | Exchanges a WebRTC `{ sdp }` offer for a voice session that delegates spoken requests to the router: GPT-Live with an OpenAI API key, or a custom provider that serves the OpenAI Realtime API, where a `chef_request` tool call stands in for client delegation |
+| `GET /agents/project/:name?voice=1` (WebSocket) | A live voice session: 24 kHz PCM from the browser in binary frames, chef's audio, transcripts and status back as JSON events; spoken requests go to the router. GPT-Live with an OpenAI API key, or a custom provider that serves the OpenAI Realtime API |
 | `POST /api/projects/:name/prompts` | Routes `{ prompt }` and starts a session when there is work; a question returns `answer` with its sources |
 | `GET /api/projects/:name/sessions` | Session records |
 | `GET /api/projects/:name/events?after=<seq>` | Stored events after a sequence number |

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseFeature, readSpec, startVoiceCall, voiceInstructions, VoiceDelegate, type LiveCommand, type LiveConnection, type LiveEvent, type SubmitResult } from "@chef/core";
+import { parseFeature, readSpec, startVoiceCall, type LiveCommand, type SubmitResult, type VoiceHost } from "@chef/core";
 import { ScriptedVoiceHost, SequentialIds } from "@chef/core/fakes";
 import type { Connect, SocketLike } from "@chef/adapters/gpt-live";
 import { voiceFromEnv } from "@chef/adapters/settings";
@@ -22,6 +22,26 @@ export interface VoiceRun {
   readonly mergedCommit: string | null;
   readonly humanActions: number;
   readonly voiceSessionId: string;
+}
+
+async function synthesize(options: { readonly baseUrl: string; readonly apiKey: string; readonly connect: Connect }, text: string): Promise<Uint8Array> {
+  const { startRealtimeSession } = await import("@chef/adapters/realtime");
+  const chunks: Uint8Array[] = [];
+  let last = 0;
+  const session = await startRealtimeSession({
+    ...options,
+    instructions: `You are a text-to-speech voice, not an assistant. Whatever the user says, you only say this exact sentence, word for word, in a natural voice, and nothing else: "${text}"`,
+    onEvent: (event) => {
+      if (event.type !== "session.output_audio.delta" || typeof event["delta"] !== "string") return;
+      chunks.push(Uint8Array.from(Buffer.from(event["delta"], "base64")));
+      last = Date.now();
+    },
+  });
+  session.say("Go.");
+  await until(() => last > 0 && Date.now() - last > 1500, 30_000);
+  await session.connection.close();
+  if (!chunks.length) throw new Error("the Realtime provider returned no audio to speak the request with");
+  return Uint8Array.from(Buffer.concat(chunks));
 }
 
 export const nodeConnect: Connect = (url, headers) =>
@@ -60,7 +80,7 @@ export async function runVoice(options: { readonly say: string; readonly live: b
 
   if (!options.live) {
     const host = new ScriptedVoiceHost();
-    const call = await startVoiceCall({ host, target: w.orchestrator, spec, sdp: "scripted-offer", ids: new SequentialIds() });
+    const call = await startVoiceCall({ host, target: w.orchestrator, spec, ids: new SequentialIds() });
     voiceSessionId = call.sessionId;
     host.say(options.say);
     await call.delegate.idle();
@@ -72,48 +92,48 @@ export async function runVoice(options: { readonly say: string; readonly live: b
   } else {
     const provider = voiceFromEnv(process.env);
     if (!provider) throw new Error("--live needs OPENAI_API_KEY, or VOICE_BASE_URL and VOICE_API_KEY for a custom Realtime provider");
-    let send: (command: LiveCommand) => void = () => {};
     const replies: string[] = [];
-    let delegate: VoiceDelegate | null = null;
-    const pending: LiveEvent[] = [];
-    const onEvent = (event: LiveEvent) => {
-      if (event.type === "session.output_transcript.delta" && typeof event["delta"] === "string") chefSaid += event["delta"];
-      if (event.type === "session.input_transcript.delta" && typeof event["delta"] === "string") log(`heard: ${event["delta"]}`);
-      if (event.type === "session.delegation.created") log("delegated to chef");
-      if (event.type === "error") log(`error: ${JSON.stringify(event["error"] ?? event)}`);
-      if (delegate) void delegate.handle(event);
-      else pending.push(event);
-    };
-    let session: { readonly sessionId: string; readonly connection: LiveConnection; feed(): void };
+    let pcm: Uint8Array;
+    let host: VoiceHost;
     if (provider.kind === "openai") {
-      const apiKey = provider.apiKey;
-      const { speak, startServerSession } = await import("@chef/adapters/gpt-live");
+      const { GptLiveHost, speak } = await import("@chef/adapters/gpt-live");
       log(`synthesizing "${options.say}"`);
-      const pcm = await speak({ apiKey, text: options.say });
-      const live = await startServerSession({ apiKey, instructions: voiceInstructions(spec), onEvent, connect: nodeConnect });
-      log(`GPT-Live session ${live.sessionId}`);
-      session = { sessionId: live.sessionId, connection: live.connection, feed: () => (live.sendAudio(pcm), live.sendAudio(new Uint8Array(24000 * 2 * 2))) };
+      pcm = await speak({ apiKey: provider.apiKey, text: options.say });
+      host = new GptLiveHost({ apiKey: provider.apiKey, connect: nodeConnect });
     } else {
-      const { startRealtimeSession } = await import("@chef/adapters/realtime");
-      const live = await startRealtimeSession({ baseUrl: provider.baseUrl, apiKey: provider.apiKey, instructions: voiceInstructions(spec), onEvent, connect: nodeConnect });
-      log(`Realtime session through ${provider.baseUrl}; the request is sent as text`);
-      session = { sessionId: `realtime-${Date.now()}`, connection: live.connection, feed: () => live.say(options.say) };
+      const { RealtimeHost } = await import("@chef/adapters/realtime");
+      log(`synthesizing "${options.say}" through ${provider.baseUrl}`);
+      pcm = await synthesize({ baseUrl: provider.baseUrl, apiKey: provider.apiKey, connect: nodeConnect }, options.say);
+      host = new RealtimeHost({ baseUrl: provider.baseUrl, apiKey: provider.apiKey, connect: nodeConnect });
     }
-    voiceSessionId = session.sessionId;
-    send = (command) => {
+    log(`speaking ${(pcm.length / 48000).toFixed(1)}s of audio to chef`);
+    const call = await startVoiceCall({
+      host,
+      target: w.orchestrator,
+      spec,
+      ids: new SequentialIds(),
+      settle: () => new Promise((resolve) => setTimeout(resolve, 800)),
+      onEvent: (event) => {
+        if (event.type === "session.output_transcript.delta" && typeof event["delta"] === "string") chefSaid += event["delta"];
+        if (event.type === "session.input_transcript.delta" && typeof event["delta"] === "string") log(`heard: ${event["delta"]}`);
+        if (event.type === "session.delegation.created") log("delegated to chef");
+        if (event.type === "error") log(`error: ${JSON.stringify(event["error"] ?? event)}`);
+      },
+    });
+    voiceSessionId = call.sessionId;
+    const send = call.connection.send.bind(call.connection);
+    call.connection.send = (command: LiveCommand) => {
       if (command.type === "session.commentary.append") replies.push(command.content);
-      session.connection.send(command);
+      send(command);
     };
-    delegate = new VoiceDelegate(session.sessionId, w.orchestrator, (command) => send(command), new SequentialIds(), () => new Promise((resolve) => setTimeout(resolve, 800)));
-    for (const event of pending.splice(0)) void delegate.handle(event);
-    session.feed();
-    const active = delegate;
-    if (!(await until(() => active.requests.length > 0, 60_000))) log("the voice model never delegated the request");
-    await active.idle();
+    call.sendAudio(pcm);
+    call.sendAudio(new Uint8Array(24000 * 2 * 2));
+    if (!(await until(() => call.delegate.requests.length > 0, 60_000))) log("the voice model never delegated the request");
+    await call.delegate.idle();
     await until(() => chefSaid.length > 0, 15_000);
     await new Promise((resolve) => setTimeout(resolve, 4000));
-    await session.connection.close();
-    const request = active.requests[0];
+    await call.connection.close();
+    const request = call.delegate.requests[0];
     heard = request?.prompt ?? null;
     result = request?.result ?? null;
     reply = replies[0] ?? null;

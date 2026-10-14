@@ -14,13 +14,13 @@ export interface LiveConnection {
   close(): Promise<void>;
 }
 
-export interface VoiceOffer {
-  readonly sdp: string;
-  readonly instructions: string;
+export interface VoiceStream {
+  readonly sessionId: string;
+  readonly connection: LiveConnection;
+  sendAudio(pcm: Uint8Array): void;
 }
 
 export interface VoiceHost {
   readonly model: string;
-  open(offer: VoiceOffer): Promise<{ readonly sessionId: string; readonly sdp: string }>;
-  attach(sessionId: string, onEvent: (event: LiveEvent) => void): Promise<LiveConnection>;
+  start(input: { readonly instructions: string; readonly onEvent: (event: LiveEvent) => void }): Promise<VoiceStream>;
 }

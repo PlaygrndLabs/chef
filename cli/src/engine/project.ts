@@ -6,9 +6,7 @@ import { llmFromProvider, providerBaseUrl, type LlmEndpoint, type MessagesClient
 import { NO_LLM, type Resolved } from "@chef/adapters/settings";
 import { LlmPlanner } from "@chef/adapters/llm-planner";
 import { LlmReviewer } from "@chef/adapters/llm-reviewer";
-import { GptLiveHost } from "@chef/adapters/gpt-live";
-import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, ControlError, mergeAgentConfig, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, resolveModel, SetupError, setupResponse, routerConfigOf, runnable, startVoiceCall, withSkills, type AgentStore, type ExternalSync, type Profiles, type SpokenTurn, type VoiceCall } from "@chef/core";
+import { AgentSettings, applyAgentConfig, ControlError, mergeAgentConfig, DEFAULT_BUDGET, envNeeds, NO_CLASSIFIER, isTerminal, Orchestrator, PreviewKeeper, readSpec, resolveModel, SetupError, setupResponse, routerConfigOf, runnable, withSkills, type AgentStore, type ExternalSync, type Profiles } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
@@ -16,7 +14,6 @@ import { GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
 import { laneLayout, renderStub, stubPath } from "@chef/template/gen";
 import { generated, repoProfiles, templateTree } from "../world.ts";
-import { nodeConnect } from "../voice.ts";
 import type { Docker } from "./docker.ts";
 import { DockerCheckRunner, DockerCoder, DockerPreviewHost, DockerProofRunner } from "./sandbox.ts";
 import { FileEventBus, FileMemoryIndex, FileStore, type LogEntry } from "./storage.ts";
@@ -53,7 +50,6 @@ export class LocalProject {
   readonly bus: FileEventBus;
   readonly store: FileStore;
   private readonly memory: FileMemoryIndex;
-  private readonly calls = new Map<string, VoiceCall>();
   private built: { orchestrator: Orchestrator; repos: ArtifactsRepoHost; keeper: PreviewKeeper; external: ExternalSync | null; fingerprint: string } | null = null;
   private readonly loops = new Map<string, Promise<void>>();
   private sweepTimer: NodeJS.Timeout | null = null;
@@ -81,7 +77,6 @@ export class LocalProject {
     this.closed = true;
     if (this.sweepTimer) clearTimeout(this.sweepTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);
-    for (const call of this.calls.values()) void call.connection.close();
     this.built?.orchestrator.dispose();
   }
 
@@ -193,7 +188,6 @@ export class LocalProject {
       if (!prompt?.trim()) return json({ error: "prompt is required" }, 400);
       return json(await orchestrator.route(prompt.trim()));
     }
-    if (action === "voice" && request.method === "POST") return this.voice(request);
     if (action === "sessions" && request.method === "GET") return json(await orchestrator.sessions());
     if (action === "cursor" && request.method === "GET") return json({ seq: await this.bus.cursor() });
     if (action === "events" && request.method === "GET") return json(await this.bus.since(Number(url.searchParams.get("after") ?? 0)));
@@ -247,42 +241,6 @@ export class LocalProject {
     }
     if (visit.status === "failed") return { status: "failed", error: visit.error };
     return { status: visit.status === "missing" ? "missing" : "building" };
-  }
-
-  private async voice(request: Request): Promise<Response> {
-    const { orchestrator } = await this.build();
-    const settings = this.ctx.settings();
-    const { sdp } = (await request.json().catch(() => ({}))) as { sdp?: string };
-    if (!sdp) return json({ error: "sdp is required" }, 400);
-    if (!settings.llm) return json({ error: NO_LLM }, 409);
-    const voice = settings.voice;
-    if (!voice) return json({ error: "voice needs an OpenAI API key or a custom Realtime provider in Settings" }, 409);
-    const vars = this.ctx.vars;
-    const host =
-      voice.kind === "openai"
-        ? new GptLiveHost({ apiKey: voice.apiKey, model: vars["VOICE_MODEL"] as string, voice: vars["VOICE"] as string, connect: nodeConnect })
-        : new RealtimeHost({ baseUrl: voice.baseUrl, apiKey: voice.apiKey, model: vars["REALTIME_MODEL"] as string, voice: vars["VOICE"] as string, connect: nodeConnect });
-    const target = {
-      submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
-        const result = await orchestrator.submitSpoken(prompt, call);
-        if (result.sessionId) this.drive();
-        return result;
-      },
-      recordSpoken: (turn: SpokenTurn & { voiceSessionId: string }) => orchestrator.recordSpoken(turn),
-    };
-    const call = await startVoiceCall({
-      host,
-      target,
-      spec: readSpec((await orchestrator.mainTree()).tree),
-      sdp,
-      ids: { next: (prefix) => `${prefix}${randomUUID().slice(0, 8)}` },
-      settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
-      onEvent: (event) => {
-        if (event.type === "session.closed") this.calls.delete(call.sessionId);
-      },
-    });
-    this.calls.set(call.sessionId, call);
-    return json({ sessionId: call.sessionId, sdp: call.sdp }, 201);
   }
 
   async projectSettings(): Promise<ProjectSettings> {

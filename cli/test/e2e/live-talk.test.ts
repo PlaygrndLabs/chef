@@ -9,8 +9,10 @@ import { LIVE_MOCK } from "./live-mock.ts";
 const DIST = join(REPO_ROOT, "apps", "dashboard", "dist");
 
 interface MockVoice {
-  readonly channel: { emit(event: object): void };
-  readonly sent: string[];
+  readonly channel: { emit(event: object): void; readonly url: string };
+  readonly sent: unknown[];
+  readonly closed: boolean;
+  readonly sockets: number;
 }
 
 const emit = (page: Page, event: object) => page.evaluate((e) => (window as unknown as { __voice: MockVoice }).__voice.channel.emit(e), event);
@@ -25,11 +27,6 @@ describe("live talk in the chat", () => {
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await page.addInitScript(LIVE_MOCK);
-      let offers = 0;
-      await page.route("**/api/projects/shop/voice", (route) => {
-        offers++;
-        return route.fulfill({ status: 201, json: { sessionId: "voice1", sdp: "answer" } });
-      });
       await page.goto(local.url);
       const setup = page.locator('[data-view="setup"]');
       await setup.waitFor({ timeout: 10_000 });
@@ -38,12 +35,15 @@ describe("live talk in the chat", () => {
 
       const chat = page.locator("#chat");
       await chat.locator("textarea").fill("a draft");
-      expect(await chat.locator("#talk-button").count()).toBe(0);
+      expect(await chat.locator("#talk-button").count()).toBe(1);
+      expect(await chat.getByRole("button", { name: "Send" }).isEnabled()).toBe(true);
       await chat.locator("textarea").fill("");
+      expect(await chat.getByRole("button", { name: "Send" }).isDisabled()).toBe(true);
       await chat.locator("#talk-button").click();
       const panel = page.locator('#live-talk[data-phase="listening"]');
       await panel.waitFor({ timeout: 10_000 });
-      expect(offers).toBe(1);
+      expect(await page.evaluate(() => (window as unknown as { __voice: MockVoice }).__voice.channel.url)).toMatch(/\/agents\/project\/shop\?voice=1$/);
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __voice: MockVoice }).__voice.sent.length)).toBeGreaterThan(0);
       expect(await chat.locator("textarea").count()).toBe(0);
       expect(await page.locator("#live-talk canvas[data-orb]").count()).toBe(1);
       expect(await page.locator("#talk-button").count()).toBe(0);
@@ -63,14 +63,14 @@ describe("live talk in the chat", () => {
       await page.locator("#live-end").click();
       await page.locator("#live-talk").waitFor({ state: "detached" });
       await chat.locator("textarea").waitFor();
-      await expect.poll(() => page.evaluate(() => (window as unknown as { __voice: MockVoice }).__voice.sent.some((s) => s.includes("session.close")))).toBe(true);
+      expect(await page.evaluate(() => (window as unknown as { __voice: MockVoice }).__voice.closed)).toBe(true);
       expect(await chat.locator('[data-spoken="you"]').innerText()).toContain("Add a todo list");
 
       await chat.locator("#talk-button").click();
       await panel.waitFor({ timeout: 10_000 });
       await page.keyboard.press("Escape");
       await page.locator("#live-talk").waitFor({ state: "detached" });
-      expect(offers).toBe(2);
+      expect(await page.evaluate(() => (window as unknown as { __voice: MockVoice }).__voice.sockets)).toBe(2);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
