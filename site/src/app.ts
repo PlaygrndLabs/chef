@@ -3,7 +3,7 @@ import { API, authorizeUrl, canSeeAccount, cookies, decodePending, encodePending
 import { needsUpdate } from "./member.ts";
 import type { OrgAccess } from "./organization.ts";
 import { engineRule } from "./access.ts";
-import { atLeast, can, engineLabel, isId, isLevel, isRole, readEmail, readOrgName, type OrgSummary } from "./orgs.ts";
+import { atLeast, can, engineLabel, isId, isLevel, isRole, readEmail, readOrgName, type OrgEntry, type OrgSummary } from "./orgs.ts";
 import { ENGINE_PATH, proxy } from "./proxy.ts";
 import { engineProjects } from "./engine.ts";
 
@@ -23,6 +23,11 @@ const readJson = (text: string): unknown => {
 const HOME_PATHS = new Set(["/", "/index.html", "/setup", "/remove", "/api/app"]);
 
 const page = (env: Env, request: Request, path: string) => env.ASSETS.fetch(new Request(new URL(path, request.url), { headers: request.headers }));
+const orgsOf = async (env: Env, userId: string): Promise<OrgEntry[]> => {
+  const orgs = await directory(env).orgs(userId);
+  const engines = await Promise.all(orgs.map((o) => organization(env, o.id).engine().catch(() => null)));
+  return orgs.map((o, i) => ({ ...o, ready: engines[i] !== null }));
+};
 const sessionCookie = async (client: OAuthClient, session: Session) => setCookie(SESSION_COOKIE, await signSession(client.clientSecret, session, Date.now()), SESSION_SECONDS);
 
 export async function handle(request: Request, env: Env): Promise<Response> {
@@ -87,7 +92,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     if (!client || !session || !org || !member || !role) return json({ error: "sign in with Cloudflare first" }, 401);
     const switchTo = async (summary: OrgSummary) => json({ org: summary }, 200, { "set-cookie": await sessionCookie(client, { userId: session.userId, orgId: summary.id }) });
     if (path === "/site/api/me" && request.method === "GET") {
-      const [view, current, orgs] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId)]);
+      const [view, current, orgs] = await Promise.all([member.view(session.orgId), org.view(session.userId), orgsOf(env, session.userId)]);
       const canSetUp = view.canSetUp && can(role, "setup");
       return json({ ...view, canSetUp, engine: current?.engine ?? null, org: current, orgs, accounts: canSetUp && !view.install ? await member.accounts() : [] });
     }
@@ -148,7 +153,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       await member.dismissRemoval();
       return json({ ok: true });
     }
-    if (path === "/site/api/orgs" && request.method === "GET") return json({ current: session.orgId, orgs: await directory(env).orgs(session.userId) });
+    if (path === "/site/api/orgs" && request.method === "GET") return json({ current: session.orgId, orgs: await orgsOf(env, session.userId) });
     if (path === "/site/api/orgs" && request.method === "POST") {
       const name = readOrgName(await request.json().catch(() => null));
       if (!name) return json({ error: "give the organization a name of up to 60 characters" }, 400);
@@ -233,7 +238,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === "/api/app" && request.method === "GET" && session && org && member && (await access())) {
-    const [view, current, orgs, engine, updating, later, signedIn] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId), org.engine(), org.updating().catch(() => false), member.askedLater().catch(() => false), access()]);
+    const [view, current, orgs, engine, updating, later, signedIn] = await Promise.all([member.view(session.orgId), org.view(session.userId), orgsOf(env, session.userId), org.engine(), org.updating().catch(() => false), member.askedLater().catch(() => false), access()]);
     const canUpdate = view.canSetUp && signedIn !== null && can(signedIn.role, "setup");
     const update = updating ? { running: true, canUpdate, ask: false } : needsUpdate(engine, env.ENGINE_VERSION) ? { running: false, canUpdate, ask: canUpdate && !later } : null;
     return json({ engine: url.origin, account: view.email, org: current, orgs, update });

@@ -188,7 +188,7 @@ describe("chef site", () => {
       engine: origin,
       account: "sam@example.com",
       org: { id: "org1", name: "Personal", role: "owner", personal: true, plan: "free", engine: ENGINE.url, members: 2 },
-      orgs: [{ id: "org1", name: "Personal", role: "owner", personal: true, plan: "free" }],
+      orgs: [{ id: "org1", name: "Personal", role: "owner", personal: true, plan: "free", ready: true }],
       update: null,
     });
   });
@@ -269,6 +269,20 @@ describe("chef site", () => {
     const renamed = await handle(send("/site/api/org", "PATCH", { name: "Acme and co" }, await session("user1", "org2")), env);
     expect(((await renamed.json()) as { org: { name: string } }).org.name).toBe("Acme and co");
     expect(fake.calls).toContainEqual({ name: "directory", method: "renameOrg", arg: { orgId: "org2", name: "Acme and co" } });
+  });
+
+  it("keeps a new organization whose setup is unfinished in the list, marked not ready, with a way back", async () => {
+    const { env, fake } = fakeEnv({ engine: ENGINE });
+    await handle(send("/site/api/orgs", "POST", { name: "Acme" }, await session()), env);
+    const listed = await handle(new Request(`${origin}/site/api/orgs`, { headers: { cookie: await session("user1", "org2") } }), env);
+    expect(((await listed.json()) as { orgs: readonly { id: string; ready: boolean }[] }).orgs.map((o) => [o.id, o.ready])).toEqual([["org1", true], ["org2", false]]);
+    expect((await handle(new Request(`${origin}/`, { headers: { cookie: await session("user1", "org2") } }), env)).headers.get("location")).toBe("/setup");
+    const me = (await (await handle(new Request(`${origin}/site/api/me`, { headers: { cookie: await session("user1", "org2") } }), env)).json()) as { org: { name: string }; engine: unknown };
+    expect(me.org.name).toBe("Acme");
+    expect(me.engine).toBeNull();
+    fake.orgs["org_abcdefghijklmnopqrst"] = { name: "Team", engine: ENGINE, members: { user1: "owner" } };
+    const back = await handle(send("/site/api/orgs/switch", "POST", { orgId: "org_abcdefghijklmnopqrst" }, await session("user1", "org2")), env);
+    expect(back.headers.get("set-cookie")).toMatch(/^chef_session=user1\.org_abcdefghijklmnopqrst\./);
   });
 
   it("signs out only from its own pages", async () => {
