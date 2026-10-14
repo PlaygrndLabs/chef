@@ -14,4 +14,4 @@ acceptance:
     text: An example CHEF_PASSWORD is never accepted as the password
 ---
 
-Every green ci run on main deploys the main chef through this script.
+Every green ci run on main deploys the main Chef through this script.

@@ -102,7 +102,7 @@ function cookie(request: Request, name: string): string | null {
 const STYLE = `<style>body{font:16px system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f6f4;color:#1d1d1b}form{display:grid;gap:12px;width:min(320px,90vw)}h1{margin:0 0 12px;display:flex;justify-content:center}h1 svg{height:42px;width:auto}p{margin:0}input,button{font:inherit;padding:10px;border-radius:0;border:1px solid #c9c9c4}button{background:#1d1d1b;color:#fff;border:0}.note{color:#6b6b66;font-size:14px}.error{color:#b42318}@media (prefers-color-scheme:dark){body{background:#151514;color:#eee}input{background:#222;color:#eee;border-color:#444}button{background:#eee;color:#151514}.note{color:#a3a39e}}</style>`;
 
 function page(body: string, status: number): Response {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>chef</title><link rel="icon" href="${faviconDataUri()}">${STYLE}</head><body>${body}</body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Chef</title><link rel="icon" href="${faviconDataUri()}">${STYLE}</head><body>${body}</body></html>`;
   return new Response(html, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
@@ -126,7 +126,7 @@ export function passwordProblem(password: string, confirm: string | null = passw
 }
 
 function closedPage(): Response {
-  return page(`<form><h1>${wordmarkSvg()}</h1><p class="note">This chef has no password, so it opens only through the app that manages it.</p></form>`, 403);
+  return page(`<form><h1>${wordmarkSvg()}</h1><p class="note">This Chef has no password, so it opens only through the app that manages it.</p></form>`, 403);
 }
 
 async function keyGrant(token: string, access: Access): Promise<Grant | null> {
@@ -151,7 +151,7 @@ export async function guard(request: Request, access: Access): Promise<Response 
   const credential = await access.password();
   if (!credential) {
     if (access.deploymentKey || (await access.sealed())) {
-      if (api) return Response.json({ error: access.home ? `open chef at ${access.home}` : "this chef answers only API keys" }, { status: 401 });
+      if (api) return Response.json({ error: access.home ? `open Chef at ${access.home}` : "this Chef answers only API keys" }, { status: 401 });
       return access.home ? new Response(null, { status: 302, headers: { location: access.home, "cache-control": "no-store" } }) : closedPage();
     }
     if (url.pathname === "/setup" && request.method === "POST") {
@@ -163,7 +163,7 @@ export async function guard(request: Request, access: Access): Promise<Response 
       if (!(await access.claim(stored))) return new Response(null, { status: 303, headers: { location: "/" } });
       return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookie({ kind: "app", ...stored }) } });
     }
-    return api ? Response.json({ error: "chef has no password yet: open it in a browser to set one" }, { status: 503 }) : setupPage(null);
+    return api ? Response.json({ error: "Chef has no password yet: open it in a browser to set one" }, { status: 503 }) : setupPage(null);
   }
   if (url.pathname === "/login" && request.method === "POST") {
     const form = await request.formData();

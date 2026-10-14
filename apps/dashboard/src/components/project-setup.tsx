@@ -86,7 +86,7 @@ function SetupLog(props: { readonly run: Run; readonly open: boolean; readonly o
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div ref={box} className="mt-2 max-h-56 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-[11px] leading-relaxed" data-setup-log role="log" aria-live="polite">
-          {count === 0 ? <div className="text-muted-foreground">Waiting for chef to start…</div> : null}
+          {count === 0 ? <div className="text-muted-foreground">Waiting for Chef to start…</div> : null}
           {run.lines.map((line, i) => (
             <div key={i} className={cn("flex gap-2", line.kind === "step" && "mt-1 font-medium first:mt-0", line.kind === "error" && "text-bad")}>
               <span className="shrink-0 text-muted-foreground tabular-nums">{seconds(line.at - run.started).padStart(6)}</span>
@@ -118,7 +118,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
   useEffect(() => {
     if (created && reading && readSince === null) setReadSince(Date.now());
   }, [created, reading, readSince]);
-  const fallback = plan.repository ? `Copy ${plan.repository} into chef and link it` : `Create ${plan.name} from chef's starter app`;
+  const fallback = plan.repository ? `Copy ${plan.repository} into Chef and link it` : `Create ${plan.name} from Chef's starter app`;
   const steps = stepsOf(run, created, fallback, now);
   const readEnd = state?.status === "ready" || state?.status === "failed" ? state.at : null;
   const readLines: Line[] =
@@ -156,7 +156,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
         </div>
       ) : created && reading ? (
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">{read === "failed" ? "You can still open the project and ask chef to read it again later." : "chef keeps reading if you open the project now."}</p>
+          <p className="text-xs text-muted-foreground">{read === "failed" ? "You can still open the project and ask Chef to read it again later." : "Chef keeps reading if you open the project now."}</p>
           <Button type="button" size="sm" variant={read === "failed" ? "default" : "outline"} onClick={props.onOpen}>
             Open {plan.name}
           </Button>
@@ -241,7 +241,7 @@ export function NewProjectForm(props: { readonly onCreated: (name: string) => vo
           </button>
         ))}
       </div>
-      {source === "fresh" ? <p className="text-xs text-muted-foreground">chef starts from its starter app. Describe the first feature once the project is open.</p> : null}
+      {source === "fresh" ? <p className="text-xs text-muted-foreground">Chef starts from its starter app. Describe the first feature once the project is open.</p> : null}
       {source === "github" ? (
         <>
           <GitHubPicker
@@ -257,7 +257,7 @@ export function NewProjectForm(props: { readonly onCreated: (name: string) => vo
               setPicked(null);
             }}
           />
-          {picked ? <p className="text-xs text-muted-foreground">chef copies {picked.fullName} and reads it. Finished features come back as one pull request to {picked.defaultBranch}; change that later in Project settings.</p> : null}
+          {picked ? <p className="text-xs text-muted-foreground">Chef copies {picked.fullName} and reads it. Finished features come back as one pull request to {picked.defaultBranch}; change that later in Project settings.</p> : null}
         </>
       ) : null}
       {source === "other" ? (

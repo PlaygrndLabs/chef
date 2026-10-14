@@ -37,7 +37,7 @@ function cookieOf(response: Response): string {
 }
 
 describe("preview gate", () => {
-  it("lets a fresh link from chef in once, then remembers the visitor with a cookie that works inside chef's frame", async () => {
+  it("lets a fresh link from Chef in once, then remembers the visitor with a cookie that works inside Chef's frame", async () => {
     const mod = await gated();
     const app = mod["default"] as Handler;
     const entry = await previewEntry(ORIGIN, KEY, { path: "/todos?x=1", now: Date.now() });
@@ -54,7 +54,7 @@ describe("preview gate", () => {
     expect((app as unknown as { scheduled(): string }).scheduled()).toBe("ran");
   });
 
-  it("turns away anyone without a valid way in, and never passes chef's own headers to the app", async () => {
+  it("turns away anyone without a valid way in, and never passes Chef's own headers to the app", async () => {
     const app = (await gated())["default"] as Handler;
     const now = Date.now();
     expect((await app.fetch(new Request(`${ORIGIN}/`, { headers: html }), env)).status).toBe(401);
@@ -73,7 +73,7 @@ describe("preview gate", () => {
     expect((await app.fetch(new Request(`${ORIGIN}/`, { headers: html }), {})).status).toBe(503);
   });
 
-  it("lets chef's own checks in with a short pass header and hides it from the app", async () => {
+  it("lets Chef's own checks in with a short pass header and hides it from the app", async () => {
     const app = (await gated())["default"] as Handler;
     const pass = await previewPass(`${ORIGIN}/`, KEY, Date.now());
     expect(pass.host).toBe(new URL(ORIGIN).hostname);

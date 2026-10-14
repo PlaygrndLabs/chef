@@ -80,7 +80,7 @@ export class GitRemote implements ExternalRemote {
   }
 
   async push(input: { readonly repo: string; readonly ref: string; readonly commitId: string; readonly branch: string; readonly force: boolean }): Promise<void> {
-    if (input.branch === this.branch) throw new Error(`chef never pushes to ${this.branch} of ${this.url}`);
+    if (input.branch === this.branch) throw new Error(`Chef never pushes to ${this.branch} of ${this.url}`);
     const onAuth = await this.auth();
     if (!onAuth) throw new Error(`pushing to ${this.url} needs an access token`);
     const source = await this.artifacts.info(input.repo);

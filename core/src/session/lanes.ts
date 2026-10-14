@@ -71,7 +71,7 @@ export function laneBrief(lane: Lane, lanes: readonly Lane[], items: readonly Wo
   };
   const owned = lanes.filter((l) => l.owns?.length);
   return [
-    `This feature is built by ${lanes.length} roles at the same time, each on its own branch. You are ${lane.role}, on ${lane.branch}. chef merges every role's branch into the feature after each turn, so the others' work shows up in your next turn.`,
+    `This feature is built by ${lanes.length} roles at the same time, each on its own branch. You are ${lane.role}, on ${lane.branch}. Chef merges every role's branch into the feature after each turn, so the others' work shows up in your next turn.`,
     `The other roles are working on:\n${others.map((other) => `- ${other.role}: ${work(other)}`).join("\n")}`,
     ...(owned.length
       ? [`Files each role owns. Only the owner changes a file; a change to another role's file is discarded:\n${owned.map((l) => `- ${l.role === lane.role ? `${l.role} (you)` : l.role}: ${(l.owns ?? []).join(", ")}`).join("\n")}`]

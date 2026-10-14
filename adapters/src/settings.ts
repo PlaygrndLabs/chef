@@ -60,9 +60,9 @@ export const DEFAULT_MODELS: Omit<ModelSettings, "voice"> = { planner: "claude-o
 
 export const MAX_ATTEMPTS = 4;
 
-export const NO_LLM = "chef has no model provider yet: add an Anthropic API key or a custom provider in Settings";
+export const NO_LLM = "Chef has no model provider yet: add an Anthropic API key or a custom provider in Settings";
 
-export const NO_CLOUDFLARE = "chef needs a Cloudflare account id and API token in Settings to deploy previews";
+export const NO_CLOUDFLARE = "Chef needs a Cloudflare account id and API token in Settings to deploy previews";
 
 export function voiceFromEnv(env: SettingsEnv): VoiceProvider | null {
   if (env.OPENAI_API_KEY) return { kind: "openai", apiKey: env.OPENAI_API_KEY };

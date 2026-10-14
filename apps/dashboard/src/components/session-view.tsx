@@ -53,7 +53,7 @@ const MEMBER: Readonly<Record<MemberState, string>> = {
   stopped: "border-bad/40 bg-bad/5 text-bad",
 };
 
-const MEMBER_NOTE: Readonly<Record<MemberState, string>> = { done: "did its part", working: "is working now", next: "comes later", stopped: "was working when chef stopped" };
+const MEMBER_NOTE: Readonly<Record<MemberState, string>> = { done: "did its part", working: "is working now", next: "comes later", stopped: "was working when Chef stopped" };
 
 function Team({ node }: { readonly node: SessionNode }) {
   const { select, selection } = useWorkspace();
@@ -170,7 +170,7 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
     setBusy(true);
     try {
       await api.retry(node.id, "");
-      toast.success("chef is trying again");
+      toast.success("Chef is trying again");
       data.refresh();
     } catch (error) {
       toast.error("Could not try again", { description: error instanceof Error ? error.message : String(error) });
@@ -180,9 +180,9 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   };
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-bad/30 bg-bad/5 p-4" data-needs-you={node.id}>
-      <div className="font-medium text-bad">chef needs your help</div>
+      <div className="font-medium text-bad">Chef needs your help</div>
       <p className="text-sm text-muted-foreground">
-        Press Try again, tell chef in the{" "}
+        Press Try again, tell Chef in the{" "}
         <button type="button" onClick={focusComposer} className="underline underline-offset-2 hover:text-foreground">
           chat
         </button>{" "}
@@ -229,7 +229,7 @@ function StopDialog({ node, open, onOpenChange }: { readonly node: SessionNode; 
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Stop building this?</AlertDialogTitle>
-          <AlertDialogDescription>chef stops working on it and nothing goes live. The work so far is kept, and you can start over later.</AlertDialogDescription>
+          <AlertDialogDescription>Chef stops working on it and nothing goes live. The work so far is kept, and you can start over later.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep going</AlertDialogCancel>
@@ -301,10 +301,10 @@ function TryTabs({ node }: { readonly node: SessionNode }) {
   const running = attempts.some((s) => isActive(s.state));
   const score = (id: string) => picked?.candidates.find((c) => c.sessionId === id);
   const note = picked
-    ? `chef built this ${attempts.length} ways at once and picked try ${winner?.attempt?.index ?? picked.winner}.`
+    ? `Chef built this ${attempts.length} ways at once and picked try ${winner?.attempt?.index ?? picked.winner}.`
     : running
-      ? `chef builds this ${attempts.length} ways at once, then keeps the one that passes the most checks.`
-      : `chef built this ${attempts.length} ways at once.`;
+      ? `Chef builds this ${attempts.length} ways at once, then keeps the one that passes the most checks.`
+      : `Chef built this ${attempts.length} ways at once.`;
   return (
     <div className="flex flex-col gap-1" data-tries>
       <div role="tablist" aria-label="Parallel tries" className="flex gap-1 overflow-x-auto">

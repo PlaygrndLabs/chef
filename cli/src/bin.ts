@@ -237,7 +237,7 @@ async function serveCommand(args: readonly string[]): Promise<number> {
   const project = option(args, "project");
   const attempts = Number(option(args, "attempts") ?? 1);
   const local = await serve({ port: Number(option(args, "port") ?? 8787), ...(project ? { project } : {}), ...(attempts > 1 ? { attempts } : {}), real: !args.includes("--fake-checks"), log: (line) => process.stderr.write(`${line}\n`) });
-  process.stdout.write(`chef is serving ${local.url}/\n`);
+  process.stdout.write(`Chef is serving ${local.url}/\n`);
   await new Promise<void>((resolve) => process.once("SIGINT", resolve));
   await local.close();
   return 0;

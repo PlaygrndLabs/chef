@@ -44,7 +44,7 @@ function CopyLink({ link }: { readonly link: string }) {
   };
   return (
     <div className="grid gap-2 border border-dashed p-3" data-new-share>
-      <p className="text-xs">Copy the link now. chef keeps only a fingerprint of it and cannot show it again.</p>
+      <p className="text-xs">Copy the link now. Chef keeps only a fingerprint of it and cannot show it again.</p>
       <div className="flex items-center gap-2">
         <code className="min-w-0 flex-1 break-all font-mono text-[11px]">{link}</code>
         <Button type="button" size="icon-sm" variant="ghost" aria-label="Copy the link" onClick={() => void copy()}>
@@ -99,7 +99,7 @@ export function ShareDialog(props: { readonly target: ShareTarget; readonly open
     }
   };
   const endAll = async () => {
-    if (!confirm("Close every open preview of this project? Everyone who has one open, from chef or from a shared link, has to open it again. Do this after ending a link to shut it out at once.")) return;
+    if (!confirm("Close every open preview of this project? Everyone who has one open, from Chef or from a shared link, has to open it again. Do this after ending a link to shut it out at once.")) return;
     try {
       await api.endPreviewLinks();
       toast.success("Every open preview was closed");

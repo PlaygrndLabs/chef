@@ -1,18 +1,18 @@
-# Goal: chef
+# Goal: Chef
 
-This is the goal for anyone, person or coding agent, working in this repository. How the code works today is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); the original concept is the chef concept doc: https://claude.ai/code/artifact/21197d74-c9ea-42da-b7ba-c34d4b201e77
+This is the goal for anyone, person or coding agent, working in this repository. How the code works today is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); the original concept is the Chef concept doc: https://claude.ai/code/artifact/21197d74-c9ea-42da-b7ba-c34d4b201e77
 
 ## One-line goal
 
-chef is an AI app builder that runs on a person's own Cloudflare account: they describe what they want in one chat, and chef splits it into features, builds each one in its own session with tests, review and a live preview, and merges it into the project's `main`, which is always online at the project's live address.
+Chef is an AI app builder that runs on a person's own Cloudflare account: they describe what they want in one chat, and Chef splits it into features, builds each one in its own session with tests, review and a live preview, and merges it into the project's `main`, which is always online at the project's live address.
 
-## What chef is
+## What Chef is
 
-- **The person's own engine.** chef deploys its engine (the chef Worker, `workers/`) on the person's Cloudflare account with `chef deploy` or the Deploy to Cloudflare button. Agents, sandboxes, repositories, keys and previews all run there. chef runs on Cloudflare only.
+- **The person's own engine.** Chef deploys its engine (the Chef Worker, `workers/`) on the person's Cloudflare account with `chef deploy` or the Deploy to Cloudflare button. Agents, sandboxes, repositories, keys and previews all run there. Chef runs on Cloudflare only.
 - **The spec is the memory, git is the state, chat is just input.**
 - **One chat, many sessions.** The project page has the feature tree on the left, session tabs in the middle (each opens on its preview), and the main chat on the right, the only place a person asks for work. The chat keeps a running summary of older messages, like a project's main thread.
 - **Every feature is a session.** A feature is one spec entry with one live preview. The router splits a request into independent parts that build in parallel, and a part that adds a capability becomes a child feature under the one it builds on. A session is a Durable Object plus its own Artifacts fork named `<project>--<feature>--<session>`.
-- **Roles work side by side.** When a plan has build steps for several roles (frontend, backend, designer and others), each role works on its own `lane/<role>` branch in its own sandbox, and chef merges the lanes after each round.
+- **Roles work side by side.** When a plan has build steps for several roles (frontend, backend, designer and others), each role works on its own `lane/<role>` branch in its own sandbox, and Chef merges the lanes after each round.
 - **Every turn is a commit.** Each accepted agent turn is one commit with the prompt, run id, model, role and spec revision in git notes under `refs/notes/chef`.
 - **Previews and a live address.** After each commit the session head goes to `preview/<feature>`, and `wrangler preview` in the sandbox publishes it as a Preview of the project's Worker. Previews sleep when idle and wake on the next visit. The project's `main` is deployed to its own Worker on every merge and never sleeps.
 - **Continuous sync.** Every push to `main` is merged into every active fork between turns. A conflict becomes a task for the same session or the conflict-resolver.
@@ -21,7 +21,7 @@ chef is an AI app builder that runs on a person's own Cloudflare account: they d
 - **Guidance and memory.** Instructions shared by every project and each project's `GOAL.md` and `AGENTS.md` reach the planner, every coder turn and the reviewer. Each turn also recalls the most relevant documents from the project's memory (`memory/**/*.md`), which people can read and edit in Project settings.
 - **The coder** is the Claude Agent SDK in a Cloudflare Sandbox on the fork's checkout. It reaches Claude through the person's own model provider (an Anthropic API key or any Anthropic-compatible provider), the same one the planner and reviewer use.
 - **Keys stay in the account.** Project keys are sealed in the project's Durable Object; agents see names only, previews and the live app get the values.
-- **GitHub is optional.** Work always runs on Artifacts. A project can link a repository through chef's own GitHub App to keep it in sync; chef never pushes to its main branch.
+- **GitHub is optional.** Work always runs on Artifacts. A project can link a repository through Chef's own GitHub App to keep it in sync; Chef never pushes to its main branch.
 - **Streaming.** Sessions reach the app through CopilotKit (AG-UI) and the project's live event socket.
 
 ## Non-negotiables
@@ -32,7 +32,7 @@ chef is an AI app builder that runs on a person's own Cloudflare account: they d
 4. Fix every agent mistake at the highest layer that would have stopped it: codebase > architecture that makes it impossible > lint/typecheck/CI > rules and skills. Never only in a prompt.
 5. Feature = folder. A session writes only inside its feature's vertical slice (a child feature may also change its parent's folder); `shared/` contracts change only through a stricter gated path.
 6. Every external service sits behind a small interface in `core/src/ports` with an in-memory fake. All tests run on fakes; real adapters are swapped in by config.
-7. chef is provider-neutral: code, docs, defaults and tests name only generic model provider settings.
+7. Chef is provider-neutral: code, docs, defaults and tests name only generic model provider settings.
 8. All code, file names, docs and commit messages are in English. No explanatory AI comments in code.
 9. Commits use author and committer email `ma.karimi76@gmail.com` and never carry a `Co-Authored-By: Claude` trailer.
 
@@ -47,17 +47,17 @@ adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, Copi
 apps/        the dashboard
 agents/      default role profiles (planner, test, frontend, backend, designer, reviewer, conflict-resolver, gardener, chore)
 template/    the template every project starts from, with its UI kit and the app CLI (drive, proof)
-cli/         chef CLI: spec lint, deploy, benchmarks, test server
-spec/        chef's own feature map
+cli/         Chef CLI: spec lint, deploy, benchmarks, test server
+spec/        Chef's own feature map
 ```
 
 ## Where it stands
 
-Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then chef gained the tree, tabs and chat project page, request splitting into child features, parallel role lanes, per-project live addresses, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default.
+Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the tree, tabs and chat project page, request splitting into child features, parallel role lanes, per-project live addresses, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default.
 
 ## Definition of done
 
-- A new person goes from deploying chef on their Cloudflare account to a merged feature at their project's live address, with no step outside chef beyond the deploy and adding a model key.
+- A new person goes from deploying Chef on their Cloudflare account to a merged feature at their project's live address, with no step outside Chef beyond the deploy and adding a model key.
 - Several features requested in one message build in parallel and all reach `main` with tests, review and proof.
 - Steps a person takes per merged feature, measured by the dashboard, are zero.
 

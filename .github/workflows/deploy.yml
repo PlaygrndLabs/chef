@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: Worker name. Leave empty for the development chef (chef-dev); any other name deploys a separate copy with its own repos, memory and previews.
+        description: Worker name. Leave empty for the development Chef (chef-dev); any other name deploys a separate copy with its own repos, memory and previews.
         required: false
         default: ""
 
@@ -76,7 +76,7 @@ jobs:
           CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
         run: |
           url=$(cat "$RUNNER_TEMP/url")
-          echo "chef is at $url"
+          echo "Chef is at $url"
           curl -fsS --retry 10 --retry-all-errors --retry-delay 6 -o /dev/null -w '%{http_code}\n' "$url/"
           test "$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/projects")" != 200
           if [ -n "$CHEF_PASSWORD" ]; then

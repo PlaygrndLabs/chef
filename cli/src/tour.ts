@@ -96,7 +96,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     page.on("pageerror", (error) => report.errors.push(`pageerror ${error.message}`));
     let leaving = false;
     page.on("response", (response) => {
-      if (response.status() >= 400) report.errors.push(`http ${response.status()} ${response.request().method()} ${response.url()}`);
+      if (response.status() >= 400 && response.request().method() !== "HEAD") report.errors.push(`http ${response.status()} ${response.request().method()} ${response.url()}`);
     });
     page.on("console", (message) => {
       if (message.type() !== "error" || message.text().startsWith("Failed to load resource")) return;

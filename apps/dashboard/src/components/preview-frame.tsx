@@ -46,7 +46,7 @@ export function usePreviewLoad(input: { readonly link: string | null; readonly u
         const state = previewState(response?.ok || response?.status === 404 ? await response.json().catch(() => null) : null);
         if (abort.signal.aborted) return;
         const at = Date.now();
-        if (!state) return setLoad((l) => ({ ...l, error: "chef did not answer. Check your connection and try again." }));
+        if (!state) return setLoad((l) => ({ ...l, error: "Chef did not answer. Check your connection and try again." }));
         if (state.status === "ready") {
           setLoad((l) => ({ ...l, checked: l.checked ?? at, building: l.building ? { ...l.building, until: at } : null }));
           setEnter(state.enter ?? null);
@@ -69,7 +69,7 @@ export function usePreviewLoad(input: { readonly link: string | null; readonly u
     fetch(target, { method: "HEAD", mode: "no-cors", cache: "no-store", credentials: "omit", signal: abort.signal }).then(
       () => setLoad((l) => (l.answered === null ? { ...l, answered: Date.now() } : l)),
       () => {
-        if (!abort.signal.aborted) setLoad((l) => (l.answered === null && l.loaded === null ? { ...l, error: `chef could not reach ${new URL(target).host}. It may be offline or blocked on this network.` } : l));
+        if (!abort.signal.aborted) setLoad((l) => (l.answered === null && l.loaded === null ? { ...l, error: `Chef could not reach ${new URL(target).host}. It may be offline or blocked on this network.` } : l));
       },
     );
     return () => abort.abort();

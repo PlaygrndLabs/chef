@@ -5,7 +5,7 @@ import { REPO_ROOT } from "../../src/world.ts";
 const commit = (subject: string, files: readonly string[], body = ""): Commit => ({ sha: "0123456789abcdef0123", date: "2026-10-14T21:00:00+00:00", subject, body, files });
 
 describe("changes", () => {
-  it("counts only changes to the code a running chef is built from", () => {
+  it("counts only changes to the code a running Chef is built from", () => {
     expect(shapesChef("apps/dashboard/src/app.tsx")).toBe(true);
     expect(shapesChef("workers/src/index.ts")).toBe(true);
     expect(shapesChef("wrangler.jsonc")).toBe(true);

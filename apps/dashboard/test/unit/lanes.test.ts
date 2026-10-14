@@ -26,7 +26,7 @@ describe("one role's lane", () => {
   it("says when the work went live or was cut off", () => {
     expect(laneSummary(node("merged", {}, lanes), "backend")?.status).toBe("Its work went live with the feature");
     const stopped = node("stuck", { lanes: [{ role: "frontend", branch: "lane/frontend", items: 1, status: "working", commits: 0, at: 1 }] }, lanes);
-    expect(laneSummary(stopped, "frontend")?.status).toBe("Was working when chef stopped");
+    expect(laneSummary(stopped, "frontend")?.status).toBe("Was working when Chef stopped");
   });
 
   it("has nothing for a role without its own branch", () => {
