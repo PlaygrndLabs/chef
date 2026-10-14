@@ -9,6 +9,7 @@ import { MODEL_CHOICES, ProviderForm, type Save } from "@/components/provider-fo
 import { settingsApi } from "@/lib/api";
 import { missingSettings, useSettings } from "@/lib/settings";
 import { AppMenu } from "@/components/sidebar";
+import { host } from "@/host";
 import { preloadable, useOpenedOnce } from "@/lib/lazy";
 import { lastProject, returningToNewProject } from "@/lib/projects";
 import type { Selection, SettingsScope } from "@/lib/selection";
@@ -92,6 +93,7 @@ function ConnectModel(props: { readonly app: ReturnType<typeof useSettings>; rea
         Get an Anthropic API key
         <ArrowUpRight className="size-3.5" />
       </a>
+      {host.ModelHelp ? <host.ModelHelp /> : null}
       <div className="mt-4 w-full text-left">
         <ProviderForm part="llm" choices={MODEL_CHOICES} current={null} save={save} submit="Continue" />
       </div>
