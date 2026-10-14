@@ -116,6 +116,7 @@ export async function runVoice(options: { readonly say: string; readonly live: b
       onEvent: (event) => {
         if (event.type === "session.output_transcript.delta" && typeof event["delta"] === "string") chefSaid += event["delta"];
         if (event.type === "session.input_transcript.delta" && typeof event["delta"] === "string") log(`heard: ${event["delta"]}`);
+        if (event.type === "session.input_transcript.done" && typeof event["transcript"] === "string") log(`heard in full: ${event["transcript"]}`);
         if (event.type === "session.delegation.created") log("delegated to chef");
         if (event.type === "error") log(`error: ${JSON.stringify(event["error"] ?? event)}`);
       },
@@ -144,6 +145,7 @@ export async function runVoice(options: { readonly say: string; readonly live: b
   if (result?.sessionId) {
     const record = await w.orchestrator.run(result.sessionId);
     state = record.machine.state;
+    if (state === "stuck") log(`the build got stuck: ${record.machine.reason ?? "no reason"}\n${record.machine.feedback ?? ""}`);
     mergedCommit = record.merge?.commitId ?? null;
   }
   return {
