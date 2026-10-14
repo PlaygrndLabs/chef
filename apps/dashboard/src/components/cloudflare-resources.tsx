@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Check, Copy, ExternalLink } from "lucide-react";
+import { Check, Cloud, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
 import type { CloudflareFact, CloudflareKind, CloudflareResource, CloudflareView } from "@chef/core";
+import { roleLabel, useAgents } from "@/lib/agents";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/lib/workspace";
 
 const KIND: Readonly<Record<CloudflareKind, string>> = {
   repo: "Artifacts",
@@ -55,11 +57,37 @@ function Fact({ fact }: { readonly fact: CloudflareFact }) {
   );
 }
 
-function Resource({ resource }: { readonly resource: CloudflareResource }) {
+function UsedBy({ roles }: { readonly roles: readonly string[] }) {
+  const { select, selection } = useWorkspace();
+  const view = useAgents(selection.project);
   return (
-    <li className="flex flex-col gap-1.5 py-3 dash-b last:border-b-0" data-cf={resource.key} data-cf-kind={resource.kind} data-cf-role={resource.role}>
+    <div className="flex flex-wrap items-center gap-1 text-xs" data-cf-used-by>
+      <span className="mr-1 text-muted-foreground">Used by</span>
+      {roles.map((role) => (
+        <button
+          key={role}
+          type="button"
+          onClick={() => select({ panel: "messages", role })}
+          title={`See what ${roleLabel(role, view)} did`}
+          aria-pressed={selection.role === role}
+          className={cn("h-5 border px-1.5 hover:bg-muted", selection.role === role && "border-brand text-brand")}
+          data-cf-agent={role}
+        >
+          {roleLabel(role, view)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Resource({ resource, showRoles }: { readonly resource: CloudflareResource; readonly showRoles: boolean }) {
+  return (
+    <li className="flex flex-col gap-1.5 py-3 dash-b last:border-b-0" data-cf={resource.key} data-cf-kind={resource.kind} data-cf-roles={resource.roles.join(" ") || undefined}>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="kicker shrink-0 text-brand">{KIND[resource.kind]}</span>
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-brand" title={`Cloudflare ${KIND[resource.kind]}`}>
+          <Cloud className="size-3.5" aria-hidden="true" data-cf-cloud />
+          <span className="kicker text-brand">{KIND[resource.kind]}</span>
+        </span>
         <span className="truncate text-xs text-muted-foreground">{resource.title}</span>
         {resource.state ? (
           <span className="inline-flex shrink-0 items-center gap-1.5 text-xs" data-cf-state={resource.state.tone}>
@@ -88,15 +116,16 @@ function Resource({ resource }: { readonly resource: CloudflareResource }) {
           ))}
         </dl>
       ) : null}
+      {showRoles && resource.roles.length ? <UsedBy roles={resource.roles} /> : null}
     </li>
   );
 }
 
-export function CloudflareList({ resources, className }: { readonly resources: readonly CloudflareResource[]; readonly className?: string }) {
+export function CloudflareList({ resources, showRoles = true, className }: { readonly resources: readonly CloudflareResource[]; readonly showRoles?: boolean; readonly className?: string }) {
   return (
     <ul className={cn("flex flex-col dash-t", className)} data-cloudflare>
       {resources.map((r) => (
-        <Resource key={r.key} resource={r} />
+        <Resource key={r.key} resource={r} showRoles={showRoles} />
       ))}
     </ul>
   );
