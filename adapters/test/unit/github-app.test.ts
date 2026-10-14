@@ -9,7 +9,7 @@ const credentials: GitHubAppCredentials = { id: 42, slug: "chef-acme-ab12", name
 const decode = (part: string) => JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as Record<string, unknown>;
 
 describe("chef's GitHub App", () => {
-  it("describes an app that gets push events and can open pull requests, coming back to this chef", () => {
+  it("describes an app that gets push events and can open pull requests, coming back to this Chef", () => {
     const manifest = appManifest("https://chef.acme.workers.dev", "chef-acme-ab12");
     expect(manifest).toMatchObject({
       hook_attributes: { url: "https://chef.acme.workers.dev/api/github/webhook" },

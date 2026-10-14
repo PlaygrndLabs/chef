@@ -50,7 +50,7 @@ const GitInput = z
     mode: z.enum(OUTBOUND_MODES).default("pull-request"),
     syncBranch: branchName.default("chef"),
   })
-  .refine((git) => git.syncBranch !== git.branch, { message: "the sync branch must differ from the main branch; chef never pushes to main" });
+  .refine((git) => git.syncBranch !== git.branch, { message: "the sync branch must differ from the main branch; Chef never pushes to main" });
 
 const ProjectSettingsUpdate = z.strictObject({
   previewIdleMinutes: z.number().int().min(5, "previews stay up at least 5 minutes").max(MAX_PREVIEW_IDLE_MINUTES, "previews sleep after a week at most").nullable().optional(),

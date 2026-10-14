@@ -74,7 +74,7 @@ export async function gitHubWebhook(request: Request, env: Env): Promise<Respons
   if (request.method !== "POST") return Response.json({ error: "method not allowed" }, { status: 405 });
   const settings = settingsStub(env);
   const app = await settings.githubApp();
-  if (!app) return Response.json({ error: "chef has no GitHub App" }, { status: 404 });
+  if (!app) return Response.json({ error: "Chef has no GitHub App" }, { status: 404 });
   const body = await request.text();
   if (!(await validSignature(app.webhookSecret, body, request.headers.get("x-hub-signature-256")))) return Response.json({ error: "bad signature" }, { status: 401 });
   if (request.headers.get("x-github-event") !== "push") return Response.json({ ok: true });

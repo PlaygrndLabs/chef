@@ -56,7 +56,7 @@ function StatusChips() {
       </Chip>
       <LiveAppChip now={now} />
       {reverts ? (
-        <Chip id="reverts" label="Changes chef took back because the live app broke" tone="text-bad">
+        <Chip id="reverts" label="Changes Chef took back because the live app broke" tone="text-bad">
           <Undo2 className="size-3.5" />
           {reverts} taken back
         </Chip>

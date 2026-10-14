@@ -97,7 +97,7 @@ export function Decision({ decision }: { readonly decision: RouteDecision }) {
       {decision.via !== "classifier" ? <p className="text-xs text-muted-foreground">{decision.reason}</p> : null}
       {trace ? (
         <div className="flex flex-col gap-2 rounded-lg bg-muted/50 p-3">
-          <p className="text-xs text-muted-foreground">{trace.accepted ? `Jev (${trace.model}) was sure enough, so chef followed it.` : `Jev (${trace.model}) was not sure enough, so the Planner decided.`}</p>
+          <p className="text-xs text-muted-foreground">{trace.accepted ? `Jev (${trace.model}) was sure enough, so Chef followed it.` : `Jev (${trace.model}) was not sure enough, so the Planner decided.`}</p>
           {answers["intent"] ? <Bars name="What is it?" answer={answers["intent"]} labels={INTENT} /> : null}
           {answers["feature"] && Object.keys(answers["feature"].probabilities).length > 1 ? <Bars name="Which feature?" answer={answers["feature"]} labels={{ ...featureLabels, none: "none" }} /> : null}
           {answers["change"] && decision.intent === "change_feature" ? <Bars name="What kind of change?" answer={answers["change"]} labels={CHANGE} /> : null}
@@ -123,7 +123,7 @@ function TryIt() {
     }
   };
   return (
-    <Section title="Try it" note="See how chef would sort a request in this project. Nothing gets built." id="try">
+    <Section title="Try it" note="See how Chef would sort a request in this project. Nothing gets built." id="try">
       <form
         className="flex gap-2"
         onSubmit={(e) => {
@@ -190,7 +190,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
   };
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-5 sm:px-6" data-router>
-      <Section title="How chef sorts each request" note="Three steps, in order. The first one that is sure decides.">
+      <Section title="How Chef sorts each request" note="Three steps, in order. The first one that is sure decides.">
         <ol className="grid gap-2 text-sm sm:grid-cols-3">
           <li className="rounded-lg bg-muted/50 p-3">
             <div className="font-medium">1. Rules</div>
@@ -224,7 +224,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
             ))}
           </div>
         </Section>
-        <Section title="Question 1: what is it?" note="chef follows Jev's answer only when Jev is at least this sure of it." id="intent">
+        <Section title="Question 1: what is it?" note="Chef follows Jev's answer only when Jev is at least this sure of it." id="intent">
           <Input value={w.intent.instructions} onChange={(e) => wording({ intent: { ...w.intent, instructions: e.target.value } })} aria-label="Question 1" required />
           <Answer label="new_feature" value={w.intent.criteria.new_feature} onChange={(v) => wording({ intent: { ...w.intent, criteria: { ...w.intent.criteria, new_feature: v } } })} threshold={threshold("new_feature")} />
           <Answer label="change_feature" value={w.intent.criteria.change_feature} onChange={(v) => wording({ intent: { ...w.intent, criteria: { ...w.intent.criteria, change_feature: v } } })} threshold={threshold("change_feature")} />
@@ -242,7 +242,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
           <Answer label="refactor" value={w.change.criteria.refactor} onChange={(v) => wording({ change: { ...w.change, criteria: { ...w.change.criteria, refactor: v } } })} />
         </Section>
         <div className="sticky bottom-0 -mx-1 flex items-center gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
-          <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : view.scope ? (view.scope.router ? "Saved for this project" : "Using the setting for all projects") : view.routerEdited ? "Saved" : "Using chef's default"}</span>
+          <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : view.scope ? (view.scope.router ? "Saved for this project" : "Using the setting for all projects") : view.routerEdited ? "Saved" : "Using Chef's default"}</span>
           <span className="flex-1" />
           {(view.scope ? view.scope.router : view.routerEdited) ? (
             <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void save(null, view.scope ? "The router uses the setting for all projects" : "Reset the router to default")}>
@@ -256,7 +256,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
         </div>
       </form>
       {view.scope ? <Recent /> : null}
-      <Section title="Kinds of work" note="What each answer starts. Every kind goes through the same tests, review and checks before it goes live, and chef reverts a merge that turns the app red." id="kinds">
+      <Section title="Kinds of work" note="What each answer starts. Every kind goes through the same tests, review and checks before it goes live, and Chef reverts a merge that turns the app red." id="kinds">
         <ul className="flex flex-col divide-y text-sm">
           {KINDS.map((k) => (
             <li key={k.kind} className="grid gap-0.5 py-2 sm:grid-cols-[10rem_1fr]">

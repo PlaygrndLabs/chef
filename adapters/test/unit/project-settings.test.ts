@@ -35,7 +35,7 @@ describe("project settings", () => {
     expect(refuse({ url: "https://gitlab.com/acme/app", mode: "off" })).toMatchObject({ ok: true });
   });
 
-  it("links through chef's GitHub App without a token and drops an earlier token", () => {
+  it("links through Chef's GitHub App without a token and drops an earlier token", () => {
     const withToken = applyProjectUpdate(undefined, { git: { url: "https://github.com/acme/app", token: "ghp_abcdefgh1234" } }, secret);
     if (!withToken.ok) throw new Error(withToken.error);
     const body = { git: { url: "https://github.com/acme/app/", github: true, branch: "trunk" } };

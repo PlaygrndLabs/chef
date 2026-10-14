@@ -123,12 +123,12 @@ function closed(request, status, title, detail) {
 
 async function gate(request, env, next) {
   const secret = env && env[KEY];
-  if (typeof secret !== "string" || secret.length < 32) return closed(request, 503, "This preview is not ready", "chef has not finished setting up this preview. Open it again from chef.");
+  if (typeof secret !== "string" || secret.length < 32) return closed(request, 503, "This preview is not ready", "Chef has not finished setting up this preview. Open it again from Chef.");
   const url = new URL(request.url);
   const now = Date.now();
   if (url.pathname === ENTER) {
     const claim = await check(secret, url.searchParams.get("t"), "enter", url.hostname, now);
-    if (!claim) return closed(request, 401, "This link has expired", "Links into a preview work for a short time only. Open the preview again from chef.");
+    if (!claim) return closed(request, 401, "This link has expired", "Links into a preview work for a short time only. Open the preview again from Chef.");
     const seconds = Math.min(86400, Math.max(60, typeof claim.c === "number" ? Math.floor(claim.c) : 3600));
     const value = await sign(secret, { u: "cookie", h: url.hostname, e: now + seconds * 1000 });
     const headers = new Headers({ location: safePath(url.searchParams.get("to")), "cache-control": "no-store", "referrer-policy": "no-referrer" });
@@ -138,7 +138,7 @@ async function gate(request, env, next) {
   const jar = cookies(request);
   const pass = request.headers.get(PASS);
   const allowed = (pass && (await check(secret, pass, "pass", url.hostname, now))) || (await check(secret, jar.value, "cookie", url.hostname, now));
-  if (!allowed) return closed(request, 401, "Open this preview from chef", "Previews are private. Open this one from its project in chef, or from a link someone shared with you.");
+  if (!allowed) return closed(request, 401, "Open this preview from Chef", "Previews are private. Open this one from its project in Chef, or from a link someone shared with you.");
   const headers = new Headers(request.headers);
   headers.delete(PASS);
   if (jar.rest) headers.set("cookie", jar.rest);

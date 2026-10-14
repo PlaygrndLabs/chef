@@ -213,7 +213,7 @@ describe("builds by status and how they relate", () => {
   });
 
   it("explains stop reasons and hides the feature tag of a change request", () => {
-    expect(plainReason("attempt budget exhausted (4/4)")).toBe("chef tried 4 times and could not get past the review and checks.");
+    expect(plainReason("attempt budget exhausted (4/4)")).toBe("Chef tried 4 times and could not get past the review and checks.");
     expect(plainReason("gate failed")).toBe("gate failed");
     expect(stripFeatureTag("#shout make it louder")).toEqual({ text: "make it louder", feature: "shout" });
     expect(stripFeatureTag("Add a page")).toEqual({ text: "Add a page", feature: null });
@@ -236,7 +236,7 @@ describe("voice transcript", () => {
     ]);
   });
 
-  it("keeps your words before chef's answer when their transcript arrives late", () => {
+  it("keeps your words before Chef's answer when their transcript arrives late", () => {
     let lines: Heard[] = [];
     lines = transcript(lines, { type: "session.input_speech.started" }, 1);
     lines = transcript(lines, { type: "session.output_transcript.delta", delta: "Got it." }, 3);

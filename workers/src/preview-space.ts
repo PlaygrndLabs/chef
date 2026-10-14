@@ -24,7 +24,7 @@ export class CloudflareWorkerSpace implements PreviewSpace {
   async ensure(): Promise<void> {
     const worker = await this.api<WorkerInfo>("GET", this.workerPath(), undefined, true);
     if (worker) {
-      if (!(worker.tags ?? []).includes(PROJECT_WORKER_TAG)) throw new WorkerTakenError(`a Worker named ${this.grant.worker} already exists in this Cloudflare account and chef did not make it; pick another project name`);
+      if (!(worker.tags ?? []).includes(PROJECT_WORKER_TAG)) throw new WorkerTakenError(`a Worker named ${this.grant.worker} already exists in this Cloudflare account and Chef did not make it; pick another project name`);
       return;
     }
     try {

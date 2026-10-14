@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       say:
-        description: Request to speak to chef
+        description: Request to speak to Chef
         default: Add an item to a todo list
 
 permissions:

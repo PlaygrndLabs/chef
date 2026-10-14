@@ -68,7 +68,7 @@ export async function exploreProject(llm: LlmEndpoint, input: { readonly name: s
       "Write:",
       "- summary: two or three sentences on what this project is, who uses it, and how.",
       "- problems: up to four open problems or gaps you can see evidence for (a task list, TODOs, missing tests, half-built parts). Each one sentence. Leave it empty rather than guess.",
-      "- suggestions: exactly three things chef could pick up now, most useful first. title: a few words, starting with a verb. why: one short sentence on why it matters. prompt: the request to give chef, in plain words, specific enough to build without asking back.",
+      "- suggestions: exactly three things Chef could pick up now, most useful first. title: a few words, starting with a verb. why: one short sentence on why it matters. prompt: the request to give Chef, in plain words, specific enough to build without asking back.",
     ].join("\n"),
   ].join("\n\n");
   const result = await structured(llm, { model: input.model ?? DEFAULT_MODEL, system: SYSTEM, effort: "medium", schema: OverviewSchema, prompt });

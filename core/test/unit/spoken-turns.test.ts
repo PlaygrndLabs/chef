@@ -47,7 +47,7 @@ describe("spoken turns", () => {
     expect(turns).toEqual([{ speaker: "you", text: "Add a page", startedAt: 0 }]);
   });
 
-  it("records your words from a final transcript that arrives after chef started answering, dated when you started speaking", () => {
+  it("records your words from a final transcript that arrives after Chef started answering, dated when you started speaking", () => {
     let now = 0;
     const turns: SpokenTurn[] = [];
     const spoken = new SpokenTurns((turn) => turns.push(turn), () => now);

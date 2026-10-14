@@ -14,7 +14,7 @@ const NOW: Readonly<Record<SessionState, string>> = {
   reviewing: "A reviewer is reading the change.",
   gating: "Running the final checks.",
   merged: "Live. Ask for a change in the chat whenever you want.",
-  stuck: "chef stopped and is waiting for you.",
+  stuck: "Chef stopped and is waiting for you.",
   dropped: "Stopped. Press Start over to build it again.",
 };
 
@@ -284,9 +284,9 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
 
 export function plainReason(reason: string): string {
   const tries = /^attempt budget exhausted \((\d+)\/\d+\)/.exec(reason);
-  if (tries) return `chef tried ${tries[1]} times and could not get past the review and checks.`;
-  if (reason.startsWith("token budget exhausted")) return "chef used up the tokens it may spend on one build.";
-  if (reason.startsWith("time budget exhausted")) return "chef ran out of the time it may spend on one build.";
+  if (tries) return `Chef tried ${tries[1]} times and could not get past the review and checks.`;
+  if (reason.startsWith("token budget exhausted")) return "Chef used up the tokens it may spend on one build.";
+  if (reason.startsWith("time budget exhausted")) return "Chef ran out of the time it may spend on one build.";
   return reason;
 }
 

@@ -10,7 +10,7 @@ describe("GitHub connect pages", () => {
     expect(at({ "x-chef-origin": "https://chef.playgrndlabs.com/evil" })).toBe("https://chef.acme.workers.dev");
   });
 
-  it("only returns to paths on this chef", () => {
+  it("only returns to paths on this Chef", () => {
     expect(safeReturn("/?project=todo&connect=github")).toBe("/?project=todo&connect=github");
     expect(safeReturn("https://evil.example")).toBe("/");
     expect(safeReturn("//evil.example")).toBe("/");

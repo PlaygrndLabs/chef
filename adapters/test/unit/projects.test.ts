@@ -74,7 +74,7 @@ describe("project setup progress", () => {
       if (path === "settings") return Response.json({});
       expect(new Headers(init.headers).get("accept")).toBe(SETUP_STREAM);
       return setupResponse(new Request("https://chef.internal/bootstrap", { method: "POST", headers: { accept: SETUP_STREAM } }), async (progress) => {
-        progress.step("Copy the repository into chef");
+        progress.step("Copy the repository into Chef");
         progress.log("Copied main");
         return { commitId: "c3", created: true, imported: true };
       });
@@ -85,7 +85,7 @@ describe("project setup progress", () => {
     expect(seen.map((e) => (e.type === "step" ? `step ${e.label}` : e.type === "log" ? `log ${e.text}` : e.type))).toEqual([
       "step Link the repository",
       "log Linked https://github.com/me/app (main); finished work goes to chef as pull requests",
-      "step Copy the repository into chef",
+      "step Copy the repository into Chef",
       "log Copied main",
       "log Added app to your projects",
       "done",

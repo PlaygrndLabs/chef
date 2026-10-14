@@ -125,9 +125,9 @@ export function ProjectInstructionsForm(props: { readonly api: ProjectApi; reado
 }
 
 const GROUPS: readonly { readonly kind: MemoryEntry["kind"]; readonly title: string; readonly note: string }[] = [
-  { kind: "note", title: "Notes", note: "Things you asked chef to remember." },
+  { kind: "note", title: "Notes", note: "Things you asked Chef to remember." },
   { kind: "lesson", title: "Lessons", note: "Written when a merge broke main and was undone, so the next try avoids the same mistake." },
-  { kind: "feature", title: "Features", note: "A record of each merged feature and the sessions that built it. chef adds to it, and rewrites its top part, each time that feature merges." },
+  { kind: "feature", title: "Features", note: "A record of each merged feature and the sessions that built it. Chef adds to it, and rewrites its top part, each time that feature merges." },
 ];
 
 function MemoryRow(props: { readonly entry: MemoryEntry; readonly api: ProjectApi; readonly onSaved: (view: MemoryView) => void }) {
@@ -233,7 +233,7 @@ export function MemoryForm(props: { readonly api: ProjectApi }) {
           </Group>
         );
       })}
-      <Group title={`Rules (${view.rules.length})`} note="Written when agents keep making the same fix in different features. Every later change is checked against them. Ask chef in the chat to change or drop one.">
+      <Group title={`Rules (${view.rules.length})`} note="Written when agents keep making the same fix in different features. Every later change is checked against them. Ask Chef in the chat to change or drop one.">
         {view.rules.length ? (
           <ul className="grid divide-y" data-memory-group="rule">
             {view.rules.map((rule) => (
