@@ -73,6 +73,30 @@ describe("dashboard in a browser", () => {
       await page.getByRole("button", { name: "Make smaller" }).click();
       await page.locator("#sessions").getByRole("tabpanel", { name: "Changes" }).waitFor({ timeout: 10_000 });
 
+      await page.locator('[data-view="feature"] [data-action="share"]').click();
+      const share = page.locator('[data-dialog="share"]');
+      await share.getByRole("button", { name: "Make a link" }).click();
+      const link = await share.locator("[data-new-share] code").innerText();
+      expect(link).toMatch(/\/s#chef_[a-z0-9]{12}_[A-Za-z0-9_-]{43}$/);
+      await share.locator("[data-share]").first().waitFor({ timeout: 10_000 });
+      await page.keyboard.press("Escape");
+      const guest = await browser.newPage();
+      await guest.goto(link);
+      const shared = guest.locator('[data-view="shared"][data-shared="session"]');
+      await shared.waitFor({ timeout: 10_000 });
+      expect(await shared.locator("h1").innerText()).toBe(await page.locator('[data-view="feature"] h1').innerText());
+      await guest.getByRole("tab", { name: "Changes" }).click();
+      await expect.poll(() => guest.getByRole("tabpanel", { name: "Changes" }).innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");
+      expect(await guest.locator("#chat").count()).toBe(0);
+      await page.locator('[data-view="feature"] [data-action="share"]').click();
+      page.once("dialog", (dialog) => void dialog.accept());
+      await share.getByRole("button", { name: "End this link" }).first().click();
+      await expect.poll(() => share.locator("[data-share]").count(), { timeout: 10_000 }).toBe(0);
+      await page.keyboard.press("Escape");
+      await guest.reload();
+      await guest.locator('[data-view="shared-error"]').waitFor({ timeout: 10_000 });
+      await guest.close();
+
       await input.fill(TODO_SPLIT_PROMPT);
       await input.press("Enter");
       for (const id of ["shout", "reverse"]) await page.locator(`#features li:has([data-feature="todo-add"]) [data-feature="${id}"][data-status="merged"]`).waitFor({ timeout: 60_000 });

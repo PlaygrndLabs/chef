@@ -8,6 +8,7 @@ export const PREVIEW_GATE_FILE = ".chef/preview-gate.mjs";
 const ENTER_SECONDS = 120;
 const PASS_SECONDS = 20 * 60;
 export const OWNER_COOKIE_SECONDS = 12 * 60 * 60;
+export const SHARE_COOKIE_SECONDS = 60 * 60;
 
 export type PassUse = "enter" | "pass" | "cookie";
 
