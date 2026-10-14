@@ -316,23 +316,32 @@ function turnResult(turn: TurnState): CoderTurnResult {
   return { changes: final.changes, summary: final.summary, model: final.model, runId: turn.id, usage: final.usage ?? { inputTokens: 0, outputTokens: 0 } };
 }
 
-const LAUNCH = `rm -rf "$TURNS" && mkdir -p "$DIR" && cd "$DIR" || exit 1
+const LAUNCH = `for proc in /proc/[0-9]*; do [ "\${proc#/proc/}" = "$$" ] && continue; case "$(tr '\\0' ' ' < "$proc/cmdline" 2>/dev/null)" in *"/opt/chef/runner.mjs"*|*"claude-agent-sdk"*) kill -TERM "\${proc#/proc/}" 2>/dev/null ;; esac; done
+rm -rf "$TURNS" && mkdir -p "$DIR" && cd "$DIR" || exit 1
 setsid sh -c 'echo $$ > pid.tmp && mv pid.tmp pid; node "/opt/chef/$SCRIPT" > events.jsonl 2> stderr.log; echo $? > exit.tmp && mv exit.tmp exit' < /dev/null > /dev/null 2>&1 &
 for i in $(seq 1 100); do [ -s pid ] && exit 0; sleep 0.1; done
 echo "the runner wrote no pid"; exit 1`;
 
+const ALIVE = `alive() { state=$(cut -d " " -f 3 "/proc/$1/stat" 2>/dev/null); [ -n "$state" ] && [ "$state" != Z ]; }
+pid=$(cat pid 2>/dev/null)`;
+
 const STATE = `cd "$DIR" 2>/dev/null || { echo lost; exit 0; }
-if [ -f exit ]; then cat exit; elif kill -0 "$(cat pid 2>/dev/null)" 2>/dev/null; then echo running; else echo lost; fi`;
+${ALIVE}
+if [ -f exit ]; then cat exit; elif alive "$pid"; then echo running; else echo lost; fi`;
 
 const FOLLOW = `cd "$DIR" 2>/dev/null || exit 0
-pid=$(cat pid 2>/dev/null)
-if [ -f exit ] || ! kill -0 "$pid" 2>/dev/null; then tail -n "+$FROM" events.jsonl; exit 0; fi
-timeout "$WAIT" tail -n "+$FROM" -f --pid="$pid" events.jsonl
+${ALIVE}
+if [ -f exit ] || ! alive "$pid"; then tail -n "+$FROM" events.jsonl; exit 0; fi
+tail -n "+$FROM" -f events.jsonl &
+follower=$!
+ticks=$((WAIT * 4))
+while [ "$ticks" -gt 0 ] && [ ! -f exit ] && alive "$pid"; do sleep 0.25; ticks=$((ticks - 1)); done
+kill "$follower" 2>/dev/null
 exit 0`;
 
 const STDERR = `tail -c 4000 "$DIR/stderr.log" 2>/dev/null`;
 
-const KILL = `pid=$(cat "$DIR/pid" 2>/dev/null) && kill -TERM -- "-$pid" 2>/dev/null; exit 0`;
+const KILL = `pid=$(cat "$DIR/pid" 2>/dev/null) && { kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null; }; exit 0`;
 
 const CA = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
 const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, GIT_SSL_CAINFO: CA, SSL_CERT_FILE: CA, PLAYWRIGHT_BROWSERS_PATH: "/opt/pw-browsers" };
