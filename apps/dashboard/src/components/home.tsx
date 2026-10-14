@@ -319,8 +319,8 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const busy = agent.isRunning || sessions.some((s) => isActive(s.state));
   return (
     <div className="@container relative flex h-full min-h-0 flex-col" data-view="project" id="chat">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 sm:px-6">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 py-8 sm:px-6">
           {loading ? (
             <ChatSkeleton />
           ) : (
@@ -352,11 +352,16 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
               ))}
             </>
           )}
-          {live ? <div className="h-52 shrink-0" aria-hidden /> : null}
-          <div ref={end} />
         </div>
+        {live ? (
+          <LivePanel />
+        ) : (
+          <div className="sticky bottom-0 bg-background">
+            <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} onLive={goLive} />
+          </div>
+        )}
+        <div ref={end} />
       </div>
-      {live ? <LivePanel /> : <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} onLive={goLive} />}
     </div>
   );
 }
