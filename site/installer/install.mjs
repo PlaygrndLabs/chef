@@ -103,9 +103,11 @@ step("image", "done");
 
 step("token", "running");
 let previewToken = null;
-if (existing) {
+const secrets = existing ? await cf("GET", `/accounts/${id}/workers/scripts/${job.name}/secrets`) : null;
+const hasToken = secrets?.ok && Array.isArray(secrets.result) && secrets.result.some((secret) => secret.name === "CF_API_TOKEN");
+if (hasToken) {
   log("keeping the previews token chef already has");
-  step("token", "skipped");
+  step("token", "done");
 } else {
   const groups = await cf("GET", `/accounts/${id}/tokens/permission_groups`);
   const group = groups.ok && Array.isArray(groups.result) ? groups.result.find((g) => g.name === "Workers Scripts Write") : null;
@@ -115,7 +117,7 @@ if (existing) {
     else log(`could not create a token for previews: ${reason(made)}`);
   } else log(`could not look up token permissions: ${reason(groups)}`);
   if (previewToken) log("created a token that lets chef publish previews in this account");
-  else log("add a Cloudflare token for previews later in chef's Settings");
+  else log("previews need Account API Tokens Write: sign in again and turn it on under Sensitive scopes on Cloudflare's page");
   step("token", previewToken ? "done" : "skipped");
 }
 

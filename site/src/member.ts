@@ -9,6 +9,7 @@ export interface Engine {
   readonly accountId: string;
   readonly secret: string;
   readonly version: string;
+  readonly previews?: boolean;
 }
 
 export interface AccountView {
@@ -81,7 +82,7 @@ export class Member extends DurableObject<Env> {
     const engine = org.engine;
     const running = (await this.status()).status === "running";
     if (!running) await this.ctx.storage.delete(STATUS);
-    if (engine && !running && org.canSetUp && this.env.ENGINE_VERSION && engine.version !== this.env.ENGINE_VERSION && this.ready()) {
+    if (engine && !running && org.canSetUp && this.env.ENGINE_VERSION && (engine.version !== this.env.ENGINE_VERSION || engine.previews === false) && this.ready()) {
       await this.start({ orgId: org.id, name: engine.name, accountId: engine.accountId, secret: engine.secret, update: true });
       return;
     }
@@ -210,7 +211,8 @@ export class Member extends DurableObject<Env> {
     } finally {
       await container.destroy().catch(() => undefined);
     }
-    await organization(this.env, job.orgId).setEngine({ name: job.name, url, accountId: job.accountId, secret: job.secret, version: this.env.ENGINE_VERSION ?? "" } satisfies Engine);
+    const previews = (await this.status()).steps.token !== "skipped";
+    await organization(this.env, job.orgId).setEngine({ name: job.name, url, accountId: job.accountId, secret: job.secret, version: this.env.ENGINE_VERSION ?? "", previews } satisfies Engine);
     await this.update((s) => ({ ...s, status: "done" }));
   }
 
