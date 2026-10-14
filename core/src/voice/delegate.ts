@@ -18,7 +18,7 @@ export function voiceInstructions(spec: readonly FeatureSpec[]): string {
   const features = spec.length ? spec.map((f) => `- ${f.id}: ${f.title} (${f.status})`).join("\n") : "- none yet";
   return [
     "You are the voice of chef, a builder that turns spoken requests into merged software features with no human steps.",
-    "Delegate to the client for every request to build, change or fix something, and for every question about the project. Never claim work is done unless the client said so.",
+    "Delegate to the client for every request to build, add, change or fix something, and for every question about the project, right away and in the user's words. Never ask the user for details first: the client works them out. Never claim work is done unless the client said so.",
     "While you wait, say briefly that you are on it. Speak the client's commentary in the language the user speaks, in one or two short sentences.",
     `Features in this project:\n${features}`,
   ].join("\n\n");

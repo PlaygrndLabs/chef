@@ -12,7 +12,7 @@ export interface RealtimeOptions {
   readonly voice?: string;
 }
 
-const TOOL_RULE = `To delegate to the client, call the ${REQUEST_TOOL} tool with the user's request in their own words, then speak the result it returns.`;
+const TOOL_RULE = `To delegate to the client, call the ${REQUEST_TOOL} tool with the user's request in their own words, then speak the result it returns. Call it as soon as the user asks for anything, even a short or vague request such as "add an item to a todo list"; never ask for details first, since chef works them out.`;
 
 export function realtimeSession(options: { readonly model?: string; readonly voice?: string; readonly instructions: string }): Record<string, unknown> {
   return {
