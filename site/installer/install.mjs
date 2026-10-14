@@ -37,7 +37,7 @@ function run(command, args, options = {}) {
     const take = (chunk) => {
       const text = chunk.toString();
       out += text;
-      if (!options.quiet) for (const line of text.split(/\r?\n/)) if (line.trim() && !/^\[custom build\]\s*$/.test(line.trim())) log(line);
+      if (!options.quiet) for (const line of text.split(/\r?\n/)) if (line.trim() && !/^\[custom build\](\s*$|\s+dist\/)/.test(line.trim())) log(line);
     };
     child.stdout.on("data", take);
     child.stderr.on("data", take);
