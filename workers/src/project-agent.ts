@@ -1,7 +1,8 @@
 import { Agent, type Connection, type ConnectionContext, type WSMessage } from "agents";
 import { ArtifactsRepoHost, bindingControl, type ArtifactsBindingLike } from "@chef/adapters/artifacts";
 import { JevClassifier } from "@chef/adapters/jev";
-import { llmFromProvider, providerBaseUrl, type LlmEndpoint, type MessagesClient } from "@chef/adapters/anthropic";
+import { llmFromProvider, meteredFetch, providerBaseUrl, type LlmEndpoint, type MessagesClient } from "@chef/adapters/anthropic";
+import { currentSpender, EngineSpend, nextMonth, requester } from "./usage.ts";
 import { NO_CLOUDFLARE, NO_LLM, type Resolved } from "@chef/adapters/settings";
 import { LlmPlanner } from "@chef/adapters/llm-planner";
 import { LlmReviewer } from "@chef/adapters/llm-reviewer";
@@ -9,7 +10,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
+import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -82,7 +83,8 @@ export class ProjectAgent extends Agent<Env> {
     const control = bindingControl(env.ARTIFACTS as unknown as ArtifactsBindingLike);
     const repos = new ArtifactsRepoHost(control);
     const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message, [...this.calls.keys()]));
-    const llm = settings.llm ? llmFromProvider(settings.llm) : missingLlm;
+    const spend = new EngineSpend(env, this.name);
+    const llm = settings.llm ? llmFromProvider(settings.llm, meteredFetch((model, usage) => spend.record(currentSpender(), model, usage))) : missingLlm;
     const profiles = applyAgentConfig(loadProfiles(agentFiles), agents.config);
     const reviewerRole = role(profiles, "reviewer");
     const plannerRole = role(profiles, "planner");
@@ -111,6 +113,7 @@ export class ProjectAgent extends Agent<Env> {
         ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
         store,
         memory: new VectorizeIndex(env.MEMORY as unknown as VectorizeLike, env.AI as unknown as EmbedderLike, this.name),
+        spend,
       },
       {
         name: this.name,
@@ -209,15 +212,23 @@ export class ProjectAgent extends Agent<Env> {
       if (!prompt?.trim()) return Response.json({ error: "prompt is required" }, { status: 400 });
       if (!settings.llm) return Response.json({ error: NO_LLM }, { status: 409 });
       if (!settings.cloudflare) return Response.json({ error: NO_CLOUDFLARE }, { status: 409 });
-      const result = await orchestrator.submit(prompt.trim());
+      const by = requester(request);
+      const blocked = await orchestrator.blocked(by);
+      if (blocked) return Response.json({ error: blocked }, { status: 402 });
+      if ((await orchestrator.budgetChanged()).length > 0) await this.schedule(1, "drive");
+      const result = await orchestrator.submit(prompt.trim(), { by });
       if (result.sessionId) await this.schedule(1, "drive");
       return Response.json(result, { status: 202 });
     }
     if (request.method === "POST" && action === "route") {
       const { prompt } = (await request.json().catch(() => ({}))) as { prompt?: string };
       if (!prompt?.trim()) return Response.json({ error: "prompt is required" }, { status: 400 });
-      return Response.json(await orchestrator.route(prompt.trim()));
+      const by = requester(request);
+      const blocked = await orchestrator.blocked(by);
+      if (blocked) return Response.json({ error: blocked }, { status: 402 });
+      return Response.json(await new EngineSpend(this.env, this.name).scope(by, () => orchestrator.route(prompt.trim())));
     }
+    if (action === "budget" && url.pathname.endsWith(`/projects/${this.name}/budget`)) return this.budgetRequest(request);
     if (request.method === "GET" && action === "sessions") return Response.json(await orchestrator.sessions());
     if (request.method === "GET" && action === "cursor") return Response.json({ seq: await bus.cursor() });
     if (request.method === "GET" && action === "events") return Response.json(await bus.since(Number(url.searchParams.get("after") ?? 0)));
@@ -242,6 +253,8 @@ export class ProjectAgent extends Agent<Env> {
         return Response.json({ state: record.machine.state }, { status: 202 });
       }
       if (request.method === "POST" && action === "retry") {
+        const blocked = await orchestrator.blocked(requester(request));
+        if (blocked) return Response.json({ error: blocked }, { status: 402 });
         const { guidance } = (await request.json().catch(() => ({}))) as { guidance?: string };
         const record = await orchestrator.retry(id, guidance ?? "");
         await this.schedule(1, "drive");
@@ -352,6 +365,23 @@ export class ProjectAgent extends Agent<Env> {
     return new AgentSettings(new DurableStore(this.ctx.storage), Date.now, AGENTS);
   }
 
+  async budgetChanged(): Promise<void> {
+    const { orchestrator } = await this.build();
+    if ((await orchestrator.budgetChanged()).length > 0) await this.schedule(1, "drive");
+  }
+
+  private async budgetRequest(request: Request): Promise<Response> {
+    const settings = settingsStub(this.env);
+    if (request.method === "PUT") {
+      const cap = readCap(((await request.json().catch(() => null)) as { cap?: unknown } | null)?.cap);
+      if (cap === undefined) return Response.json({ error: "a budget is a dollar amount from 0 to 1,000,000, or null for no limit" }, { status: 400 });
+      await settings.updateCaps({ projects: { [this.name]: cap } });
+      await this.budgetChanged();
+    } else if (request.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405 });
+    const { caps, ledger } = await settings.spending(Date.now());
+    return Response.json({ month: ledger.month, spent: ledger.projects[this.name] ?? 0, cap: caps.projects[this.name] ?? null });
+  }
+
   async sharedEnvironmentChanged(): Promise<void> {
     const { orchestrator } = await this.build();
     if ((await orchestrator.environmentChanged()).length > 0) await this.schedule(1, "drive");
@@ -426,7 +456,7 @@ export class ProjectAgent extends Agent<Env> {
 
   override async onConnect(connection: Connection, context: ConnectionContext): Promise<void> {
     if (isVoice(context.request.url)) {
-      this.calls.set(connection.id, this.startVoice(connection));
+      this.calls.set(connection.id, this.startVoice(connection, requester(context.request)));
       return;
     }
     const { bus } = await this.build();
@@ -455,7 +485,7 @@ export class ProjectAgent extends Agent<Env> {
     await (await call)?.connection.close();
   }
 
-  private async startVoice(connection: Connection): Promise<VoiceCall | null> {
+  private async startVoice(connection: Connection, by: string | null): Promise<VoiceCall | null> {
     const send = (event: object) => {
       try {
         connection.send(JSON.stringify(event));
@@ -486,7 +516,7 @@ export class ProjectAgent extends Agent<Env> {
         : new RealtimeHost({ baseUrl: voice.baseUrl, apiKey: voice.apiKey, model: settings.models.voice, voice: this.env.VOICE, connect: workersConnect });
     const target = {
       submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
-        const result = await orchestrator.submitSpoken(prompt, call);
+        const result = await orchestrator.submitSpoken(prompt, { ...call, by });
         if (result.sessionId) await this.schedule(1, "drive");
         return result;
       },
@@ -571,7 +601,8 @@ export class ProjectAgent extends Agent<Env> {
     try {
       if (!settings.llm) throw new Error(NO_LLM);
       const main = await orchestrator.mainTree();
-      const overview = await exploreProject(llmFromProvider(settings.llm), { name: this.name, tree: main.tree, model: settings.models.planner });
+      const spend = new EngineSpend(this.env, this.name);
+      const overview = await exploreProject(llmFromProvider(settings.llm, meteredFetch((model, usage) => spend.record(null, model, usage))), { name: this.name, tree: main.tree, model: settings.models.planner });
       state = { status: "ready", commitId: main.commitId, at: Date.now(), overview };
     } catch (error) {
       console.error(`reading ${this.name} failed`, error);
@@ -591,6 +622,7 @@ export class ProjectAgent extends Agent<Env> {
     const sessions = await orchestrator.drain(1);
     await this.pushExternal();
     if (sessions.some(runnable)) await this.schedule(1, "drive");
+    if (sessions.some((s) => s.overBudget && !isTerminal(s.machine.state))) await this.schedule(nextMonth(Date.now()), "budgetChanged", undefined, { idempotent: true });
     if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
   }
 

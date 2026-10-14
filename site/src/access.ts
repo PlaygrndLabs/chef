@@ -8,7 +8,7 @@ export type EngineRule =
   | { readonly kind: "open" };
 
 const PROJECT_PATH = /^\/(?:api\/projects|agents\/project|preview)\/([a-z][a-z0-9-]{1,30})(?:\/(.*))?$/;
-const MANAGE = new Set(["settings", "env", "instructions", "memory", "agents", "restore", "git"]);
+const MANAGE = new Set(["settings", "env", "budget", "instructions", "memory", "agents", "restore", "git"]);
 
 function projectNeed(method: string, url: URL, rest: string): ProjectLevel {
   if (url.pathname.startsWith("/agents/project/") && url.searchParams.has("voice")) return "edit";

@@ -11,7 +11,7 @@ import { KeyPrompt } from "@/components/environment";
 import { KindBadges, StatusDot, StatusPill } from "@/components/status";
 import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, stateTone } from "@/lib/format";
-import { currentSession, heldBy, isChore, relationsOf, statusOf, waitsForKey, type FeatureNode, type SessionNode } from "@/lib/model";
+import { currentSession, heldBy, isChore, relationsOf, statusOf, waitsForBudget, waitsForKey, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
 import { activity, plainReason, progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
 import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
@@ -356,7 +356,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
             <TryTabs node={node} />
             <Steps node={node} />
             <Team node={node} />
-            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : p.now}</p>
+            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)} It goes on when the budget is raised or next month starts.` : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : p.now}</p>
           </div>
         </div>
       ) : null}

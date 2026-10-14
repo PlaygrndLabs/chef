@@ -49,6 +49,27 @@ export function llmFromEnv(env: LlmEnv, fetchImpl?: typeof fetch): LlmEndpoint {
   return llmFromProvider(provider, fetchImpl);
 }
 
+export type UsageListener = (model: string, usage: { readonly inputTokens: number; readonly outputTokens: number; readonly cachedInputTokens: number }) => Promise<void> | void;
+
+interface UsageBody {
+  readonly model?: unknown;
+  readonly usage?: { readonly input_tokens?: number; readonly output_tokens?: number; readonly cache_read_input_tokens?: number; readonly cache_creation_input_tokens?: number } | null;
+}
+
+export function meteredFetch(onUsage: UsageListener, base: typeof fetch = fetch): typeof fetch {
+  return async (input, init) => {
+    const response = await base(input, init);
+    if (!response.ok || !(response.headers.get("content-type") ?? "").includes("application/json")) return response;
+    const body = (await response.clone().json().catch(() => null)) as UsageBody | null;
+    const usage = body?.usage;
+    if (usage && typeof body.model === "string") {
+      const cached = usage.cache_read_input_tokens ?? 0;
+      await Promise.resolve(onUsage(body.model, { inputTokens: (usage.input_tokens ?? 0) + cached + (usage.cache_creation_input_tokens ?? 0), outputTokens: usage.output_tokens ?? 0, cachedInputTokens: cached })).catch(() => undefined);
+    }
+    return response;
+  };
+}
+
 export class RefusedError extends Error {}
 
 export interface StructuredInput<S extends z.ZodType> {

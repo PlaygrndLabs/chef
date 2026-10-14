@@ -19,6 +19,7 @@ export interface SessionNode {
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly needs: readonly string[];
+  readonly budget: string | null;
   readonly live: SessionLive | undefined;
   readonly record: SessionRecord | undefined;
 }
@@ -40,12 +41,12 @@ export function sessionNodes(live: ProjectLive, records: readonly SessionRecord[
   const byId = new Map<string, SessionNode>();
   for (const record of records) {
     const l = live.sessions[record.id];
-    byId.set(record.id, { id: record.id, featureId: record.featureId, state: l?.state ?? record.machine.state, attempt: record.attempt, parent: record.parent, createdAt: record.createdAt, updatedAt: Math.max(record.updatedAt, l?.updatedAt ?? 0), needs: l && l.updatedAt >= record.updatedAt ? l.needs : (record.needs ?? []), live: l, record });
+    byId.set(record.id, { id: record.id, featureId: record.featureId, state: l?.state ?? record.machine.state, attempt: record.attempt, parent: record.parent, createdAt: record.createdAt, updatedAt: Math.max(record.updatedAt, l?.updatedAt ?? 0), needs: l && l.updatedAt >= record.updatedAt ? l.needs : (record.needs ?? []), budget: l && l.updatedAt >= record.updatedAt ? l.budget : (record.overBudget ?? null), live: l, record });
   }
   for (const id of live.order) {
     const l = live.sessions[id];
     if (!l || byId.has(id)) continue;
-    byId.set(id, { id, featureId: l.featureId, state: l.state, attempt: l.attempt, parent: l.parent, createdAt: l.createdAt, updatedAt: l.updatedAt, needs: l.needs, live: l, record: undefined });
+    byId.set(id, { id, featureId: l.featureId, state: l.state, attempt: l.attempt, parent: l.parent, createdAt: l.createdAt, updatedAt: l.updatedAt, needs: l.needs, budget: l.budget, live: l, record: undefined });
   }
   return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
 }
@@ -122,7 +123,7 @@ export function featureTree(features: readonly FeatureNode[]): TreeNode[] {
     const session = currentSession(feature) as SessionNode;
     const path = new Set([...seen, feature.id]);
     const children = built.filter((f) => f.parent === feature.id && !path.has(f.id)).map((f) => make(f, path));
-    return { feature, session, group: groupOf(session.state, session.needs), children: sortTree(children) };
+    return { feature, session, group: groupOf(session.state, session.needs, session.budget), children: sortTree(children) };
   };
   const roots = built.filter((f) => !f.parent || !ids.has(f.parent) || f.parent === f.id).map((f) => make(f, new Set()));
   const placed = new Set<string>();
@@ -150,8 +151,8 @@ export type SessionGroup = "needs-you" | "working" | "live" | "stopped";
 
 export const GROUPS: readonly SessionGroup[] = ["needs-you", "working", "live", "stopped"];
 
-export function groupOf(state: SessionState, needs: readonly string[] = []): SessionGroup {
-  if (state === "stuck" || (needs.length > 0 && isActive(state))) return "needs-you";
+export function groupOf(state: SessionState, needs: readonly string[] = [], budget: string | null = null): SessionGroup {
+  if (state === "stuck" || ((needs.length > 0 || budget !== null) && isActive(state))) return "needs-you";
   if (state === "merged") return "live";
   if (state === "dropped") return "stopped";
   return "working";
@@ -161,9 +162,13 @@ export function waitsForKey(node: Pick<SessionNode, "state" | "needs">): boolean
   return node.needs.length > 0 && isActive(node.state);
 }
 
+export function waitsForBudget(node: Pick<SessionNode, "state" | "budget">): string | null {
+  return node.budget !== null && isActive(node.state) ? node.budget : null;
+}
+
 export function groupSessions(sessions: readonly SessionNode[]): Record<SessionGroup, SessionNode[]> {
   const groups: Record<SessionGroup, SessionNode[]> = { "needs-you": [], working: [], live: [], stopped: [] };
-  for (const s of sessions) groups[groupOf(s.state, s.needs)].push(s);
+  for (const s of sessions) groups[groupOf(s.state, s.needs, s.budget)].push(s);
   for (const list of Object.values(groups)) list.sort((a, b) => b.updatedAt - a.updatedAt);
   return groups;
 }
