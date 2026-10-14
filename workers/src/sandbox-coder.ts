@@ -1,5 +1,12 @@
 import { NO_LLM } from "@chef/adapters/settings";
-import type { Coder, CoderTurnInput, CoderTurnResult } from "@chef/core";
+import { TurnRunning, type Coder, type CoderEvent, type CoderTurnInput, type CoderTurnResult, type ResumeTurnInput } from "@chef/core";
+import type { TurnOutcome } from "./session-agent.ts";
+
+interface SandboxStub {
+  runTurn(job: unknown, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome>;
+  resumeTurn(id: string, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome>;
+  stop(): Promise<boolean>;
+}
 
 export class SandboxCoder implements Coder {
   constructor(
@@ -8,13 +15,9 @@ export class SandboxCoder implements Coder {
   ) {}
 
   async runTurn(input: CoderTurnInput): Promise<CoderTurnResult> {
-    const llm = this.options.llm;
-    if (!llm) throw new Error(NO_LLM);
+    const llm = this.llm();
     const sandbox = sandboxName(input.sessionId, input.lane);
-    const stub = this.sessions.get(this.sessions.idFromName(sandbox)) as unknown as {
-      runTurn(job: unknown, onEvent: CoderTurnInput["onEvent"], llmKey: string): Promise<CoderTurnResult>;
-    };
-    return stub.runTurn(
+    const outcome = await this.stub(sandbox).runTurn(
       {
         sessionId: sandbox,
         featureId: input.featureId,
@@ -28,20 +31,37 @@ export class SandboxCoder implements Coder {
         commitId: input.workspace.commitId,
         readToken: input.workspace.readToken,
         llm: { baseUrl: llm.baseUrl },
+        ...(input.turnId ? { turnId: input.turnId } : {}),
       },
       input.onEvent,
       llm.apiKey,
     );
+    const result = settle(outcome, input.turnId ?? sandbox);
+    if (!result) throw new Error("the sandbox container stopped while the coder was working");
+    return result;
+  }
+
+  async resumeTurn(input: ResumeTurnInput): Promise<CoderTurnResult | null> {
+    return settle(await this.stub(sandboxName(input.sessionId, input.lane)).resumeTurn(input.turnId, input.onEvent, this.llm().apiKey), input.turnId);
   }
 
   async release(sessionId: string, lanes: readonly string[] = []): Promise<void> {
-    await Promise.all(
-      [sessionId, ...lanes.map((lane) => sandboxName(sessionId, lane))].map(async (name) => {
-        const stub = this.sessions.get(this.sessions.idFromName(name)) as unknown as { stop(): Promise<boolean> };
-        await stub.stop();
-      }),
-    );
+    await Promise.all([sessionId, ...lanes.map((lane) => sandboxName(sessionId, lane))].map((name) => this.stub(name).stop()));
   }
+
+  private llm(): { readonly baseUrl: string; readonly apiKey: string } {
+    if (!this.options.llm) throw new Error(NO_LLM);
+    return this.options.llm;
+  }
+
+  private stub(name: string): SandboxStub {
+    return this.sessions.get(this.sessions.idFromName(name)) as unknown as SandboxStub;
+  }
+}
+
+function settle(outcome: TurnOutcome, turnId: string): CoderTurnResult | null {
+  if (outcome.status === "running") throw new TurnRunning(turnId);
+  return outcome.status === "done" ? outcome.result : null;
 }
 
 export function sandboxName(sessionId: string, lane?: string): string {

@@ -28,6 +28,7 @@ export interface CoderTurnInput {
   readonly agent: CustomAgent;
   readonly attempt: { readonly index: number; readonly of: number };
   readonly lane?: string;
+  readonly turnId?: string;
   readonly workspace: CoderWorkspace;
   readonly signal?: AbortSignal;
   readonly onEvent: (event: CoderEvent) => void;
@@ -41,7 +42,22 @@ export interface CoderTurnResult {
   readonly usage: TokenUsage;
 }
 
+export interface ResumeTurnInput {
+  readonly turnId: string;
+  readonly sessionId: string;
+  readonly lane?: string;
+  readonly onEvent: (event: CoderEvent) => void;
+}
+
 export interface Coder {
   runTurn(input: CoderTurnInput): Promise<CoderTurnResult>;
+  resumeTurn?(input: ResumeTurnInput): Promise<CoderTurnResult | null>;
   release?(sessionId: string, lanes?: readonly string[]): Promise<void>;
+}
+
+export class TurnRunning extends Error {
+  constructor(readonly turnId: string) {
+    super(`turn ${turnId} is still running`);
+    this.name = "TurnRunning";
+  }
 }
