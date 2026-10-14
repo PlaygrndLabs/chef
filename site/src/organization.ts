@@ -161,7 +161,7 @@ export class Organization extends DurableObject<Env> {
     if (!meta || !role) return null;
     const engine = await this.ctx.storage.get<Engine>(ENGINE);
     const count = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM members").one().n;
-    return { id: meta.id, name: meta.name, role, personal: meta.personal === true, plan: "free", engine: engine?.url ?? null, members: count };
+    return { id: meta.id, name: meta.name, role, personal: meta.personal, plan: "free", engine: engine?.url ?? null, members: count };
   }
 
   async members(): Promise<OrgMember[]> {
