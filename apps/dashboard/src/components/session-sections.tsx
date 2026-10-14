@@ -6,6 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
+import { loadTone, PreviewFrame, usePreviewLoad } from "@/components/preview-frame";
 import { CloudflareList, CloudflareSections } from "@/components/cloudflare-resources";
 import { isActive } from "@/lib/events";
 import { ago, duration, previewHost, short, tokens } from "@/lib/format";
@@ -49,11 +50,14 @@ function PreviewTab({ url, link, commitId, start, live, merged = false }: { read
   const [pages, setPages] = useState<readonly AppPage[]>([]);
   const [draft, setDraft] = useState<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
+  const preview = usePreviewLoad({ link, url: url ?? "", path: load.path, count: load.count });
+  const { loaded } = preview;
   useEffect(() => {
     const listen = (event: MessageEvent) => {
       if (!frame.current || event.source !== frame.current.contentWindow) return;
       const report = frameReport(event.data);
       if (!report) return;
+      loaded();
       setPages(report.pages);
       setTrail((current) => visit(current, report.path));
     };
@@ -94,7 +98,7 @@ function PreviewTab({ url, link, commitId, start, live, merged = false }: { read
           <RefreshCw />
         </Button>
         <span className="flex min-w-0 flex-1 items-center">
-          <StatusDot tone="ok" />
+          <StatusDot tone={loadTone(preview.load)} />
           <span className="ml-2 max-w-[45%] shrink-0 truncate font-mono text-xs text-muted-foreground">{previewHost(url)}</span>
           <input
             value={draft ?? path}
@@ -122,7 +126,20 @@ function PreviewTab({ url, link, commitId, start, live, merged = false }: { read
           </button>
         ))}
       </div>
-      <iframe ref={frame} key={load.count} src={target(load.path)} title={live ? "Live app" : "Preview"} className="min-h-[320px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+      <PreviewFrame
+        ref={frame}
+        key={load.count}
+        src={preview.ready ? target(load.path) : null}
+        title={live ? "Live app" : "Preview"}
+        load={preview.load}
+        preview={link !== null}
+        path={load.path}
+        onLoad={loaded}
+        onRetry={() => {
+          preview.retryNext();
+          open(path);
+        }}
+      />
       <p className="text-xs text-muted-foreground">
         {live
           ? `This is the live app, at ${short(commitId)}. Everything chef merges shows up here.`
