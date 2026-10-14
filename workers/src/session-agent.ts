@@ -108,6 +108,7 @@ interface TurnState {
 export class SessionAgent extends Agent<Env> {
   private exit: string | null = null;
   private busy = 0;
+  private following: string | null = null;
 
   async status(): Promise<SandboxStatus> {
     return { running: this.ctx.container?.running ?? false, exit: this.exit };
@@ -150,6 +151,7 @@ export class SessionAgent extends Agent<Env> {
     await this.ensureContainer();
     const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [], llmHost: new URL(job.llm.baseUrl).hostname, cloudflare: null };
     await this.intercept(outbound, { llmKey });
+    this.following = id;
     const turn: TurnState = { id, dir: `${TURNS_DIR}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
     const { readToken, turnId, ...visible } = job;
     void readToken;
@@ -163,7 +165,8 @@ export class SessionAgent extends Agent<Env> {
   private async follow(turn: TurnState, onEvent: (event: CoderEvent) => void, llmKey: string, seconds: number | null): Promise<TurnOutcome> {
     if (turn.done && turn.result) return { status: "done", result: turnResult(turn) };
     if (!this.ctx.container?.running) return { status: "lost" };
-    await this.intercept(turn.outbound, { llmKey });
+    if (this.following !== turn.id) await this.intercept(turn.outbound, { llmKey });
+    this.following = turn.id;
     this.busy++;
     try {
       const deadline = seconds === null ? Infinity : Date.now() + seconds * 1000;
@@ -268,6 +271,7 @@ export class SessionAgent extends Agent<Env> {
 
   private async exec(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null }): Promise<{ code: number; tail: string }> {
     const container = await this.ensureContainer();
+    this.following = null;
     await this.intercept({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cloudflare: job.cloudflare ?? null }, secrets);
     const { readToken, ...visible } = job;
     void readToken;
