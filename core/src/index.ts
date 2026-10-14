@@ -15,6 +15,7 @@ export * from "./session/cloudflare.ts";
 export type * from "./events/events.ts";
 export * from "./events/replay.ts";
 export type * from "./ports/index.ts";
+export { TurnRunning } from "./ports/coder.ts";
 export * from "./orchestrator/capabilities.ts";
 export * from "./orchestrator/orchestrator.ts";
 export * from "./orchestrator/feature-request.ts";

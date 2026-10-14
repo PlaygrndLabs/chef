@@ -61,6 +61,10 @@ A prompt routed as a question starts no session: it is answered from the memory 
 
 A failed gate or rejected review sends the session back to coding with the failure log. Budgets on attempts, tokens and time turn a session `stuck`; a stuck session blocks no other session.
 
+### Work that outlives a deploy
+
+`ProjectAgent.drive` runs in a Durable Object alarm. A deploy resets the object, and an alarm may run for at most fifteen minutes, while one coder turn often takes longer. So a coder turn does not run inside the call that starts it. Before it starts, the orchestrator saves the turn's id in the session record (`turns`, one per lane), and `SessionAgent` launches the runner as a detached process in the sandbox. The runner writes its events and result to files next to it. The alarm then follows the turn for a minute at a time (`FOLLOW_SECONDS`), passing on new events. When the minute is up and the turn is still running, the step ends with `TurnRunning` and `drive` comes back a second later. A step that starts after a deploy, a reset or an alarm timeout finds the saved turn and follows the same process from the last event it passed on, or takes its result when it has finished. The work is not started again. If the sandbox itself was replaced, that turn starts over with a notice in its activity. The session becomes `stuck` with the reason when this happens three times, or when a turn runs past ninety minutes, so a session never waits silently. Checks, previews and model calls are short and simply run again when a reset interrupts them.
+
 ## Isolation
 
 - Artifacts tokens are per repo, so each session has its own fork. The orchestrator holds the fork's write token; the coder receives a read token only.

@@ -3,7 +3,7 @@ import { applyChanges, changedPaths, diffTrees, type Author, type Commit, type F
 import { NOTES_NAMESPACE, PROOF_NAMESPACE, parseNote, renderNote, type TurnNote } from "../notes/notes.ts";
 import type { CheckResult, CheckRunner, ProofRecord, ProofRunner } from "../ports/check-runner.ts";
 import type { Classifier } from "../ports/classifier.ts";
-import type { Coder } from "../ports/coder.ts";
+import { TurnRunning, type Coder, type CoderEvent, type CoderTurnResult } from "../ports/coder.ts";
 import type { EventBus } from "../ports/event-bus.ts";
 import { chorePlan, choreId, withTestItem, type Plan, type Planner, type SplitPart, type WorkItem } from "../ports/planner.ts";
 import type { PreviewHost } from "../ports/preview-host.ts";
@@ -17,7 +17,7 @@ import { DEFAULT_ROUTER_CONFIG, Router, withoutCommand, type RouterConfig } from
 import { chatContext, needsCompacting, plainSummary, readChatMemory, renderConversation, splitForCompacting, type ChatMemory } from "../router/conversation.ts";
 import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type RejectionRule, type SessionEvent } from "../session/machine.ts";
 import { laneBrief, laneItem, laneOwner, lanesBusy, lanesNamedIn, planLanes, type Lane, type LaneLayoutFor, type LaneStatus } from "../session/lanes.ts";
-import type { SessionRecord } from "../session/record.ts";
+import type { PendingTurn, SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
@@ -505,6 +505,7 @@ export class Orchestrator {
         await (this.deps.spend ? this.deps.spend.scope(record.requestedBy ?? null, () => this.advance(record)) : this.advance(record));
         if (await this.deps.store.get<number | null>(`retry/${id}`)) await this.deps.store.put(`retry/${id}`, null);
       } catch (error) {
+        if (error instanceof TurnRunning) return await this.save(record);
         const retries = (await this.deps.store.get<number | null>(`retry/${id}`)) ?? 0;
         if (transient(error) && retries < TRANSIENT_RETRIES) {
           await this.deps.store.put(`retry/${id}`, retries + 1);
@@ -1257,6 +1258,16 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, lane?.head ?? record.head);
     const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
     const scope = scopeFor(profile, feature);
+    const tag = lane ? { lane: lane.role } : {};
+    const onEvent = (event: CoderEvent) => void this.emit({ type: "coder.event", sessionId: record.id, featureId: record.featureId, event, ...tag });
+    const slot = lane?.role ?? MAIN_TURN;
+    const pending = record.turns?.[slot];
+    let restarts = 0;
+    if (pending?.item === item.id && this.deps.coder.resumeTurn) {
+      const resumed = await this.resumeTurn(record, slot, pending, onEvent);
+      if (resumed) return { head, feature, scope, prompt: resumed.prompt, result: resumed.result };
+      restarts = pending.restarts + 1;
+    }
     const guidance = await this.guidance();
     const agent = customAgent(profile, record.featureId, scope, guidance);
     const readToken = await this.deps.repos.createToken(record.fork, "read", this.ttl);
@@ -1268,7 +1279,7 @@ export class Orchestrator {
     const notes = steering.length ? `A person added notes for this turn:\n${steering.map((n) => `- ${n}`).join("\n")}` : null;
     const brief = lane && record.lanes ? laneBrief(lane, record.lanes, record.plan.items, record.featureId) : null;
     const prompt = [item.prompt, brief, feedback, notes, renderEnvironment(await this.environment(), feature), renderRecall(recalled)].filter(Boolean).join("\n\n");
-    const tag = lane ? { lane: lane.role } : {};
+    const turnId = this.deps.coder.resumeTurn ? await this.holdTurn(record, slot, { id: this.deps.ids.next("turn"), item: item.id, startedAt: this.deps.clock.now(), restarts }, prompt) : undefined;
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: item.role, kind: item.kind, model: profile.model, ...tag });
     if (lane) await this.laneUpdate(record, lane, "working");
     let result;
@@ -1284,13 +1295,54 @@ export class Orchestrator {
         agent,
         attempt: { index: record.attempt.index, of: record.attempt.of },
         ...tag,
+        ...(turnId ? { turnId } : {}),
         workspace: { repo: record.fork, remote: info?.remote ?? "", ref: lane?.branch ?? "main", commitId: head.id, readToken: readToken.secret, tree: head.tree },
-        onEvent: (event) => void this.emit({ type: "coder.event", sessionId: record.id, featureId: record.featureId, event, ...tag }),
+        onEvent,
       });
+    } catch (error) {
+      if (!(error instanceof TurnRunning)) this.dropTurn(record, slot);
+      throw error;
     } finally {
       await this.deps.repos.revokeToken(readToken);
     }
+    this.dropTurn(record, slot);
     return { head, feature, scope, prompt, result };
+  }
+
+  private async holdTurn(record: SessionRecord, slot: string, turn: PendingTurn, prompt: string): Promise<string> {
+    record.turns = { ...(record.turns ?? {}), [slot]: turn };
+    await this.deps.store.put(`turn/${record.id}/${slot}`, { id: turn.id, prompt });
+    await this.save(record);
+    return turn.id;
+  }
+
+  private dropTurn(record: SessionRecord, slot: string): void {
+    if (!record.turns?.[slot]) return;
+    const { [slot]: _dropped, ...rest } = record.turns;
+    record.turns = Object.keys(rest).length ? rest : null;
+  }
+
+  private async resumeTurn(record: SessionRecord, slot: string, turn: PendingTurn, onEvent: (event: CoderEvent) => void): Promise<{ readonly result: CoderTurnResult; readonly prompt: string } | null> {
+    const resume = this.deps.coder.resumeTurn;
+    if (!resume) return null;
+    const held = await this.deps.store.get<{ id: string; prompt: string } | null>(`turn/${record.id}/${slot}`);
+    const prompt = held?.id === turn.id ? held.prompt : "";
+    if (this.deps.clock.now() - turn.startedAt > TURN_LIMIT_MS) {
+      this.dropTurn(record, slot);
+      throw new Error(`the ${slot === MAIN_TURN ? "coder" : slot} turn ran for over ${TURN_LIMIT_MS / 60_000} minutes without finishing`);
+    }
+    let result: CoderTurnResult | null;
+    try {
+      result = await resume.call(this.deps.coder, { turnId: turn.id, sessionId: record.id, ...(slot === MAIN_TURN ? {} : { lane: slot }), onEvent });
+    } catch (error) {
+      if (!(error instanceof TurnRunning)) this.dropTurn(record, slot);
+      throw error;
+    }
+    this.dropTurn(record, slot);
+    if (result) return { result, prompt };
+    if (turn.restarts + 1 >= TURN_RESTARTS) throw new Error(`the sandbox stopped ${TURN_RESTARTS} times while this turn was running`);
+    onEvent({ type: "session.error", message: "The sandbox stopped while this turn was running, so the turn starts again." });
+    return null;
   }
 
   private async finishTurn(record: SessionRecord, item: WorkItem, turn: StartedTurn, lane?: Lane): Promise<"committed" | "empty" | "rejected"> {
@@ -1586,6 +1638,9 @@ export function specProblems(tree: Tree): string[] {
 }
 
 const TRANSIENT_RETRIES = 5;
+const MAIN_TURN = "main";
+const TURN_LIMIT_MS = 90 * 60_000;
+const TURN_RESTARTS = 3;
 
 export function transient(error: unknown): boolean {
   if ((error as { retryable?: unknown } | null)?.retryable === true) return true;

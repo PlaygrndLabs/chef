@@ -4,6 +4,13 @@ import type { RouteDecision } from "../router/decision.ts";
 import type { Lane } from "./lanes.ts";
 import type { MachineState } from "./machine.ts";
 
+export interface PendingTurn {
+  readonly id: string;
+  readonly item: string;
+  readonly startedAt: number;
+  readonly restarts: number;
+}
+
 export interface SessionRecord {
   readonly id: string;
   readonly project: string;
@@ -35,6 +42,7 @@ export interface SessionRecord {
   readonly requestedBy?: string;
   overBudget?: string | null;
   lanes?: Lane[] | null;
+  turns?: Record<string, PendingTurn> | null;
   released?: MachineState["state"] | null;
   forkDeleted?: boolean;
   createdAt: number;
