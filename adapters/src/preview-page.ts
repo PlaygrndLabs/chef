@@ -16,3 +16,11 @@ export function previewPath(raw: string | null): string {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//") || /[\s\\]/.test(raw)) return "";
   return raw.slice(0, 300);
 }
+
+export type PreviewAnswer = { readonly status: "ready"; readonly url: string; readonly commitId: string } | { readonly status: "building"; readonly since: number } | { readonly status: "failed"; readonly error: string } | { readonly status: "missing" };
+
+export function previewResponse(state: PreviewAnswer, input: { readonly key: string; readonly path: string; readonly asState: boolean; readonly now: number }): Response {
+  if (input.asState) return Response.json(state.status === "building" ? { ...state, elapsedMs: Math.max(0, input.now - state.since) } : state, { headers: { "cache-control": "no-store" } });
+  if (state.status === "ready") return new Response(null, { status: 302, headers: { location: `${state.url.replace(/\/$/, "")}${input.path}`, "cache-control": "no-store" } });
+  return buildingPage({ status: state.status, key: input.key, ...(state.status === "failed" ? { error: state.error } : {}) });
+}

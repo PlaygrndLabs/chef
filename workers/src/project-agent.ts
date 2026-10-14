@@ -24,7 +24,7 @@ import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxLiveHost, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
-import { buildingPage, previewPath } from "@chef/adapters/preview-page";
+import { previewPath, previewResponse, type PreviewAnswer } from "@chef/adapters/preview-page";
 import { CloudflareWorkerSpace, WorkerTakenError } from "./preview-space.ts";
 import { homeOrigin, ORIGIN_HEADER } from "./access.ts";
 import { publicOrigin } from "./github-pages.ts";
@@ -155,7 +155,7 @@ export class ProjectAgent extends Agent<Env> {
       return response;
     }
     const preview = PREVIEW_ROUTE.exec(url.pathname);
-    if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")));
+    if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")), url.searchParams.has("state"));
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
     if (action === "env" && url.pathname.endsWith(`/projects/${this.name}/env`)) return this.envRequest(request);
     if (action === "instructions" && url.pathname.endsWith(`/projects/${this.name}/instructions`)) return instructionsRequest(request, await this.guidanceHost());
@@ -316,19 +316,19 @@ export class ProjectAgent extends Agent<Env> {
     });
   }
 
-  private async previewRequest(key: string, retry: boolean, path: string): Promise<Response> {
+  private async previewRequest(key: string, retry: boolean, path: string, asState: boolean): Promise<Response> {
+    return previewResponse(await this.previewState(key, retry), { key, path, asState, now: Date.now() });
+  }
+
+  private async previewState(key: string, retry: boolean): Promise<PreviewAnswer> {
     const { keeper } = await this.build();
-    if (!keeper) return buildingPage({ status: "failed", key, error: NO_CLOUDFLARE });
+    if (!keeper) return { status: "failed", error: NO_CLOUDFLARE };
     let visit = await keeper.visit(key);
     if (visit.status === "failed" && retry) visit = { status: "rebuild" };
-    if (visit.status === "ready") return new Response(null, { status: 302, headers: { location: `${visit.url.replace(/\/$/, "")}${path}`, "cache-control": "no-store" } });
-    if (visit.status === "rebuild") {
-      await keeper.startRebuild(key);
-      await this.schedule(0, "rebuildPreview", key);
-      return buildingPage({ status: "building", key });
-    }
-    if (visit.status === "failed") return buildingPage({ status: "failed", key, error: visit.error });
-    return buildingPage({ status: visit.status, key });
+    if (visit.status !== "rebuild") return visit;
+    await keeper.startRebuild(key);
+    await this.schedule(0, "rebuildPreview", key);
+    return { status: "building", since: Date.now() };
   }
 
   async rebuildPreview(key: string): Promise<void> {

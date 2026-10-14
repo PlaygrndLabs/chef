@@ -32,9 +32,11 @@ export interface TourReport {
   readonly setup: string[];
   finished: boolean;
   featureRoute?: number;
+  readonly previewLoads: { readonly name: string; readonly loadedMs: number | null; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
 }
 
 const SETTLE_MS = 15_000;
+const PREVIEW_LOAD_MS = 120_000;
 const ROUTE_PROMPT = "Add a way to mark items as done";
 
 async function signIn(page: Page, url: string, password: string | undefined): Promise<void> {
@@ -86,7 +88,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
   const { chromium } = await import("playwright");
   mkdirSync(options.out, { recursive: true });
   const base = options.url.replace(/\/$/, "");
-  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false };
+  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, previewLoads: [] };
   const browser: Browser = await chromium.launch();
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
@@ -118,6 +120,32 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       report.shots.push(file);
       options.log(`shot ${file}`);
     };
+    const watchLoad = async (url: string, name: string) => {
+      const started = Date.now();
+      await go(url);
+      const timeline: { ms: number; phase: string; steps: string }[] = [];
+      let loadedMs: number | null = null;
+      let last = "";
+      while (Date.now() - started < PREVIEW_LOAD_MS) {
+        const phase = (await page.locator("[data-preview-load]").first().getAttribute("data-preview-load", { timeout: 100 }).catch(() => null)) ?? "none";
+        const steps = (await page.locator("[data-preview-load] [data-step]").allInnerTexts().catch(() => [] as string[])).map((step) => step.replace(/\s+/g, " ").trim()).join(" / ");
+        if (`${phase}|${steps}` !== last) {
+          last = `${phase}|${steps}`;
+          timeline.push({ ms: Date.now() - started, phase, steps });
+          const file = `${String(++n).padStart(3, "0")}-${name}-${phase}.png`;
+          await page.screenshot({ path: join(options.out, file) });
+          report.shots.push(file);
+        }
+        if (phase === "none" && (await page.locator("iframe").count()) > 0) {
+          loadedMs ??= Date.now() - started;
+          if (Date.now() - started - loadedMs > 1500) break;
+        } else loadedMs = null;
+        await page.waitForTimeout(200);
+      }
+      report.previewLoads.push({ name, loadedMs, timeline });
+      options.log(`${name}: ${loadedMs === null ? "did not load" : `loaded after ${loadedMs} ms`}; ${timeline.map((t) => `${t.ms}ms ${t.phase}`).join(", ")}`);
+      await shot(`${name}-loaded`);
+    };
     await signIn(page, `${base}/`, options.password);
     await shot("start");
     const agents = await json<{ version: number; roles: { role: string }[]; skills: unknown[] }>(page, "/api/agents").catch((error: unknown) => {
@@ -142,6 +170,9 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     }
     await go(`/?project=${project}`);
     await shot(`open-${project}`);
+    const opened = (await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[])).at(-1);
+    if (opened) await watchLoad(`/?project=${project}&feature=${opened.featureId}&session=${opened.id}&panel=preview`, "preview-load");
+    await watchLoad(`/?project=${project}&view=live`, "live-load");
     const routed = await json<{ intent: string; via: string; classifier?: { model: string; accepted: boolean } | null }>(page, `/api/projects/${project}/route`, { method: "POST", data: { prompt: ROUTE_PROMPT } }).catch((error: unknown) => {
       report.errors.push(`route ${error instanceof Error ? error.message : String(error)}`);
       return null;
