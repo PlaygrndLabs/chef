@@ -91,6 +91,8 @@ const STATUS = "status";
 const ADMIN = "admin";
 const REMOVAL_JOB = "removal-job";
 const REMOVAL = "removal";
+const TICKET = "backoffice-ticket";
+const TICKET_MS = 60_000;
 const MAX_LOG = 400;
 const INSTANCE = "standard-2";
 
@@ -132,6 +134,22 @@ export class Member extends DurableObject<Env> {
 
   async admin(): Promise<boolean> {
     return (await this.ctx.storage.get<boolean>(ADMIN)) === true;
+  }
+
+  async email(): Promise<string | null> {
+    return (await this.ctx.storage.get<Profile>(PROFILE))?.email ?? null;
+  }
+
+  async backofficeTicket(): Promise<string> {
+    const value = randomToken();
+    await this.ctx.storage.put(TICKET, { value, expiresAt: Date.now() + TICKET_MS });
+    return value;
+  }
+
+  async redeemTicket(value: string): Promise<boolean> {
+    const ticket = await this.ctx.storage.get<{ value: string; expiresAt: number }>(TICKET);
+    await this.ctx.storage.delete(TICKET);
+    return ticket !== undefined && ticket.value === value && ticket.expiresAt > Date.now();
   }
 
   async accounts(): Promise<AccountView[] | null> {
@@ -350,7 +368,7 @@ export class Member extends DurableObject<Env> {
       for (let waited = 0; !container.running && !exited && waited < 90_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
       if (!container.running) throw new Error(`the installer did not start${exited ? `: ${exited}` : ""}`);
     }
-    const payload = { accountId: job.accountId, name: job.name, password: job.secret, token: grant.token, source: { image: this.env.SANDBOX_IMAGE, ...source } };
+    const payload = { accountId: job.accountId, name: job.name, password: job.secret, site: this.env.SITE_URL ?? null, token: grant.token, source: { image: this.env.SANDBOX_IMAGE, ...source } };
     let url: string | null = null;
     try {
       const process = await container.exec(["node", "/opt/chef/site/installer/install.mjs"], { env: { CHEF_JOB: toBase64(JSON.stringify(payload)) }, stdout: "pipe", stderr: "combined" });

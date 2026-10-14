@@ -134,7 +134,7 @@ export class LlmPlanner implements Planner {
       system: this.system,
       effort: "low",
       schema: AnswerSchema,
-      prompt: `Project memory:\n\n${context || "(empty)"}\n\nQuestion:\n${input.question}\n\nAnswer in a few sentences using only the project memory above, and name the files you used. If the memory does not answer it, say so.`,
+      prompt: `Project memory and the current builds:\n\n${context || "(empty)"}\n\nQuestion:\n${input.question}\n\nAnswer in a few sentences using only what is above, in the language of the question, and name the files you used. For why a build failed, explain its "What failed" in plain words. If nothing above answers it, say so.`,
     });
     return result.answer;
   }

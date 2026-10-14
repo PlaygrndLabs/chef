@@ -32,6 +32,7 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
   const member = (name: string) => ({
     signIn: async (profile: unknown, grant: unknown, admin: unknown, org: unknown, removing?: boolean) => void fake.calls.push({ name, method: "signIn", arg: { profile, grant, admin, org, ...(removing ? { removing } : {}) } }),
     admin: async () => fake.admins.includes(name),
+    backofficeTicket: async () => (fake.calls.push({ name, method: "backofficeTicket" }), `ticket-${fake.calls.filter((c) => c.method === "backofficeTicket").length}`),
     view: async () => ({ email: "sam@example.com", admin: fake.admins.includes(name), canSetUp: true, install: null }),
     accounts: async () => [{ id: "a1", name: "Mine", plan: "paid", subdomain: "mine" }],
     status: async () => ({ status: "idle" }),
@@ -238,15 +239,18 @@ describe("chef site", () => {
     expect(response.headers.get("set-cookie")).toContain("chef_session=; Path=/; Max-Age=0");
   });
 
-  it("shows members only to PlaygrndLabs admins", async () => {
-    const admin = fakeEnv({ admins: ["boss"] }).env;
-    expect((await handle(new Request(`${origin}/admin`, { headers: { cookie: await session() } }), admin)).headers.get("location")).toBe("/");
-    expect((await handle(new Request(`${origin}/admin`), admin)).headers.get("location")).toBe("/");
-    expect(await (await handle(new Request(`${origin}/admin`, { headers: { cookie: await session("boss") } }), admin)).text()).toBe("asset /admin");
-    expect((await handle(new Request(`${origin}/site/api/admin/members`, { headers: { cookie: await session() } }), admin)).status).toBe(403);
-    const list = await handle(new Request(`${origin}/site/api/admin/members`, { headers: { cookie: await session("boss") } }), admin);
-    expect(await list.json()).toEqual({ latest: "v2", users: [{ id: "user1", email: "sam@example.com" }], orgs: [] });
+  it("sends only PlaygrndLabs admins to the backoffice, with a one-time ticket", async () => {
+    const { env: admin, fake } = fakeEnv({ admins: ["boss"] });
+    const withBackoffice = { ...admin, BACKOFFICE_URL: "https://chef-backoffice.example.workers.dev" } as Env;
+    expect((await handle(new Request(`${origin}/backoffice`, { headers: { cookie: await session() } }), withBackoffice)).headers.get("location")).toBe("/");
+    expect((await handle(new Request(`${origin}/backoffice`), withBackoffice)).headers.get("location")).toBe("/");
+    expect((await handle(new Request(`${origin}/backoffice`, { headers: { cookie: await session("boss") } }), admin)).headers.get("location")).toBe("/");
+    const sent = await handle(new Request(`${origin}/backoffice`, { headers: { cookie: await session("boss") } }), withBackoffice);
+    expect(sent.headers.get("location")).toBe("https://chef-backoffice.example.workers.dev/auth/callback?ticket=boss.ticket-1");
+    expect(fake.calls).toContainEqual({ name: "boss", method: "backofficeTicket" });
+    expect((await handle(new Request(`${origin}/site/api/admin/members`, { headers: { cookie: await session("boss") } }), admin)).status).toBe(404);
   });
+
   it("lets only an owner delete an organization, after typing its name, and lists what goes", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ projects: [{ name: "shop" }, { name: "blog" }] })));
     const engine = { ...ENGINE, name: "chef-acme-x7k2", accountId: "acc" };
