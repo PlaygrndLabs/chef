@@ -12,39 +12,31 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
+      CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: List Cloudflare resources
-        working-directory: workers
+      - name: Probe notes2
         run: |
           set -uo pipefail
-          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
-          get() { curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1"; }
-          echo "## Workers"
-          get "workers/workers?per_page=100" | jq -r '.result[]? | "\(.name)\ttags=\((.tags // []) | join(","))\tcreated=\(.created_on // "")"'
-          echo "## Worker scripts"
-          get "workers/scripts" | jq -r '.result[]? | "\(.id)\tmodified=\(.modified_on // "")"'
-          echo "## Workflows"
-          get "workflows?per_page=100" | jq -r '.result[]? | "\(.name)\tscript=\(.script_name)"'
-          echo "## Durable Object namespaces"
-          get "workers/durable_objects/namespaces?per_page=1000" | jq -r '.result[]? | "\(.id)\tscript=\(.script // "")\tclass=\(.class // "")"'
-          echo "## Container applications"
-          get "containers/applications" | jq -r '.result[]? | "\(.id)\t\(.name)\tnamespace=\(.durable_objects.namespace_id // "")"'
-          echo "## Vectorize indexes"
-          get "vectorize/v2/indexes" | jq -r '.result[]? | .name'
-          echo "## KV namespaces"
-          get "storage/kv/namespaces?per_page=100" | jq -r '.result[]? | "\(.id)\t\(.title)"'
-          echo "## R2 buckets"
-          get "r2/buckets" | jq -r '.result.buckets[]? | .name'
-          echo "## Pages projects"
-          get "pages/projects" | jq -r '.result[]? | .name'
-          echo "## Artifacts"
-          for ns in $(npx wrangler artifacts namespaces list --json 2>/dev/null | jq -r '(if type == "array" then . else (.namespaces // .result // []) end)[] | .name // empty'); do
-            echo "namespace $ns: $(npx wrangler artifacts repos list --namespace "$ns" --json 2>/dev/null | jq -r '[(if type == "array" then . else (.repos // .result // []) end)[] | .name // empty] | join(" ")')"
-          done
+          auth="authorization: Bearer $CHEF_PASSWORD"
+          api="$CHEF_URL/api/projects/notes2"
+          echo "## sessions"
+          curl -sS -m 60 -H "$auth" "$api/sessions" > s.json
+          jq -c '.[] | {id, featureId, state: .machine.state, reason: .machine.reason, lanes: [(.lanes // [])[] | {role, state: (.state // null)}], head, needs, overBudget, syncPending, updatedAt, items: [(.workItems // .plan.items // [])[]? | {id, kind, role, status}]}' s.json | cut -c1-3000
+          echo "## events tail"
+          curl -sS -m 60 -H "$auth" "$api/events?after=0" > e.json
+          jq 'length' e.json
+          jq -r '.[-150:][] | select(.event.type != "assistant.message_delta") | "\(.seq) \(.at // .event.at // "") \(.event.type) \(.event.sessionId // "") \(.event.role // "") \(.event.from // "")->\(.event.to // "") \(.event.reason // .event.message // .event.summary // .event.toolName // "" | tostring | .[0:300])"' e.json
+          echo "## telemetry"
+          now=$(date +%s000)
+          from=$(date -d '2026-10-14T17:50:00Z' +%s000)
+          to=$(date -d '2026-10-14T19:20:00Z' +%s000)
+          body=$(jq -n --argjson from "$from" --argjson to "$to" '{queryId: "probe", timeframe: {from: $from, to: $to}, view: "events", limit: 2000, parameters: {filters: [{key: "$metadata.service", operation: "eq", type: "string", value: "chef-dev"}]}}')
+          curl -sS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'content-type: application/json' -d "$body" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/observability/telemetry/query" > t.json
+          jq -c '{success, errors, keys: (.result | keys? // null)}' t.json | cut -c1-2000
+          jq -r '(.result.events.events // [])[] | [(.timestamp|tostring), (.["$metadata"].level // ""), (.["$metadata"].type // ""), ((.["$workers"].entrypoint // .["$workers"].scriptName // "")|tostring), ((.["$metadata"].message // .["$metadata"].error // "") | tostring | .[0:600])] | @tsv' t.json | sort | grep -v -i "^$" | tail -1500
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe
+          path: "*.json"
