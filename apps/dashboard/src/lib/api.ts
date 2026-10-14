@@ -121,8 +121,19 @@ export interface UpdateState {
 const CLOUD: AppMode = { engine: null };
 const json = (method: string, body: unknown): RequestInit => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
+async function appMode(tries = 3): Promise<AppMode> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call<AppMode>("/api/app");
+    } catch {
+      if (attempt >= tries) return CLOUD;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 700));
+    }
+  }
+}
+
 export const appApi = {
-  get: () => call<AppMode>("/api/app").catch(() => CLOUD),
+  get: () => appMode(),
 };
 
 export const updateApi = {
