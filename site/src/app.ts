@@ -1,10 +1,11 @@
 import { directory, member as memberOf, oauthClient, organization, type Env } from "./env.ts";
 import { API, authorizeUrl, canSeeAccount, cookies, decodePending, encodePending, OAUTH_COOKIE, randomToken, readGrant, readInstall, readProfile, readSession, SESSION_COOKIE, SESSION_SECONDS, setCookie, signSession, tokenRequest, type OAuthClient, type Session } from "./oauth.ts";
-import { needsUpdate, type Engine } from "./member.ts";
+import { needsUpdate } from "./member.ts";
 import type { OrgAccess } from "./organization.ts";
 import { engineRule } from "./access.ts";
 import { atLeast, can, engineLabel, isId, isLevel, isRole, readEmail, readOrgName, type OrgSummary } from "./orgs.ts";
 import { ENGINE_PATH, proxy } from "./proxy.ts";
+import { engineProjects } from "./engine.ts";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(body, { status, headers: { "cache-control": "no-store", ...headers } });
 const redirect = (location: string, setCookies: readonly string[] = []) => {
@@ -20,12 +21,6 @@ const readJson = (text: string): unknown => {
   }
 };
 const HOME_PATHS = new Set(["/", "/index.html", "/setup", "/remove", "/api/app"]);
-
-async function engineProjects(engine: Engine): Promise<string[] | null> {
-  const response = await fetch(`${engine.url}/api/projects`, { headers: { authorization: `Bearer ${engine.secret}` } }).catch(() => null);
-  const body = (response?.ok ? await response.json().catch(() => null) : null) as { projects?: readonly { name?: unknown }[] } | null;
-  return Array.isArray(body?.projects) ? body.projects.flatMap((p) => (typeof p?.name === "string" ? [p.name] : [])) : null;
-}
 
 const page = (env: Env, request: Request, path: string) => env.ASSETS.fetch(new Request(new URL(path, request.url), { headers: request.headers }));
 const sessionCookie = async (client: OAuthClient, session: Session) => setCookie(SESSION_COOKIE, await signSession(client.clientSecret, session, Date.now()), SESSION_SECONDS);
@@ -97,10 +92,6 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       return json({ ...view, canSetUp, engine: current?.engine ?? null, org: current, orgs, accounts: canSetUp && !view.install ? await member.accounts() : [] });
     }
     if (path === "/site/api/install" && request.method === "GET") return json(await member.status());
-    if (path === "/site/api/admin/members" && request.method === "GET") {
-      if (!(await member.admin())) return json({ error: "only PlaygrndLabs admins can see members" }, 403);
-      return json(await directory(env).list());
-    }
     if (path === "/site/api/install" && request.method === "POST") {
       if (!can(role, "setup")) return json({ error: "only owners and admins of this organization can set up chef" }, 403);
       if (await org.removing()) return json({ error: "chef is being removed from this organization" }, 409);
@@ -278,7 +269,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === "/setup") return (await access()) ? page(env, request, "/setup") : redirect("/");
   if (path === "/remove") return (await access()) ? page(env, request, "/remove") : redirect("/");
-  if (path === "/admin") return member && (await access()) && (await member.admin()) ? page(env, request, "/admin") : redirect("/");
+  if (path === "/backoffice") {
+    if (!session || !member || !env.BACKOFFICE_URL || !(await access()) || !(await member.admin())) return redirect("/");
+    return redirect(`${env.BACKOFFICE_URL}/auth/callback?ticket=${session.userId}.${await member.backofficeTicket()}`);
+  }
   if (path === "/app" || path === "/app.html") return redirect("/");
 
   return env.ASSETS.fetch(request);
