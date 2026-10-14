@@ -283,6 +283,25 @@ function OrgSection(props: { readonly org: OrgView }) {
   );
 }
 
+function RemoveSection(props: { readonly org: OrgView }) {
+  if (props.org.role !== "owner" || (props.org.personal && !props.org.engine)) return null;
+  const title = props.org.personal ? "Uninstall chef" : "Delete organization";
+  const note = props.org.personal
+    ? "Removes chef and all its projects, live apps and previews from your Cloudflare account. Personal and your account stay, so you can set chef up again."
+    : "Removes chef and all its projects, live apps and previews from the Cloudflare account this organization uses, then deletes the organization for everyone in it. People keep their own accounts.";
+  return (
+    <Group title={title} note={note}>
+      <div>
+        <Button asChild size="sm" variant="destructive">
+          <a href="/remove" data-action="remove-org">
+            {title}…
+          </a>
+        </Button>
+      </div>
+    </Group>
+  );
+}
+
 function ThemeChoice() {
   const { theme, setTheme } = useTheme();
   return (
@@ -400,6 +419,7 @@ export function SettingsDialog(props: {
           {hosted ? <AccountSection account={mode?.account ?? null} admin={mode?.admin === true} /> : null}
           {hosted && mode?.org ? <OrgSection org={mode.org} /> : null}
           {hosted && mode?.org && !mode.org.personal ? <MembersSection org={mode.org} /> : null}
+          {hosted && mode?.org ? <RemoveSection org={mode.org} /> : null}
           {settings && !hosted ? (
             <Group title="Password" note="Changing it signs out every other browser and script.">
               <PasswordForm settings={settings} save={save} />

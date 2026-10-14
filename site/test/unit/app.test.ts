@@ -30,13 +30,16 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
     return state?.projects?.[project]?.[userId] ?? null;
   };
   const member = (name: string) => ({
-    signIn: async (profile: unknown, grant: unknown, admin: unknown, org: unknown) => void fake.calls.push({ name, method: "signIn", arg: { profile, grant, admin, org } }),
+    signIn: async (profile: unknown, grant: unknown, admin: unknown, org: unknown, removing?: boolean) => void fake.calls.push({ name, method: "signIn", arg: { profile, grant, admin, org, ...(removing ? { removing } : {}) } }),
     admin: async () => fake.admins.includes(name),
     view: async () => ({ email: "sam@example.com", admin: fake.admins.includes(name), canSetUp: true, install: null }),
     accounts: async () => [{ id: "a1", name: "Mine", plan: "paid", subdomain: "mine" }],
     status: async () => ({ status: "idle" }),
     install: async (arg: unknown) => (fake.calls.push({ name, method: "install", arg }), { status: "running" }),
     dismiss: async () => undefined,
+    removal: async () => null,
+    remove: async (arg: unknown) => (fake.calls.push({ name, method: "remove", arg }), { status: "running" }),
+    dismissRemoval: async () => undefined,
   });
   const org = (id: string) => ({
     setup: async (info: { name: string }, who: { userId: string; role: Role }) => {
@@ -57,6 +60,7 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
     rename: async (name: string) => void ((fake.orgs[id] as OrgState).name = name),
     engine: async () => fake.orgs[id]?.engine ?? null,
     setEngine: async (engine: OrgState["engine"]) => void ((fake.orgs[id] as OrgState).engine = engine),
+    removing: async () => false,
   });
   const dir = {
     signIn: async (identity: { subject: string; email: string }, admin: boolean) => {
@@ -64,6 +68,7 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
       return { userId: "usr_new", org: { id: "org_new", name: "Personal", role: "owner", personal: true, plan: "free" }, orgs: [{ id: "org_new", name: "Personal", role: "owner", personal: true, plan: "free" }], joined: [] };
     },
     orgs: async (userId: string) => summaries(userId),
+    home: async (userId: string) => summaries(userId).find((o) => o.personal) ?? null,
     createOrg: async (userId: string, name: string) => (fake.calls.push({ name: "directory", method: "createOrg", arg: { userId, name } }), { id: "org2", name, role: "owner", personal: false, plan: "free" }),
     use: async (userId: string, orgId: string) => summaries(userId).find((o) => o.id === orgId) ?? null,
     renameOrg: async (orgId: string, name: string) => void fake.calls.push({ name: "directory", method: "renameOrg", arg: { orgId, name } }),
@@ -141,7 +146,9 @@ describe("chef site", () => {
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin } }), env)).status).toBe(401);
     const forged = `chef_session=${await signSession("not-ours", { userId: "user1", orgId: "org1" }, Date.now())}`;
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: forged } }), env)).status).toBe(401);
-    expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session("user1", "someone-elses") } }), env)).status).toBe(401);
+    const gone = await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session("user1", "someone-elses") } }), env);
+    expect(gone.status).toBe(409);
+    expect(gone.headers.get("set-cookie")).toMatch(/^chef_session=user1\.org1\./);
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session() } }), env)).status).toBe(202);
     expect(fake.calls).toEqual([{ name: "user1", method: "install", arg: { orgId: "org1", orgName: "sam", accountId: "0123456789abcdef0123456789abcdef", engine: null } }]);
     const plain = fakeEnv({ role: "member" });
@@ -229,5 +236,56 @@ describe("chef site", () => {
     expect((await handle(new Request(`${origin}/site/api/admin/members`, { headers: { cookie: await session() } }), admin)).status).toBe(403);
     const list = await handle(new Request(`${origin}/site/api/admin/members`, { headers: { cookie: await session("boss") } }), admin);
     expect(await list.json()).toEqual({ latest: "v2", users: [{ id: "user1", email: "sam@example.com" }], orgs: [] });
+  });
+  it("lets only an owner delete an organization, after typing its name, and lists what goes", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ projects: [{ name: "shop" }, { name: "blog" }] })));
+    const engine = { ...ENGINE, name: "chef-acme-x7k2", accountId: "acc" };
+    const { env, fake } = fakeEnv();
+    fake.orgs["org2"] = { name: "Acme", engine, members: { user1: "owner", kim: "admin" } };
+    const owner = await session("user1", "org2");
+    const plan = await handle(new Request(`${origin}/site/api/remove`, { headers: { cookie: owner } }), env);
+    expect(await plan.json()).toMatchObject({ allowed: true, signedIn: true, engine: { name: "chef-acme-x7k2", accountId: "acc", url: ENGINE.url }, projects: ["shop", "blog"], removal: null });
+    const admin = await handle(new Request(`${origin}/site/api/remove`, { headers: { cookie: await session("kim", "org2") } }), env);
+    expect(await admin.json()).toMatchObject({ allowed: false, engine: null, projects: null });
+    expect((await handle(send("/site/api/remove", "POST", { confirm: "Acme" }, await session("kim", "org2")), env)).status).toBe(403);
+    expect((await handle(send("/site/api/remove", "POST", { confirm: "acme" }, owner), env)).status).toBe(400);
+    expect((await handle(send("/site/api/remove", "POST", {}, owner), env)).status).toBe(400);
+    expect((await handle(send("/site/api/remove", "POST", { confirm: "Acme" }, owner), env)).status).toBe(202);
+    expect(fake.calls.filter((c) => c.method === "remove")).toEqual([{ name: "user1", method: "remove", arg: { orgId: "org2", orgName: "Acme", personal: false, engine, projects: ["shop", "blog"] } }]);
+  });
+
+  it("offers an uninstall for Personal only when chef is set up there", async () => {
+    const { env, fake } = fakeEnv();
+    expect((await handle(send("/site/api/remove", "POST", { confirm: "Personal" }, await session()), env)).status).toBe(400);
+    (fake.orgs["org1"] as OrgState).engine = { ...ENGINE, accountId: "acc" };
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ projects: [] })));
+    expect((await handle(send("/site/api/remove", "POST", { confirm: "Personal" }, await session()), env)).status).toBe(202);
+    expect(fake.calls.find((c) => c.method === "remove")?.arg).toMatchObject({ orgId: "org1", personal: true, projects: [] });
+  });
+
+  it("takes people back to Personal once their organization is gone", async () => {
+    const { env } = fakeEnv();
+    const cookie = await session("user1", "org_gone");
+    for (const path of ["/", "/remove", "/site/api/remove"]) {
+      const response = await handle(new Request(`${origin}${path}`, { headers: { cookie } }), env);
+      expect(response.headers.get("location")).toBe(path);
+      expect(response.headers.get("set-cookie")).toMatch(/^chef_session=user1\.org1\./);
+    }
+    expect(await (await handle(new Request(`${origin}/remove`, { headers: { cookie: await session() } }), env)).text()).toBe("asset /remove");
+  });
+
+  it("keeps the Cloudflare sign-in an owner makes to remove chef until removal starts", async () => {
+    const start = await handle(new Request(`${origin}/auth/start?then=remove`), fakeEnv().env);
+    expect(start.headers.get("set-cookie")).toMatch(/^chef_oauth=[\w-]+\.[\w-]+\.remove;/);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const target = String(input);
+      if (target.endsWith("/user")) return Response.json({ result: { id: "cfuser", email: "sam@example.com" } });
+      if (target.includes("/accounts")) return Response.json({ result: [] });
+      return Response.json({ access_token: "tok", expires_in: 600 });
+    }));
+    const { env, fake } = fakeEnv();
+    const response = await handle(new Request(`${origin}/auth/callback?code=c&state=mine`, { headers: { cookie: "chef_oauth=mine.verifier.remove" } }), env);
+    expect(response.headers.get("location")).toBe("/remove");
+    expect(fake.calls.find((c) => c.method === "signIn" && c.name === "usr_new")?.arg).toMatchObject({ removing: true });
   });
 });

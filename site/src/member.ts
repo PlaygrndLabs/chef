@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { directory, oauthClient, organization, type Env } from "./env.ts";
 import { API, planFrom, randomToken, revokeRequest, type Granted, type Plan, type Profile } from "./oauth.ts";
 import { engineName } from "./orgs.ts";
+import { summary, Uninstaller } from "./uninstall.ts";
 
 export interface Engine {
   readonly name: string;
@@ -51,6 +52,28 @@ export interface InstallJob {
   readonly engine: Engine | null;
 }
 
+export type RemoveStepId = "find" | "engine" | "apps" | "data" | "org";
+
+export interface RemovalStatus {
+  readonly orgId: string;
+  readonly orgName: string;
+  readonly personal: boolean;
+  readonly accountId: string | null;
+  readonly status: "running" | "done" | "failed";
+  readonly steps: Readonly<Record<RemoveStepId, StepState>>;
+  readonly log: readonly string[];
+  readonly error: string | null;
+  readonly left: readonly string[];
+}
+
+export interface RemovalJob {
+  readonly orgId: string;
+  readonly orgName: string;
+  readonly personal: boolean;
+  readonly engine: Engine | null;
+  readonly projects: readonly string[] | null;
+}
+
 interface Job {
   readonly orgId: string;
   readonly name: string;
@@ -64,6 +87,8 @@ const TOKEN = "token";
 const JOB = "job";
 const STATUS = "status";
 const ADMIN = "admin";
+const REMOVAL_JOB = "removal-job";
+const REMOVAL = "removal";
 const MAX_LOG = 400;
 const INSTANCE = "standard-2";
 
@@ -75,13 +100,17 @@ interface Envelope<T> {
 }
 
 export class Member extends DurableObject<Env> {
-  async signIn(profile: Profile, grant: Granted, admin: boolean, org: OrgContext): Promise<void> {
+  async signIn(profile: Profile, grant: Granted, admin: boolean, org: OrgContext, removing = false): Promise<void> {
     await this.ctx.storage.put(PROFILE, profile);
     await this.ctx.storage.put(TOKEN, grant);
     await this.ctx.storage.put(ADMIN, admin);
     const engine = org.engine;
-    const running = (await this.status()).status === "running";
+    const running = (await this.status()).status === "running" || (await this.removal())?.status === "running";
     if (!running) await this.ctx.storage.delete(STATUS);
+    if (removing && !running) {
+      await this.ctx.storage.setAlarm(grant.expiresAt);
+      return;
+    }
     if (engine && !running && org.canSetUp && this.env.ENGINE_VERSION && (engine.version !== this.env.ENGINE_VERSION || engine.previews === false) && this.ready()) {
       await this.start({ orgId: org.id, name: engine.name, accountId: engine.accountId, secret: engine.secret, update: true });
       return;
@@ -126,6 +155,7 @@ export class Member extends DurableObject<Env> {
   async install(request: InstallJob): Promise<InstallStatus | string> {
     const current = await this.status();
     if (current.status === "running") return current;
+    if ((await this.removal())?.status === "running") return "chef is being removed; wait until that finishes";
     if (!this.ready()) return "setup is not available right now";
     const grant = await this.grant();
     if (!grant) return "your Cloudflare sign-in has ended; sign in again";
@@ -146,7 +176,61 @@ export class Member extends DurableObject<Env> {
     if (status.status !== "running") await this.ctx.storage.delete(STATUS);
   }
 
+  async removal(): Promise<RemovalStatus | null> {
+    return (await this.ctx.storage.get<RemovalStatus>(REMOVAL)) ?? null;
+  }
+
+  async dismissRemoval(): Promise<void> {
+    if ((await this.removal())?.status !== "running") await this.ctx.storage.delete(REMOVAL);
+  }
+
+  async remove(job: RemovalJob): Promise<RemovalStatus | string> {
+    const current = await this.removal();
+    if (current?.status === "running") return current.orgId === job.orgId ? current : "chef is already removing another organization; wait until that finishes";
+    if ((await this.status()).status === "running") return "chef is being set up; wait until that finishes";
+    const status: RemovalStatus = {
+      orgId: job.orgId,
+      orgName: job.orgName,
+      personal: job.personal,
+      accountId: job.engine?.accountId ?? null,
+      status: "running",
+      steps: { find: "waiting", engine: "waiting", apps: "waiting", data: "waiting", org: "waiting" },
+      log: [],
+      error: null,
+      left: [],
+    };
+    if (!job.engine) {
+      await this.ctx.storage.put(REMOVAL, { ...status, steps: { find: "skipped", engine: "skipped", apps: "skipped", data: "skipped", org: "running" } });
+      await this.removeRecords(job);
+      await this.changeRemoval((s) => ({ ...s, status: "done", steps: { ...s.steps, org: "done" }, log: [...s.log, `removed ${job.orgName} from chef`] }));
+      return (await this.removal()) as RemovalStatus;
+    }
+    if (!(await this.grant())) return "sign in with Cloudflare again so chef can reach your account";
+    await this.ctx.storage.put(REMOVAL_JOB, job);
+    await this.ctx.storage.put(REMOVAL, status);
+    await organization(this.env, job.orgId).setRemoving(true);
+    await this.ctx.storage.setAlarm(Date.now());
+    return status;
+  }
+
   override async alarm(): Promise<void> {
+    const removal = await this.ctx.storage.get<RemovalJob>(REMOVAL_JOB);
+    if (removal) {
+      await this.ctx.storage.delete(REMOVAL_JOB);
+      try {
+        await this.runRemoval(removal);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.changeRemoval((s) => ({
+          ...s,
+          status: "failed",
+          error: message,
+          steps: Object.fromEntries(Object.entries(s.steps).map(([id, state]) => [id, state === "running" ? "failed" : state])) as RemovalStatus["steps"],
+          log: [...s.log, message].slice(-MAX_LOG),
+        }));
+        await organization(this.env, removal.orgId).setRemoving(false).catch(() => undefined);
+      }
+    }
     const job = await this.ctx.storage.get<Job>(JOB);
     if (job) {
       await this.ctx.storage.delete(JOB);
@@ -158,6 +242,63 @@ export class Member extends DurableObject<Env> {
       await this.report(job);
     }
     await this.forgetToken();
+  }
+
+  private async runRemoval(job: RemovalJob): Promise<void> {
+    const engine = job.engine as Engine;
+    const grant = await this.grant();
+    if (!grant) throw new Error("your Cloudflare sign-in ended before chef could start; sign in again");
+    const log = (line: string) => this.changeRemoval((s) => ({ ...s, log: [...s.log, redact(line)].slice(-MAX_LOG) }));
+    const mark = (id: RemoveStepId, state: StepState) => this.changeRemoval((s) => ({ ...s, steps: { ...s.steps, [id]: state } }));
+    await mark("find", "running");
+    const tool = new Uninstaller(grant.token, {
+      accountId: engine.accountId,
+      engine: engine.name,
+      projects: job.projects,
+      ownAccount: engine.accountId === this.env.CF_ACCOUNT_ID,
+    });
+    const found = await tool.find();
+    const plan = summary(found);
+    await log(plan.length > 0 ? `found what chef made for ${job.orgName} on Cloudflare account ${engine.accountId}:` : `chef found nothing of its own left on Cloudflare account ${engine.accountId}`);
+    for (const line of plan) await log(`  ${line}`);
+    await mark("find", "done");
+    let current: RemoveStepId | null = null;
+    const outcome = await tool.remove(found, (line) => void log(line), async (id) => {
+      if (current) await mark(current, "done");
+      current = id;
+      await mark(id, "running");
+    });
+    await this.flush();
+    if (outcome.failed.length > 0) throw new Error(`chef could not remove everything yet: ${outcome.failed.join("; ")}. Nothing outside ${job.orgName} was touched. Sign in and try again; chef picks up where it stopped.`);
+    if (current) await mark(current, "done");
+    await mark("org", "running");
+    await this.removeRecords(job);
+    await this.changeRemoval((s) => ({ ...s, status: "done", left: outcome.left, steps: { ...s.steps, org: "done" }, log: [...s.log, job.personal ? "Personal is ready to set chef up again" : `removed ${job.orgName} from chef`] }));
+  }
+
+  private async removeRecords(job: RemovalJob): Promise<void> {
+    const org = organization(this.env, job.orgId);
+    if (job.personal) {
+      await org.reset();
+      await directory(this.env).recordSetup(job.orgId, { accountId: null, engine: null, version: null, install: "idle", error: null });
+    } else {
+      await org.erase();
+      await directory(this.env).deleteOrg(job.orgId);
+    }
+  }
+
+  private pending: Promise<void> = Promise.resolve();
+
+  private changeRemoval(change: (status: RemovalStatus) => RemovalStatus): Promise<void> {
+    this.pending = this.pending.then(async () => {
+      const current = await this.removal();
+      if (current) await this.ctx.storage.put(REMOVAL, change(current));
+    }).catch(() => undefined);
+    return this.pending;
+  }
+
+  private flush(): Promise<void> {
+    return this.pending;
   }
 
   private ready(): boolean {

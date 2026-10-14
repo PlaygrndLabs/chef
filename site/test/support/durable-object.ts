@@ -44,6 +44,10 @@ export class FakeStorage {
   async delete(key: string): Promise<boolean> {
     return this.values.delete(key);
   }
+  alarm: number | null = null;
+  async setAlarm(at: number): Promise<void> {
+    this.alarm = at;
+  }
 }
 
 export class DurableObject<Env = unknown> {

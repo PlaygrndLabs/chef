@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remove chef</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="chef home"><img class="light" src="/chef-logo.svg" alt="chef" width="105" height="30"><img class="dark" src="/chef-logo-dark.svg" alt="" width="105" height="30"></a>
+    <nav class="links"><a class="btn btn-outline btn-sm" href="/">Back to chef</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="panel">
+    <div id="loading"><p class="muted">Loading…</p></div>
+
+    <div id="not-owner" hidden>
+      <h1 id="not-owner-title">Only owners can do this</h1>
+      <p class="sub muted" id="not-owner-sub"></p>
+      <a class="btn btn-outline" href="/">Back to chef</a>
+    </div>
+
+    <div id="nothing" hidden>
+      <h1>Nothing to uninstall</h1>
+      <p class="sub muted">chef is not set up in Personal, so there is nothing on Cloudflare to remove. Your account stays as it is; chef doesn't delete accounts.</p>
+      <a class="btn btn-outline" href="/">Back to chef</a>
+    </div>
+
+    <form id="confirm" hidden>
+      <p class="label" id="confirm-label">Delete organization</p>
+      <h1 id="confirm-title"></h1>
+      <p class="sub muted" id="confirm-sub"></p>
+      <p class="label">What goes</p>
+      <ul class="removes" id="goes"></ul>
+      <p class="label">What stays</p>
+      <ul class="removes keeps" id="stays"></ul>
+      <div class="box" id="sign-in" hidden>
+        <p>chef doesn't keep access to your Cloudflare account after setup, so sign in once more to let it remove itself. On Cloudflare's page, share the account <span class="mono" id="sign-in-account"></span>.</p>
+        <a class="btn btn-cf" href="/auth/start?then=remove">Sign in with Cloudflare</a>
+      </div>
+      <label class="field"><span id="type-label"></span><input id="typed" autocomplete="off" spellcheck="false"></label>
+      <p class="error" id="form-error" role="alert"></p>
+      <button class="btn btn-danger" id="go" type="submit" disabled></button>
+    </form>
+
+    <div id="removing" hidden>
+      <p class="label" id="removing-label">Removing</p>
+      <h1 id="removing-title"></h1>
+      <p class="sub muted" id="removing-sub">Keep this page open. Each step shows what chef removes.</p>
+      <ol class="progress" id="steps">
+        <li data-step="find" data-state="waiting"><span class="dot"></span>Find what chef made</li>
+        <li data-step="engine" data-state="waiting"><span class="dot"></span>Remove chef's engine and sandboxes</li>
+        <li data-step="apps" data-state="waiting"><span class="dot"></span>Remove projects, live apps and previews</li>
+        <li data-step="data" data-state="waiting"><span class="dot"></span>Remove repos, memory, token and image</li>
+        <li data-step="org" data-state="waiting"><span class="dot" ></span><span id="org-step">Delete the organization</span></li>
+      </ol>
+      <p class="error" id="remove-error" role="alert"></p>
+      <div class="box" id="left" hidden>
+        <p>chef could not check or remove these. Remove them in your Cloudflare dashboard if you no longer want them:</p>
+        <ul class="removes" id="left-list"></ul>
+      </div>
+      <div class="actions" style="justify-content:flex-start">
+        <button class="btn btn-primary" id="finish" type="button" hidden>Back to chef</button>
+        <a class="btn btn-primary" id="retry" href="/auth/start?then=remove" hidden>Sign in and try again</a>
+        <button class="btn btn-outline" id="toggle-log" type="button">Hide log</button>
+      </div>
+      <pre class="log" id="log"></pre>
+    </div>
+  </div>
+</main>
+<script src="/remove.js" defer></script>
+</body>
+</html>
