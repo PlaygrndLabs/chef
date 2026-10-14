@@ -11,6 +11,7 @@ export interface HostAccount {
   readonly title: string;
   readonly subtitle: string;
   readonly heading: string;
+  readonly notice?: string;
 }
 
 export interface HostPerson {
