@@ -284,6 +284,7 @@ dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-s
 .signin-close:hover { color: var(--foreground); background: var(--muted); }
 .signin-plan { margin: 22px 0 8px; border-top: 1px dashed var(--dash); }
 .signin-plan div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; padding: 20px 0; border-bottom: 1px dashed var(--dash); }
+.signin-plan div:last-child { border-bottom: 0; }
 .signin-plan dt { padding-top: 4px; font: 12px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
 .signin-plan dd { margin: 0; font-size: 17px; line-height: 1.55; }
 .btn-xl { height: 60px; padding: 0 28px; font-size: 18px; }
