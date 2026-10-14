@@ -20,7 +20,7 @@ const BADGE: Readonly<Record<Tone, string>> = {
 };
 
 export function StatusDot({ tone, className }: { readonly tone: Tone; readonly className?: string }) {
-  return <span aria-hidden="true" className={cn("inline-block size-2 shrink-0 rounded-full", DOT[tone], className)} />;
+  return <span aria-hidden="true" className={cn("inline-block size-2 shrink-0", DOT[tone], className)} />;
 }
 
 export function ToneBadge({ tone, children, className }: { readonly tone: Tone; readonly children: React.ReactNode; readonly className?: string }) {
@@ -51,7 +51,7 @@ const PILL: Readonly<Record<Tone, string>> = {
 export function StatusPill({ status, className }: { readonly status: FeatureStatus; readonly className?: string }) {
   const tone = FEATURE_TONE[status];
   return (
-    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium whitespace-nowrap", PILL[tone], className)}>
+    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 px-2.5 text-xs font-medium whitespace-nowrap", PILL[tone], className)}>
       <StatusDot tone={tone} />
       {FEATURE_LABEL[status]}
     </span>
