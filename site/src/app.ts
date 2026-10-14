@@ -234,7 +234,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === "/api/app" && request.method === "GET" && session && org && member && (await access())) {
-    const [view, current, orgs, engine, updating, later, signedIn] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId), org.engine(), org.updating(), member.askedLater(), access()]);
+    const [view, current, orgs, engine, updating, later, signedIn] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId), org.engine(), org.updating().catch(() => false), member.askedLater().catch(() => false), access()]);
     const canUpdate = view.canSetUp && signedIn !== null && can(signedIn.role, "setup");
     const update = updating ? { running: true, canUpdate, ask: false } : needsUpdate(engine, env.ENGINE_VERSION) ? { running: false, canUpdate, ask: canUpdate && !later } : null;
     return json({ engine: url.origin, account: view.email, org: current, orgs, update, ...(view.admin ? { admin: true } : {}) });

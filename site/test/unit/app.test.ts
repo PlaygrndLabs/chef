@@ -17,6 +17,7 @@ interface Fake {
   orgs: Record<string, OrgState>;
   admins: string[];
   later?: boolean;
+  stale?: boolean;
   calls: { name: string; method: string; arg?: unknown }[];
 }
 
@@ -44,7 +45,10 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
     remove: async (arg: unknown) => (fake.calls.push({ name, method: "remove", arg }), { status: "running" }),
     dismissRemoval: async () => undefined,
     later: async () => void (fake.later = true),
-    askedLater: async () => fake.later === true,
+    askedLater: async () => {
+      if (fake.stale) throw new Error('The RPC receiver does not implement the method "askedLater".');
+      return fake.later === true;
+    },
   });
   const org = (id: string) => ({
     setup: async (info: { name: string }, who: { userId: string; role: Role }) => {
@@ -209,6 +213,14 @@ describe("chef site", () => {
     expect((await handle(new Request(`${origin}/site/api/orgs`, { headers: { cookie } }), env)).status).toBe(200);
     (fake.orgs["org1"] as OrgState).members["kim"] = "member";
     expect((await handle(send("/site/api/update", "POST", {}, await session("kim")), env)).status).toBe(403);
+  });
+
+  it("still tells the app who is signed in while a deploy leaves an older object answering", async () => {
+    const { env, fake } = fakeEnv({ engine: ENGINE });
+    fake.stale = true;
+    const mode = await handle(new Request(`${origin}/api/app`, { headers: { cookie: await session() } }), env);
+    expect(mode.status).toBe(200);
+    expect(await mode.json()).toMatchObject({ account: "sam@example.com", org: { id: "org1" } });
   });
 
   it("shows each person only the projects they may open and holds them to their level", async () => {

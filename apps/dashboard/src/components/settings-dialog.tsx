@@ -327,7 +327,7 @@ export function SettingsDialog(props: {
       id: "general",
       label: "General",
       icon: SlidersHorizontal,
-      note: "How chef looks and who can open it.",
+      note: hosted ? "How chef looks, your account and your workspace." : "How chef looks and who can open it.",
       render: () => (
         <>
           <Group title="Theme">
