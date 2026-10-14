@@ -92,13 +92,13 @@ describe("the main chat's memory", () => {
     expect((await w.orchestrator.chatMemory()).turns.map((t) => t.prompt)).toEqual([TODO, "Let people delete an item"]);
     const contexts = w.bus.log.filter((e) => e.type === "chat.context");
     expect(contexts).toHaveLength(2);
-    expect(contexts.at(-1)).toMatchObject({ turns: 2, summarized: 0, limit: 8000 });
+    expect(contexts.at(-1)).toMatchObject({ turns: 2, summarized: 0, limit: 160_000 });
   });
 
   it("summarizes older messages when the chat fills up", async () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]) });
     await w.orchestrator.bootstrap(templateTree());
-    for (let i = 0; i < 40; i++) await w.orchestrator.submit(`/chore Tidy part ${i} of the docs ${"so it reads better ".repeat(40)}`);
+    for (let i = 0; i < 40; i++) await w.orchestrator.submit(`/chore Tidy part ${i} of the docs ${"so it reads better ".repeat(1100)}`);
     const memory = await w.orchestrator.chatMemory();
     expect(memory.summary).toContain("Tidy part 0");
     expect(w.planner.compacted.length).toBeGreaterThan(0);
