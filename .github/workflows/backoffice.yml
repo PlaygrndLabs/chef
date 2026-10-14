@@ -49,13 +49,13 @@ jobs:
           set -euo pipefail
           host=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r .result.subdomain)
           url="https://chef-backoffice.$host.workers.dev"
-          for attempt in 1 2 3 4 5 6; do
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
             code=$(curl -sS -o /dev/null -w "%{http_code}" "$url/api/directory" || true)
-            [ "$code" = "401" ] && break
+            location=$(curl -sS -o /dev/null -w "%{redirect_url}" "$url/" || true)
+            [ "$code" = "401" ] && [ "$location" = "$url/auth/start" ] && break
+            echo "not ready yet: /api/directory answered $code, / sent visitors to '$location'"
             sleep 10
           done
           [ "$code" = "401" ] || { echo "::error::$url/api/directory answered $code instead of 401"; exit 1; }
-          location=$(curl -sS -o /dev/null -w "%{redirect_url}" "$url/")
-          echo "$url sends visitors to $location"
           [ "$location" = "$url/auth/start" ] || { echo "::error::$url/ did not send a signed-out visitor to sign in"; exit 1; }
           echo "::notice::The backoffice is at $url"
