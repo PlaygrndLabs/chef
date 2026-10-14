@@ -521,7 +521,7 @@ export class ProjectAgent extends Agent<Env> {
     const call = this.calls.get(connection.id);
     if (!call) return;
     this.calls.delete(connection.id);
-    await (await call)?.connection.close();
+    await (await call)?.hangUp();
   }
 
   private async startVoice(connection: Connection, by: string | null): Promise<VoiceCall | null> {
