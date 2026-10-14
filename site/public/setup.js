@@ -97,6 +97,7 @@ async function load() {
   }
   if (me.engine) return location.assign("/");
   if (me.org && !me.org.personal) $("choose-title").textContent = `Set up chef for ${me.org.name}`;
+  $("delete-org").hidden = !(me.org && !me.org.personal && me.org.role === "owner");
   if (me.org?.role === "member") {
     $("ask-owner-sub").textContent = `chef isn't set up for ${me.org.name} yet. Ask an owner or admin of the organization to set it up, then open chef again.`;
     return show("ask-owner");
