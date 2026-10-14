@@ -74,7 +74,6 @@ const consent = dialog.querySelector(".consent");
 const card = dialog.querySelector(".cfc");
 const art = dialog.querySelector(".consent-art");
 
-// A hand-drawn arrow from (sx, sy) to (ex, ey): a curve with a small loop on the way, like a pen note in a margin.
 function arrow(sx, sy, ex, ey, loop) {
   const dx = ex - sx;
   const dy = ey - sy;

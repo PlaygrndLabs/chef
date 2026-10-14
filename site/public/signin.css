@@ -41,7 +41,6 @@ dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-s
 .signin-plan dt { padding-top: 4px; font: 12px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
 .signin-plan dd { margin: 0; font-size: 17px; line-height: 1.55; }
 
-/* Step 2: Cloudflare's consent card, drawn the way Cloudflare draws it, with hand-written notes around it. */
 .consent { position: relative; padding: 18px 0 6px; }
 .consent-art { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .consent-art path { fill: none; stroke: var(--ink); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -107,7 +106,6 @@ dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-s
 .signin-revoke svg { display: inline-block; width: 14px; height: 14px; margin-left: 4px; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 2; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* Narrow screens: the card goes full width and each note sits under the permission it explains. */
 .consent.stacked .cfc { width: min(100%, 560px); }
 .consent.stacked .cfc-scopes { flex-direction: column; flex-wrap: nowrap; gap: 0; padding: 0 16px 14px; }
 .consent.stacked .cfc-scopes li { padding: 2px 0 10px; }
