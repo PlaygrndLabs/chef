@@ -211,3 +211,17 @@ pre.log { max-height: 320px; overflow: auto; background: var(--muted); border-ra
 .table .badge:first-child { margin-left: 0; }
 .small { font-size: 12px; margin-top: 2px; }
 .table .error { min-height: 0; margin: 4px 0 0; }
+
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { opacity: 0.9; }
+.label { font: 500 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); margin: 0 0 8px; }
+.removes { list-style: none; padding: 0; margin: 0 0 22px; border-top: 1px dashed var(--border); }
+.removes li { padding: 10px 0; border-bottom: 1px dashed var(--border); font-size: 15px; display: flex; gap: 10px; align-items: baseline; }
+.removes li::before { content: ""; width: 6px; height: 6px; background: var(--danger); flex: none; transform: translateY(-2px); }
+.removes.keeps li::before { background: var(--success); }
+.removes code, .mono { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.removes .sub-list { color: var(--muted-foreground); font-size: 14px; }
+.box { border: 1px solid var(--border); background: var(--card); padding: 16px; margin: 0 0 20px; }
+.box p { margin: 0 0 12px; font-size: 15px; }
+.box p:last-child { margin-bottom: 0; }
+.danger-text { color: var(--danger); }
