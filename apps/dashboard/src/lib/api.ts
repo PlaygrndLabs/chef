@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, LiveStatus, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, LiveStatus, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionHistory, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -364,6 +364,8 @@ export function projectApi(project: string) {
     session: (id: string) => call<{ record: SessionRecord; budget: Budget }>(`${base}/sessions/${id}`),
     turns: (id: string) => call<SessionTurn[]>(`${base}/sessions/${id}/turns`),
     changes: (id: string) => call<SessionChanges>(`${base}/sessions/${id}/changes`),
+    sessionHistory: (id: string) => call<SessionHistory>(`${base}/sessions/${id}/history`),
+    sessionCommit: (id: string, commit: string) => call<CommitChanges>(`${base}/sessions/${id}/history/${commit}`),
     cloudflare: (id: string) => call<CloudflareView>(`${base}/sessions/${id}/cloudflare`),
     drop: (id: string, reason: string) => call<{ state: string }>(`${base}/sessions/${id}/drop`, post({ reason })),
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),

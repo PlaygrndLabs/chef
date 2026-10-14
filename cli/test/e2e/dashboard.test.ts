@@ -66,7 +66,9 @@ describe("dashboard in a browser", () => {
       await page.getByRole("tab", { name: "Checks" }).click();
       await page.getByRole("tabpanel", { name: "Checks" }).locator('[data-check][data-ok="true"]').first().waitFor({ timeout: 10_000 });
       await page.getByRole("tab", { name: "Changes" }).click();
-      await expect.poll(() => page.getByRole("tabpanel", { name: "Changes" }).innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");
+      const branch = page.getByRole("tabpanel", { name: "Changes" });
+      await branch.locator('[data-commit=":all"]').click();
+      await expect.poll(() => branch.innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");
       expect(await page.getByRole("separator", { name: "Resize the chat" }).count()).toBe(1);
       await page.getByRole("button", { name: "Open large" }).click();
       await page.getByRole("dialog").getByRole("tabpanel", { name: "Changes" }).waitFor({ timeout: 10_000 });

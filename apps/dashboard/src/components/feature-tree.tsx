@@ -20,6 +20,7 @@ function toneOf(node: SessionNode): Tone {
 function stateText(node: SessionNode): string {
   if (waitsForKey(node)) return "Needs a key";
   if (heldBy(node)) return "Waiting";
+  if (node.state === "merged" && node.into) return "Done";
   return PLAIN_STATE[node.state];
 }
 

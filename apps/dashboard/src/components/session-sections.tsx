@@ -12,7 +12,7 @@ import { isActive } from "@/lib/events";
 import { ago, duration, previewHost, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
-import type { FeatureNode, SessionNode } from "@/lib/model";
+import { type FeatureNode, nodeStatus, type SessionNode } from "@/lib/model";
 import { addressPath, entryPage, frameReport, pageChips, step, visit, type AppPage, type Trail } from "@/lib/preview";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
@@ -44,7 +44,7 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, link, commitId, start, live, merged = false }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly start: string; readonly live: boolean; readonly merged?: boolean }) {
+function PreviewTab({ url, link, commitId, start, live, merged = false, done = false }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly start: string; readonly live: boolean; readonly merged?: boolean; readonly done?: boolean }) {
   const [trail, setTrail] = useState<Trail>({ entries: [start], index: 0 });
   const [load, setLoad] = useState({ path: start, count: 0 });
   const [pages, setPages] = useState<readonly AppPage[]>([]);
@@ -143,9 +143,11 @@ function PreviewTab({ url, link, commitId, start, live, merged = false }: { read
       <p className="text-xs text-muted-foreground">
         {live
           ? `This is the live app, at ${short(commitId)}. Everything Chef merges shows up here.`
-          : merged
-            ? `This is the app as this session left it, at ${short(commitId)}. Its work is live now; the live app shows it together with everything else Chef merged. It sleeps when nobody opens it for a while and wakes up on the next visit.`
-            : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
+          : done
+            ? `This is the app as this session left it, at ${short(commitId)}. Its work is on the branch it was built on and goes live together with it. It sleeps when nobody opens it for a while and wakes up on the next visit.`
+            : merged
+              ? `This is the app as this session left it, at ${short(commitId)}. Its work is live now; the live app shows it together with everything else Chef merged. It sleeps when nobody opens it for a while and wakes up on the next visit.`
+              : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
       </p>
     </div>
   );
@@ -263,28 +265,6 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
   );
 }
 
-export function ChangesTab({ node }: { readonly node: SessionNode }) {
-  const { api } = useWorkspace();
-  const head = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
-  const changes = useFetch(() => api.changes(node.id), `${node.id}:${head}:${node.state}`, node.id);
-  if (changes.loading && !changes.data) return <Skeleton className="h-40" />;
-  if (changes.error) return <Empty>{changes.error}</Empty>;
-  const files = changes.data?.files ?? [];
-  if (!files.length) return <Empty>No code has changed yet.</Empty>;
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">
-        {files.length} {files.length === 1 ? "file" : "files"} changed compared with the live app.
-      </p>
-      <div className="overflow-hidden rounded-xl border">
-        {files.map((f) => (
-          <FileDiff key={f.path} path={f.path} before={f.before} after={f.after} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function Meter({ label, value, max, text }: { readonly label: string; readonly value: number; readonly max: number; readonly text: string }) {
   const pct = max ? Math.min(100, Math.round((value / max) * 100)) : 0;
   return (
@@ -390,7 +370,7 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
 
 export function SessionPreview({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
   const preview = node?.live?.preview ?? node?.record?.preview ?? feature.preview ?? null;
-  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} start={entryPage(feature.spec?.entrypoint) ?? "/"} live={false} merged={node?.state === "merged"} />;
+  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} start={entryPage(feature.spec?.entrypoint) ?? "/"} live={false} merged={node?.state === "merged"} done={node ? nodeStatus(node) === "done" : false} />;
 }
 
 export function LiveApp() {

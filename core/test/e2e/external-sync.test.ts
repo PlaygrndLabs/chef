@@ -46,7 +46,7 @@ describe("an optional external git link", () => {
     expect(remote.pushes.every((p) => p.branch !== "main")).toBe(true);
   });
 
-  it("merges new commits on the linked main into Artifacts main and marks running sessions for sync", async () => {
+  it("merges new commits on the linked main into Artifacts main, and a running session takes them only when it is done", async () => {
     const { w, remote, sync } = await linked();
     await sync.pull();
     const id = (await w.orchestrator.submit(PROMPT)).sessionId as string;
@@ -58,7 +58,10 @@ describe("an optional external git link", () => {
     const main = await w.orchestrator.mainTree();
     expect(main.tree["docs/notes.md"]).toBe("written outside Chef\n");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect((await w.orchestrator.session(id)).syncPending).toBe(true);
+    expect((await w.orchestrator.session(id)).syncPending).toBe(false);
+    await w.orchestrator.step(id);
+    const working = await w.orchestrator.session(id);
+    expect((await w.repos.readCommit(working.fork, working.head as string))?.tree["docs/notes.md"]).toBeUndefined();
     const record = await w.orchestrator.run(id);
     expect(record.machine.state).toBe("merged");
     expect((await w.orchestrator.mainTree()).tree["docs/notes.md"]).toBe("written outside Chef\n");

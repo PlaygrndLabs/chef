@@ -29,7 +29,9 @@ export interface SessionRecord {
   verdict: (ReviewVerdict & { commitId: string }) | null;
   lastCodeItem: string | null;
   syncPending: boolean;
-  merge: { commitId: string; mainBefore: string } | null;
+  merge: { commitId: string; mainBefore: string; into?: string } | null;
+  upstream?: string | null;
+  upstreamBase?: string | null;
   readonly attempt: { readonly group: string; readonly index: number; readonly of: number };
   readonly kind?: "feature" | "chore";
   readonly hotfix?: boolean;

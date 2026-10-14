@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, HISTORY_ROUTE, historyResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, agentsOf, cloudflareView, previewBranch, previewName, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
+import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, SessionPump, agentsOf, cloudflareView, previewBranch, previewName, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { newToken } from "@chef/core/access";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
@@ -65,15 +65,9 @@ export async function serve(options: { readonly port: number; readonly project?:
   const cipher = await aesCipher(envKeyBytes(newEnvKey()));
   const w = localWorld({ script: script(), presets: presets(), splits: splits(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), instructions: async () => instructions?.text ?? "", ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
   await w.orchestrator.bootstrap(templateTree());
-  let driving: Promise<void> | null = null;
-  const drive = () => {
-    driving ??= (async () => {
-      while ((await w.orchestrator.sessions()).some(runnable)) await w.orchestrator.drain(1);
-    })()
-      .catch((error: unknown) => log(`drive failed: ${error instanceof Error ? error.message : String(error)}`))
-      .finally(() => {
-        driving = null;
-      });
+  const pump = new SessionPump();
+  const drive = (): void => {
+    pump.kick(w.orchestrator, () => setTimeout(drive, 10)).catch((error: unknown) => log(`drive failed: ${error instanceof Error ? error.message : String(error)}`));
   };
   const link: ChefLink = {
     cursor: async () => w.bus.log.length,
@@ -268,6 +262,8 @@ export async function serve(options: { readonly port: number; readonly project?:
         const main = await w.orchestrator.mainTree();
         return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await w.orchestrator.layout() });
       }
+      const sessionHistory = SESSION_HISTORY_ROUTE.exec(url.pathname);
+      if (sessionHistory && request.method === "GET") return sessionHistoryResponse(w.orchestrator, sessionHistory[1] as string, sessionHistory[2] ?? null);
       const history = HISTORY_ROUTE.exec(url.pathname);
       if (history && request.method === "GET") return historyResponse(w.orchestrator, history[1] ?? null, url.searchParams.get("limit"));
       const feature = FEATURE_ROUTE.exec(url.pathname);

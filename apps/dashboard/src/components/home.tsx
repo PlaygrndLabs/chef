@@ -8,7 +8,7 @@ import { LivePanel } from "@/components/live-talk";
 import { ChatSkeleton } from "@/components/loading";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/status";
-import { statusOf, waitsForBudget, waitsForKey, type FeatureStatus, type SessionNode } from "@/lib/model";
+import { nodeStatus, waitsForBudget, waitsForKey, type FeatureStatus, type SessionNode } from "@/lib/model";
 import { activity, stripFeatureTag } from "@/lib/progress";
 import { isActive } from "@/lib/events";
 import type { OverviewState, Suggestion } from "@/lib/api";
@@ -56,26 +56,26 @@ export function FeatureCard({ node }: { readonly node: SessionNode }) {
   const { features, openSession } = useWorkspace();
   const title = features.find((f) => f.id === node.featureId)?.title ?? node.record?.plan.feature.title ?? node.featureId;
   const tries = node.attempt && node.attempt.of > 1 && isActive(node.state) ? `Trying ${node.attempt.of} ways at once · ` : "";
-  const line = waitsForBudget(node) ? `Paused. ${waitsForBudget(node)}` : waitsForKey(node) ? `Needs ${node.needs.join(", ")}. Open it to add ${node.needs.length === 1 ? "the key" : "the keys"}.` : `${tries}${activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null)}`;
+  const line = waitsForBudget(node) ? `Paused. ${waitsForBudget(node)}` : waitsForKey(node) ? `Needs ${node.needs.join(", ")}. Open it to add ${node.needs.length === 1 ? "the key" : "the keys"}.` : `${tries}${node.state === "merged" && node.into ? "Passed every check. It goes live together with the feature it was built on." : activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null)}`;
   return (
     <button type="button" onClick={() => openSession(node.id)} data-session={node.id} data-state={node.state} className="flex w-full items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:bg-muted/60">
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{title}</span>
         <span className="block truncate text-sm text-muted-foreground">{line}</span>
       </span>
-      <StatusPill status={statusOf(node.state)} />
+      <StatusPill status={nodeStatus(node)} />
       <ChevronRight className="size-4 text-muted-foreground" />
     </button>
   );
 }
 
-const RANK: Readonly<Record<FeatureStatus, number>> = { merged: 0, building: 1, stuck: 2, proposed: 3, dropped: 4 };
+const RANK: Readonly<Record<FeatureStatus, number>> = { merged: 0, done: 1, building: 2, stuck: 3, proposed: 4, dropped: 5 };
 
 export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
   const best = new Map<string, SessionNode>();
   for (const s of sessions) {
     const current = best.get(s.featureId);
-    if (!current || RANK[statusOf(s.state)] < RANK[statusOf(current.state)]) best.set(s.featureId, s);
+    if (!current || RANK[nodeStatus(s)] < RANK[nodeStatus(current)]) best.set(s.featureId, s);
   }
   return [...best.values()];
 }

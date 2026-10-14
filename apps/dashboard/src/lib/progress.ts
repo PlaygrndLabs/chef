@@ -243,7 +243,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         return;
       }
       case "merged":
-        list.push({ kind: "chef", key, at: item.at, icon: "live", tone: "ok", text: "Went live", detail: "", tech: [`merged into main as ${short(item.commitId)}`], mark: {} });
+        list.push(item.into ? { kind: "chef", key, at: item.at, icon: "sync", tone: "ok", text: "Done, merged into the build it branched from", detail: "", tech: [`merged into ${item.into} as ${short(item.commitId)}`], mark: {} } : { kind: "chef", key, at: item.at, icon: "live", tone: "ok", text: "Went live", detail: "", tech: [`merged into main as ${short(item.commitId)}`], mark: {} });
         step = null;
         return;
       case "stuck":

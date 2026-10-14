@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { diffLines } from "diff";
-import { ArrowLeft, ExternalLink, GitCommitHorizontal, GitMerge } from "lucide-react";
+import { ArrowLeft, ExternalLink, GitBranch, GitCommitHorizontal, GitMerge } from "lucide-react";
 import type { CommitChanges, HistoryEntry } from "@chef/core";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty } from "@/components/session-sections";
 import { roleLabel, useAgents } from "@/lib/agents";
 import { ago, short } from "@/lib/format";
+import type { SessionNode } from "@/lib/model";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -137,14 +138,74 @@ function Diff({ file }: { readonly file: FileChange }) {
   );
 }
 
-function CommitDetail({ id, onBack }: { readonly id: string; readonly onBack: () => void }) {
-  const { api, features, openFeature, selection } = useWorkspace();
-  const view = useAgents(selection.project);
-  const changes = useFetch(() => api.commit(id), id);
+function FilesPane({ files, loading }: { readonly files: readonly FileChange[]; readonly loading: boolean }) {
   const [picked, setPicked] = useState<string | null>(null);
-  const files = changes.data?.files ?? [];
   const file = files.find((f) => f.path === picked) ?? files[0] ?? null;
   const tallies = useMemo(() => new Map(files.map((f) => [f.path, counts(f)])), [files]);
+  if (!files.length)
+    return loading ? (
+      <div className="flex flex-col gap-2 p-4">
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-4 w-1/3" />
+      </div>
+    ) : null;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col @5xl:flex-row">
+      <ul className="max-h-40 shrink-0 overflow-y-auto dash-b @5xl:max-h-none @5xl:w-64 @5xl:border-r @5xl:border-b-0 @5xl:border-dashed" aria-label="Changed files">
+        {files.map((f) => {
+          const state = fileState(f);
+          const tally = tallies.get(f.path);
+          const name = f.path.split("/").at(-1) ?? f.path;
+          const dir = f.path.slice(0, f.path.length - name.length);
+          return (
+            <li key={f.path}>
+              <button type="button" onClick={() => setPicked(f.path)} aria-current={f === file ? "true" : undefined} title={`${state.title}: ${f.path}`} data-file={f.path} className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/60", f === file && "bg-muted")}>
+                <span className={cn("w-3 shrink-0 font-mono font-medium", state.tone)}>{state.letter}</span>
+                <span className="min-w-0 flex-1 truncate" dir="rtl">
+                  <bdi>
+                    <span className="text-muted-foreground">{dir}</span>
+                    {name}
+                  </bdi>
+                </span>
+                {tally ? (
+                  <span className="shrink-0 font-mono text-[11px]">
+                    <span className="text-ok">+{tally.added}</span> <span className="text-bad">−{tally.removed}</span>
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {file ? (
+          <>
+            <div className="flex h-8 shrink-0 items-center gap-2 px-3 dash-b">
+              <span className="min-w-0 truncate font-mono text-xs">{file.path}</span>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <Diff key={file.path} file={file} />
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function BackButton({ onBack }: { readonly onBack: () => void }) {
+  return (
+    <Button variant="ghost" size="icon-sm" className="-ml-2 @xl:hidden" onClick={onBack} aria-label="All commits">
+      <ArrowLeft />
+    </Button>
+  );
+}
+
+function CommitDetail({ id, load, onBack }: { readonly id: string; readonly load: (id: string) => Promise<CommitChanges>; readonly onBack: () => void }) {
+  const { features, openFeature, selection } = useWorkspace();
+  const view = useAgents(selection.project);
+  const changes = useFetch(() => load(id), id);
+  const files = changes.data?.files ?? [];
   const commit = changes.data?.commit ?? null;
   const feature = commit?.note ? features.find((f) => f.id === commit.note?.feature) : undefined;
   const [subject, ...body] = (commit?.message ?? "").split("\n");
@@ -152,9 +213,7 @@ function CommitDetail({ id, onBack }: { readonly id: string; readonly onBack: ()
     <div className="flex h-full min-h-0 flex-col" data-commit-detail={id}>
       <div className="flex shrink-0 flex-col gap-2 px-4 py-3 dash-b">
         <div className="flex items-start gap-2">
-          <Button variant="ghost" size="icon-sm" className="-ml-2 @xl:hidden" onClick={onBack} aria-label="All commits">
-            <ArrowLeft />
-          </Button>
+          <BackButton onBack={onBack} />
           {commit ? <h2 className="min-w-0 flex-1 text-sm font-medium break-words">{subject || "(no message)"}</h2> : <Skeleton className="h-5 w-2/3" />}
         </div>
         {body.join("\n").trim() ? <pre className="max-h-28 overflow-auto font-sans text-xs whitespace-pre-wrap text-muted-foreground">{body.join("\n").trim()}</pre> : null}
@@ -170,7 +229,7 @@ function CommitDetail({ id, onBack }: { readonly id: string; readonly onBack: ()
             <span>
               {files.length} {files.length === 1 ? "file" : "files"}
             </span>
-            {feature ? (
+            {feature && feature.id !== selection.feature ? (
               <button type="button" onClick={() => openFeature(feature.id)} className="inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline" data-commit-feature={feature.id}>
                 {feature.title}
                 <ExternalLink className="size-3" />
@@ -187,53 +246,96 @@ function CommitDetail({ id, onBack }: { readonly id: string; readonly onBack: ()
       </div>
       {changes.error ? <p className="p-4 text-sm text-muted-foreground">Could not load this commit: {changes.error}</p> : null}
       {changes.data && !files.length ? <p className="p-4 text-sm text-muted-foreground">This commit changed no files.</p> : null}
-      {files.length ? (
-        <div className="flex min-h-0 flex-1 flex-col @5xl:flex-row">
-          <ul className="max-h-40 shrink-0 overflow-y-auto dash-b @5xl:max-h-none @5xl:w-64 @5xl:border-r @5xl:border-b-0 @5xl:border-dashed" aria-label="Changed files">
-            {files.map((f) => {
-              const state = fileState(f);
-              const tally = tallies.get(f.path);
-              const name = f.path.split("/").at(-1) ?? f.path;
-              const dir = f.path.slice(0, f.path.length - name.length);
-              return (
-                <li key={f.path}>
-                  <button type="button" onClick={() => setPicked(f.path)} aria-current={f === file ? "true" : undefined} title={`${state.title}: ${f.path}`} data-file={f.path} className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/60", f === file && "bg-muted")}>
-                    <span className={cn("w-3 shrink-0 font-mono font-medium", state.tone)}>{state.letter}</span>
-                    <span className="min-w-0 flex-1 truncate" dir="rtl">
-                      <bdi>
-                        <span className="text-muted-foreground">{dir}</span>
-                        {name}
-                      </bdi>
-                    </span>
-                    {tally ? (
-                      <span className="shrink-0 font-mono text-[11px]">
-                        <span className="text-ok">+{tally.added}</span> <span className="text-bad">−{tally.removed}</span>
-                      </span>
-                    ) : null}
-                  </button>
+      <FilesPane files={files} loading={changes.loading} />
+    </div>
+  );
+}
+
+interface Summary {
+  readonly title: string;
+  readonly note: string;
+  readonly key: string;
+  readonly load: () => Promise<readonly FileChange[]>;
+}
+
+const SUMMARY = ":all";
+
+function SummaryDetail({ summary, onBack }: { readonly summary: Summary; readonly onBack: () => void }) {
+  const files = useFetch(summary.load, summary.key);
+  const list = files.data ?? [];
+  return (
+    <div className="flex h-full min-h-0 flex-col" data-commit-detail={SUMMARY}>
+      <div className="flex shrink-0 flex-col gap-1 px-4 py-3 dash-b">
+        <div className="flex items-start gap-2">
+          <BackButton onBack={onBack} />
+          <h2 className="min-w-0 flex-1 text-sm font-medium">{summary.title}</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">{files.data ? `${list.length} ${list.length === 1 ? "file" : "files"} ${summary.note}` : " "}</p>
+      </div>
+      {files.error ? <p className="p-4 text-sm text-muted-foreground">Could not load the changes: {files.error}</p> : null}
+      {files.data && !list.length ? <p className="p-4 text-sm text-muted-foreground">No code has changed yet.</p> : null}
+      <FilesPane files={list} loading={files.loading} />
+    </div>
+  );
+}
+
+interface GitViewProps {
+  readonly label: string;
+  readonly head: React.ReactNode;
+  readonly commits: readonly HistoryEntry[] | null;
+  readonly error: string | null;
+  readonly empty: string;
+  readonly marks?: ReadonlyMap<string, readonly Mark[]>;
+  readonly summary?: Summary;
+  readonly more?: { readonly onMore: () => void; readonly loading: boolean } | null;
+  readonly load: (id: string) => Promise<CommitChanges>;
+}
+
+function GitView({ label, head, commits, error, empty, marks, summary, more, load }: GitViewProps) {
+  const [picked, setPicked] = useState<string | null>(null);
+  const [showing, setShowing] = useState(false);
+  const list = commits ?? [];
+  const selected = picked === SUMMARY && summary ? SUMMARY : picked && list.some((c) => c.id === picked) ? picked : summary ? SUMMARY : (list[0]?.id ?? null);
+  const pick = (id: string) => {
+    setPicked(id);
+    setShowing(true);
+  };
+  if (error) return <div className="p-4"><Empty>{error}</Empty></div>;
+  if (commits && !list.length && !summary) return <div className="p-4"><Empty>{empty}</Empty></div>;
+  return (
+    <div className="@container flex h-full min-h-0" data-view="history">
+      <div className={cn("flex min-h-0 w-full flex-col @xl:w-64 @xl:shrink-0 @xl:border-r @xl:border-dashed @5xl:w-80", showing && "@max-xl:hidden")}>
+        <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-1.5 dash-b">{head}</div>
+        <ul className="min-h-0 flex-1 overflow-y-auto" aria-label={label}>
+          {summary ? (
+            <li>
+              <button type="button" onClick={() => pick(SUMMARY)} aria-current={selected === SUMMARY ? "true" : undefined} data-commit={SUMMARY} className={cn("flex w-full flex-col gap-1 px-3 py-2 text-left dash-b hover:bg-muted/60", selected === SUMMARY && "bg-muted shadow-[inset_2px_0_0_var(--brand)]")}>
+                <span className="text-[13px] font-medium">{summary.title}</span>
+                <span className="text-xs text-muted-foreground">Everything on this branch {summary.note}</span>
+              </button>
+            </li>
+          ) : null}
+          {commits
+            ? list.map((c) => <CommitRow key={c.id} entry={c} marks={marks?.get(c.id) ?? []} selected={c.id === selected} onSelect={() => pick(c.id)} />)
+            : Array.from({ length: 6 }, (_, i) => (
+                <li key={i} className="flex flex-col gap-1.5 px-3 py-2 dash-b">
+                  <Skeleton className="h-4 w-4/5" />
+                  <Skeleton className="h-3 w-1/2" />
                 </li>
-              );
-            })}
-          </ul>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {file ? (
-              <>
-                <div className="flex h-8 shrink-0 items-center gap-2 px-3 dash-b">
-                  <span className="min-w-0 truncate font-mono text-xs">{file.path}</span>
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto">
-                  <Diff key={file.path} file={file} />
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-      ) : changes.loading ? (
-        <div className="flex flex-col gap-2 p-4">
-          <Skeleton className="h-4 w-1/2" />
-          <Skeleton className="h-4 w-1/3" />
-        </div>
-      ) : null}
+              ))}
+          {commits && !list.length ? <li className="px-3 py-4 text-xs text-muted-foreground">{empty}</li> : null}
+          {more ? (
+            <li className="p-3">
+              <Button variant="outline" size="sm" className="w-full" disabled={more.loading} onClick={more.onMore}>
+                Show older commits
+              </Button>
+            </li>
+          ) : null}
+        </ul>
+      </div>
+      <div className={cn("min-h-0 min-w-0 flex-1", !showing && "@max-xl:hidden")}>
+        {selected === SUMMARY && summary ? <SummaryDetail summary={summary} onBack={() => setShowing(false)} /> : selected ? <CommitDetail key={selected} id={selected} load={load} onBack={() => setShowing(false)} /> : null}
+      </div>
     </div>
   );
 }
@@ -241,13 +343,9 @@ function CommitDetail({ id, onBack }: { readonly id: string; readonly onBack: ()
 export function HistoryView() {
   const { api, data } = useWorkspace();
   const [limit, setLimit] = useState(PAGE);
-  const [picked, setPicked] = useState<string | null>(null);
-  const [showing, setShowing] = useState(false);
   const head = data.spec?.commitId ?? "";
   const history = useFetch(() => api.history(limit), `${head}:${limit}`, "history");
   const git = useFetch(() => api.git(), head, "git");
-  const commits = history.data?.commits ?? [];
-  const selected = picked && commits.some((c) => c.id === picked) ? picked : (commits[0]?.id ?? null);
   const marks = useMemo(() => {
     const out = new Map<string, Mark[]>();
     const add = (id: string | null | undefined, mark: Mark) => {
@@ -259,13 +357,11 @@ export function HistoryView() {
     return out;
   }, [data.spec?.live?.commitId, git.data]);
   const link = git.data?.settings ?? null;
-
-  if (history.error) return <div className="p-4"><Empty>Could not load the history of main: {history.error}</Empty></div>;
-  if (history.data && !commits.length) return <div className="p-4"><Empty>main has no commits yet.</Empty></div>;
   return (
-    <div className="@container flex h-full min-h-0" data-view="history">
-      <div className={cn("flex min-h-0 w-full flex-col @xl:w-64 @xl:shrink-0 @xl:border-r @xl:border-dashed @5xl:w-80", showing && "@max-xl:hidden")}>
-        <div className="flex h-9 shrink-0 items-center gap-2 px-3 dash-b">
+    <GitView
+      label="Commits on main"
+      head={
+        <>
           <span className="kicker">main</span>
           <span className="font-mono text-xs text-muted-foreground">{short(history.data?.head)}</span>
           <span className="flex-1" />
@@ -275,37 +371,50 @@ export function HistoryView() {
               <ExternalLink className="size-3 shrink-0" />
             </a>
           ) : null}
-        </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto" aria-label="Commits on main">
-          {history.data
-            ? commits.map((c) => (
-                <CommitRow
-                  key={c.id}
-                  entry={c}
-                  marks={marks.get(c.id) ?? []}
-                  selected={c.id === selected}
-                  onSelect={() => {
-                    setPicked(c.id);
-                    setShowing(true);
-                  }}
-                />
-              ))
-            : Array.from({ length: 6 }, (_, i) => (
-                <li key={i} className="flex flex-col gap-1.5 px-3 py-2 dash-b">
-                  <Skeleton className="h-4 w-4/5" />
-                  <Skeleton className="h-3 w-1/2" />
-                </li>
-              ))}
-          {history.data?.more ? (
-            <li className="p-3">
-              <Button variant="outline" size="sm" className="w-full" disabled={history.loading} onClick={() => setLimit(limit + PAGE)}>
-                Show older commits
-              </Button>
-            </li>
+        </>
+      }
+      commits={history.data?.commits ?? null}
+      error={history.error ? `Could not load the history of main: ${history.error}` : null}
+      empty="main has no commits yet."
+      marks={marks}
+      more={history.data?.more ? { onMore: () => setLimit(limit + PAGE), loading: history.loading } : null}
+      load={api.commit}
+    />
+  );
+}
+
+export function BranchView({ node }: { readonly node: SessionNode }) {
+  const { api, features } = useWorkspace();
+  const titleOf = (id: string) => features.find((f) => f.id === id)?.title ?? id;
+  const tip = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
+  const key = `${node.id}:${tip}:${node.state}`;
+  const history = useFetch(() => api.sessionHistory(node.id), key, node.id);
+  const branch = history.data;
+  const merged = node.state === "merged";
+  return (
+    <GitView
+      label="Commits on this branch"
+      head={
+        <>
+          <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 truncate font-mono text-xs" data-branch-name>{branch?.branch ?? " "}</span>
+          {branch?.from ? (
+            <span className="font-mono text-xs text-muted-foreground" data-branch-from={branch.upstream?.feature ?? "main"}>
+              from {branch.upstream ? titleOf(branch.upstream.feature) : "main"} {short(branch.from)}
+            </span>
           ) : null}
-        </ul>
-      </div>
-      <div className={cn("min-h-0 min-w-0 flex-1", !showing && "@max-xl:hidden")}>{selected ? <CommitDetail key={selected} id={selected} onBack={() => setShowing(false)} /> : null}</div>
-    </div>
+          {branch?.merged ? (
+            <span className="font-mono text-xs text-ok" data-branch-into={node.into ?? "main"}>
+              {branch.into ? `in ${titleOf(branch.upstream?.feature ?? "")}` : "in main"} {short(branch.merged)}
+            </span>
+          ) : null}
+        </>
+      }
+      commits={branch?.commits ?? null}
+      error={history.error ? `Could not load this branch: ${history.error}` : null}
+      empty="No commits on this branch yet."
+      summary={{ title: "All changes", note: branch?.upstream ? `compared with ${titleOf(branch.upstream.feature)} where it branched off` : merged ? "compared with main before it went live" : "compared with the live app", key, load: () => api.changes(node.id).then((c) => c.files) }}
+      load={(id) => api.sessionCommit(node.id, id)}
+    />
   );
 }

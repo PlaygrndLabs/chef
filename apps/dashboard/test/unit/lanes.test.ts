@@ -5,7 +5,7 @@ import { laneSummary } from "../../src/lib/agents.ts";
 import type { SessionNode } from "../../src/lib/model.ts";
 
 function node(state: SessionNode["state"], live: Partial<SessionLive>, lanes: SessionRecord["lanes"]): SessionNode {
-  return { id: "s1", featureId: "todo", state, attempt: null, parent: null, createdAt: 0, updatedAt: 0, needs: [], budget: null, live: { commits: [], lanes: [], ...live } as SessionLive, record: { lanes } as SessionRecord };
+  return { id: "s1", featureId: "todo", state, attempt: null, parent: null, createdAt: 0, updatedAt: 0, needs: [], budget: null, live: { commits: [], lanes: [], ...live } as SessionLive, record: { lanes } as SessionRecord, into: null };
 }
 
 const lanes = [

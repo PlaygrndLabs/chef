@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChangesTab, ChecksTab, DetailsTab, Empty, RoleWork, SessionPreview } from "@/components/session-sections";
+import { ChecksTab, DetailsTab, Empty, RoleWork, SessionPreview } from "@/components/session-sections";
 import { KeyPrompt } from "@/components/environment";
+import { BranchView } from "@/components/history-view";
 import { KindBadges, StatusDot, StatusPill } from "@/components/status";
 import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, stateTone } from "@/lib/format";
-import { currentSession, heldBy, isChore, relationsOf, statusOf, waitsForBudget, waitsForKey, type FeatureNode, type SessionNode } from "@/lib/model";
+import { currentSession, heldBy, isChore, relationsOf, nodeStatus, waitsForBudget, waitsForKey, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
 import { activity, plainReason, progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
 import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
@@ -383,7 +384,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
             <TryTabs node={node} />
             <Steps node={node} />
             <Team node={node} />
-            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)} It goes on when the budget is raised or next month starts.` : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : p.now}</p>
+            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)} It goes on when the budget is raised or next month starts.` : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : node.state === "merged" && node.into ? "Done. Its work is on the branch it was built on and goes live together with it." : p.now}</p>
           </div>
         </div>
       ) : null}
@@ -458,7 +459,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
     <Tabs value={section} onValueChange={(v) => select({ panel: v as PanelTab })} className="flex h-full min-h-0 flex-col gap-0 bg-background" data-view="feature" data-feature={feature.id} data-session={node?.id} data-state={node?.state}>
       <header className="flex h-12 shrink-0 items-center gap-2.5 px-4">
         <h1 className="min-w-0 truncate text-base font-medium">{feature.title}</h1>
-        <StatusPill status={node ? statusOf(node.state) : feature.status} />
+        <StatusPill status={node ? nodeStatus(node) : feature.status} />
         {node ? <KindBadges node={node} /> : null}
         {node ? (
           <span className="hidden truncate font-mono text-xs text-muted-foreground xl:inline" data-build-label>
@@ -539,7 +540,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
         <Messages feature={feature} node={node} />
       </TabsContent>
       <TabsContent value="changes" className="flex min-h-0 flex-1 flex-col">
-        <Scroll>{node ? <ChangesTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>
+        {node ? <BranchView key={node.id} node={node} /> : <Scroll><Empty>Nothing built yet.</Empty></Scroll>}
       </TabsContent>
       <TabsContent value="checks" className="flex min-h-0 flex-1 flex-col">
         <Scroll>{node ? <ChecksTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>

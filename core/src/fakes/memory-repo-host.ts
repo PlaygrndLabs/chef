@@ -128,7 +128,7 @@ export class MemoryRepoHost implements RepoHost {
       return { status: "fast-forward", commitId: theirs };
     }
     if (ours === theirs || this.isAncestor(theirs, ours)) return { status: "up-to-date", commitId: ours };
-    if (this.isAncestor(ours, theirs)) {
+    if (!input.noFastForward && this.isAncestor(ours, theirs)) {
       this.setRef(repo, input.into, theirs);
       return { status: "fast-forward", commitId: theirs };
     }
