@@ -159,10 +159,7 @@ describe("chef site", () => {
     expect(String((fetchMock.mock.calls[0] as unknown as [string])[0])).toBe("https://chef.sam.workers.dev/api/projects");
     const mode = await handle(new Request(`${origin}/api/app`, { headers: { cookie: await session() } }), env);
     expect(await mode.json()).toEqual({
-      mode: "cloud",
-      place: "cloud",
       engine: origin,
-      fixed: true,
       account: "sam@example.com",
       org: { id: "org1", name: "Personal", role: "owner", personal: true, plan: "free", engine: ENGINE.url, members: 2 },
       orgs: [{ id: "org1", name: "Personal", role: "owner", personal: true, plan: "free" }],

@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
-import type { ArtifactsControl, ArtifactsReader, CommitMeta, ControlRepo } from "./artifacts.ts";
+import type { ArtifactsControl, ArtifactsReader, CommitMeta, ControlRepo } from "../src/artifacts.ts";
 
 interface TokenRecord {
   readonly repo: string;

@@ -42,22 +42,7 @@ export interface SettingsView {
   readonly cloudflare: { readonly accountId: string; readonly keyHint: string; readonly source: Source } | null;
   readonly models: { readonly planner: string; readonly reviewer: string; readonly coder: string; readonly voice: string; readonly source: Source };
   readonly attempts: { readonly value: number; readonly source: Source };
-  readonly password: Source | "none";
-  readonly runsOn?: "computer";
-  readonly dataDir?: string;
-}
-
-export interface ComputerState {
-  readonly status: "off" | "starting" | "ready" | "failed";
-  readonly log: readonly string[];
-  readonly error: string | null;
-}
-
-export interface CloudflareSetup {
-  readonly status: "idle" | "running" | "done" | "failed";
-  readonly log: readonly string[];
-  readonly url: string | null;
-  readonly error: string | null;
+  readonly password: Source;
 }
 
 export type OrgRole = "owner" | "admin" | "member";
@@ -110,35 +95,18 @@ export interface ProjectAccess {
 }
 
 export interface AppMode {
-  readonly mode: "local" | "cloud";
-  readonly place: "computer" | "cloud" | null;
   readonly engine: string | null;
-  readonly fixed: boolean;
-  readonly computer?: ComputerState;
-  readonly docker?: string | null;
-  readonly setup?: CloudflareSetup;
-  readonly claimed?: boolean;
   readonly account?: string | null;
   readonly admin?: boolean;
   readonly org?: OrgView | null;
   readonly orgs?: readonly OrgSummary[];
 }
 
-export interface CloudflareCheck {
-  readonly deployed: boolean;
-  readonly url: string | null;
-}
-
-const CLOUD: AppMode = { mode: "cloud", place: "cloud", engine: null, fixed: true };
+const CLOUD: AppMode = { engine: null };
 const json = (method: string, body: unknown): RequestInit => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 export const appApi = {
   get: () => call<AppMode>("/api/app").catch(() => CLOUD),
-  useComputer: () => call<AppMode>("/api/app/place", json("PUT", { place: "computer" })),
-  connect: (url: string, password: string) => call<AppMode>("/api/app/connection", json("PUT", { url, password })),
-  disconnect: () => call<AppMode>("/api/app/connection", { method: "DELETE" }),
-  checkCloudflare: (accountId: string, apiToken: string) => call<CloudflareCheck>("/api/app/cloudflare/check", json("POST", { accountId, apiToken })),
-  deployCloudflare: (accountId: string, apiToken: string, password: string) => call<AppMode>("/api/app/cloudflare/deploy", json("POST", { accountId, apiToken, password })),
 };
 
 export const orgApi = {

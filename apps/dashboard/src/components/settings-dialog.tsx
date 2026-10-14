@@ -9,7 +9,7 @@ import { EnvironmentForm } from "@/components/environment";
 import { SecretField } from "@/components/secret-field";
 import { SharedInstructionsForm } from "@/components/guidance";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
-import { appApi, githubApi, orgApi, settingsApi, sharedEnvApi, type GitHubView, type OrgView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
+import { githubApi, orgApi, settingsApi, sharedEnvApi, type GitHubView, type OrgView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { orgLabel, PLAN_LABEL, useAppMode } from "@/lib/account";
@@ -211,47 +211,6 @@ function PasswordForm(props: { readonly settings: SettingsView; readonly save: S
   );
 }
 
-function ChangePlace(props: { readonly note: string }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <div className="grid gap-2">
-      <p className="text-xs text-muted-foreground">{props.note}</p>
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            appApi.disconnect().then(
-              () => location.reload(),
-              (e: unknown) => {
-                setBusy(false);
-                toast.error("Could not change it", { description: e instanceof Error ? e.message : String(e) });
-              },
-            );
-          }}
-        >
-          Choose where chef works
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function ComputerSection(props: { readonly settings: SettingsView }) {
-  const mode = useAppMode();
-  return (
-    <Group title="This computer" note="Everything runs here: projects, agents, sandboxes and previews. Only this computer can open chef, so it has no password. Work pauses while the computer sleeps.">
-      <p className="text-xs text-muted-foreground" data-current="data-dir">
-        Data is kept in {props.settings.dataDir}
-      </p>
-      {mode && !mode.fixed ? <ChangePlace note="To keep this computer light and let work go on while it sleeps, move the work to Cloudflare. Projects made here stay on this computer and come back when you switch back." /> : null}
-    </Group>
-  );
-}
-
 function AccountSection(props: { readonly account: string | null; readonly admin: boolean }) {
   return (
     <Group title="Account" note="You signed in with Cloudflare. chef works in your Cloudflare account, and this site keeps only its address. Sign out from the menu at the bottom left.">
@@ -320,20 +279,6 @@ function OrgSection(props: { readonly org: OrgView }) {
           Create organization
         </Button>
       </form>
-    </Group>
-  );
-}
-
-function ConnectionForm() {
-  const mode = useAppMode();
-  if (!mode || mode.mode !== "local" || mode.place !== "cloud") return null;
-  return (
-    <Group title="This computer" note="The app runs here and talks to your chef in the cloud, where the work runs.">
-      <p className="text-xs text-muted-foreground" data-current="engine">
-        Connected to {mode.engine}
-        {mode.fixed ? ", set by CHEF_URL" : ""}
-      </p>
-      {mode.fixed ? null : <ChangePlace note="You can run everything on this computer instead, or connect to another chef. Your projects stay in this chef in Cloudflare." />}
     </Group>
   );
 }
@@ -421,7 +366,6 @@ export function SettingsDialog(props: {
 }) {
   const { settings, onChange, nav } = props;
   const missing = missingSettings(settings);
-  const computer = settings?.runsOn === "computer";
   const mode = useAppMode();
   const hosted = mode?.account !== undefined;
   const save: Save = async (update, done = "Saved") => {
@@ -453,16 +397,14 @@ export function SettingsDialog(props: {
           <Group title="Theme">
             <ThemeChoice />
           </Group>
-          {settings && computer ? <ComputerSection settings={settings} /> : null}
           {hosted ? <AccountSection account={mode?.account ?? null} admin={mode?.admin === true} /> : null}
           {hosted && mode?.org ? <OrgSection org={mode.org} /> : null}
           {hosted && mode?.org && !mode.org.personal ? <MembersSection org={mode.org} /> : null}
-          {settings && !computer && !hosted ? (
+          {settings && !hosted ? (
             <Group title="Password" note="Changing it signs out every other browser and script.">
               <PasswordForm settings={settings} save={save} />
             </Group>
           ) : null}
-          {computer ? null : <ConnectionForm />}
         </>
       ),
     },
@@ -478,7 +420,7 @@ export function SettingsDialog(props: {
       label: "Models",
       icon: Cpu,
       attention: missing.includes("models"),
-      note: `The provider and models every project uses. Keys stay ${computer ? "on this computer" : "on your chef"}; only their last four characters come back here.`,
+      note: "The provider and models every project uses. Keys stay on your chef; only their last four characters come back here.",
       render: () =>
         settings ? (
           <>
@@ -524,13 +466,9 @@ export function SettingsDialog(props: {
       label: "Previews",
       icon: Cloud,
       attention: missing.includes("previews"),
-      note: computer ? "Every feature gets a live preview in Docker on this computer. No Cloudflare account is needed." : "Every feature gets a live preview on your Cloudflare account.",
+      note: "Every feature gets a live preview on your Cloudflare account.",
       render: () =>
-        settings && computer ? (
-          <p className="text-xs text-muted-foreground" data-current="previews">
-            Previews start when you open them and stop after they sit idle.
-          </p>
-        ) : settings ? (
+        settings ? (
           <Group title="Cloudflare" note="The token needs permission to edit Workers.">
             <CloudflareForm key={settings.cloudflare?.accountId ?? "none"} settings={settings} save={save} />
           </Group>

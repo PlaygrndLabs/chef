@@ -71,21 +71,15 @@ export interface Run {
 
 export type Runner = (args: readonly string[], options?: { readonly echo?: boolean }) => Promise<Run>;
 
-export function wranglerRunner(cwd: string = REPO_ROOT, setup: { readonly env?: Readonly<Record<string, string>>; readonly onLine?: (line: string) => void } = {}): Runner {
+export function wranglerRunner(cwd: string = REPO_ROOT): Runner {
   const bin = join(REPO_ROOT, "node_modules", "wrangler", "bin", "wrangler.js");
   return (args, options) =>
     new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, [bin, ...args], { cwd, env: { ...process.env, ...setup.env }, stdio: [setup.onLine ? "ignore" : "inherit", "pipe", "pipe"] });
+      const child = spawn(process.execPath, [bin, ...args], { cwd, stdio: ["inherit", "pipe", "pipe"] });
       let output = "";
-      let pending = "";
       const take = (stream: NodeJS.WriteStream) => (chunk: Buffer) => {
         output += chunk.toString();
-        if (setup.onLine && options?.echo) {
-          pending += chunk.toString();
-          const lines = pending.split(/\r?\n/);
-          pending = lines.pop() ?? "";
-          for (const line of lines) if (line.trim()) setup.onLine(line);
-        } else if (options?.echo) stream.write(chunk);
+        if (options?.echo) stream.write(chunk);
       };
       child.stdout.on("data", take(process.stdout));
       child.stderr.on("data", take(process.stderr));
@@ -140,6 +134,6 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
     result = await run(args, { echo: true });
   }
   const url = /https:\/\/[a-z0-9.-]+\.workers\.dev/.exec(result.output)?.[0] ?? null;
-  if (result.code === 0 && url) log(`\nchef is live at ${url}\nOpen it in a browser, or connect the local app to it with: pnpm start`);
+  if (result.code === 0 && url) log(`\nchef is live at ${url}\nOpen it in a browser.`);
   return { code: result.code, url, config };
 }
