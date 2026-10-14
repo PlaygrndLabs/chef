@@ -3,6 +3,7 @@ const views = ["loading", "signed-out", "ask-owner", "choose", "installing"];
 const show = (name) => views.forEach((view) => ($(view).hidden = view !== name));
 let accounts = [];
 let polling = null;
+let stick = true;
 
 function el(tag, props, ...children) {
   const node = document.createElement(tag);
@@ -50,9 +51,8 @@ function renderInstall(install) {
   show("installing");
   for (const item of document.querySelectorAll("#steps li")) item.dataset.state = install.steps?.[item.dataset.step] ?? "waiting";
   const log = $("log");
-  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
   log.textContent = (install.log ?? []).join("\n");
-  if (atBottom) log.scrollTop = log.scrollHeight;
+  if (stick) log.scrollTop = log.scrollHeight;
   $("install-error").textContent = install.error ?? "";
   if (install.update) $("install-title").textContent = "Updating chef";
   if (install.status === "done") {
@@ -125,9 +125,19 @@ $("open").addEventListener("click", async () => {
   location.assign("/");
 });
 
+$("log").addEventListener("scroll", () => {
+  const log = $("log");
+  stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+});
+
 $("toggle-log").addEventListener("click", () => {
-  $("log").hidden = !$("log").hidden;
-  $("toggle-log").textContent = $("log").hidden ? "Show log" : "Hide log";
+  const log = $("log");
+  log.hidden = !log.hidden;
+  $("toggle-log").textContent = log.hidden ? "Show log" : "Hide log";
+  if (!log.hidden) {
+    stick = true;
+    log.scrollTop = log.scrollHeight;
+  }
 });
 
 load();
