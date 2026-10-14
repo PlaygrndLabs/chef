@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { addressWith } from "./address";
 import { projectsApi } from "./api";
 
 const LAST = "chef:project";
@@ -23,7 +24,7 @@ export function returningToNewProject(): boolean {
   const params = new URLSearchParams(location.search);
   if (params.get("connect") !== "new") return false;
   params.delete("connect");
-  history.replaceState(null, "", `?${params.toString()}`);
+  history.replaceState(null, "", addressWith(params));
   return true;
 }
 
