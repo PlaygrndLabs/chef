@@ -1,4 +1,4 @@
-import { AlertTriangle, AppWindowMac, ExternalLink, GitCommitHorizontal, Lightbulb, Loader2, Rocket, Undo2, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, AppWindowMac, ExternalLink, GitCommitHorizontal, Loader2, Rocket, Undo2, Wifi, WifiOff } from "lucide-react";
 import { BarSkeleton } from "@/components/loading";
 import { ago, short } from "@/lib/format";
 import { useNow } from "@/lib/live";
@@ -111,17 +111,12 @@ function LiveAppChip({ now }: { readonly now: number }) {
 }
 
 export function ProjectBar() {
-  const { data, openMemory } = useWorkspace();
-  const learned = data.live.lessons.length + data.live.rules.length;
+  const { data } = useWorkspace();
   const connection = CONNECTION[data.connection];
   return (
     <div className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto dash-t bg-sidebar px-1.5 font-mono" id="project-bar" aria-label="Project status">
       {data.ready ? <StatusChips /> : <BarSkeleton />}
       <span className="flex-1" />
-      <Chip id="memory" label="Lessons and rules chef learned in this project" onClick={openMemory}>
-        <Lightbulb className="size-3.5" />
-        {learned ? `${learned} learned` : "Memory"}
-      </Chip>
       <Chip id="connection" label={connection.label} tone={connection.tone}>
         <connection.icon className={cn("size-3.5", data.connection === "connecting" && "animate-spin")} />
         <span className="max-sm:sr-only">{connection.label}</span>

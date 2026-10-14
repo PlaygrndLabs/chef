@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
-import { apply, emptyProject, lessonsWithRecalls, metrics } from "../../src/lib/events.ts";
+import { apply, emptyProject } from "../../src/lib/events.ts";
 import { featureNodes, featureTree, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
 import { activity, plainReason, progress, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
 import { teamOf } from "../../src/lib/agents.ts";
@@ -39,7 +39,7 @@ describe("project event state", () => {
     expect(s?.timeline.find((t) => t.kind === "text")).toMatchObject({ text: "Adding route", phase: "coding" });
     expect(state.previews["todo-add"]?.url).toBe("https://p.example");
     expect(state.log.some((e) => e.type === "coder.event" && e.summary === "text")).toBe(false);
-    expect(metrics(state)).toMatchObject({ mergedFeatures: 1, merges: 1, running: 0, stuck: 0 });
+    expect(state.merges.map((m) => m.featureId)).toEqual(["todo-add"]);
   });
 
   it("follows roles that work at the same time on their own branches", () => {
@@ -99,8 +99,8 @@ describe("project event state", () => {
     expect(state.sessions["s1"]?.timeline.find((t) => t.kind === "steered")).toMatchObject({ message: "use the shared store" });
     expect(state.sessions["s2"]?.timeline.find((t) => t.kind === "picked")).toMatchObject({ won: true });
     expect(state.sessions["s1"]?.timeline.find((t) => t.kind === "picked")).toMatchObject({ won: false });
-    expect(lessonsWithRecalls(state)).toEqual([{ featureId: "a", path: "memory/lessons/a-1.md", at: 1, recalls: 1 }]);
-    expect(metrics(state)).toMatchObject({ stuck: 1, running: 1, lessonRecalls: 1 });
+    expect(state.lessons.map((l) => l.path)).toEqual(["memory/lessons/a-1.md"]);
+    expect(state.recalls.map((r) => r.paths)).toEqual([["memory/lessons/a-1.md"]]);
   });
 });
 
