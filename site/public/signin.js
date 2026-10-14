@@ -1,12 +1,12 @@
 const scopes = [
-  ["card", "Account Settings Read", "so we can make sure your account has Workers Paid"],
-  ["globe", "Artifacts Write", "so we can make a git repository for each project"],
-  ["code", "Cloudchamber Write", "so we can start and stop your sandboxes"],
-  ["card", "User Details Read", "so we can sign you in"],
-  ["code", "Vectorize Write", "so we can save each project's memory"],
-  ["brain", "Workers AI Write", "so we can search that memory"],
-  ["code", "Workers Containers Write", "so we can add the sandboxes chef builds in"],
-  ["code", "Workers Scripts Write", "so we can install chef in your account"],
+  ["card", "Account Settings Read", "check for Workers Paid"],
+  ["globe", "Artifacts Write", "make a git repo for each project"],
+  ["code", "Cloudchamber Write", "manage sandboxes"],
+  ["card", "User Details Read", "sign you in"],
+  ["code", "Vectorize Write", "store project memory"],
+  ["brain", "Workers AI Write", "search project memory"],
+  ["code", "Workers Containers Write", "create sandboxes"],
+  ["code", "Workers Scripts Write", "install and update chef"],
 ];
 
 const icons = {
@@ -17,6 +17,8 @@ const icons = {
   out: '<path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/>',
 };
 const shield = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l8 3v6.2c0 4.6-3.3 8.4-8 9.8-4.7-1.4-8-5.2-8-9.8V5.5z" fill="#7a4a0e"/><path d="M12 7.5v6M12 16.5v.3" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+const cloud = '<svg viewBox="0 0 64 30" aria-hidden="true"><path fill="#f38020" d="M44.5 28.5H6.2a5.8 5.8 0 0 1 4.6-9.3 8.6 8.6 0 0 1 9.1-6.6A13.8 13.8 0 0 1 46.4 16a6.4 6.4 0 0 1-1.9 12.5z"/><path fill="#faae40" d="M47.6 28.5h11a5.2 5.2 0 0 0-3.4-9.4 9 9 0 0 0-8.6-5.5 14 14 0 0 1 1 14.9z"/></svg>';
+const person = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17.5a5 5 0 0 1 10 0M12 12a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/></svg>';
 const info = '<span class="cfc-info" aria-hidden="true">i</span>';
 
 const dialog = document.createElement("dialog");
@@ -40,21 +42,34 @@ dialog.innerHTML = `
     <div class="signin-step" data-step="2" hidden>
       <h2 id="signin-title-2">Now we'll send you to Cloudflare.</h2>
       <p class="signin-sub">There you give chef control of your Cloudflare account with the permissions below. The notes say why chef needs each one. All of them are on already, except <b>one switch at the bottom, <span class="hot">Account API Tokens Write</span>. Turn it on, or sign-in fails.</b></p>
-      <div class="consent">
-        <svg class="consent-art" aria-hidden="true"></svg>
-        <div class="cfc">
-          <p class="cfc-head"><span>Permissions this app will be granted</span><span>${scopes.length} total permissions</span></p>
-          <p class="cfc-label">Required ${info}</p>
-          <ul class="cfc-scopes">
-            ${scopes.map(([kind, name, why]) => `<li><span class="cfc-chip"><span class="cfc-ico" aria-hidden="true"><svg viewBox="0 0 24 24">${icons[kind]}</svg></span>${name}</span><p class="note">${why}</p></li>`).join("")}
-          </ul>
-          <p class="cfc-label cfc-extra">Additional access ${info}<span class="edit">Edit Permissions</span></p>
-          <div class="cfc-sensitive"><span class="cfc-shield">${shield}</span><b>Sensitive scopes</b>${info}<span class="count">1 permission</span><span class="caret" aria-hidden="true"></span></div>
-          <div class="cfc-toggle">
-            <span><b class="hot">Account API Tokens Write</b><small>Grants write access to account API Tokens</small></span>
-            <span class="cfc-switch" aria-hidden="true"><i></i></span>
+      <div class="cfpage">
+        <div class="cfp-logos" aria-hidden="true"><span class="cfp-logo"><img src="/favicon.svg" alt="" width="40" height="40"></span><span class="cfp-link"></span><span class="cfp-logo cfp-cloud">${cloud}</span></div>
+        <p class="cfp-title">Chef wants to access your account</p>
+        <p class="cfp-warn">${shield}<i>This application has not verified ownership of any domain</i></p>
+        <div class="consent">
+          <svg class="consent-art" aria-hidden="true"></svg>
+          <div class="cfc">
+            <p class="cfc-head"><span>Permissions this app will be granted</span><span>${scopes.length} total permissions</span></p>
+            <p class="cfc-label">Required ${info}</p>
+            <ul class="cfc-scopes">
+              ${scopes.map(([kind, name, why]) => `<li><span class="cfc-chip"><span class="cfc-ico" aria-hidden="true"><svg viewBox="0 0 24 24">${icons[kind]}</svg></span>${name}</span><p class="note">${why}</p></li>`).join("")}
+            </ul>
+            <p class="cfc-label cfc-extra">Additional access ${info}<span class="edit">Edit Permissions</span></p>
+            <div class="cfc-sensitive"><span class="cfc-shield">${shield}</span><b>Sensitive scopes</b>${info}<span class="count">1 permission</span><span class="caret" aria-hidden="true"></span></div>
+            <div class="cfc-toggle">
+              <span><b class="hot">Account API Tokens Write</b><small>Grants write access to account API Tokens</small></span>
+              <span class="cfc-switch" aria-hidden="true"><i></i></span>
+            </div>
+            <p class="note must"><strong>turn this on!</strong>so we can publish branch previews</p>
+            <div class="cfc-who">
+              <p class="cfc-box"><span class="cfc-avatar">YOU</span>you@example.com</p>
+              <p class="cfc-box"><span class="cfc-ico">${person}</span>Your Cloudflare account<span class="cfc-edit">Edit</span></p>
+              <p class="cfc-trust">Only authorize access if you trust this application.</p>
+              <p class="cfc-manage">You can manage or revoke this app's access anytime in My Profile &rarr; Access Management &rarr; Connected Applications.</p>
+              <span class="cfc-btn cfc-authorize">Authorize</span>
+              <span class="cfc-btn">Cancel</span>
+            </div>
           </div>
-          <p class="note must"><strong>turn this on!</strong>or sign-in fails. so we can publish your previews and live apps</p>
         </div>
       </div>
     </div>
@@ -171,7 +186,7 @@ function layout() {
   const cardBox = local(card.getBoundingClientRect());
   const paths = [];
   const gap = 52;
-  const width = Math.max(150, cardBox.left - gap - 20);
+  const width = Math.min(300, Math.max(150, cardBox.left - gap - 20));
   const sensitive = local(card.querySelector(".cfc-sensitive").getBoundingClientRect());
   const side = (note) => {
     if (note.classList.contains("must")) return "must";
@@ -182,7 +197,7 @@ function layout() {
   const slot = (note) => {
     const group = groups[side(note)];
     const top = cardBox.top + 6;
-    const bottom = side(note) === "left" ? cardBox.bottom - 6 : sensitive.top - 24;
+    const bottom = sensitive.top - 24;
     const step = (bottom - top) / group.length;
     return top + step * (group.indexOf(note) + 0.5);
   };
@@ -251,9 +266,6 @@ const show = (step) => {
 };
 next.addEventListener("click", () => show(2));
 back.addEventListener("click", () => show(1));
-dialog.addEventListener("click", (event) => {
-  if (event.target === dialog) dialog.close();
-});
 
 document.addEventListener("click", (event) => {
   const link = event.target.closest?.('a[href="/auth/start"]');

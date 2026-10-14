@@ -5,45 +5,70 @@
 }
 
 dialog.signin {
+  --background: #ffffff;
+  --foreground: oklch(0.145 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.48 0 0);
+  --border: oklch(0.922 0 0);
+  --brand: #004dfc;
+  --primary: #004dfc;
+  --primary-foreground: #ffffff;
+  --card: #ffffff;
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --hand: "Virgil", "Comic Sans MS", cursive;
   --dash: color-mix(in oklch, var(--foreground) 18%, transparent);
   --ink: color-mix(in oklch, var(--foreground) 82%, transparent);
   --hot: #e0261b;
-  width: min(1180px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px);
+  color-scheme: light;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 0;
   background: var(--background);
   color: var(--foreground);
   overflow: auto;
   overscroll-behavior: contain;
 }
-dialog.signin.first { width: min(920px, calc(100vw - 32px)); }
-dialog.signin::backdrop { background: color-mix(in oklch, oklch(0.145 0 0) 55%, transparent); backdrop-filter: blur(3px); }
+dialog.signin::backdrop { background: #ffffff; }
 .signin * { border-radius: 0; }
-.signin-body { padding: 32px 32px 0; }
+.signin-body { display: flex; flex-direction: column; min-height: 100%; padding: 28px 32px 0; }
+.signin-top, .signin-step h2, .signin-sub, .signin-plan { width: 100%; max-width: 1100px; margin-inline: auto; }
+.signin.first .signin-top, .signin.first .signin-step h2, .signin.first .signin-plan { max-width: 820px; }
+.signin.first .signin-step { margin-top: clamp(0px, 8vh, 80px); }
 .signin-kicker { margin: 0; font: 12px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
-dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.15; }
-.signin-sub { margin: 0 0 8px; color: var(--muted-foreground); font-size: 15px; max-width: 680px; }
+dialog.signin h2 { margin: 0 auto 10px; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.15; }
+.signin-sub { margin: 0 auto 8px; color: var(--muted-foreground); font-size: 15px; max-width: 680px; }
 .signin-sub b { color: var(--foreground); font-weight: 500; }
 .signin .hot { color: var(--hot); font-weight: 600; }
 
-.signin-top { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; }
+.signin-top { display: flex; align-items: center; gap: 14px; margin: 0 auto 22px; }
 .signin-steps { display: flex; gap: 4px; }
 .signin-steps i { width: 28px; height: 6px; background: var(--border); }
 .signin-steps i.done { background: var(--brand); }
 .signin-close { margin-left: auto; width: 36px; height: 36px; border: 1px solid var(--border); background: transparent; color: var(--muted-foreground); font-size: 22px; line-height: 1; cursor: pointer; }
 .signin-close:hover { color: var(--foreground); background: var(--muted); }
 
-.signin-plan { margin: 22px 0 8px; border-top: 1px dashed var(--dash); }
+.signin-plan { margin: 22px auto 8px; border-top: 1px dashed var(--dash); }
 .signin-plan div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; padding: 20px 0; border-bottom: 1px dashed var(--dash); }
 .signin-plan div:last-child { border-bottom: 0; }
 .signin-plan dt { padding-top: 4px; font: 12px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
 .signin-plan dd { margin: 0; font-size: 17px; line-height: 1.55; }
 
-.consent { position: relative; padding: 18px 0 6px; }
+.cfpage { margin: 22px -32px 0; padding: 40px 32px 32px; background: #fafafa; border-top: 1px solid #ececec; color: #1d1d1d; text-align: center; }
+.cfp-logos { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 22px; }
+.cfp-logo { display: grid; place-items: center; width: 66px; height: 66px; border: 1px solid #e3e3e3; border-radius: 50% !important; background: #fff; }
+.cfp-logo img { width: 30px; height: 30px; }
+.cfp-cloud svg { width: 42px; height: 20px; }
+.cfp-link { width: 46px; height: 0; border-top: 1.5px dashed #9a9a9a; position: relative; }
+.cfp-link::after { content: ""; position: absolute; right: -1px; top: -5px; width: 7px; height: 7px; border-top: 1.5px solid #9a9a9a; border-right: 1.5px solid #9a9a9a; transform: rotate(45deg); }
+.cfp-title { margin: 0 0 8px; font: 700 26px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; letter-spacing: -0.01em; }
+.cfp-warn { margin: 0 0 26px; color: #6f6f6f; font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.cfp-warn svg { display: inline-block; width: 17px; height: 17px; margin-right: 8px; vertical-align: -3px; }
+.consent { position: relative; padding: 0 0 6px; text-align: left; }
 .consent-art { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .consent-art path { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .consent-art .must { stroke: var(--hot); stroke-width: 2.8; }
@@ -100,12 +125,22 @@ dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-s
 .signin.on .cfc-switch { background: #0051c3; border-color: #0051c3; }
 .signin.on .cfc-switch i { transform: translateX(18px); }
 
-.signin-actions { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 10px; margin: 24px -32px 0; padding: 18px 32px 16px; border-top: 1px dashed var(--dash); background: var(--background); }
+.signin-actions { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 10px; margin: auto -32px 0; padding: 18px max(32px, calc((100% - 1100px) / 2 + 32px)) 16px; border-top: 1px dashed var(--dash); background: var(--background); }
 .signin-actions .btn-primary { flex: 1; }
+.signin.first .signin-actions { padding-inline: max(32px, calc((100% - 820px) / 2 + 32px)); }
 .btn-xl { height: 60px; padding: 0 28px; font-size: 18px; }
 .signin-revoke { flex-basis: 100%; display: block; text-align: center; padding: 4px 0; font-size: 13.5px; color: var(--muted-foreground); text-decoration: underline; text-decoration-color: var(--dash); text-underline-offset: 3px; }
 .signin-revoke:hover { color: var(--brand); text-decoration-color: currentColor; }
 .signin-revoke svg { display: inline-block; width: 14px; height: 14px; margin-left: 4px; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 2; }
+.cfc-who { padding: 18px 30px 22px; border-top: 1px solid var(--cf-line); }
+.cfc-box { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--cf-line); border-radius: 10px !important; }
+.cfc-avatar { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 6px !important; background: #ececec; color: #6f6f6f; font-size: 11px; font-weight: 600; }
+.cfc-who .cfc-ico svg { stroke-width: 1.4; }
+.cfc-edit { margin-left: auto; padding: 4px 10px; border: 1px solid var(--cf-line); border-radius: 6px !important; font-size: 14px; font-weight: 500; }
+.cfc-trust { margin: 18px 0 6px; color: var(--cf-soft); text-align: center; }
+.cfc-manage { margin: 0 0 16px; color: var(--cf-soft); font-size: 13.5px; font-style: italic; text-align: center; }
+.cfc-btn { display: block; margin-top: 8px; padding: 10px; border: 1px solid var(--cf-line); border-radius: 8px !important; font-weight: 500; text-align: center; }
+.cfc-authorize { border-color: #2c6fef; background: #2c6fef; color: #fff; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .consent.stacked .cfc { width: min(100%, 560px); }
@@ -125,30 +160,19 @@ dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-s
 
 @media (max-width: 720px) {
   .signin-body { padding: 22px 18px 0; }
+  .cfpage { margin-inline: -18px; padding: 28px 12px 24px; }
+  .cfp-title { font-size: 21px; }
+  .cfp-warn { font-size: 13px; }
+  .cfc-who { padding: 16px; }
   dialog.signin h2 { font-size: 22px; }
-  .signin-actions { margin: 16px -18px 0; padding: 12px 18px; }
+  .signin-actions, .signin.first .signin-actions { margin: auto -18px 0; padding: 12px 18px; }
   .btn-xl { height: 54px; font-size: 17px; padding: 0 18px; }
   .signin-plan div { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 16px 0; }
   .signin-plan dd { font-size: 16px; }
   .cfc { font-size: 14.5px; }
 }
 
-@media (prefers-color-scheme: dark) {
-  dialog.signin { --hot: #ff5a4f; }
-  .cfc {
-    --cf-bg: #1d1d1d;
-    --cf-line: #353535;
-    --cf-icon-line: #3d3d3d;
-    --cf-text: #f2f2f2;
-    --cf-soft: #a8a8a8;
-    --cf-hover: #2a2a2a;
-  }
-  .cfc-ico { color: #c4c4c4; }
-  .cfc-shield { background: #2d2610; border-color: #8a7420; }
-  .cfc-switch i { background: #f2f2f2; }
-  .signin.on .cfc-switch { background: #2c7cf6; border-color: #2c7cf6; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .note, .cfc-switch, .cfc-switch i, .signin.on .consent-art path { transition: none; }
 }
+.signin-step[data-step="2"] h2, .signin-sub { max-width: 780px; text-align: center; }
