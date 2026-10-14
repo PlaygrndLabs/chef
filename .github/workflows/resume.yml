@@ -1,0 +1,65 @@
+name: resume
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: Name of the separate chef copy to deploy and test (never chef-dev)
+        default: resume
+      prompt:
+        description: Feature to build while chef is deployed again
+        default: Add a notes page where I can write a note, save it and see my saved notes in a list
+      deploys:
+        description: How many times to deploy while a coder turn runs
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
+      NAME: ${{ inputs.name }}
+      PROJECT: notes
+      PROMPT: ${{ inputs.prompt }}
+      MINUTES: "60"
+      DEPLOYS: ${{ inputs.deploys }}
+    steps:
+      - name: Refuse the development and hosted engines
+        run: case "$NAME" in ""|chef|chef-*) echo "use a separate copy, not $NAME"; exit 1 ;; esac
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy a separate chef copy
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: |
+          jq -n '{ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, LLM_BASE_URL: env.LLM_BASE_URL, LLM_API_KEY: env.LLM_API_KEY, TYPESAFE_API_KEY: env.TYPESAFE_API_KEY, CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID, CHEF_PASSWORD: env.CHEF_PASSWORD} | with_entries(select(.value != ""))' > "$RUNNER_TEMP/secrets.json"
+          pnpm run deploy --name "$NAME" --secrets-file "$RUNNER_TEMP/secrets.json" | tee "$RUNNER_TEMP/deploy.log" | tail -5
+          echo "CHEF_URL=$(grep -o 'https://[a-z0-9.-]*workers.dev' "$RUNNER_TEMP/deploy.log" | head -1)" >> "$GITHUB_ENV"
+      - name: Build a feature and deploy while its turns run
+        run: |
+          npx --prefix workers wrangler tail "$NAME" --format json > "$RUNNER_TEMP/tail.jsonl" 2> "$RUNNER_TEMP/tail.err" &
+          sleep 10
+          SECRETS="$RUNNER_TEMP/secrets.json" bash .github/scripts/resume-check.sh
+      - name: Worker logs
+        if: always()
+        run: |
+          jq -r 'select(.outcome != "ok" or (.logs | length) > 0 or (.exceptions | length) > 0) | [.eventTimestamp, .outcome, ((.event.request.url // .event.rpcMethod // "") | tostring), ((.exceptions // []) | map(.name + ": " + .message) | join(" | ")), ((.logs // []) | map(.message | map(tostring) | join(" ")) | join(" | "))] | @tsv' "$RUNNER_TEMP/tail.jsonl" | cut -c1-1000 | tail -200
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resume
+          path: ${{ runner.temp }}/*.jsonl
