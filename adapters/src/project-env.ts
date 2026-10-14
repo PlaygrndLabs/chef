@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { envProblem, type EnvNeed, type EnvVar } from "@chef/core";
+import { keyHint } from "./settings.ts";
 
 export interface StoredEnvVar {
   readonly secret: boolean;
@@ -11,6 +12,7 @@ export type StoredEnv = Readonly<Record<string, StoredEnvVar>>;
 
 export interface EnvVarView extends EnvVar {
   readonly value: string | null;
+  readonly hint?: string;
   readonly updatedAt: number;
   readonly scope?: "shared" | "overrides";
 }
@@ -67,7 +69,12 @@ export function envNames(stored: StoredEnv): EnvVar[] {
 }
 
 export async function viewEnv(stored: StoredEnv, cipher: EnvCipher, needs: readonly EnvNeed[]): Promise<ProjectEnvView> {
-  const vars = await Promise.all(Object.entries(stored).map(async ([name, entry]) => ({ name, secret: entry.secret, value: entry.secret ? null : await cipher.decrypt(entry.value), updatedAt: entry.updatedAt })));
+  const vars = await Promise.all(
+    Object.entries(stored).map(async ([name, entry]) => {
+      const value = await cipher.decrypt(entry.value);
+      return entry.secret ? { name, secret: true, value: null, hint: keyHint(value), updatedAt: entry.updatedAt } : { name, secret: false, value, updatedAt: entry.updatedAt };
+    }),
+  );
   return { vars: vars.sort((a, b) => a.name.localeCompare(b.name)), needs };
 }
 

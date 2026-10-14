@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Cloud, Cpu, GitBranch, KeyRound, Mic, Route, ScrollText, SlidersHorizontal } from "lucide-react";
+import { Bot, BookOpen, Cloud, Cpu, GitBranch, KeyRound, Route, ScrollText, SlidersHorizontal } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
 import { EnvironmentForm } from "@/components/environment";
+import { SecretField } from "@/components/secret-field";
 import { SharedInstructionsForm } from "@/components/guidance";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
 import { appApi, githubApi, orgApi, settingsApi, sharedEnvApi, type AppMode, type GitHubView, type OrgSummary, type OrgView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
@@ -31,16 +32,11 @@ const VOICE_CHOICES: readonly Choice[] = [
 
 type Save = (update: SettingsUpdate, done?: string) => Promise<boolean>;
 
-function Current(props: { readonly text: string | null; readonly source?: Source | undefined; readonly name: string }) {
-  return (
-    <p className="text-xs text-muted-foreground" data-current={props.name} data-set={props.text ? "yes" : "no"}>
-      {props.text ? `${props.text}${props.source === "deployment" ? ", from the deployment" : ""}` : "Not set"}
-    </p>
-  );
+function FromDeployment(props: { readonly source: Source | undefined; readonly what: string }) {
+  return props.source === "deployment" ? <p className="text-xs text-muted-foreground">{`This ${props.what} comes from the deployment. One saved here takes its place.`}</p> : null;
 }
 
-
-function Actions(props: { readonly busy: boolean; readonly onRemove?: (() => void) | undefined }) {
+function Actions(props: { readonly busy: boolean; readonly onRemove?: (() => void) | undefined; readonly idle?: boolean }) {
   return (
     <div className="flex justify-end gap-2">
       {props.onRemove ? (
@@ -48,7 +44,7 @@ function Actions(props: { readonly busy: boolean; readonly onRemove?: (() => voi
           Remove
         </Button>
       ) : null}
-      <Button type="submit" size="sm" disabled={props.busy}>
+      <Button type="submit" size="sm" disabled={props.busy || props.idle === true}>
         Save
       </Button>
     </div>
@@ -73,19 +69,21 @@ function ProviderForm(props: { readonly part: "llm" | "voice"; readonly choices:
   const [kind, setKind] = useState(current?.kind ?? (choices[0] as Choice).kind);
   const [baseUrl, setBaseUrl] = useState(current?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
+  const [replacing, setReplacing] = useState(false);
   const { busy, run } = useBusy(props.save);
   const choice = choices.find((c) => c.kind === kind) ?? (choices[0] as Choice);
-  const label = current ? `${choices.find((c) => c.kind === current.kind)?.label ?? current.kind}${current.baseUrl ? ` at ${current.baseUrl}` : ""}, key ${current.keyHint}` : null;
+  const bare = (url: string) => url.trim().replace(/\/+$/, "");
+  const moved = current !== null && (kind !== current.kind || (choice.urlHint !== undefined && bare(baseUrl) !== bare(current.baseUrl ?? "")));
+  const reenter = moved ? "A new provider needs its key again." : null;
   return (
     <form
       id={`settings-${part}`}
       className="grid gap-2.5"
       onSubmit={(e) => {
         e.preventDefault();
-        void run({ [part]: { kind, apiKey: apiKey.trim(), ...(choice.urlHint ? { baseUrl: baseUrl.trim() } : {}) } }).then((ok) => ok && setApiKey(""));
+        void run({ [part]: { kind, apiKey: apiKey.trim(), ...(choice.urlHint ? { baseUrl: baseUrl.trim() } : {}) } }).then((ok) => ok && (setApiKey(""), setReplacing(false)));
       }}
     >
-      <Current name={part} text={label} source={current?.source} />
       <div role="radiogroup" aria-label={part === "llm" ? "Claude provider" : "Voice provider"} className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
         {choices.map((c) => (
           <button key={c.kind} type="button" role="radio" aria-checked={kind === c.kind} onClick={() => setKind(c.kind)} className={cn("rounded-md px-2 py-1.5 text-xs", kind === c.kind ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}>
@@ -94,8 +92,9 @@ function ProviderForm(props: { readonly part: "llm" | "voice"; readonly choices:
         ))}
       </div>
       {choice.urlHint ? <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={choice.urlHint} aria-label="Base URL" type="url" required /> : null}
-      <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={current ? "Enter a new key to replace the current one" : choice.keyLabel} aria-label={choice.keyLabel} type="password" autoComplete="off" required />
-      <Actions busy={busy} onRemove={current?.source === "app" ? () => void run({ [part]: null }, "Removed") : undefined} />
+      <SecretField name={part} label={choice.keyLabel} hint={current?.keyHint ?? null} value={apiKey} onChange={setApiKey} editing={replacing} onEditing={setReplacing} reenter={reenter} />
+      <FromDeployment source={current?.source} what="key" />
+      <Actions busy={busy} idle={current !== null && !replacing && !moved} onRemove={current?.source === "app" ? () => void run({ [part]: null }, "Removed") : undefined} />
     </form>
   );
 }
@@ -105,6 +104,7 @@ function ModelsForm(props: { readonly settings: SettingsView; readonly save: Sav
   const [planner, setPlanner] = useState(models.planner);
   const [reviewer, setReviewer] = useState(models.reviewer);
   const [coder, setCoder] = useState(models.coder);
+  const [voice, setVoice] = useState(models.voice);
   const [count, setCount] = useState(String(attempts.value));
   const { busy, run } = useBusy(props.save);
   const field = (label: string, value: string, set: (v: string) => void) => (
@@ -119,7 +119,7 @@ function ModelsForm(props: { readonly settings: SettingsView; readonly save: Sav
       className="grid gap-2.5"
       onSubmit={(e) => {
         e.preventDefault();
-        void run({ models: { planner: planner.trim(), reviewer: reviewer.trim(), coder: coder.trim() }, attempts: Number(count) });
+        void run({ models: { planner: planner.trim(), reviewer: reviewer.trim(), coder: coder.trim(), voice: voice.trim() }, attempts: Number(count) });
       }}
     >
       <div className="grid grid-cols-3 gap-2">
@@ -127,6 +127,7 @@ function ModelsForm(props: { readonly settings: SettingsView; readonly save: Sav
         {field("Reviewer model", reviewer, setReviewer)}
         {field("Coder model", coder, setCoder)}
       </div>
+      <div className="grid grid-cols-3 gap-2">{field("Voice model", voice, setVoice)}</div>
       <label className="grid gap-1 text-xs text-muted-foreground">
         Parallel tries per feature
         <Input value={count} onChange={(e) => setCount(e.target.value)} aria-label="Parallel attempts" type="number" min={1} max={4} required />
@@ -141,20 +142,22 @@ function CloudflareForm(props: { readonly settings: SettingsView; readonly save:
   const current = props.settings.cloudflare;
   const [accountId, setAccountId] = useState(current?.accountId ?? "");
   const [apiToken, setApiToken] = useState("");
+  const [replacing, setReplacing] = useState(false);
   const { busy, run } = useBusy(props.save);
+  const moved = current !== null && accountId.trim() !== current.accountId;
   return (
     <form
       id="settings-cloudflare"
       className="grid gap-2.5"
       onSubmit={(e) => {
         e.preventDefault();
-        void run({ cloudflare: { accountId: accountId.trim(), apiToken: apiToken.trim() } }).then((ok) => ok && setApiToken(""));
+        void run({ cloudflare: { accountId: accountId.trim(), apiToken: apiToken.trim() } }).then((ok) => ok && (setApiToken(""), setReplacing(false)));
       }}
     >
-      <Current name="cloudflare" text={current ? `Account ${current.accountId}, token ${current.keyHint}` : null} source={current?.source} />
       <Input value={accountId} onChange={(e) => setAccountId(e.target.value)} placeholder="Account id" aria-label="Account id" required />
-      <Input value={apiToken} onChange={(e) => setApiToken(e.target.value)} placeholder={current ? "Enter a new token to replace the current one" : "API token that can edit Workers"} aria-label="API token" type="password" autoComplete="off" required />
-      <Actions busy={busy} onRemove={current?.source === "app" ? () => void run({ cloudflare: null }, "Removed") : undefined} />
+      <SecretField name="cloudflare" label={current ? "API token" : "API token that can edit Workers"} hint={current?.keyHint ?? null} value={apiToken} onChange={setApiToken} editing={replacing} onEditing={setReplacing} reenter={moved ? "Another account needs its own token." : null} />
+      <FromDeployment source={current?.source} what="token" />
+      <Actions busy={busy} idle={current !== null && !replacing && !moved} onRemove={current?.source === "app" ? () => void run({ cloudflare: null }, "Removed") : undefined} />
     </form>
   );
 }
@@ -162,6 +165,7 @@ function CloudflareForm(props: { readonly settings: SettingsView; readonly save:
 function JevForm(props: { readonly settings: SettingsView; readonly save: Save }) {
   const current = props.settings.jev;
   const [apiKey, setApiKey] = useState("");
+  const [replacing, setReplacing] = useState(false);
   const { busy, run } = useBusy(props.save);
   return (
     <form
@@ -169,12 +173,12 @@ function JevForm(props: { readonly settings: SettingsView; readonly save: Save }
       className="grid gap-2.5"
       onSubmit={(e) => {
         e.preventDefault();
-        void run({ jev: { apiKey: apiKey.trim() } }).then((ok) => ok && setApiKey(""));
+        void run({ jev: { apiKey: apiKey.trim() } }).then((ok) => ok && (setApiKey(""), setReplacing(false)));
       }}
     >
-      <Current name="jev" text={current ? `TypeSafe key ${current.keyHint}` : null} source={current?.source} />
-      <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={current ? "Enter a new key to replace the current one" : "TypeSafe API key"} aria-label="TypeSafe API key" type="password" autoComplete="off" required />
-      <Actions busy={busy} onRemove={current?.source === "app" ? () => void run({ jev: null }, "Removed") : undefined} />
+      <SecretField name="jev" label="TypeSafe API key" hint={current?.keyHint ?? null} value={apiKey} onChange={setApiKey} editing={replacing} onEditing={setReplacing} />
+      <FromDeployment source={current?.source} what="key" />
+      <Actions busy={busy} idle={current !== null && !replacing} onRemove={current?.source === "app" ? () => void run({ jev: null }, "Removed") : undefined} />
     </form>
   );
 }
@@ -450,7 +454,7 @@ export function SettingsDialog(props: {
     </Group>
   ) : null;
   const agents = (section: AgentSection, before?: ReactNode) => () => <AgentsSection project={null} section={section} item={props.item} nav={nav} before={before} />;
-  const needsSettings = new Set(["models", "previews", "voice"]);
+  const needsSettings = new Set(["models", "previews"]);
   const all: SettingsSection[] = [
     {
       id: "general",
@@ -486,8 +490,11 @@ export function SettingsDialog(props: {
             <Group title="Claude" note="Plans, writes and reviews code. Use your Anthropic API key, or any Anthropic-compatible provider with its base URL and key.">
               <ProviderForm key={`llm-${settings.llm?.kind ?? "none"}`} part="llm" choices={MODEL_CHOICES} current={settings.llm} save={save} />
             </Group>
-            <Group title="Models" note="Model ids your provider accepts, and how many tries race on each new feature. A role can pick its own model in Agents.">
+            <Group title="Models" note="Model ids your providers accept, and how many tries race on each new feature. The voice model is the one you talk to in live talk. A role can pick its own model in Agents.">
               <ModelsForm key={JSON.stringify([settings.models, settings.attempts])} settings={settings} save={save} />
+            </Group>
+            <Group title="Voice (optional)" note="Live talk with chef. Use an OpenAI key, or a provider that serves the OpenAI Realtime API.">
+              <ProviderForm key={`voice-${settings.voice?.kind ?? "none"}`} part="voice" choices={VOICE_CHOICES} current={settings.voice} save={save} />
             </Group>
           </>
         ) : (
@@ -531,20 +538,6 @@ export function SettingsDialog(props: {
         ) : settings ? (
           <Group title="Cloudflare" note="The token needs permission to edit Workers.">
             <CloudflareForm key={settings.cloudflare?.accountId ?? "none"} settings={settings} save={save} />
-          </Group>
-        ) : (
-          loading()
-        ),
-    },
-    {
-      id: "voice",
-      label: "Voice",
-      icon: Mic,
-      note: "Talk to chef. Optional.",
-      render: () =>
-        settings ? (
-          <Group title="Voice provider" note="Needs an OpenAI key, or a provider that serves the OpenAI Realtime API.">
-            <ProviderForm key={`voice-${settings.voice?.kind ?? "none"}`} part="voice" choices={VOICE_CHOICES} current={settings.voice} save={save} />
           </Group>
         ) : (
           loading()
