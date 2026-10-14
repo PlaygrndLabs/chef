@@ -64,4 +64,4 @@ jobs:
             exit 0
           fi
           echo "$out" | jq -r '.result.events.events[0] // {} | [paths(scalars) | map(tostring) | join(".")] | join(" ")'
-          echo "$out" | jq -r '.result.events.events[]? | [(.timestamp // "" | tostring), (.["$workers"].event.request.method // ""), ((.["$workers"].event.request.url // "") | sub("\\?.*"; "")), (.["$workers"].event.response.status // "" | tostring), (.["$workers"].outcome // ""), ((.["$metadata"].message // "") | tostring | gsub("[^ @]+@[^ ]+"; "<email>") | .[0:200])] | join(" ")'
+          echo "$out" | jq -r '.result.events.events[]? | [((.timestamp // 0) / 1000 | floor | todate), (.["$workers"].event.request.method // ""), ((.["$workers"].event.request.url // "") | sub("\\?.*"; "")), (.["$workers"].event.response.status // "" | tostring), (.["$workers"].outcome // ""), ((.["$metadata"].message // "") | tostring | gsub("\\?[^ ]*"; "") | gsub("[^ @]+@[^ ]+"; "<email>") | .[0:200])] | join(" ")'
