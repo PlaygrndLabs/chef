@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTap } from "../../src/checks/tap.ts";
+import { parseTap, tapFailures } from "../../src/checks/tap.ts";
 import { testNames } from "../../src/orchestrator/orchestrator.ts";
 import { customAgent, parseProfile } from "../../src/profiles/profile.ts";
 import { initialMachine, isTerminal, transition, DEFAULT_BUDGET } from "../../src/session/machine.ts";
@@ -38,6 +38,13 @@ describe("specialization building blocks", () => {
       { name: "/tmp/x/features/a/a.test.ts", ok: false },
       { name: "skipped one", ok: true },
     ]);
+  });
+
+  it("keeps only the failing tests and their errors from long TAP output", () => {
+    const passing = Array.from({ length: 60 }, (_, i) => [`# Subtest: ok ${i}`, `ok ${i + 2} - ok ${i}`, "  ---", "  duration_ms: 1", "  ..."].join("\n"));
+    const tap = ["TAP version 13", "# Subtest: AC5: shows an error", "not ok 1 - AC5: shows an error", "  ---", "  error: 'expected the error text'", "  ...", ...passing].join("\n");
+    expect(tapFailures(tap)).toBe(["not ok 1 - AC5: shows an error", "  ---", "  error: 'expected the error text'"].join("\n"));
+    expect(tapFailures(passing.join("\n"))).toBe("");
   });
 
   it("finds test names in a test file", () => {
