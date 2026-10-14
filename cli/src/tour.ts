@@ -190,7 +190,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     if (feature) {
       const probe = await page.request.patch(`/api/projects/${project}/features/${feature}`, { data: {} });
       report.featureRoute = probe.status();
-      if (probe.status() !== 400) report.errors.push(`feature route: PATCH ${feature} answered ${probe.status()} instead of 400`);
+      if (probe.status() !== 200) report.errors.push(`feature route: an empty PATCH of ${feature} answered ${probe.status()} instead of 200`);
     }
     const events: unknown[] = [];
     for (let after = 0; ; ) {
