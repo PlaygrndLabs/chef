@@ -148,3 +148,34 @@ export function workingRole(node: SessionNode): string | null {
   if (!isActive(node.state) || node.state === "gating" || node.state === "queued") return null;
   return node.live?.agent?.role ?? (node.state === "planning" ? "planner" : node.state === "testing" ? "test" : node.state === "reviewing" ? "reviewer" : null);
 }
+
+export interface LaneSummary {
+  readonly branch: string;
+  readonly status: string;
+  readonly steps: { readonly done: number; readonly of: number } | null;
+  readonly commits: number;
+  readonly owns: readonly string[];
+}
+
+const LANE_STATUS: Readonly<Record<string, string>> = {
+  waiting: "Waiting for its turn",
+  working: "Working on its part",
+  committed: "Saved a step on its branch",
+  unchanged: "Had nothing to change",
+  rejected: "A rule blocked its last change, so it tries again",
+  merged: "Its branch is merged into the feature",
+  conflict: "Changed the same lines as another role, so the conflict fixer merged them",
+};
+
+export function laneSummary(node: SessionNode, role: string): LaneSummary | null {
+  const live = node.live?.lanes.find((l) => l.role === role);
+  const record = node.record?.lanes?.find((l) => l.role === role);
+  const branch = live?.branch ?? record?.branch;
+  if (!branch) return null;
+  const halted = node.state === "stuck" || node.state === "dropped";
+  const raw = live?.status ?? (record && record.done >= record.items.length ? "merged" : "waiting");
+  const status = node.state === "merged" ? "Its work went live with the feature" : halted && raw === "working" ? "Was working when chef stopped" : (LANE_STATUS[raw] ?? raw);
+  const of = record?.items.length ?? live?.items ?? 0;
+  const commits = (node.live?.commits ?? []).filter((c) => c.role === role).length || (live?.commits ?? 0);
+  return { branch, status, steps: of ? { done: Math.min(record?.done ?? 0, of), of } : null, commits, owns: record?.owns ?? [] };
+}

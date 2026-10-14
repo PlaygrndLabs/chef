@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChangesTab, ChecksTab, DetailsTab, Empty, SessionPreview } from "@/components/session-sections";
+import { ChangesTab, ChecksTab, DetailsTab, Empty, RoleWork, SessionPreview } from "@/components/session-sections";
 import { KeyPrompt } from "@/components/environment";
 import { KindBadges, StatusDot, StatusPill } from "@/components/status";
 import { isActive } from "@/lib/events";
@@ -54,7 +54,7 @@ const MEMBER: Readonly<Record<MemberState, string>> = {
 const MEMBER_NOTE: Readonly<Record<MemberState, string>> = { done: "did its part", working: "is working now", next: "comes later", stopped: "was working when chef stopped" };
 
 function Team({ node }: { readonly node: SessionNode }) {
-  const { openSettings, selection } = useWorkspace();
+  const { select, selection } = useWorkspace();
   const view = useAgents(selection.project);
   const team = teamOf(node);
   return (
@@ -66,16 +66,18 @@ function Team({ node }: { readonly node: SessionNode }) {
       {team.map((m) => {
         const label = roleLabel(m.role, view);
         const model = modelLabel(m.role, m.model, view);
+        const open = selection.role === m.role;
         return (
           <button
             key={m.role}
             type="button"
+            aria-pressed={open}
             data-member={m.role}
             data-member-state={m.state}
             data-branch={m.branch ?? undefined}
-            title={`${label} ${MEMBER_NOTE[m.state]}${model ? ` on ${model}` : ""}${m.branch ? `, on its own branch ${m.branch}` : ""}. Open its prompt and skills.`}
-            onClick={() => openSettings("project", "agents", m.role)}
-            className={cn("inline-flex h-6 items-center gap-1 border px-2 text-xs hover:bg-muted", MEMBER[m.state])}
+            title={`${label} ${MEMBER_NOTE[m.state]}${model ? ` on ${model}` : ""}${m.branch ? `, on its own branch ${m.branch}` : ""}. ${open ? "Show everyone again." : "See what it did."}`}
+            onClick={() => select({ role: open ? null : m.role })}
+            className={cn("inline-flex h-6 items-center gap-1 border px-2 text-xs hover:bg-muted", MEMBER[m.state], open && "outline outline-1 outline-offset-1 outline-primary")}
           >
             {m.state === "done" ? <Check className="size-3 text-ok" strokeWidth={3} /> : m.state === "working" ? <span className="pulse-run size-1.5 bg-run" /> : m.state === "stopped" ? <X className="size-3" strokeWidth={3} /> : <Circle className="size-2.5" />}
             {label}
@@ -84,6 +86,27 @@ function Team({ node }: { readonly node: SessionNode }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function RoleHeader({ node, role }: { readonly node: SessionNode; readonly role: string }) {
+  const { select, selection, openSettings } = useWorkspace();
+  const view = useAgents(selection.project);
+  const member = teamOf(node).find((m) => m.role === role);
+  const model = modelLabel(role, member?.model ?? null, view);
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-dashed py-2" data-role-header={role}>
+      <span className="kicker text-foreground">{roleLabel(role, view)}</span>
+      {model ? <span className="font-mono text-xs text-muted-foreground">{model}</span> : null}
+      <span className="flex-1" />
+      <button type="button" onClick={() => openSettings("project", "agents", role)} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+        Prompt and skills
+      </button>
+      <button type="button" onClick={() => select({ role: null })} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+        <X className="size-3" />
+        Everyone
+      </button>
     </div>
   );
 }
@@ -339,7 +362,9 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
   const end = useRef<HTMLDivElement>(null);
   const timeline = node?.live?.timeline ?? [];
   const asked = node?.record ? { prompt: node.record.ask ?? node.record.rootPrompt, at: node.record.createdAt } : undefined;
-  const list = node ? updates(timeline, node.state, asked) : [];
+  const role = useWorkspace().selection.role ?? null;
+  const all = node ? updates(timeline, node.state, asked) : [];
+  const list = role ? all.filter((u) => u.kind === "chef" && u.role === role) : all;
   const p = node ? progress(node.state, timeline) : null;
   const active = node ? isActive(node.state) : false;
   const held = node ? heldBy(node) : null;
@@ -360,28 +385,38 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
           </div>
         </div>
       ) : null}
-      <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
-        {node ? <PickReasons node={node} /> : null}
-        {node ? <Related node={node} /> : null}
-        {criteria.length ? (
-          <section className="flex flex-col gap-2.5" data-criteria>
-            <h2 className="kicker">{isLive ? "What it does" : "What it must do to go live"}</h2>
-            <ul className="flex flex-col gap-2">
-              {criteria.map((c) => (
-                <li key={c.id} className="flex gap-2.5">
-                  {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 border border-muted-foreground" />}
-                  <span>{c.text}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {list.length ? <h2 className="kicker -mb-2">What happened</h2> : null}
-        {list.map((u) => (
-          <UpdateRow key={u.key} update={u} />
-        ))}
-        <div ref={end} />
-      </div>
+      {node && role ? (
+        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6" data-role-view={role}>
+          <RoleHeader node={node} role={role} />
+          <RoleWork node={node} role={role} />
+          <h2 className="kicker -mb-2">What it did</h2>
+          {list.length ? list.map((u) => <UpdateRow key={u.key} update={u} />) : <p className="text-sm text-muted-foreground">Nothing from this role yet.</p>}
+          <div ref={end} />
+        </div>
+      ) : (
+        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
+          {node ? <PickReasons node={node} /> : null}
+          {node ? <Related node={node} /> : null}
+          {criteria.length ? (
+            <section className="flex flex-col gap-2.5" data-criteria>
+              <h2 className="kicker">{isLive ? "What it does" : "What it must do to go live"}</h2>
+              <ul className="flex flex-col gap-2">
+                {criteria.map((c) => (
+                  <li key={c.id} className="flex gap-2.5">
+                    {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 border border-muted-foreground" />}
+                    <span>{c.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {list.length ? <h2 className="kicker -mb-2">What happened</h2> : null}
+          {list.map((u) => (
+            <UpdateRow key={u.key} update={u} />
+          ))}
+          <div ref={end} />
+        </div>
+      )}
     </div>
   );
 }
