@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, agentsOf, cloudflareView, previewBranch, previewName, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
+import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, HISTORY_ROUTE, historyResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, agentsOf, cloudflareView, previewBranch, previewName, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { newToken } from "@chef/core/access";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
@@ -268,6 +268,8 @@ export async function serve(options: { readonly port: number; readonly project?:
         const main = await w.orchestrator.mainTree();
         return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await w.orchestrator.layout() });
       }
+      const history = HISTORY_ROUTE.exec(url.pathname);
+      if (history && request.method === "GET") return historyResponse(w.orchestrator, history[1] ?? null, url.searchParams.get("limit"));
       const feature = FEATURE_ROUTE.exec(url.pathname);
       if (feature) return (await featureRequest(request, w.orchestrator, feature[1] as string)).response;
       const session = action ? /^sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/.exec(action) : null;

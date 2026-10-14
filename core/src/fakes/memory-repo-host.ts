@@ -1,4 +1,4 @@
-import { applyChanges, threeWayMerge, type Commit, type Tree } from "../git/tree.ts";
+import { applyChanges, threeWayMerge, type Commit, type CommitSummary, type Tree } from "../git/tree.ts";
 import type { CommitInput, MergeInput, MergeOutcome, PushedEvent, RepoHost, RepoInfo, RepoToken, TokenScope } from "../ports/repo-host.ts";
 import type { Clock } from "../ports/runtime.ts";
 import { hashHex, stableStringify } from "../util/hash.ts";
@@ -79,6 +79,10 @@ export class MemoryRepoHost implements RepoHost {
   async readCommit(repo: string, id: string): Promise<Commit | null> {
     if (!this.repos.has(repo)) return null;
     return this.objects.get(id) ?? null;
+  }
+
+  async history(repo: string, ref: string, limit = 50): Promise<CommitSummary[]> {
+    return (await this.log(repo, ref, limit)).map(({ tree: _tree, ...summary }) => summary);
   }
 
   async log(repo: string, ref: string, limit = 50): Promise<Commit[]> {

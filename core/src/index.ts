@@ -19,6 +19,7 @@ export { TurnRunning } from "./ports/coder.ts";
 export * from "./orchestrator/capabilities.ts";
 export * from "./orchestrator/orchestrator.ts";
 export * from "./orchestrator/feature-request.ts";
+export * from "./orchestrator/history-request.ts";
 export * from "./previews/keeper.ts";
 export * from "./sync/external.ts";
 export * from "./util/glob.ts";

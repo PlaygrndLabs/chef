@@ -114,6 +114,13 @@ describe("dashboard in a browser", () => {
       await page.locator("#live-app-row").click();
       await page.locator('[data-view="live"]').waitFor({ timeout: 10_000 });
       expect(await page.locator('[data-tab=":live"]').innerText()).toContain("main");
+      await page.getByRole("tab", { name: "History" }).click();
+      await page.locator('[data-view="history"] [data-commit]').first().waitFor({ timeout: 10_000 });
+      await page.locator('[data-view="history"] [data-commit][aria-current="true"]').waitFor();
+      await page.locator('[data-view="history"] [data-commit]').first().click();
+      await page.locator("[data-commit-detail] [data-file]").first().waitFor({ timeout: 10_000 });
+      await page.locator("[data-commit-detail] [data-diff]").waitFor();
+      await page.getByRole("tab", { name: "Live app" }).click();
 
       await page.locator('#features [data-feature="reverse"]').dblclick();
       const title = page.getByRole("textbox", { name: /^New name for/ });

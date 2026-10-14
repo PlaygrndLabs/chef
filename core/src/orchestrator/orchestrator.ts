@@ -1,5 +1,5 @@
 import type { ChefEvent } from "../events/events.ts";
-import { applyChanges, changedPaths, diffTrees, type Author, type Commit, type FileChanges, type Resolver, type Tree } from "../git/tree.ts";
+import { applyChanges, changedPaths, diffTrees, type Author, type Commit, type CommitSummary, type FileChanges, type Resolver, type Tree } from "../git/tree.ts";
 import { NOTES_NAMESPACE, PROOF_NAMESPACE, parseNote, renderNote, type TurnNote } from "../notes/notes.ts";
 import type { CheckResult, CheckRunner, ProofRecord, ProofRunner } from "../ports/check-runner.ts";
 import type { Classifier } from "../ports/classifier.ts";
@@ -113,6 +113,26 @@ export interface SessionChanges {
   readonly base: string | null;
   readonly head: string | null;
   readonly files: readonly { readonly path: string; readonly before: string | null; readonly after: string | null }[];
+}
+
+export interface HistoryEntry {
+  readonly id: string;
+  readonly parents: readonly string[];
+  readonly message: string;
+  readonly author: string;
+  readonly timestamp: number;
+  readonly note: { readonly feature: string; readonly session: string; readonly role: string; readonly kind: string; readonly prompt: string } | null;
+}
+
+export interface MainHistory {
+  readonly head: string | null;
+  readonly commits: readonly HistoryEntry[];
+  readonly more: boolean;
+}
+
+export interface CommitChanges {
+  readonly commit: HistoryEntry;
+  readonly files: SessionChanges["files"];
 }
 
 export class Orchestrator {
@@ -460,6 +480,28 @@ export class Orchestrator {
     const clip = (text: string | undefined) => (text === undefined ? null : text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text);
     const files = changedPaths(diffTrees(base.tree, head.tree)).map((path) => ({ path, before: clip(base.tree[path]), after: clip(head.tree[path]) }));
     return { base: base.id, head: head.id, files };
+  }
+
+  async history(limit = 50): Promise<MainHistory> {
+    const head = await this.deps.repos.resolveRef(this.canonical, "main");
+    if (!head) return { head: null, commits: [], more: false };
+    const commits = await this.deps.repos.history(this.canonical, "main", limit + 1);
+    return { head, commits: await Promise.all(commits.slice(0, limit).map((c) => this.historyEntry(c))), more: commits.length > limit };
+  }
+
+  async commitChanges(id: string, maxChars = 100_000): Promise<CommitChanges | null> {
+    const commit = await this.deps.repos.readCommit(this.canonical, id);
+    if (!commit) return null;
+    const parent = commit.parents[0] ? await this.deps.repos.readCommit(this.canonical, commit.parents[0]) : null;
+    const before = parent?.tree ?? {};
+    const clip = (text: string | undefined) => (text === undefined ? null : text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text);
+    const files = changedPaths(diffTrees(before, commit.tree)).map((path) => ({ path, before: clip(before[path]), after: clip(commit.tree[path]) }));
+    return { commit: await this.historyEntry(commit), files };
+  }
+
+  private async historyEntry(commit: CommitSummary): Promise<HistoryEntry> {
+    const note = parseNote(await this.deps.repos.readNote(this.canonical, NOTES_NAMESPACE, commit.id).catch(() => null));
+    return { id: commit.id, parents: commit.parents, message: commit.message, author: commit.author.name, timestamp: commit.timestamp, note: note ? { feature: note.feature, session: note.session, role: note.role, kind: note.kind, prompt: note.prompt } : null };
   }
 
   async drain(maxRounds = 200): Promise<SessionRecord[]> {

@@ -10,7 +10,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
+import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, HISTORY_ROUTE, historyResponse, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type PlainEnvVar, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -178,6 +178,8 @@ export class ProjectAgent extends Agent<Env> {
       await this.schedule(0, "syncExternal");
       return Response.json({ ok: true }, { status: 202 });
     }
+    const history = HISTORY_ROUTE.exec(url.pathname);
+    if (history && request.method === "GET") return historyResponse(orchestrator, history[1] ?? null, url.searchParams.get("limit"));
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
       if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });

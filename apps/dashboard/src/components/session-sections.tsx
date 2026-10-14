@@ -394,19 +394,11 @@ export function SessionPreview({ feature, node }: { readonly feature: FeatureNod
 }
 
 export function LiveApp() {
-  const { data, selection } = useWorkspace();
+  const { data } = useWorkspace();
   const live = data.spec?.live ?? null;
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-view="live">
-      <div className="flex items-center gap-2">
-        <h2 className="truncate text-sm font-medium">{selection.project}</h2>
-        <span className="font-mono text-xs text-muted-foreground">main {short(live?.commitId ?? data.spec?.commitId) || ""}</span>
-      </div>
-      {live?.url ? (
-        <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} start="/" live />
-      ) : (
-        <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "Chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
-      )}
-    </div>
+  return live?.url ? (
+    <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} start="/" live />
+  ) : (
+    <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "Chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
   );
 }

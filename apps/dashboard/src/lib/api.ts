@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, Budget, CloudflareView, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, LiveStatus, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, LiveStatus, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -375,6 +375,8 @@ export function projectApi(project: string) {
     saveBudget: (cap: number | null) => call<ProjectBudget>(`${base}/budget`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ cap }) }),
     saveSettings: (update: ProjectSettingsUpdate) => call<ProjectSettingsView>(`${base}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
     git: () => call<{ settings: GitLinkView | null; state: SyncState | null }>(`${base}/git`),
+    history: (limit: number) => call<MainHistory>(`${base}/history?limit=${limit}`),
+    commit: (id: string) => call<CommitChanges>(`${base}/history/${id}`),
     syncGit: () => call<{ ok: boolean }>(`${base}/git/sync`, { method: "POST" }),
     env: () => call<ProjectEnvView>(`${base}/env`),
     saveEnv: (update: EnvUpdate) => call<ProjectEnvView>(`${base}/env`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
