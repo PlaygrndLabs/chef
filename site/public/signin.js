@@ -39,7 +39,7 @@ dialog.innerHTML = `
     </div>
     <div class="signin-step" data-step="2" hidden>
       <h2 id="signin-title-2">Now we'll send you to Cloudflare.</h2>
-      <p class="signin-sub">There you give chef control of your Cloudflare account with the permissions below. The notes say why chef needs each one. All of them are on already, except <b>one switch at the bottom that you need to turn on.</b></p>
+      <p class="signin-sub">There you give chef control of your Cloudflare account with the permissions below. The notes say why chef needs each one. All of them are on already, except <b>one switch at the bottom. Turn it on, or sign-in fails.</b></p>
       <div class="consent">
         <svg class="consent-art" aria-hidden="true"></svg>
         <div class="cfc">
@@ -54,7 +54,7 @@ dialog.innerHTML = `
             <span><b>Account API Tokens Write</b><small>Grants write access to account API Tokens</small></span>
             <span class="cfc-switch" aria-hidden="true"><i></i></span>
           </div>
-          <p class="note must"><strong>turn this on!</strong>so we can publish your previews and live apps. Cloudflare leaves it off</p>
+          <p class="note must"><strong>turn this on!</strong>or sign-in fails. so we can publish your previews and live apps</p>
         </div>
       </div>
     </div>
