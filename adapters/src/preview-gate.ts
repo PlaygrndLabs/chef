@@ -17,6 +17,7 @@ export interface PassClaim {
   readonly host: string;
   readonly expiresAt: number;
   readonly cookieSeconds?: number;
+  readonly scope?: string;
 }
 
 function base64url(bytes: Uint8Array): string {
@@ -30,7 +31,7 @@ export function newPreviewKey(): string {
 }
 
 export async function signPreviewPass(key: string, claim: PassClaim): Promise<string> {
-  const payload = base64url(new TextEncoder().encode(JSON.stringify({ u: claim.use, h: claim.host, e: claim.expiresAt, ...(claim.cookieSeconds ? { c: claim.cookieSeconds } : {}) })));
+  const payload = base64url(new TextEncoder().encode(JSON.stringify({ u: claim.use, h: claim.host, e: claim.expiresAt, ...(claim.cookieSeconds ? { c: claim.cookieSeconds } : {}), ...(claim.scope ? { s: claim.scope } : {}) })));
   const hmac = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return `${payload}.${base64url(new Uint8Array(await crypto.subtle.sign("HMAC", hmac, new TextEncoder().encode(payload))))}`;
 }
@@ -43,7 +44,8 @@ export async function previewEntry(url: string, key: string, input: { readonly p
 
 export async function previewPass(url: string, key: string, now: number): Promise<{ readonly host: string; readonly token: string }> {
   const host = new URL(url).hostname;
-  return { host, token: await signPreviewPass(key, { use: "pass", host, expiresAt: now + PASS_SECONDS * 1000 }) };
+  const scope = `proof-${base64url(crypto.getRandomValues(new Uint8Array(9)))}`;
+  return { host, token: await signPreviewPass(key, { use: "pass", host, expiresAt: now + PASS_SECONDS * 1000, scope }) };
 }
 
 export function previewMain(tree: Tree): string {
@@ -138,19 +140,38 @@ async function gate(request, env, next) {
   }
   const jar = cookies(request);
   const pass = request.headers.get(PASS);
-  const allowed = (pass && (await check(secret, pass, "pass", url.hostname, now))) || (await check(secret, jar.value, "cookie", url.hostname, now));
+  const passed = pass ? await check(secret, pass, "pass", url.hostname, now) : null;
+  const allowed = passed || (await check(secret, jar.value, "cookie", url.hostname, now));
   if (!allowed) return closed(request, 401, "Open this preview from Chef", "Previews are private. Open this one from its project in Chef, or from a link someone shared with you.");
   const headers = new Headers(request.headers);
   headers.delete(PASS);
   if (jar.rest) headers.set("cookie", jar.rest);
   else headers.delete("cookie");
-  return next(new Request(request, { headers }));
+  return next(new Request(request, { headers }), passed && typeof passed.s === "string" ? passed.s : null);
 }
 
 function hidden(env) {
   if (!env || typeof env !== "object") return env;
   const { [KEY]: _key, ...rest } = env;
   return rest;
+}
+
+function scoped(env, scope) {
+  if (!scope || !env || typeof env !== "object") return env;
+  const out = {};
+  for (const [name, value] of Object.entries(env)) {
+    const objects = value && typeof value === "object" && typeof value.idFromName === "function" && typeof value.get === "function";
+    out[name] = objects
+      ? new Proxy(value, {
+          get(target, prop) {
+            if (prop === "idFromName" || prop === "getByName") return (key, ...rest) => target[prop](scope + ":" + key, ...rest);
+            const field = target[prop];
+            return typeof field === "function" ? field.bind(target) : field;
+          },
+        })
+      : value;
+  }
+  return out;
 }
 
 const missing = () => new Response("not found", { status: 404 });
@@ -164,7 +185,7 @@ if (typeof inner === "function") {
   };
 } else {
   const handlers = inner && typeof inner === "object" ? inner : {};
-  gated = { ...handlers, fetch: (request, env, ctx) => gate(request, env, (r) => (handlers.fetch ? handlers.fetch(r, hidden(env), ctx) : missing())) };
+  gated = { ...handlers, fetch: (request, env, ctx) => gate(request, env, (r, scope) => (handlers.fetch ? handlers.fetch(r, scoped(hidden(env), scope), ctx) : missing())) };
 }
 export default gated;
 `;

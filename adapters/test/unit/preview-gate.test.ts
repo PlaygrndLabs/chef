@@ -83,6 +83,40 @@ describe("preview gate", () => {
     expect((await app.fetch(new Request(`${ORIGIN}/`, { headers: { [PREVIEW_PASS_HEADER]: new URL(wrongUse).searchParams.get("t") as string } }), env)).status).toBe(401);
   });
 
+  it("gives every proof pass its own empty storage and leaves what visitors saved alone", async () => {
+    const app = `export default {
+  async fetch(request, env) {
+    const store = env.STORE.get(env.STORE.idFromName("app"));
+    if (request.method === "POST") store.notes.push(await request.text());
+    return Response.json({ notes: store.notes, name: store.name });
+  },
+};
+`;
+    const objects = new Map<string, { name: string; notes: string[] }>();
+    const STORE = {
+      idFromName: (name: string) => name,
+      get(id: string) {
+        let object = objects.get(id);
+        if (!object) objects.set(id, (object = { name: id, notes: [] }));
+        return object;
+      },
+    };
+    const handler = (await gated(app))["default"] as Handler;
+    const stored = { ...env, STORE };
+    const entered = await handler.fetch(new Request(await previewEntry(ORIGIN, KEY, { path: "/", now: Date.now() })), stored);
+    const visitor = { cookie: cookieOf(entered) };
+    await handler.fetch(new Request(`${ORIGIN}/api/notes`, { method: "POST", body: "mine", headers: visitor }), stored);
+    const first = await previewPass(ORIGIN, KEY, Date.now());
+    const proof = (token: string, init: RequestInit = {}) => handler.fetch(new Request(`${ORIGIN}/api/notes`, { ...init, headers: { [PREVIEW_PASS_HEADER]: token } }), stored);
+    expect(await (await proof(first.token)).json()).toMatchObject({ notes: [] });
+    await proof(first.token, { method: "POST", body: "from proof" });
+    expect(await (await proof(first.token)).json()).toMatchObject({ notes: ["from proof"] });
+    const second = await previewPass(ORIGIN, KEY, Date.now());
+    expect(await (await proof(second.token)).json()).toMatchObject({ notes: [] });
+    const seen = (await (await handler.fetch(new Request(`${ORIGIN}/api/notes`, { headers: visitor }), stored)).json()) as { notes: string[]; name: string };
+    expect(seen).toEqual({ notes: ["mine"], name: "app" });
+  });
+
   it("wraps an app whose default export is a class", async () => {
     const app = `export default class App { constructor(env) { this.env = env; } async fetch(request) { return new Response("class " + new URL(request.url).pathname); } }`;
     const Gated = (await gated(app))["default"] as new (env: Record<string, unknown>) => { fetch(request: Request): Promise<Response> };
