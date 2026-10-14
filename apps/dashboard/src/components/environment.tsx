@@ -5,6 +5,7 @@ import { ENV_NAME, parseDotEnv } from "@chef/core/env";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { maskedKey } from "@/components/secret-field";
 import type { EnvApi, EnvUpdate, EnvVarView, ProjectEnvView } from "@/lib/api";
 import { ToneBadge } from "@/components/status";
 import { cn } from "@/lib/utils";
@@ -76,7 +77,7 @@ function VarRow(props: { readonly item: EnvVarView; readonly api: EnvApi; readon
           </Button>
         </form>
       ) : (
-        <p className="truncate font-mono text-xs text-muted-foreground">{item.secret ? "••••••••  hidden after saving" : item.value}</p>
+        <p className="truncate font-mono text-xs text-muted-foreground" data-key-hint={item.hint}>{item.secret ? maskedKey(item.hint ?? "set") : item.value}</p>
       )}
     </li>
   );
