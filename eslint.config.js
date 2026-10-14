@@ -45,13 +45,13 @@ export default tseslint.config(
     },
   },
   {
-    files: ["apps/dashboard/public/**/*.js", "site/public/**/*.js"],
+    files: ["apps/dashboard/public/**/*.js"],
     languageOptions: {
       globals: { document: "readonly", confirm: "readonly", CustomEvent: "readonly", location: "readonly", history: "readonly", Node: "readonly", setInterval: "readonly", clearInterval: "readonly", URLSearchParams: "readonly", RTCPeerConnection: "readonly", Audio: "readonly", navigator: "readonly", window: "readonly", matchMedia: "readonly", IntersectionObserver: "readonly", ResizeObserver: "readonly", getComputedStyle: "readonly", devicePixelRatio: "readonly", performance: "readonly", requestAnimationFrame: "readonly" },
     },
   },
   {
-    files: ["cli/src/bin.ts", "template/app/cli.ts", "workers/scripts/**", "workers/sandbox/**", "site/scripts/**"],
+    files: ["cli/src/bin.ts", "template/app/cli.ts", "workers/scripts/**", "workers/sandbox/**"],
     rules: { "no-console": "off" },
   },
 );
