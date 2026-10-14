@@ -12,7 +12,7 @@ describe("main chat memory", () => {
   });
 
   it("compacts once the chat passes the limit and keeps the newest messages", () => {
-    const memory = { summary: "", turns: turns(100) };
+    const memory = { summary: "", turns: turns(100, 8000) };
     expect(needsCompacting({ summary: "", turns: turns(3) })).toBe(false);
     expect(needsCompacting(memory)).toBe(true);
     const { older, recent } = splitForCompacting(memory);
@@ -23,6 +23,6 @@ describe("main chat memory", () => {
     expect(folded.summary).toContain(`ask ${older.length - 1}`);
     expect(folded.summary.length).toBeLessThanOrEqual(6000);
     expect(needsCompacting(folded)).toBe(false);
-    expect(chatContext(folded, older.length)).toMatchObject({ limit: 8000, turns: recent.length, summarized: older.length });
+    expect(chatContext(folded, older.length)).toMatchObject({ limit: 160_000, turns: recent.length, summarized: older.length });
   });
 });
