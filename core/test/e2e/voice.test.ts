@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ScriptedVoiceHost, SequentialIds } from "../../src/fakes/index.ts";
 import { startVoiceCall, VoiceDelegate } from "../../src/voice/delegate.ts";
 import { readSpec } from "../../src/spec/lint.ts";
-import type { LiveCommand } from "../../src/ports/voice.ts";
+import type { LiveCommand, LiveEvent, VoiceHost } from "../../src/ports/voice.ts";
 import { fixture, scriptFromFixture, templateTree, todoSpec, world } from "../harness.ts";
 
 const prompt = "Add an item to a todo list";
@@ -71,5 +71,39 @@ describe("phase 5 voice front end on fakes", () => {
     await delegate.handle({ type: "session.input_transcript.done", item_id: "i5", transcript: "Show me the features." });
     await delegate.handle({ type: "session.delegation.created", delegation: { id: "d5", target: "client" } });
     expect(prompts.at(-1)).toBe("Show me the features.");
+  });
+
+  it("saves what chef was still saying when the call hangs up, even if the provider never confirms the close", async () => {
+    const turns: { speaker: string; text: string }[] = [];
+    let emit: (event: LiveEvent) => void = () => {};
+    const host: VoiceHost = {
+      model: "fake",
+      start: async (input) => {
+        emit = input.onEvent;
+        emit({ type: "session.started", session: { id: "v9" } });
+        return { sessionId: "v9", connection: { send: () => {}, close: async () => {} }, sendAudio: () => {} };
+      },
+    };
+    const target = {
+      submitSpoken: async () => {
+        throw new Error("not used");
+      },
+      recordSpoken: async (turn: { speaker: string; text: string }) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        turns.push({ speaker: turn.speaker, text: turn.text });
+      },
+    };
+    const call = await startVoiceCall({ host, target, spec: [], ids: new SequentialIds() });
+    emit({ type: "session.input_transcript.delta", item_id: "i1", delta: "Why did it fail?" });
+    emit({ type: "session.input_transcript.done", item_id: "i1", transcript: "Why did it fail?" });
+    emit({ type: "session.output_transcript.delta", delta: "Its checks did not pass." });
+    emit({ type: "session.output_transcript.done" });
+    emit({ type: "session.output_transcript.delta", delta: "Want me to try again?" });
+    await call.hangUp();
+    expect(turns).toEqual([
+      { speaker: "you", text: "Why did it fail?" },
+      { speaker: "chef", text: "Its checks did not pass." },
+      { speaker: "chef", text: "Want me to try again?" },
+    ]);
   });
 });

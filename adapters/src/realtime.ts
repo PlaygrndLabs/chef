@@ -21,7 +21,7 @@ export function realtimeSession(options: { readonly model?: string; readonly voi
     instructions: `${options.instructions}\n\n${TOOL_RULE}`,
     output_modalities: ["audio"],
     audio: {
-      input: { format: { type: "audio/pcm", rate: 24000 }, transcription: { model: "gpt-4o-mini-transcribe" }, turn_detection: { type: "server_vad", silence_duration_ms: 600 } },
+      input: { format: { type: "audio/pcm", rate: 24000 }, transcription: { model: "gpt-4o-mini-transcribe" }, noise_reduction: { type: "near_field" }, turn_detection: { type: "server_vad", silence_duration_ms: 600 } },
       output: { format: { type: "audio/pcm", rate: 24000 }, voice: options.voice ?? "marin" },
     },
     tools: [
@@ -67,6 +67,9 @@ export function liveEvents(event: LiveEvent): LiveEvent[] {
     case "response.output_audio_transcript.delta":
     case "response.audio_transcript.delta":
       return [{ type: "session.output_transcript.delta", delta: event["delta"] }];
+    case "response.output_audio_transcript.done":
+    case "response.audio_transcript.done":
+      return [{ type: "session.output_transcript.done" }];
     case "response.output_audio.delta":
     case "response.audio.delta":
       return [{ type: "session.output_audio.delta", delta: event["delta"] }];
@@ -129,6 +132,7 @@ export function bridge(socket: SocketLike, instructions: string, onEvent: (event
       let timer: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([finished, new Promise((resolve) => (timer = setTimeout(resolve, 5_000)))]);
       clearTimeout(timer);
+      end();
     },
   };
 }
