@@ -3,7 +3,7 @@ import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSe
 import type { ProjectEntry } from "@chef/adapters/projects";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import type { SharedInstructions } from "@chef/adapters/guidance";
-import { AgentSettings, type AgentConfig, type AgentVersion, type SaveResult, type StoredAgents } from "@chef/core";
+import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type SaveResult, type StoredAgents } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
 import { DurableStore } from "./do-store.ts";
@@ -17,6 +17,8 @@ const GITHUB_PENDING = "github/pending";
 const ENV_KEY = "env/key";
 const SHARED_ENV = "env/shared";
 const SHARED_INSTRUCTIONS = "instructions/shared";
+const CAPS = "spend/caps";
+const LEDGER = "spend/ledger";
 const PENDING_MS = 60 * 60_000;
 
 export interface PendingConnect {
@@ -110,6 +112,28 @@ export class Settings extends DurableObject<Env> {
     );
     if (repository) links[repository.toLowerCase()] = [...(links[repository.toLowerCase()] ?? []), project];
     await this.ctx.storage.put(GITHUB_LINKS, links);
+  }
+
+  async spending(now: number): Promise<{ readonly caps: Caps; readonly ledger: Ledger }> {
+    const month = monthOf(now);
+    const ledger = (await this.ctx.storage.get<Ledger>(LEDGER)) ?? emptyLedger(month);
+    return { caps: (await this.ctx.storage.get<Caps>(CAPS)) ?? NO_CAPS, ledger: ledger.month === month ? ledger : emptyLedger(month) };
+  }
+
+  async recordSpend(project: string, by: string | null, micros: number, now: number): Promise<void> {
+    const ledger = (await this.ctx.storage.get<Ledger>(LEDGER)) ?? emptyLedger(monthOf(now));
+    await this.ctx.storage.put(LEDGER, addSpend(ledger, monthOf(now), project, by, micros));
+  }
+
+  async spendBlocked(project: string, by: string | null, now: number): Promise<string | null> {
+    const { caps, ledger } = await this.spending(now);
+    return overCap(caps, ledger, monthOf(now), project, by);
+  }
+
+  async updateCaps(update: Parameters<typeof setCaps>[1]): Promise<Caps> {
+    const next = setCaps((await this.ctx.storage.get<Caps>(CAPS)) ?? NO_CAPS, update);
+    await this.ctx.storage.put(CAPS, next);
+    return next;
   }
 
   async agentsCurrent(): Promise<StoredAgents> {

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Cloud, Cpu, GitBranch, KeyRound, Route, ScrollText, SlidersHorizontal } from "lucide-react";
+import { Bot, BookOpen, Cloud, Cpu, GitBranch, KeyRound, Route, ScrollText, SlidersHorizontal, Wallet } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { orgLabel, PLAN_LABEL, useAppMode } from "@/lib/account";
 import { MembersSection } from "@/components/people";
+import { UsageSection } from "@/components/usage";
 
 interface Choice {
   readonly kind: string;
@@ -464,6 +465,13 @@ export function SettingsDialog(props: {
           {computer ? null : <ConnectionForm />}
         </>
       ),
+    },
+    {
+      id: "usage",
+      label: "Usage",
+      icon: Wallet,
+      note: "What chef spends on models this month, and the budgets that pause work when they are reached.",
+      render: () => <UsageSection org={hosted ? (mode?.org ?? null) : null} />,
     },
     {
       id: "models",

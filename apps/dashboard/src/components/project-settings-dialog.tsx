@@ -10,6 +10,7 @@ import { MemoryForm, ProjectInstructionsForm } from "@/components/guidance";
 import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
 import { SharingSection } from "@/components/people";
+import { ProjectBudgetGroup } from "@/components/usage";
 import { useProjectAccess } from "@/lib/account";
 import { githubApi, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -285,6 +286,7 @@ export function ProjectSettingsDialog(props: {
             <Group title="Parallel tries" note="How many ways chef builds each new feature at once in this project. Each try costs as much as a whole build.">
               <TriesForm key={`${settings.attempts ?? "shared"}`} own={settings.attempts ?? null} shared={props.sharedAttempts} save={save} />
             </Group>
+            <ProjectBudgetGroup api={api} />
             <Group title="Previews" note="A preview starts when someone opens its link, and is removed from your Cloudflare account after it sits unused.">
               <PreviewsForm key={settings.previewIdleMinutes} minutes={settings.previewIdleMinutes} save={save} />
             </Group>

@@ -194,9 +194,9 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const body = await request.text();
       const name = (readJson(body) as { name?: unknown } | null)?.name;
       if (typeof name === "string" && !(await org.claimProject(session.userId, name.trim()))) return json({ error: `there is already a project named ${name.trim()}` }, 409);
-      return proxy(new Request(request, { body }), signedIn.engine, url.origin);
+      return proxy(new Request(request, { body }), signedIn.engine, url.origin, fetch, session.userId);
     }
-    const response = await proxy(request, signedIn.engine, url.origin);
+    const response = await proxy(request, signedIn.engine, url.origin, fetch, session.userId);
     if (rule.kind !== "list" || !response.ok) return response;
     const listed = (await response.json()) as { projects: readonly { name: string }[] };
     const levels = await org.levels(session.userId, listed.projects.map((p) => p.name));

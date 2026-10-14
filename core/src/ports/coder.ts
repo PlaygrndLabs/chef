@@ -1,3 +1,4 @@
+import type { TokenUsage } from "../usage/budget.ts";
 import type { FileChanges, Tree } from "../git/tree.ts";
 import type { CustomAgent } from "../profiles/profile.ts";
 
@@ -37,7 +38,7 @@ export interface CoderTurnResult {
   readonly summary: string;
   readonly model: string;
   readonly runId: string;
-  readonly usage: { readonly inputTokens: number; readonly outputTokens: number };
+  readonly usage: TokenUsage;
 }
 
 export interface Coder {

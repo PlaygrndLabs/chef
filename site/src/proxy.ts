@@ -1,7 +1,8 @@
 export const ENGINE_PATH = /^\/(?:api|agents|preview)(?:\/|$)/;
 export const ORIGIN_HEADER = "x-chef-origin";
+export const USER_HEADER = "x-chef-user";
 
-const DROP_REQUEST = new Set(["host", "cookie", "authorization", "origin", "referer", "content-length", ORIGIN_HEADER]);
+const DROP_REQUEST = new Set(["host", "cookie", "authorization", "origin", "referer", "content-length", ORIGIN_HEADER, USER_HEADER]);
 const DROP_RESPONSE = new Set(["set-cookie", "content-length", "content-encoding", "transfer-encoding", "strict-transport-security"]);
 
 export interface EngineTarget {
@@ -9,7 +10,7 @@ export interface EngineTarget {
   readonly secret: string;
 }
 
-export async function proxy(request: Request, engine: EngineTarget, publicOrigin: string, fetchImpl: typeof fetch = fetch): Promise<Response> {
+export async function proxy(request: Request, engine: EngineTarget, publicOrigin: string, fetchImpl: typeof fetch = fetch, userId: string | null = null): Promise<Response> {
   const url = new URL(request.url);
   const headers = new Headers();
   request.headers.forEach((value, key) => {
@@ -17,6 +18,7 @@ export async function proxy(request: Request, engine: EngineTarget, publicOrigin
   });
   headers.set("authorization", `Bearer ${engine.secret}`);
   headers.set(ORIGIN_HEADER, publicOrigin);
+  if (userId) headers.set(USER_HEADER, userId);
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   let upstream: Response;
   try {

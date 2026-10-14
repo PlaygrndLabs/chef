@@ -46,6 +46,7 @@ export type ChefEvent = Base &
     | { readonly type: "session.stuck"; readonly sessionId: string; readonly featureId: string; readonly reason: string }
     | { readonly type: "session.steered"; readonly sessionId: string; readonly featureId: string; readonly message: string }
     | { readonly type: "session.needs"; readonly sessionId: string; readonly featureId: string; readonly names: readonly string[] }
+    | { readonly type: "session.budget"; readonly sessionId: string; readonly featureId: string; readonly reason: string | null }
     | { readonly type: "turn.rejected"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly rule: RejectionRule; readonly paths: readonly string[]; readonly lane?: string }
     | { readonly type: "voice.request"; readonly voiceSessionId: string; readonly delegationId: string; readonly prompt: string; readonly intent: string; readonly sessionId: string | null; readonly featureId: string | null }
     | { readonly type: "voice.turn"; readonly voiceSessionId: string; readonly speaker: "you" | "chef"; readonly text: string; readonly startedAt: number }

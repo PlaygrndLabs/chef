@@ -32,6 +32,8 @@ export interface SessionRecord {
   readonly parent: string | null;
   history: string[];
   needs?: readonly string[];
+  readonly requestedBy?: string;
+  overBudget?: string | null;
   lanes?: Lane[] | null;
   released?: MachineState["state"] | null;
   forkDeleted?: boolean;

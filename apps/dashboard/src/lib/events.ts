@@ -29,6 +29,7 @@ export type TimelineItem =
   | { readonly kind: "picked"; readonly at: number; readonly won: boolean; readonly winner: string; readonly reasons: readonly string[]; readonly candidates: readonly { readonly sessionId: string; readonly passed: number; readonly total: number }[] }
   | { readonly kind: "steered"; readonly at: number; readonly message: string }
   | { readonly kind: "needs"; readonly at: number; readonly names: readonly string[] }
+  | { readonly kind: "budget"; readonly at: number; readonly reason: string | null }
   | { readonly kind: "agent"; readonly at: number; readonly role: string; readonly model: string; readonly work: string; readonly lane?: string }
   | { readonly kind: "lanes"; readonly at: number; readonly lanes: readonly { readonly role: string; readonly branch: string; readonly items: number }[] }
   | { readonly kind: "lane"; readonly at: number; readonly role: string; readonly branch: string; readonly status: LaneStatus; readonly commitId: string | null; readonly paths: readonly string[] }
@@ -60,6 +61,7 @@ export interface SessionLive {
   gate: { readonly ok: boolean; readonly checks: readonly CheckView[] } | null;
   stuck: string | null;
   needs: readonly string[];
+  budget: string | null;
   merged: string | null;
   recalled: readonly string[];
   agent: { readonly role: string; readonly model: string; readonly at: number } | null;
@@ -109,7 +111,7 @@ function sessionOf(state: ProjectLive, sessionId: string, featureId: string, at:
     existing.updatedAt = at;
     return existing;
   }
-  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, kind: "feature", hotfix: false, heldBy: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], merged: null, recalled: [], agent: null, agents: [], lanes: [], timeline: [], createdAt: at, updatedAt: at };
+  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, kind: "feature", hotfix: false, heldBy: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], budget: null, merged: null, recalled: [], agent: null, agents: [], lanes: [], timeline: [], createdAt: at, updatedAt: at };
   state.sessions[sessionId] = created;
   state.order.push(sessionId);
   return created;
@@ -188,6 +190,8 @@ export function summarize(event: ChefEvent): string {
       return event.message;
     case "session.needs":
       return event.names.length ? `needs ${event.names.join(", ")}` : "has every key it needs";
+    case "session.budget":
+      return event.reason ?? "back within budget";
     case "turn.rejected":
       return `${event.role} ${event.rule} ${event.paths.join(", ")}`;
     case "voice.request":
@@ -348,6 +352,12 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
       s.needs = event.names;
       keep(s.timeline, { kind: "needs", at, names: event.names }, TIMELINE_LIMIT);
+      return true;
+    }
+    case "session.budget": {
+      const s = sessionOf(state, event.sessionId, event.featureId, at);
+      s.budget = event.reason;
+      keep(s.timeline, { kind: "budget", at, reason: event.reason }, TIMELINE_LIMIT);
       return true;
     }
     case "turn.rejected": {

@@ -365,6 +365,22 @@ export interface ProjectSpec {
   readonly layout?: FeatureLayout;
 }
 
+export interface ProjectBudget {
+  readonly month: string;
+  readonly spent: number;
+  readonly cap: number | null;
+}
+
+export interface Spending {
+  readonly caps: { readonly org: number | null; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>> };
+  readonly ledger: { readonly month: string; readonly org: number; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>> };
+}
+
+export const usageApi = {
+  get: () => call<Spending>("/api/usage"),
+  save: (caps: { readonly org?: number | null; readonly members?: Readonly<Record<string, number | null>> }) => call<Spending>("/api/usage", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(caps) }),
+};
+
 export function projectApi(project: string) {
   const base = `/api/projects/${project}`;
   return {
@@ -383,6 +399,8 @@ export function projectApi(project: string) {
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
     route: (prompt: string) => call<RouteDecision>(`${base}/route`, post({ prompt })),
     settings: () => call<ProjectSettingsView>(`${base}/settings`),
+    budget: () => call<ProjectBudget>(`${base}/budget`),
+    saveBudget: (cap: number | null) => call<ProjectBudget>(`${base}/budget`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ cap }) }),
     saveSettings: (update: ProjectSettingsUpdate) => call<ProjectSettingsView>(`${base}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
     git: () => call<{ settings: GitLinkView | null; state: SyncState | null }>(`${base}/git`),
     syncGit: () => call<{ ok: boolean }>(`${base}/git/sync`, { method: "POST" }),
