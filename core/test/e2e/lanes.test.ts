@@ -236,6 +236,42 @@ describe("roles working in parallel inside one feature", () => {
     expect((await w.orchestrator.mainTree()).tree[PARTS.frontend]).toBe(frontendRoutes);
   });
 
+  it("discards a role's change to a file another role owns", async () => {
+    const { script } = laneScript((input, attempt) => (input.role === "frontend" && attempt === 1 ? { [PARTS.frontend]: frontendRoutes, [PARTS.backend]: backendRoutes.replace("text is required", "type something") } : null));
+    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    const record = await w.orchestrator.run(sessionId as string);
+
+    expect(record.machine.state, record.machine.reason).toBe("merged");
+    expect(ofType(w.bus.log, "turn.rejected").map((e) => [e.role, e.rule, e.paths])).toEqual([["frontend", "lane-owner", [PARTS.backend]]]);
+    const frontend = w.coder.turns.filter((t) => t.role === "frontend");
+    expect(frontend[1]?.prompt).toContain(`${PARTS.backend} belongs to backend`);
+    expect(frontend[1]?.prompt).toContain(`- backend: ${PARTS.backend}`);
+    expect((await w.orchestrator.mainTree()).tree[PARTS.backend]).toBe(backendRoutes);
+  });
+
+  it("sends review feedback only to the roles whose files it names", async () => {
+    class NamesFrontend extends RuleReviewer {
+      private rejected = false;
+      override async review(input: ReviewInput): Promise<ReviewVerdict> {
+        if (this.rejected) return super.review(input);
+        this.rejected = true;
+        return { approve: false, reasons: ["frontend/routes.ts should say hello"], retest: false, model: this.model };
+      }
+    }
+    const { script } = laneScript();
+    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]), reviewer: new NamesFrontend() }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    const record = await w.orchestrator.run(sessionId as string);
+
+    expect(record.machine.state, record.machine.reason).toBe("merged");
+    const rework = w.coder.turns.filter((t) => t.lane).slice(2);
+    expect(rework.map((t) => t.role)).toEqual(["frontend"]);
+    expect(rework[0]?.prompt).toContain("Fix only the points about your own files");
+  });
+
   it("keeps one role's steps in order on one branch", async () => {
     const w = world({ script: scriptFromFixture(todo), deps: { planner: new LanePlanner(["backend"]) } });
     await w.orchestrator.bootstrap(templateTree());

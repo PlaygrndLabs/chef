@@ -16,7 +16,7 @@ import type { RouteDecision } from "../router/decision.ts";
 import { DEFAULT_ROUTER_CONFIG, Router, withoutCommand, type RouterConfig } from "../router/router.ts";
 import { chatContext, needsCompacting, plainSummary, readChatMemory, renderConversation, splitForCompacting, type ChatMemory } from "../router/conversation.ts";
 import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type RejectionRule, type SessionEvent } from "../session/machine.ts";
-import { laneBrief, laneItem, lanesBusy, planLanes, type Lane, type LaneLayoutFor, type LaneStatus } from "../session/lanes.ts";
+import { laneBrief, laneItem, laneOwner, lanesBusy, lanesNamedIn, planLanes, type Lane, type LaneLayoutFor, type LaneStatus } from "../session/lanes.ts";
 import type { SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
@@ -600,7 +600,8 @@ export class Orchestrator {
       record.lanes = await this.layLanes(record, lanes);
       await this.emit({ type: "lanes.started", sessionId: record.id, featureId: record.featureId, lanes: record.lanes.map((l) => ({ role: l.role, branch: l.branch, items: l.items.length })) });
     } else if (!lanesBusy(record.lanes)) {
-      for (const lane of record.lanes) lane.rework = true;
+      const named = lanesNamedIn(record.machine.feedback ?? "", record.lanes, record.featureId);
+      for (const lane of named.length ? named : record.lanes) lane.rework = true;
     }
     const lanes = record.lanes;
     const active = lanes.filter((lane) => laneItem(lane) !== null);
@@ -654,7 +655,10 @@ export class Orchestrator {
     if (Object.keys(changes).length > 0) {
       await this.commitTurn(record, { changes, role: "chef", kind: "scaffold", workItem: null, prompt: `Give each of the ${lanes.map((l) => l.role).join(", ")} roles its own files in ${feature.id}`, model: "chef", runId: this.deps.ids.next("run"), message: `scaffold(${feature.id}): one part per role` });
     }
-    return lanes.map((lane) => ({ ...lane, part: layout.parts[lane.role] ?? null }));
+    return lanes.map((lane) => {
+      const part = layout.parts[lane.role] ?? null;
+      return { ...lane, part, owns: part ? [part] : [] };
+    });
   }
 
   private async resetLane(record: SessionRecord, lane: Lane): Promise<void> {
@@ -1262,6 +1266,10 @@ export class Orchestrator {
     const paths = changedPaths(result.changes).filter((p) => !generated.has(p));
     const outside = outOfScope(paths, scope);
     if (outside.length > 0) return this.reject(record, item.role, "write-scope", outside, scope, undefined, result.changes, [], lane);
+    if (lane) {
+      const taken = paths.map((path) => [path, laneOwner(record.lanes ?? [], path)] as const).filter(([, owner]) => owner && owner !== lane);
+      if (taken.length > 0) return this.reject(record, item.role, "lane-owner", taken.map(([path]) => path), scope, taken.map(([path, owner]) => `- ${path} belongs to ${owner?.role}`).join("\n"), result.changes, [], lane);
+    }
     if (this.specialization.lockTests && item.role !== "test") {
       const locked = await this.lockedPaths(record);
       const touched = paths.filter((p) => locked.has(p) && !hasMarkers(head.tree[p]));
@@ -1278,7 +1286,10 @@ export class Orchestrator {
     if (Object.keys(changes).length === 0) return "empty";
     if (item.kind !== "conflict") await this.recordCorrection(record, item.role, head.tree, changes);
     await this.commitTurn(record, { changes, role: item.role, kind: item.kind, workItem: item.id, prompt, model: result.model, runId: result.runId, message: `${item.kind}(${record.featureId}): ${firstLine(result.summary || item.prompt)}` }, lane);
-    if (lane) await this.laneUpdate(record, lane, "committed", lane.head ?? undefined);
+    if (lane) {
+      lane.owns = [...new Set([...(lane.owns ?? []), ...paths.filter((path) => !path.endsWith(".test.ts") && path !== `features/${record.featureId}/index.ts` && laneOwner(record.lanes ?? [], path) === null)])];
+      await this.laneUpdate(record, lane, "committed", lane.head ?? undefined);
+    }
     return "committed";
   }
 
