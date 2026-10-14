@@ -11,6 +11,7 @@ const BUILT_IN: Readonly<Record<string, string>> = {
   test: "Test writer",
   backend: "Backend builder",
   frontend: "Frontend builder",
+  designer: "Designer",
   reviewer: "Reviewer",
   "conflict-resolver": "Conflict fixer",
   gardener: "Gardener",
