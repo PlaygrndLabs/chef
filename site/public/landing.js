@@ -418,7 +418,6 @@ function app(ctx, width, height) {
     return rect && rect.width ? { x: rect.left - canvas.left, y: rect.top - canvas.top, w: rect.width, h: rect.height } : null;
   };
   const box = area(".stage") || { x: width * 0.55, y: height * 0.2, w: width * 0.4, h: height * 0.6 };
-  // The headline, text and Get started are the first read: dots stay faint around them.
   const copy = area(".hero-copy");
   const quiet = (x, y) => {
     if (!copy) return 1;
@@ -434,7 +433,6 @@ function app(ctx, width, height) {
   const count = Math.max(...apps.map((a) => a.cells.length));
   const loose = Math.round((width * height) / 3600);
   const dots = Array.from({ length: count + loose }, (_, k) => {
-    // Dots that form the app start around the app's own area, so they never sweep across the text.
     const near = k < count;
     return {
       x: near ? Math.max(0, Math.min(width, box.x + (rand() * 1.3 - 0.05) * box.w)) : rand() * width,
