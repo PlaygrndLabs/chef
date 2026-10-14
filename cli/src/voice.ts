@@ -144,7 +144,7 @@ export async function runVoice(options: { readonly say: string; readonly live: b
   let mergedCommit: string | null = null;
   if (result?.sessionId) {
     const record = await w.orchestrator.run(result.sessionId);
-    state = record.machine.state;
+    state = record.machine.state === "stuck" && record.machine.reason ? `stuck: ${record.machine.reason}` : record.machine.state;
     mergedCommit = record.merge?.commitId ?? null;
   }
   return {
