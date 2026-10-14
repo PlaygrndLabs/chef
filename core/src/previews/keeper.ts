@@ -41,6 +41,11 @@ export function previewBranch(key: string): string {
   return `preview/${key}`;
 }
 
+export function previewName(branch: string, worker = ""): string {
+  const max = Math.max(1, Math.min(30, 62 - worker.length));
+  return branch.replace(/^preview\//, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, max).replace(/-+$/, "") || "preview";
+}
+
 export class PreviewKeeper implements PreviewHost {
   constructor(
     private readonly host: PreviewHost,
