@@ -59,6 +59,11 @@ function renderInstall(install) {
     $("install-title").textContent = "chef is ready";
     $("install-sub").textContent = "Your chef engine is running in your Cloudflare account. Cloudflare access for this setup has been handed back.";
     $("open").hidden = false;
+    if (install.steps?.token === "skipped") {
+      $("install-sub").textContent = "chef is running, but previews need one more permission. Sign in again and, on Cloudflare's page, turn on Account API Tokens Write under Sensitive scopes.";
+      $("retry").textContent = "Sign in again";
+      $("retry").hidden = false;
+    }
   }
   if (install.status === "failed") {
     $("install-title").textContent = "Setup stopped";
