@@ -29,7 +29,7 @@ function redirect(location: string, cookie?: string): Response {
 }
 
 function refused(site: string): Response {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>chef backoffice</title><link rel="stylesheet" href="/style.css"></head><body class="refused"><main><p class="label">Backoffice</p><h1>Only PlaygrndLabs admins can open the backoffice.</h1><p class="muted">Sign in to chef with a Cloudflare login that can see the PlaygrndLabs account, then open the backoffice from Settings.</p><p><a class="button" href="${site}">Back to chef</a></p></main></body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>chef backoffice</title><link rel="stylesheet" href="/style.css"></head><body class="refused"><main><p class="label">Backoffice</p><h1>Only PlaygrndLabs admins can open the backoffice.</h1><p class="muted">Sign in with a Cloudflare login that can see the PlaygrndLabs account. If chef already has you signed in with another login, sign out of chef first.</p><p><a class="button" href="${site}">Back to chef</a></p></main></body></html>`;
   return secure(new Response(html, { status: 403, headers: { "content-type": "text/html; charset=utf-8" } }));
 }
 
