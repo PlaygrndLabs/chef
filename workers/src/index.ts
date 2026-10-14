@@ -1,5 +1,5 @@
 import { getAgentByName, routeAgentRequest } from "agents";
-import { guard } from "./access.ts";
+import { guard, siteOrigin } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
 import { gitHubRequest, gitHubWebhook } from "./github.ts";
 import { projectsRequest } from "@chef/adapters/projects";
@@ -24,7 +24,7 @@ export default {
     const webhook = WEBHOOK.exec(new URL(request.url).pathname);
     if (webhook) return projectStub(env, webhook[1] as string, request);
     if (new URL(request.url).pathname === "/api/github/webhook") return gitHubWebhook(request, env);
-    const blocked = await guard(request, await credential(env), claimPassword(env));
+    const blocked = await guard(request, await credential(env), claimPassword(env), siteOrigin(env));
     if (blocked) return blocked;
     const url = new URL(request.url);
     if (url.pathname === "/api/app" && request.method === "GET") return Response.json({ engine: url.origin });

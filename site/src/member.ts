@@ -350,7 +350,7 @@ export class Member extends DurableObject<Env> {
       for (let waited = 0; !container.running && !exited && waited < 90_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
       if (!container.running) throw new Error(`the installer did not start${exited ? `: ${exited}` : ""}`);
     }
-    const payload = { accountId: job.accountId, name: job.name, password: job.secret, token: grant.token, source: { image: this.env.SANDBOX_IMAGE, ...source } };
+    const payload = { accountId: job.accountId, name: job.name, password: job.secret, site: this.env.SITE_URL ?? null, token: grant.token, source: { image: this.env.SANDBOX_IMAGE, ...source } };
     let url: string | null = null;
     try {
       const process = await container.exec(["node", "/opt/chef/site/installer/install.mjs"], { env: { CHEF_JOB: toBase64(JSON.stringify(payload)) }, stdout: "pipe", stderr: "combined" });
