@@ -162,7 +162,7 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
   const changes = useFetch(() => api.changes(node.id), `${node.id}:${head}:${node.state}`, node.id);
   const lane = laneSummary(node, role);
   const cloudflare = useFetch(() => api.cloudflare(node.id), `${node.id}:${node.state}:${head}`, node.id);
-  const mineOnCloudflare = (cloudflare.data?.resources ?? []).filter((r) => r.role === role);
+  const mineOnCloudflare = (cloudflare.data?.resources ?? []).filter((r) => r.roles.includes(role));
   const mine = (turns.data ?? []).filter((t) => t.note?.role === role);
   const paths = new Set([...(lane?.owns ?? []), ...mine.flatMap((t) => t.note?.paths ?? [])]);
   const files = (changes.data?.files ?? []).filter((f) => paths.has(f.path));
@@ -178,11 +178,12 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
           ]}
         />
       ) : null}
-      {mineOnCloudflare.length ? (
-        <Section title="On Cloudflare">
-          <CloudflareList resources={mineOnCloudflare} />
-        </Section>
-      ) : null}
+      <Section title="What it uses on Cloudflare">
+        {cloudflare.loading && !cloudflare.data ? <Skeleton className="h-16" /> : null}
+        {cloudflare.error ? <p className="text-sm text-muted-foreground">Could not read the Cloudflare details: {cloudflare.error}</p> : null}
+        {cloudflare.data && !mineOnCloudflare.length ? <p className="text-sm text-muted-foreground">This role uses nothing on Cloudflare in this build.</p> : null}
+        {mineOnCloudflare.length ? <CloudflareList resources={mineOnCloudflare} showRoles={false} /> : null}
+      </Section>
       <Section title="Its commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
         {turns.error ? <p className="text-sm text-muted-foreground">Could not load the commits: {turns.error}</p> : null}
