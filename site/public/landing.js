@@ -1,6 +1,6 @@
 const messages = {
   unavailable: "Sign-in with Cloudflare opens soon. Please check back shortly.",
-  cancelled: "Sign-in was cancelled on Cloudflare's page.",
+  cancelled: "Sign-in was cancelled on Cloudflare's page. If it said it could not complete the authorization, turn on Account API Tokens Write under Sensitive scopes and try again.",
   expired: "Sign-in timed out before Cloudflare sent you back.",
   failed: "Cloudflare did not complete the sign-in.",
 };

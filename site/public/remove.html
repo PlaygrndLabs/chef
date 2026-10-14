@@ -43,6 +43,7 @@
       <div class="box" id="sign-in" hidden>
         <p>chef doesn't keep access to your Cloudflare account after setup, so sign in once more to let it remove itself. On Cloudflare's page, share the account <span class="mono" id="sign-in-account"></span>.</p>
         <a class="btn btn-cf" href="/auth/start?then=remove">Sign in with Cloudflare</a>
+        <p class="fine">On Cloudflare&rsquo;s page, turn on <b>Account API Tokens Write</b> under Sensitive scopes. Without it Cloudflare stops the sign-in.</p>
       </div>
       <label class="field"><span id="type-label"></span><input id="typed" autocomplete="off" spellcheck="false"></label>
       <p class="error" id="form-error" role="alert"></p>
