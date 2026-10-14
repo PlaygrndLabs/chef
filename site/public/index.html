@@ -14,6 +14,7 @@
 <meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/landing.css">
+<link rel="stylesheet" href="/signin.css">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"chef","applicationCategory":"DeveloperApplication","operatingSystem":"Web","description":"An open source AI app builder that runs on your own Cloudflare account.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
@@ -125,7 +126,7 @@
       <div>
         <details><summary>Where do my code and data live?</summary><p>In your Cloudflare account. Projects are git repositories in Cloudflare Artifacts, and your model keys, settings and previews stay there too. GitHub sync is optional.</p></details>
         <details><summary>What does this site keep?</summary><p>Your Cloudflare user id and email, when you joined and last signed in, and the address of chef in your account with the key this site uses to reach it. Nothing else.</p></details>
-        <details><summary>Does chef keep access to my Cloudflare account?</summary><p>No. The access you grant at sign-in is used only while chef installs or updates itself in your account, and it ends right after. You can review or remove apps any time in Cloudflare under My Profile, Access Management.</p></details>
+        <details><summary>Does chef keep access to my Cloudflare account?</summary><p>No. The access you grant at sign-in is used only while chef installs or updates itself in your account, and it ends right after. You can <a href="/cloudflare-access">check or remove that access</a> in Cloudflare any time.</p></details>
         <details><summary>What does setup create in my account?</summary><p>A chef Worker for your organization with its Durable Objects, a container image for its sandboxes, a Vectorize index for project memory, an Artifacts namespace for your repositories, and one API token limited to Workers scripts so chef can publish previews. Everything is yours to inspect or remove.</p></details>
         <details><summary>Which Cloudflare plan do I need?</summary><p>Workers Paid, because chef uses Containers and Artifacts. If your account is on the free plan, the setup page links you to the upgrade.</p></details>
       </div>
@@ -150,5 +151,6 @@
   </div>
 </footer>
 <script src="/landing.js" defer></script>
+<script src="/signin.js" defer></script>
 </body>
 </html>
