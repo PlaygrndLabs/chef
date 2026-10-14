@@ -24,6 +24,21 @@ describe("code rules", () => {
     expect(problems.map((p) => `${p.path}:${p.line}`)).toEqual(["features/a/index.ts:1", "shared/http.ts:1", "src/index.ts:1"]);
   });
 
+  it("keeps file reads out of code that runs on Cloudflare", () => {
+    const problems = checkTree(
+      {
+        "features/notes/frontend/routes.ts": 'import { readFile } from "node:fs/promises";\n',
+        "shared/look.ts": 'import fs from "fs";\n',
+        "features/notes/notes.test.ts": 'import { readFileSync } from "node:fs";\n',
+        "features/notes/flow.ts": 'import { readFileSync } from "node:fs";\n',
+        "app/cli.ts": 'import { readFile } from "node:fs/promises";\n',
+      },
+      ["import-boundaries"],
+    );
+    expect(problems.map((p) => p.path)).toEqual(["features/notes/frontend/routes.ts", "shared/look.ts"]);
+    expect(problems[0]?.message).toMatch(/no files to read at runtime; keep text such as CSS in a \.ts module/);
+  });
+
   it("flags imports of packages the project does not install", () => {
     const tree = {
       "package.json": JSON.stringify({ devDependencies: { playwright: "1.56.1", "@types/node": "22.20.5" } }),
