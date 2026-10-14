@@ -14,7 +14,7 @@
   --accent: oklch(0.68 0.19 45);
   --success: oklch(0.55 0.15 150);
   --danger: oklch(0.55 0.2 27);
-  --radius: 10px;
+  --radius: 0;
   color-scheme: light;
 }
 
@@ -85,7 +85,7 @@ nav.links a:hover { color: var(--foreground); }
   gap: 8px;
   height: 40px;
   padding: 0 18px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid transparent;
   font: inherit;
   font-size: 15px;
@@ -112,7 +112,7 @@ nav.links a:hover { color: var(--foreground); }
 .btn svg { width: 20px; height: 20px; flex: none; }
 
 .hero { padding: 88px 0 72px; text-align: center; }
-.eyebrow { display: inline-block; font-size: 13px; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; margin-bottom: 22px; }
+.eyebrow { display: inline-block; font-size: 13px; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 0; padding: 4px 12px; margin-bottom: 22px; }
 .hero h1 { font-size: clamp(34px, 6vw, 58px); line-height: 1.08; letter-spacing: -0.03em; margin: 0 auto 20px; max-width: 820px; }
 .hero p.lead { font-size: clamp(17px, 2.2vw, 20px); color: var(--muted-foreground); max-width: 660px; margin: 0 auto 32px; }
 .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
@@ -124,12 +124,12 @@ section .sub { color: var(--muted-foreground); max-width: 640px; margin: 0 0 40p
 
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 
-.card { background: var(--card); border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px); padding: 22px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; }
 .card h3 { margin: 0 0 6px; font-size: 17px; letter-spacing: -0.01em; }
 .card p { margin: 0; color: var(--muted-foreground); font-size: 15px; }
 
 .steps { counter-reset: step; }
-.steps .card h3::before { counter-increment: step; content: counter(step); display: inline-grid; place-items: center; width: 26px; height: 26px; margin-right: 10px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); font-size: 13px; }
+.steps .card h3::before { counter-increment: step; content: counter(step); display: inline-grid; place-items: center; width: 26px; height: 26px; margin-right: 10px; border-radius: 0; background: var(--primary); color: var(--primary-foreground); font-size: 13px; }
 
 .card .price { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; margin: 6px 0 8px; }
 .card .price small { font-size: 15px; font-weight: 400; color: var(--muted-foreground); }
@@ -160,7 +160,7 @@ footer .spacer { flex: 1; }
 .account input { margin-top: 4px; accent-color: var(--primary); }
 .account .name { font-weight: 500; }
 .account .meta { font-size: 14px; color: var(--muted-foreground); }
-.badge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); margin-left: 8px; vertical-align: 2px; }
+.badge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 0; border: 1px solid var(--border); margin-left: 8px; vertical-align: 2px; }
 .badge.ok { color: var(--success); border-color: color-mix(in oklch, var(--success) 40%, transparent); }
 .badge.warn { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 40%, transparent); }
 
@@ -171,7 +171,7 @@ label.field input:focus { outline: 2px solid color-mix(in oklch, var(--foregroun
 
 .progress { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 10px; }
 .progress li { display: flex; gap: 10px; align-items: center; }
-.progress .dot { width: 18px; height: 18px; border-radius: 999px; border: 2px solid var(--border); flex: none; display: grid; place-items: center; font-size: 11px; }
+.progress .dot { width: 18px; height: 18px; border-radius: 0; border: 2px solid var(--border); flex: none; display: grid; place-items: center; font-size: 11px; }
 .progress li[data-state="running"] .dot { border-color: var(--foreground); border-top-color: transparent; animation: spin 0.8s linear infinite; }
 .progress li[data-state="done"] .dot { background: var(--success); border-color: var(--success); color: var(--background); }
 .progress li[data-state="done"] .dot::after { content: "✓"; }
