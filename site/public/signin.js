@@ -1,12 +1,12 @@
 const scopes = [
-  ["card", "Account Settings Read", "Sees your accounts and checks for Workers Paid"],
-  ["globe", "Artifacts Write", "A git repository for each project"],
-  ["code", "Cloudchamber Write", "Starts and stops the sandboxes"],
-  ["card", "User Details Read", "Knows who you are, to sign you in"],
-  ["code", "Vectorize Write", "Saves each project's memory"],
-  ["brain", "Workers AI Write", "Lets chef search that memory"],
-  ["code", "Workers Containers Write", "Adds the sandboxes chef builds in"],
-  ["code", "Workers Scripts Write", "Installs chef in your account"],
+  ["card", "Account Settings Read", "sees your accounts and checks for Workers Paid"],
+  ["globe", "Artifacts Write", "a git repository for each project"],
+  ["code", "Cloudchamber Write", "starts and stops the sandboxes"],
+  ["card", "User Details Read", "knows who you are, to sign you in"],
+  ["code", "Vectorize Write", "saves each project's memory"],
+  ["brain", "Workers AI Write", "lets chef search that memory"],
+  ["code", "Workers Containers Write", "adds the sandboxes chef builds in"],
+  ["code", "Workers Scripts Write", "installs chef in your account"],
 ];
 
 const icons = {
@@ -54,7 +54,7 @@ dialog.innerHTML = `
             <span><b>Account API Tokens Write</b><small>Grants write access to account API Tokens</small></span>
             <span class="cfc-switch" aria-hidden="true"><i></i></span>
           </div>
-          <p class="note must"><strong>Turn this on!</strong>Cloudflare leaves it off for every app. chef uses it once, to make a token that only publishes your previews and live apps. Without it, previews won't work.</p>
+          <p class="note must"><strong>turn this on!</strong>Cloudflare leaves it off. chef needs it to publish your previews and live apps</p>
         </div>
       </div>
     </div>
@@ -75,30 +75,53 @@ const card = dialog.querySelector(".cfc");
 const art = dialog.querySelector(".consent-art");
 
 function arrow(sx, sy, ex, ey, loop) {
-  const dx = ex - sx;
-  const dy = ey - sy;
-  const length = Math.hypot(dx, dy) || 1;
-  const ux = dx / length;
-  const uy = dy / length;
-  const flip = ux >= 0 ? 1 : -1;
-  const vx = uy * flip;
-  const vy = -ux * flip;
-  const lift = Math.min(length * 0.6, 46);
-  const at = (a, b) => `${(sx + ux * a * length + vx * b * lift).toFixed(1)} ${(sy + uy * a * length + vy * b * lift).toFixed(1)}`;
-  const body = loop
-    ? `M${at(0, 0)} C${at(0.18, -0.05)} ${at(0.32, 0.2)} ${at(0.44, 0.5)} C${at(0.5, 0.68)} ${at(0.4, 0.8)} ${at(0.36, 0.62)} C${at(0.32, 0.42)} ${at(0.5, 0.34)} ${at(0.64, 0.36)} C${at(0.8, 0.38)} ${at(0.92, 0.2)} ${at(1, 0)}`
-    : `M${at(0, 0)} C${at(0.3, 0.18)} ${at(0.7, 0.2)} ${at(1, 0)}`;
-  const tx = ux * 0.8 - vx * 0.6 * (lift / length);
-  const ty = uy * 0.8 - vy * 0.6 * (lift / length);
-  const tl = Math.hypot(tx, ty) || 1;
-  const hx = tx / tl;
-  const hy = ty / tl;
-  const wing = (angle) => {
+  const length = Math.hypot(ex - sx, ey - sy) || 1;
+  const flip = ex >= sx ? 1 : -1;
+  const bow = Math.min(length * 0.24, 30);
+  const cx = (sx + ex) / 2 + ((ey - sy) / length) * flip * bow;
+  const cy = (sy + ey) / 2 - ((ex - sx) / length) * flip * bow;
+  const radius = loop ? Math.min(11, length * 0.1) : 0;
+  const points = [];
+  for (let i = 0; i <= 120; i++) {
+    const t = i / 120;
+    let x = (1 - t) ** 2 * sx + 2 * (1 - t) * t * cx + t * t * ex;
+    let y = (1 - t) ** 2 * sy + 2 * (1 - t) * t * cy + t * t * ey;
+    if (radius && t > 0.28 && t < 0.48) {
+      const tx = 2 * (1 - t) * (cx - sx) + 2 * t * (ex - cx);
+      const ty = 2 * (1 - t) * (cy - sy) + 2 * t * (ey - cy);
+      const tl = Math.hypot(tx, ty) || 1;
+      const angle = (2 * Math.PI * (t - 0.28)) / 0.2;
+      const along = Math.sin(angle) * radius * 1.25;
+      const up = (1 - Math.cos(angle)) * radius;
+      x += (tx / tl) * along + (ty / tl) * flip * up;
+      y += (ty / tl) * along - (tx / tl) * flip * up;
+    }
+    points.push([x, y]);
+  }
+  const [px, py] = points[points.length - 4];
+  const hl = Math.hypot(ex - px, ey - py) || 1;
+  const hx = (ex - px) / hl;
+  const hy = (ey - py) / hl;
+  const wing = (angle, size) => {
     const c = Math.cos(angle);
     const s = Math.sin(angle);
-    return `M${ex.toFixed(1)} ${ey.toFixed(1)} L${(ex - (hx * c - hy * s) * 10).toFixed(1)} ${(ey - (hx * s + hy * c) * 10).toFixed(1)}`;
+    return `M${(ex - (hx * c - hy * s) * size).toFixed(1)} ${(ey - (hx * s + hy * c) * size).toFixed(1)} L${ex.toFixed(1)} ${ey.toFixed(1)}`;
   };
-  return `${body} ${wing(0.5)} ${wing(-0.5)}`;
+  return `M${points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(" L")} ${wing(0.6, 12)} ${wing(-0.5, 10)}`;
+}
+
+function ring(box) {
+  const cx = (box.left + box.right) / 2;
+  const cy = box.mid;
+  const rx = (box.right - box.left) / 2 + 14;
+  const ry = (box.bottom - box.top) / 2 + 10;
+  const points = [];
+  for (let i = 0; i <= 80; i++) {
+    const angle = -2.4 + (i / 80) * (Math.PI * 2 + 0.6);
+    const wobble = 1 + 0.05 * Math.sin(angle * 3) + i * 0.0012;
+    points.push(`${(cx + Math.cos(angle) * rx * wobble).toFixed(1)} ${(cy + Math.sin(angle) * ry * wobble).toFixed(1)}`);
+  }
+  return `M${points.join(" L")}`;
 }
 
 function layout() {
@@ -111,7 +134,7 @@ function layout() {
   const local = (rect) => ({ left: rect.left - box.left, right: rect.right - box.left, top: rect.top - box.top, bottom: rect.bottom - box.top, mid: (rect.top + rect.bottom) / 2 - box.top });
   const cardBox = local(card.getBoundingClientRect());
   const paths = [];
-  const gap = 64;
+  const gap = 84;
   const width = Math.max(150, cardBox.left - gap);
   notes.forEach((note, i) => {
     const must = note.classList.contains("must");
@@ -124,15 +147,16 @@ function layout() {
       note.style.left = left ? `${-gap - width}px` : `${cardBox.right - cardBox.left + gap}px`;
       note.style.top = "0px";
       const height = note.offsetHeight;
-      note.style.top = `${must ? target.top - cardBox.top - 56 : target.mid - cardBox.top - height / 2 + 4}px`;
+      note.style.top = `${must ? target.top - cardBox.top - 70 : target.mid - cardBox.top - height / 2 + 12}px`;
       const own = local(note.getBoundingClientRect());
-      const sy = must ? own.top + 18 : own.top + Math.min(height / 2 + 6, 24);
-      paths.push([left ? arrow(own.right + 8, sy, target.left - 8, target.mid, true) : arrow(own.left - 8, sy, target.right + 10, target.mid, true), must]);
+      const sy = must ? own.top + 18 : own.top + Math.max(height - 6, 26);
+      if (must) paths.push([ring(target), true], [arrow(own.left - 10, sy, target.right + 20, target.mid - 6, true), true]);
+      else paths.push([left ? arrow(own.right + 10, sy, target.left - 10, target.mid, true) : arrow(own.left - 10, sy, target.right + 12, target.mid, true), false]);
     } else {
       note.classList.remove("left");
       const own = local(note.getBoundingClientRect());
       if (must) {
-        paths.push([arrow(own.left + 180, own.top + 14, target.left + (target.right - target.left) / 2, target.bottom + 8, false), true]);
+        paths.push([ring(target), true], [arrow(own.left + 170, own.top + 12, target.left + (target.right - target.left) / 2 - 6, target.bottom + 14, false), true]);
         return;
       }
       const icon = local(note.previousElementSibling.querySelector(".cfc-ico").getBoundingClientRect());
