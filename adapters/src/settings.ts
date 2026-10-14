@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { providerFromEnv, type LlmEnv, type LlmProvider } from "./anthropic.ts";
+import { LIVE_MODEL } from "./gpt-live.ts";
+import { REALTIME_MODEL } from "./realtime.ts";
 
 export type VoiceProvider = { readonly kind: "openai"; readonly apiKey: string } | { readonly kind: "custom"; readonly baseUrl: string; readonly apiKey: string };
 
@@ -16,6 +18,7 @@ export interface ModelSettings {
   readonly planner: string;
   readonly reviewer: string;
   readonly coder: string;
+  readonly voice: string;
 }
 
 export interface AppSettings {
@@ -46,12 +49,14 @@ export interface SettingsEnv extends LlmEnv {
   readonly PLANNER_MODEL?: string | undefined;
   readonly REVIEWER_MODEL?: string | undefined;
   readonly CODER_MODEL?: string | undefined;
+  readonly VOICE_MODEL?: string | undefined;
+  readonly REALTIME_MODEL?: string | undefined;
   readonly ATTEMPTS?: string | undefined;
 }
 
 export const NO_SETTINGS: AppSettings = { llm: null, voice: null, jev: null, cloudflare: null, models: null, attempts: null };
 
-export const DEFAULT_MODELS: ModelSettings = { planner: "claude-opus-5-5", reviewer: "claude-opus-5-5", coder: "claude-sonnet-5-5" };
+export const DEFAULT_MODELS: Omit<ModelSettings, "voice"> = { planner: "claude-opus-5-5", reviewer: "claude-opus-5-5", coder: "claude-sonnet-5-5" };
 
 export const MAX_ATTEMPTS = 4;
 
@@ -63,6 +68,10 @@ export function voiceFromEnv(env: SettingsEnv): VoiceProvider | null {
   if (env.OPENAI_API_KEY) return { kind: "openai", apiKey: env.OPENAI_API_KEY };
   if (env.VOICE_BASE_URL && env.VOICE_API_KEY) return { kind: "custom", baseUrl: env.VOICE_BASE_URL, apiKey: env.VOICE_API_KEY };
   return null;
+}
+
+function defaultVoiceModel(voice: VoiceProvider | null, env: SettingsEnv): string {
+  return voice?.kind === "openai" ? (env.VOICE_MODEL ?? LIVE_MODEL) : (env.REALTIME_MODEL ?? REALTIME_MODEL);
 }
 
 function jevFromEnv(env: SettingsEnv): JevSettings | null {
@@ -79,15 +88,17 @@ function attemptsFromEnv(env: SettingsEnv): number {
 }
 
 export function resolveSettings(saved: AppSettings, env: SettingsEnv): Resolved {
+  const voice = saved.voice ?? voiceFromEnv(env);
   return {
     llm: saved.llm ?? providerFromEnv(env),
-    voice: saved.voice ?? voiceFromEnv(env),
+    voice,
     jev: saved.jev ?? jevFromEnv(env),
     cloudflare: saved.cloudflare ?? cloudflareFromEnv(env),
     models: {
       planner: saved.models?.planner ?? env.PLANNER_MODEL ?? DEFAULT_MODELS.planner,
       reviewer: saved.models?.reviewer ?? env.REVIEWER_MODEL ?? DEFAULT_MODELS.reviewer,
       coder: saved.models?.coder ?? env.CODER_MODEL ?? DEFAULT_MODELS.coder,
+      voice: saved.models?.voice ?? defaultVoiceModel(voice, env),
     },
     attempts: saved.attempts ?? attemptsFromEnv(env),
   };
@@ -109,7 +120,7 @@ const LlmInput = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal(
 const VoiceInput = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("openai"), apiKey: secret }), z.strictObject({ kind: z.literal("custom"), baseUrl, apiKey: secret })]);
 const JevInput = z.strictObject({ apiKey: secret });
 const CloudflareInput = z.strictObject({ accountId: z.string().trim().regex(/^[0-9a-f]{32}$/, "the account id is 32 hexadecimal characters"), apiToken: secret });
-const ModelsInput = z.strictObject({ planner: model.optional(), reviewer: model.optional(), coder: model.optional() }).transform((models): Partial<ModelSettings> => Object.fromEntries(Object.entries(models).filter(([, value]) => value !== undefined)));
+const ModelsInput = z.strictObject({ planner: model.optional(), reviewer: model.optional(), coder: model.optional(), voice: model.optional() }).transform((models): Partial<ModelSettings> => Object.fromEntries(Object.entries(models).filter(([, value]) => value !== undefined)));
 
 export const SettingsUpdate = z.strictObject({
   llm: LlmInput.nullable().optional(),
@@ -156,14 +167,14 @@ export interface SettingsView {
   readonly attempts: { readonly value: number; readonly source: Source };
 }
 
-function hint(key: string): string {
+export function keyHint(key: string): string {
   return key.length > 8 ? `…${key.slice(-4)}` : "set";
 }
 
 function view(saved: LlmProvider | VoiceProvider | null, fallback: LlmProvider | VoiceProvider | null): ProviderView | null {
   const provider = saved ?? fallback;
   if (!provider) return null;
-  return { kind: provider.kind, baseUrl: provider.kind === "custom" ? provider.baseUrl : null, keyHint: hint(provider.apiKey), source: saved ? "app" : "deployment" };
+  return { kind: provider.kind, baseUrl: provider.kind === "custom" ? provider.baseUrl : null, keyHint: keyHint(provider.apiKey), source: saved ? "app" : "deployment" };
 }
 
 export function describeSettings(stored: AppSettings, env: SettingsEnv): SettingsView {
@@ -173,8 +184,8 @@ export function describeSettings(stored: AppSettings, env: SettingsEnv): Setting
   return {
     llm: view(saved.llm, providerFromEnv(env)),
     voice: view(saved.voice, voiceFromEnv(env)),
-    jev: resolved.jev ? { keyHint: hint(resolved.jev.apiKey), source: source(saved.jev) } : null,
-    cloudflare: resolved.cloudflare ? { accountId: resolved.cloudflare.accountId, keyHint: hint(resolved.cloudflare.apiToken), source: source(saved.cloudflare) } : null,
+    jev: resolved.jev ? { keyHint: keyHint(resolved.jev.apiKey), source: source(saved.jev) } : null,
+    cloudflare: resolved.cloudflare ? { accountId: resolved.cloudflare.accountId, keyHint: keyHint(resolved.cloudflare.apiToken), source: source(saved.cloudflare) } : null,
     models: { ...resolved.models, source: source(saved.models && Object.keys(saved.models).length > 0) },
     attempts: { value: resolved.attempts, source: source(saved.attempts) },
   };

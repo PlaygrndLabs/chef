@@ -111,7 +111,7 @@ Scripts can call chef with `Authorization: Bearer <password>`. For example, `cur
 
 ## Models
 
-Default models are in `wrangler.jsonc` (`PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `JEV_MODEL`, `VOICE_MODEL`); Settings overrides the first three.
+Default models are in `wrangler.jsonc` (`PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `JEV_MODEL`, `VOICE_MODEL` for an OpenAI key, `REALTIME_MODEL` for any other voice provider); Settings > Models overrides all of them except `JEV_MODEL`.
 
 Optional tuned reviewer: train it with `python tune/train.py` (see `tune/README.md`), upload it with `npx wrangler ai finetune create @cf/google/gemma-2b-it-lora chef-reviewer tune/out/adapter`, and set the var `REVIEWER_LORA` to `chef-reviewer`.
 

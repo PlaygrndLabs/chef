@@ -311,7 +311,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const live = talk.phase !== "off" && talk.project === selection.project;
   const goLive = () => {
     if (app.available && app.settings && !app.settings.voice) {
-      toast.error("Live talk needs a voice key", { description: "Add an OpenAI key under Settings, Voice.", action: { label: "Open", onClick: () => openSettings("app", "voice") } });
+      toast.error("Live talk needs a voice key", { description: "Add an OpenAI key under Settings, Models.", action: { label: "Open", onClick: () => openSettings("app", "models") } });
       return;
     }
     startLive(selection.project).catch((error: unknown) => toast.error("Live talk did not start", { description: plainVoiceError(error) }));
