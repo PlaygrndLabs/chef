@@ -72,6 +72,7 @@ export interface RemovalJob {
   readonly personal: boolean;
   readonly engine: Engine | null;
   readonly projects: readonly string[] | null;
+  readonly started?: boolean;
 }
 
 interface Job {
@@ -80,6 +81,7 @@ interface Job {
   readonly accountId: string;
   readonly secret: string;
   readonly update: boolean;
+  readonly started?: boolean;
 }
 
 const PROFILE = "profile";
@@ -216,8 +218,9 @@ export class Member extends DurableObject<Env> {
   override async alarm(): Promise<void> {
     const removal = await this.ctx.storage.get<RemovalJob>(REMOVAL_JOB);
     if (removal) {
-      await this.ctx.storage.delete(REMOVAL_JOB);
+      await this.ctx.storage.put(REMOVAL_JOB, { ...removal, started: true });
       try {
+        if (removal.started) throw new Error("removing was interrupted by a chef update; sign in again and chef picks up where it stopped");
         await this.runRemoval(removal);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -230,15 +233,21 @@ export class Member extends DurableObject<Env> {
         }));
         await organization(this.env, removal.orgId).setRemoving(false).catch(() => undefined);
       }
+      await this.ctx.storage.delete(REMOVAL_JOB);
     }
     const job = await this.ctx.storage.get<Job>(JOB);
-    if (job) {
+    if (job?.started) {
       await this.ctx.storage.delete(JOB);
+      await this.update((s) => ({ ...s, status: "failed", error: s.error ?? "setup was interrupted by a chef update; sign in and try again" }));
+      await this.report(job);
+    } else if (job) {
+      await this.ctx.storage.put(JOB, { ...job, started: true });
       try {
         await this.run(job);
       } catch (error) {
         await this.update((s) => ({ ...s, status: "failed", error: s.error ?? (error instanceof Error ? error.message : String(error)) }));
       }
+      await this.ctx.storage.delete(JOB);
       await this.report(job);
     }
     await this.forgetToken();
