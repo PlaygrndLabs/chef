@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LocalGitHost } from "../src/local-git.ts";
+import { LocalGitHost } from "./git-host.ts";
 
 export class LocalGitServer extends LocalGitHost {
   readonly pushes: { repo: string; token: string }[] = [];

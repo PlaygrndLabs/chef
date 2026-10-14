@@ -1,15 +1,13 @@
-import { Suspense, use, useCallback, useState } from "react";
+import { Suspense, use, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Shown } from "@/components/loading";
 import { MainView, ProjectWorkspace } from "@/components/project-workspace";
 import { SessionView } from "@/components/session-tabs";
-import type { AppMode } from "@/lib/api";
 import { boot } from "@/lib/boot";
 import { preloadable } from "@/lib/lazy";
 import { pickProject, rememberProject, useProjects } from "@/lib/projects";
 import { useSelection } from "@/lib/selection";
 
-const PlaceScreen = preloadable(() => import("@/components/place-screen").then((m) => m.PlaceScreen));
 const Start = preloadable(() => import("@/components/start").then((m) => m.Start));
 
 export function preloadScreen() {
@@ -17,10 +15,6 @@ export function preloadScreen() {
   if (!params.has("project")) return void Start.preload();
   void MainView.preload();
   if (params.has("feature") || params.has("session")) void SessionView.preload();
-}
-
-function needsPlace(mode: AppMode): boolean {
-  return mode.mode === "local" && (mode.place === null || (mode.place === "computer" && mode.computer?.status !== "ready"));
 }
 
 function LoadFailed({ message, onRetry }: { readonly message: string; readonly onRetry: () => void }) {
@@ -69,13 +63,5 @@ function ConnectedApp({ initial }: { readonly initial: readonly string[] | null 
 
 export function App() {
   const start = use(boot());
-  const [mode, setMode] = useState(start.mode);
-  if (needsPlace(mode))
-    return (
-      <Suspense fallback={null}>
-        <PlaceScreen mode={mode} onChange={setMode} />
-        <Shown />
-      </Suspense>
-    );
-  return <ConnectedApp initial={needsPlace(start.mode) ? null : start.projects} />;
+  return <ConnectedApp initial={start.projects} />;
 }
