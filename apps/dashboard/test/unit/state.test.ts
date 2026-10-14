@@ -232,8 +232,22 @@ describe("voice transcript", () => {
     ])
       lines = transcript(lines, event, 5);
     expect(lines).toEqual([
-      { speaker: "you", text: "Add an item", at: 5 },
+      { speaker: "you", text: "Add an item", at: 5, open: true },
       { speaker: "chef", text: "On it.", at: 5 },
+    ]);
+  });
+
+  it("keeps your words before chef's answer when their transcript arrives late", () => {
+    let lines: Heard[] = [];
+    lines = transcript(lines, { type: "session.input_speech.started" }, 1);
+    lines = transcript(lines, { type: "session.output_transcript.delta", delta: "Got it." }, 3);
+    lines = transcript(lines, { type: "session.input_transcript.done", transcript: "Add a todo list" }, 4);
+    lines = transcript(lines, { type: "session.input_speech.started" }, 6);
+    lines = transcript(lines, { type: "session.input_transcript.delta", delta: "Thanks" }, 7);
+    expect(lines).toEqual([
+      { speaker: "you", text: "Add a todo list", at: 1 },
+      { speaker: "chef", text: "Got it.", at: 3 },
+      { speaker: "you", text: "Thanks", at: 6, open: true },
     ]);
   });
 });

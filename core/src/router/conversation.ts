@@ -17,7 +17,7 @@ export interface ChatContext {
   readonly summarized: number;
 }
 
-export const CHAT_CONTEXT_TOKENS = 8_000;
+export const CHAT_CONTEXT_TOKENS = 160_000;
 const REPLY_CHARS = 600;
 const SUMMARY_CHARS = 6_000;
 

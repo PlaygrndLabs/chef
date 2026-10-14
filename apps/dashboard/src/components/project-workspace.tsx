@@ -58,8 +58,8 @@ function ChatPane({ onMenu }: { readonly onMenu?: () => void }) {
       {onMenu ? (
         <ProjectHeader onMenu={onMenu} />
       ) : (
-        <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b px-4 text-xs font-medium text-muted-foreground">
-          Chat
+        <div className="flex h-11 shrink-0 items-center justify-between gap-3 dash-b px-4 text-xs text-muted-foreground">
+          <span className="kicker">Chat</span>
           <ContextMeter />
         </div>
       )}
@@ -209,6 +209,8 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
           <div className="flex min-h-0 flex-1">
             <aside className="relative shrink-0 border-r" style={{ width: tree }} aria-label="Features">
               <TreePane header />
+              <span aria-hidden className="joint top-[42px] -right-px" />
+              <span aria-hidden className="joint -right-px -bottom-0.5" />
               <ResizeHandle edge="right" width={tree} min={TREE.min} max={TREE.max} initial={TREE.initial} onResize={setTreeWidth} label="Resize the feature list" />
             </aside>
             <main className="relative min-w-0 flex-1" aria-label="Open features">
@@ -216,6 +218,8 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
             </main>
             <section className="relative shrink-0 border-l" style={{ width: chat }} aria-label="Chat">
               <ChatPane />
+              <span aria-hidden className="joint top-[42px] -left-px" />
+              <span aria-hidden className="joint -bottom-0.5 -left-px" />
               <ResizeHandle edge="left" width={chat} min={CHAT.min} max={chatMax} initial={chatInitial(width)} onResize={setChatWidth} label="Resize the chat" />
             </section>
           </div>

@@ -31,6 +31,8 @@ function finishedSpeaker(type: string): Speaker | null {
 export class SpokenTurns {
   private readonly open = new Map<Speaker, Open>();
   private cut: { readonly offset: number | null; readonly at: number } | null = null;
+  private readonly heardItems = new Set<string>();
+  private speechAt: number | null = null;
 
   constructor(
     private readonly flush: (turn: SpokenTurn) => void,
@@ -39,8 +41,13 @@ export class SpokenTurns {
 
   handle(event: LiveEvent): void {
     const speaker = speakerOf(event.type);
+    if (event.type === "session.input_speech.started") {
+      if (!this.open.has("you")) this.speechAt ??= this.now();
+      return;
+    }
     if (speaker && typeof event["delta"] === "string") {
       const at = this.now();
+      if (speaker === "you" && typeof event["item_id"] === "string") this.heardItems.add(event["item_id"]);
       const other: Speaker = speaker === "you" ? "chef" : "you";
       const waiting = this.open.get(other);
       if (waiting && at - waiting.lastAt >= QUIET_MS) this.end(other);
@@ -49,18 +56,30 @@ export class SpokenTurns {
       if (current) {
         current.text += event["delta"];
         current.lastAt = at;
-      } else this.open.set(speaker, { text: event["delta"], startedAt: at, lastAt: at });
+      } else this.open.set(speaker, { text: event["delta"], startedAt: speaker === "you" ? this.spoke(at) : at, lastAt: at });
       return;
     }
     if (event.type === "session.delegation.created" && this.open.has("you")) this.cut = { offset: typeof event["offset_ms"] === "number" ? event["offset_ms"] : null, at: this.now() };
     const finished = finishedSpeaker(event.type);
-    if (finished) this.end(finished);
+    const item = event["item_id"];
+    if (finished === "you" && typeof item === "string" && !this.heardItems.has(item) && typeof event["transcript"] === "string") {
+      this.heardItems.add(item);
+      this.end("you");
+      const text = event["transcript"].replace(/\s+/g, " ").trim();
+      if (text) this.flush({ speaker: "you", text, startedAt: this.spoke(this.now()) });
+    } else if (finished) this.end(finished);
     if (event.type === "session.closed") this.endAll();
   }
 
   endAll(): void {
     const order = [...this.open.entries()].sort((a, b) => a[1].startedAt - b[1].startedAt);
     for (const [speaker] of order) this.end(speaker);
+  }
+
+  private spoke(at: number): number {
+    const start = this.speechAt ?? at;
+    this.speechAt = null;
+    return start;
   }
 
   private before(cut: { readonly offset: number | null; readonly at: number }, event: LiveEvent, at: number): boolean {

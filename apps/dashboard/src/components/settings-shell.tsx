@@ -46,7 +46,7 @@ export function SettingsShell(props: {
       <DialogContent className="flex h-[min(52rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl md:flex-row" data-dialog={props.name} data-section={section.id} onOpenAutoFocus={(e) => e.preventDefault()}>
         <nav className="flex shrink-0 flex-col gap-0.5 border-b bg-sidebar p-2 pr-11 md:w-56 md:pr-3 md:border-r md:border-b-0 md:p-3" aria-label={`${props.heading} sections`}>
           <div className="hidden px-2 pt-1 pb-3 md:block">
-            <div className="text-[11px] tracking-wide text-muted-foreground uppercase">{props.kicker}</div>
+            <div className="kicker text-brand">{props.kicker}</div>
             <DialogTitle className="truncate text-sm font-medium">{props.heading}</DialogTitle>
             <DialogDescription className="sr-only">{props.description}</DialogDescription>
           </div>
@@ -62,7 +62,7 @@ export function SettingsShell(props: {
               >
                 <s.icon className="size-4 shrink-0" />
                 <span className="truncate">{s.label}</span>
-                {s.attention ? <span className="ml-auto size-1.5 shrink-0 rounded-full bg-bad" aria-label="needs setup" /> : null}
+                {s.attention ? <span className="ml-auto size-1.5 shrink-0 bg-bad" aria-label="needs setup" /> : null}
               </button>
             ))}
           </div>

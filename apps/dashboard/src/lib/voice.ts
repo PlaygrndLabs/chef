@@ -2,21 +2,38 @@ export interface Heard {
   readonly speaker: "you" | "chef";
   readonly text: string;
   readonly at: number;
+  readonly open?: boolean;
 }
 
 interface VoiceEvent {
   readonly type: string;
   readonly delta?: unknown;
+  readonly transcript?: unknown;
 }
 
 export function transcript(lines: readonly Heard[], event: VoiceEvent, now = Date.now()): Heard[] {
+  const next = [...lines];
+  const mine = next.findLastIndex((line) => line.speaker === "you" && line.open);
+  const open = next[mine];
+  if (event.type === "session.input_speech.started") {
+    if (!open) next.push({ speaker: "you", text: "", at: now, open: true });
+    return next.slice(-60);
+  }
+  if (event.type === "session.input_transcript.done") {
+    if (open) next[mine] = { speaker: "you", text: open.text.trim() ? open.text : typeof event.transcript === "string" ? event.transcript : "", at: open.at };
+    return next;
+  }
   const said = event.type === "session.input_transcript.delta" || event.type === "conversation.item.input_audio_transcription.delta";
   const spoken = event.type === "session.output_transcript.delta" || event.type === "response.output_audio_transcript.delta";
   const speaker = said ? "you" : spoken ? "chef" : null;
-  if (!speaker || typeof event.delta !== "string") return [...lines];
-  const next = [...lines];
+  if (!speaker || typeof event.delta !== "string") return next;
+  if (speaker === "you" && open) {
+    next[mine] = { ...open, text: open.text + event.delta };
+    return next;
+  }
   const last = next[next.length - 1];
-  if (last && last.speaker === speaker) next[next.length - 1] = { ...last, text: last.text + event.delta };
+  if (speaker === "you") next.push({ speaker, text: event.delta, at: now, open: true });
+  else if (last && last.speaker === "chef") next[next.length - 1] = { ...last, text: last.text + event.delta };
   else next.push({ speaker, text: event.delta, at: now });
   return next.slice(-60);
 }

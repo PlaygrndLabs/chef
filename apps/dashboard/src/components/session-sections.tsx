@@ -17,7 +17,7 @@ import { useWorkspace } from "@/lib/workspace";
 function Section({ title, children }: { readonly title: string; readonly children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+      <h3 className="kicker">{title}</h3>
       {children}
     </section>
   );
