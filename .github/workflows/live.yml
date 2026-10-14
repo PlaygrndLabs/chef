@@ -21,6 +21,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @chef/cli exec playwright install --with-deps chromium
       - run: git config --global user.email ci@chef.invalid && git config --global user.name ci
       - run: node --import tsx cli/src/bin.ts voice --live --say "$SAY" --out results/voice-live.json
         env:
