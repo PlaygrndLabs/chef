@@ -59,7 +59,7 @@ function Builds({ node, depth }: { readonly node: TreeNode; readonly depth: numb
               onClick={() => openSession(s.id)}
               data-session={s.id}
               data-state={s.state}
-              data-group={groupOf(s.state, s.needs)}
+              data-group={groupOf(s.state, s.needs, s.budget)}
               className={cn("flex h-7 w-full items-center gap-2 rounded-md pr-2 text-left text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground", session?.id === s.id && "text-foreground")}
               style={{ paddingLeft: 8 + (depth + 1) * INDENT + 14 }}
             >
