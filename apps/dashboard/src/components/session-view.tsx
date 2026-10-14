@@ -33,7 +33,7 @@ function Steps({ node }: { readonly node: SessionNode }) {
         return (
           <li key={name} className="flex shrink-0 items-center gap-1.5" aria-current={now ? "step" : undefined}>
             {i > 0 ? <span className={cn("h-px w-3 sm:w-8", done ? "bg-ok" : "bg-border")} /> : null}
-            <span className={cn("grid size-5 place-items-center rounded-full border-[1.5px]", done && "border-ok bg-ok text-background", running && "border-run", failed && "border-bad bg-bad text-background")}>
+            <span className={cn("grid size-5 place-items-center border-[1.5px]", done && "border-ok bg-ok text-background", running && "border-run", failed && "border-bad bg-bad text-background")}>
               {done ? <Check className="size-3" strokeWidth={3.5} /> : failed ? <X className="size-3" strokeWidth={3.5} /> : running ? <span className="pulse-run size-2 rounded-full bg-run" /> : null}
             </span>
             <span className={cn("text-sm text-muted-foreground", !now && "max-sm:sr-only", done && "text-foreground", running && "font-medium text-run", failed && "font-medium text-bad")}>{name}</span>
@@ -75,7 +75,7 @@ function Team({ node }: { readonly node: SessionNode }) {
             data-branch={m.branch ?? undefined}
             title={`${label} ${MEMBER_NOTE[m.state]}${model ? ` on ${model}` : ""}${m.branch ? `, on its own branch ${m.branch}` : ""}. Open its prompt and skills.`}
             onClick={() => openSettings("project", "agents", m.role)}
-            className={cn("inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs hover:bg-muted", MEMBER[m.state])}
+            className={cn("inline-flex h-6 items-center gap-1 border px-2 text-xs hover:bg-muted", MEMBER[m.state])}
           >
             {m.state === "done" ? <Check className="size-3 text-ok" strokeWidth={3} /> : m.state === "working" ? <span className="pulse-run size-1.5 rounded-full bg-run" /> : m.state === "stopped" ? <X className="size-3" strokeWidth={3} /> : <Circle className="size-2.5" />}
             {label}

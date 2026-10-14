@@ -51,7 +51,7 @@ const PILL: Readonly<Record<Tone, string>> = {
 export function StatusPill({ status, className }: { readonly status: FeatureStatus; readonly className?: string }) {
   const tone = FEATURE_TONE[status];
   return (
-    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium whitespace-nowrap", PILL[tone], className)}>
+    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 px-2.5 text-xs font-medium whitespace-nowrap", PILL[tone], className)}>
       <StatusDot tone={tone} />
       {FEATURE_LABEL[status]}
     </span>

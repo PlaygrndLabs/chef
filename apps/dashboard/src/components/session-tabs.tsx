@@ -27,7 +27,7 @@ function Tab({ id }: { readonly id: string }) {
         {id === MEMORY_TAB ? <Lightbulb className="size-3.5 shrink-0" /> : id === LIVE_TAB ? <Globe className="size-3.5 shrink-0 text-ok" /> : node ? <StatusDot tone={waitsForKey(node) ? "bad" : stateTone(node.state)} /> : <StatusDot tone="idle" />}
         <span className="truncate">{title}</span>
       </button>
-      <button type="button" onClick={() => closeTab(id)} aria-label={`Close ${title}`} className={cn("mr-1.5 grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground", !active && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")}>
+      <button type="button" onClick={() => closeTab(id)} aria-label={`Close ${title}`} className={cn("mr-1.5 grid size-5 shrink-0 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground", !active && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")}>
         <X className="size-3.5" />
       </button>
     </div>

@@ -15,8 +15,8 @@ export function ContextMeter() {
   return (
     <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground" id="chat-context" title={about} aria-label={about}>
       <span>Context</span>
-      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted" aria-hidden>
-        <span className={cn("block h-full rounded-full bg-foreground/50", share > 0.9 && "bg-bad")} style={{ width: `${Math.max(2, share * 100)}%` }} />
+      <span className="h-1.5 w-16 overflow-hidden bg-muted" aria-hidden>
+        <span className={cn("block h-full bg-foreground/50", share > 0.9 && "bg-bad")} style={{ width: `${Math.max(2, share * 100)}%` }} />
       </span>
       <span className="font-mono tabular-nums">
         {thousands(context.used)} / {thousands(context.limit)}
