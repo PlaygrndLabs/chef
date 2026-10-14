@@ -1,6 +1,6 @@
 import { newToken, tokenHash, tokenId, tokenPrefix } from "@chef/core/access";
 
-export type GrantKind = "controller" | "key";
+export type GrantKind = "controller" | "key" | "share";
 export const FULL_ACCESS = "*";
 export const DEPLOYMENT_KEY_NAME = "Set at install";
 const NAME_MAX = 60;
@@ -64,9 +64,9 @@ export function readGrantRequest(body: unknown, now: number): GrantRequest | str
   return { name, kind, expiresAt: days === null ? null : now + days * DAY_MS };
 }
 
-export async function mintGrant(request: GrantRequest, now: number): Promise<{ readonly grant: Grant; readonly token: string }> {
+export async function mintGrant(request: GrantRequest, now: number, scopes: readonly string[] = [FULL_ACCESS]): Promise<{ readonly grant: Grant; readonly token: string }> {
   const { id, token } = newToken();
-  return { grant: { id, kind: request.kind, name: request.name, scopes: [FULL_ACCESS], hash: await tokenHash(token), createdAt: now, expiresAt: request.expiresAt }, token };
+  return { grant: { id, kind: request.kind, name: request.name, scopes, hash: await tokenHash(token), createdAt: now, expiresAt: request.expiresAt }, token };
 }
 
 export function viewGrant(grant: Grant, source: "deployment" | "app", lastUsedAt: number | null): GrantView {

@@ -19,21 +19,28 @@ const wait = (ms: number, signal: AbortSignal) =>
     signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
   });
 
-export function usePreviewLoad(input: { readonly link: string | null; readonly url: string; readonly path: string; readonly count: number }) {
+export type StateFetch = (link: string, retry: boolean, signal: AbortSignal) => Promise<Response | null>;
+
+const fetchState: StateFetch = (link, retry, signal) => fetch(stateLink(link, retry), { cache: "no-store", signal }).catch(() => null);
+
+export function usePreviewLoad(input: { readonly link: string | null; readonly url: string; readonly path: string; readonly count: number; readonly fetch?: StateFetch }) {
   const { link, url, path, count } = input;
+  const ask = input.fetch ?? fetchState;
   const [load, setLoad] = useState<FrameLoad>(fresh);
   const [appUrl, setAppUrl] = useState<string | null>(link ? null : url);
+  const [enter, setEnter] = useState<string | null>(null);
   const retryNext = useRef(false);
   useEffect(() => {
     setLoad(fresh());
     setAppUrl(link ? null : url);
+    setEnter(null);
     if (!link) return;
     const abort = new AbortController();
     const check = async () => {
       let again = retryNext.current;
       retryNext.current = false;
       for (;;) {
-        const response = await fetch(stateLink(link, again), { cache: "no-store", signal: abort.signal }).catch(() => null);
+        const response = await ask(link, again, abort.signal);
         if (abort.signal.aborted) return;
         again = false;
         const state = previewState(response?.ok || response?.status === 404 ? await response.json().catch(() => null) : null);
@@ -42,6 +49,7 @@ export function usePreviewLoad(input: { readonly link: string | null; readonly u
         if (!state) return setLoad((l) => ({ ...l, error: "Chef did not answer. Check your connection and try again." }));
         if (state.status === "ready") {
           setLoad((l) => ({ ...l, checked: l.checked ?? at, building: l.building ? { ...l.building, until: at } : null }));
+          setEnter(state.enter ?? null);
           return setAppUrl(state.url);
         }
         if (state.status === "missing") return setLoad((l) => ({ ...l, error: "This feature has no preview yet." }));
@@ -53,7 +61,7 @@ export function usePreviewLoad(input: { readonly link: string | null; readonly u
     };
     void check();
     return () => abort.abort();
-  }, [link, url, path, count]);
+  }, [link, url, path, count, ask]);
   useEffect(() => {
     if (!appUrl) return;
     const abort = new AbortController();
@@ -70,6 +78,8 @@ export function usePreviewLoad(input: { readonly link: string | null; readonly u
   return {
     load,
     ready: appUrl !== null,
+    appUrl,
+    enter,
     loaded,
     retryNext: () => {
       retryNext.current = true;

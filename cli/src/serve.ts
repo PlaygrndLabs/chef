@@ -4,6 +4,7 @@ import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, agentsOf, cloudflareView, previewBranch, previewName, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
+import { newToken } from "@chef/core/access";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, sharedInstructionsRequest, type GuidanceHost, type SharedInstructions } from "@chef/adapters/guidance";
 import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
@@ -192,6 +193,34 @@ export async function serve(options: { readonly port: number; readonly project?:
   const guidance: GuidanceHost = { main: () => w.orchestrator.mainTree(), edit: (edit) => w.orchestrator.editGuidance(edit), shared: async () => instructions };
   const sharedInstructions = { get: async () => instructions, put: async (value: SharedInstructions) => void (instructions = value) };
 
+  interface LocalShare {
+    readonly shareId: string;
+    readonly kind: "session" | "preview";
+    readonly project: string;
+    readonly id: string;
+    readonly name: string;
+    readonly createdAt: number;
+    readonly expiresAt: number | null;
+    readonly lastUsedAt: number | null;
+  }
+  const shares = new Map<string, LocalShare>();
+  const sharesRequest = async (request: Request, name: string): Promise<Response> => {
+    if (request.method === "GET") return Response.json({ shares: [...shares.values()].filter((share) => share.project === name) });
+    const body = (await request.json().catch(() => ({}))) as { kind?: "session" | "preview"; id?: string; expiresInDays?: number | null };
+    if ((body.kind !== "session" && body.kind !== "preview") || !body.id) return Response.json({ error: "say what to share" }, { status: 400 });
+    const title = (await w.orchestrator.sessions()).find((record) => record.id === body.id || record.previewKey === body.id)?.plan.feature.title ?? body.id;
+    const { id, token } = newToken();
+    const now = Date.now();
+    const share: LocalShare = { shareId: id, kind: body.kind, project: name, id: body.id, name: title, createdAt: now, expiresAt: body.expiresInDays ? now + body.expiresInDays * 86_400_000 : null, lastUsedAt: null };
+    shares.set(token, share);
+    return Response.json({ share, token }, { status: 201 });
+  };
+  const sharedTarget = (request: Request): Response => {
+    const share = shares.get((request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, ""));
+    if (!share) return Response.json({ error: "this API key is not valid" }, { status: 401 });
+    return Response.json({ kind: share.kind, project: share.project, id: share.id, name: share.name, expiresAt: share.expiresAt });
+  };
+
   const agentStore = new MemoryStore();
   const agents = new AgentSettings(agentStore);
   const projectAgents = new AgentSettings(agentStore, Date.now, "project/agents/");
@@ -205,6 +234,12 @@ export async function serve(options: { readonly port: number; readonly project?:
       return agentsRequest(request, { store: agents, defaults: repoProfiles(), models: resolved.models, jev: resolved.jev !== null });
     }
     if (url.pathname === "/api/projects") return projects(request);
+    if (url.pathname === "/api/share" && request.method === "GET") return sharedTarget(request);
+    const shareId = /^\/api\/shares\/([a-z0-9]{12})$/.exec(url.pathname)?.[1];
+    if (shareId && request.method === "DELETE") {
+      for (const [token, share] of shares) if (share.shareId === shareId) shares.delete(token);
+      return new Response(null, { status: 204 });
+    }
     const base = project ? `/api/projects/${project.name}` : null;
     if (base && copilot && url.pathname.startsWith(`${base}/copilotkit`)) return copilot(request);
     if (url.pathname.startsWith("/api/")) {
@@ -220,6 +255,7 @@ export async function serve(options: { readonly port: number; readonly project?:
         return Response.json(await w.orchestrator.route(prompt.trim()));
       }
       if (request.method === "GET" && action === "sessions") return Response.json(await w.orchestrator.sessions());
+      if (project && action === "shares") return sharesRequest(request, project.name);
       if (action === "settings") return projectSettingsRequest(request);
       if (action === "env") return envRequest(request);
       if (action === "instructions") return instructionsRequest(request, guidance);
@@ -240,7 +276,7 @@ export async function serve(options: { readonly port: number; readonly project?:
       if (request.method === "GET" && action === "cursor") return Response.json({ seq: await link.cursor() });
       return Response.json({ error: "not found" }, { status: 404 });
     }
-    const path = normalize(url.pathname === "/" ? "/index.html" : url.pathname).replace(/^(\.\.[/\\])+/, "");
+    const path = normalize(url.pathname === "/" || url.pathname === "/s" ? "/index.html" : url.pathname).replace(/^(\.\.[/\\])+/, "");
     const file = join(assets, path);
     if (!file.startsWith(assets) || !existsSync(file) || !statSync(file).isFile()) return new Response("not found", { status: 404 });
     return new Response(readFileSync(file), { headers: { "content-type": TYPES[extname(file)] ?? "application/octet-stream" } });

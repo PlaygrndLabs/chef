@@ -117,12 +117,12 @@ export class SandboxPreviewHost implements PreviewHost {
     private readonly repos: RepoHost,
     private readonly grant: CloudflareGrant,
     private readonly apiToken: string,
-    private readonly prepare: () => Promise<void> = async () => undefined,
+    private readonly prepare: () => Promise<((preview: string) => Promise<void>) | undefined> = async () => undefined,
   ) {}
 
   async deploy(input: { repo: string; branch: string; commitId: string }): Promise<PreviewDeployment> {
     const name = previewName(input.branch, this.grant.worker);
-    await this.prepare();
+    const settle = await this.prepare();
     const commit = await this.repos.readCommit(input.repo, input.commitId);
     if (!commit) throw new Error(`unknown commit ${input.commitId} in ${input.repo}`);
     const overlay = { [PREVIEW_GATE_FILE]: gateModule(previewMain(commit.tree)) };
@@ -143,7 +143,9 @@ export class SandboxPreviewHost implements PreviewHost {
       break;
     }
     if (!result || result.code !== 0) throw new Error(`wrangler preview failed: ${tail(`${result?.stdout ?? ""}\n${result?.stderr ?? ""}`, 20)}`);
-    const deployment = { ...parsePreview(result.stdout, input.commitId), gated: true };
+    const parsed = parsePreview(result.stdout, input.commitId);
+    if (settle) await settle(name);
+    const deployment = { ...parsed, gated: true };
     this.latest.set(input.branch, deployment);
     return deployment;
   }

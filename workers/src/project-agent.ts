@@ -25,8 +25,9 @@ import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxLiveHost, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
 import { previewPath, previewResponse, type PreviewAnswer } from "@chef/adapters/preview-page";
-import { newPreviewKey, previewEntry, previewPass, PREVIEW_KEY_VAR } from "@chef/adapters/preview-gate";
-import { CloudflareWorkerSpace, WorkerTakenError } from "./preview-space.ts";
+import { newPreviewKey, OWNER_COOKIE_SECONDS, previewEntry, previewPass, PREVIEW_KEY_VAR, SHARE_COOKIE_SECONDS } from "@chef/adapters/preview-gate";
+import { previewScope, sessionScope, SHARE_HEADER, type ShareKind } from "./shares.ts";
+import { CloudflareWorkerSpace, WorkerTakenError, type EnvPatch } from "./preview-space.ts";
 import { homeOrigin, ORIGIN_HEADER } from "./access.ts";
 import { publicOrigin } from "./github-pages.ts";
 import { gitHubApp } from "./github.ts";
@@ -157,7 +158,12 @@ export class ProjectAgent extends Agent<Env> {
       return response;
     }
     const preview = PREVIEW_ROUTE.exec(url.pathname);
-    if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")), url.searchParams.has("state"));
+    if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")), url.searchParams.has("state"), request.headers.has(SHARE_HEADER));
+    if (action === "preview-key" && request.method === "POST") {
+      await this.ctx.storage.put(PREVIEW_KEY, newPreviewKey());
+      await this.schedule(0, "pushEnvironment");
+      return new Response(null, { status: 204 });
+    }
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
     if (action === "env" && url.pathname.endsWith(`/projects/${this.name}/env`)) return this.envRequest(request);
     if (action === "instructions" && url.pathname.endsWith(`/projects/${this.name}/instructions`)) return instructionsRequest(request, await this.guidanceHost());
@@ -318,11 +324,24 @@ export class ProjectAgent extends Agent<Env> {
     });
   }
 
-  private async previewRequest(key: string, retry: boolean, path: string, asState: boolean): Promise<Response> {
+  private async previewRequest(key: string, retry: boolean, path: string, asState: boolean, viaShare: boolean): Promise<Response> {
     const state = await this.previewState(key, retry);
     const now = Date.now();
-    const enter = state.status === "ready" && !asState ? await previewEntry(state.url, await this.previewKey(), { path, now }) : undefined;
+    const enter = state.status === "ready" ? await previewEntry(state.url, await this.previewKey(), { path, now, cookieSeconds: viaShare ? SHARE_COOKIE_SECONDS : OWNER_COOKIE_SECONDS }) : undefined;
     return previewResponse(state, { key, path, asState, now, ...(enter ? { enter } : {}) });
+  }
+
+  async shareTarget(kind: ShareKind, id: string): Promise<{ readonly name: string; readonly scopes: readonly string[] } | { readonly error: string }> {
+    const { orchestrator } = await this.build();
+    const sessions = await orchestrator.sessions();
+    if (kind === "session") {
+      const record = sessions.find((s) => s.id === id);
+      if (!record) return { error: `no session ${id} in ${this.name}` };
+      return { name: record.plan.feature.title, scopes: [sessionScope(this.name, id), previewScope(this.name, record.previewKey)] };
+    }
+    const record = sessions.findLast((s) => s.previewKey === id);
+    if (!record) return { error: `no preview ${id} in ${this.name}` };
+    return { name: record.plan.feature.title, scopes: [previewScope(this.name, id)] };
   }
 
   private async previewKey(): Promise<string> {
@@ -467,13 +486,21 @@ export class ProjectAgent extends Agent<Env> {
     return viewProjectEnv(stored, shared, this.envCipher(), envNeeds(features, envNames(mergeEnv(shared, stored))));
   }
 
-  private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<void> {
+  private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<(preview: string) => Promise<void>> {
     await space.ensure();
+    const failed = (error: unknown) => new Error(`giving the preview this project's keys failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    let patch: EnvPatch | null;
     try {
-      await space.applyEnvironment(await this.previewEnv(), { create: true });
+      patch = await space.applyEnvironment(await this.previewEnv(), { create: true });
     } catch (error) {
-      throw new Error(`giving the preview this project's keys failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      throw failed(error);
     }
+    return async (preview) => {
+      if (!patch || Object.keys(patch).length === 0) return;
+      await space.refreshPreview(preview, patch).catch((error: unknown) => {
+        throw failed(error);
+      });
+    };
   }
 
   async pushEnvironment(): Promise<void> {

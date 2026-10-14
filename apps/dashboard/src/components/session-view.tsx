@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Rocket, ShieldCheck, Trophy, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Rocket, Share2, ShieldCheck, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,8 @@ import { activity, plainReason, progress, STAGES, updates, type Update, type Upd
 import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
+import { ShareDialog } from "@/components/share-dialog";
+import { host } from "@/host";
 
 const ICONS: Readonly<Record<UpdateIcon, typeof Check>> = { plan: ListChecks, test: FlaskConical, code: Code2, review: MessageSquareText, check: ShieldCheck, live: Rocket, alert: AlertTriangle, stop: OctagonX, sync: GitMerge, pick: Trophy };
 const TONE: Readonly<Record<UpdateTone, string>> = { ok: "text-ok", run: "text-run", bad: "text-bad", idle: "text-muted-foreground" };
@@ -425,10 +427,17 @@ function Scroll({ children }: { readonly children: React.ReactNode }) {
   return <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>;
 }
 
+function Sharing(props: { readonly project: string; readonly title: string; readonly session: string; readonly preview: string | null; readonly onClose: () => void }) {
+  const Custom = host.Share;
+  if (Custom) return <Custom project={props.project} kind="session" id={props.session} title={props.title} onClose={props.onClose} />;
+  return <ShareDialog target={props} open onOpenChange={(open) => (open ? undefined : props.onClose())} />;
+}
+
 export function SessionView({ feature }: { readonly feature: FeatureNode }) {
   const { api, data, selection, select, openSession, panelExpanded, expandPanel } = useWorkspace();
   const node = currentSession(feature, selection.session);
   const [stopping, setStopping] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const section = selection.panel ?? "preview";
   const active = node ? isActive(node.state) : false;
   const chore = node ? isChore(node) : feature.id.startsWith("chore-") && !feature.onMain;
@@ -468,6 +477,12 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
           <Button variant="outline" size="sm" onClick={() => void startOver()}>
             <RotateCcw />
             Start over
+          </Button>
+        ) : null}
+        {node && host.Share !== false ? (
+          <Button variant="ghost" size="sm" onClick={() => setSharing(true)} data-action="share">
+            <Share2 />
+            Share
           </Button>
         ) : null}
         <Button variant="ghost" size="icon-sm" onClick={() => expandPanel(!panelExpanded)} aria-label={panelExpanded ? "Make smaller" : "Open large"} title={panelExpanded ? "Make smaller" : "Open large"}>
@@ -533,6 +548,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
         <Scroll>{node ? <DetailsTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>
       </TabsContent>
       {node ? <StopDialog node={node} open={stopping} onOpenChange={setStopping} /> : null}
+      {node && sharing ? <Sharing project={selection.project} title={feature.title} session={node.id} preview={node.record?.previewKey ?? null} onClose={() => setSharing(false)} /> : null}
     </Tabs>
   );
 }

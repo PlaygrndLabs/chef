@@ -71,6 +71,70 @@ export const keysApi = {
   },
 };
 
+export type ShareKind = "session" | "preview";
+
+export interface ShareView {
+  readonly shareId: string;
+  readonly kind: ShareKind;
+  readonly project: string;
+  readonly id: string;
+  readonly name: string;
+  readonly createdAt: number;
+  readonly expiresAt: number | null;
+  readonly lastUsedAt: number | null;
+}
+
+export function sharesApi(project: string) {
+  return {
+    list: () => call<{ readonly shares: readonly ShareView[] }>(`/api/projects/${project}/shares`).then((view) => view.shares),
+    create: (share: { readonly kind: ShareKind; readonly id: string; readonly expiresInDays: number | null }) => call<{ readonly share: ShareView; readonly token: string }>(`/api/projects/${project}/shares`, post(share)),
+    revoke: async (shareId: string) => {
+      const response = await fetch(`/api/shares/${shareId}`, { method: "DELETE" });
+      if (!response.ok) throw new ApiError(((await response.json().catch(() => ({}))) as { error?: string }).error ?? `${response.status} ${response.statusText}`, response.status);
+    },
+    endPreviewLinks: async () => {
+      const response = await fetch(`/api/projects/${project}/preview-key`, { method: "POST" });
+      if (!response.ok) throw new ApiError(((await response.json().catch(() => ({}))) as { error?: string }).error ?? `${response.status} ${response.statusText}`, response.status);
+    },
+  };
+}
+
+export const SHARE_PAGE = "/s";
+
+export function isSharePage(pathname: string): boolean {
+  return pathname === SHARE_PAGE || /^\/s\/[A-Za-z0-9_-]{1,80}$/.test(pathname);
+}
+
+export function shareLink(origin: string, token: string): string {
+  return `${origin}${SHARE_PAGE}#${token}`;
+}
+
+export interface SharedTarget {
+  readonly kind: ShareKind;
+  readonly project: string;
+  readonly id: string;
+  readonly name: string;
+  readonly expiresAt: number | null;
+}
+
+export function sharedApi(input: { readonly base: string; readonly headers?: Readonly<Record<string, string>> }) {
+  const { base } = input;
+  const init = (): RequestInit => ({ headers: { ...input.headers }, cache: "no-store" });
+  return {
+    target: () => call<SharedTarget>(`${base}/api/share`, init()),
+    session: (project: string, id: string) => call<{ record: SessionRecord }>(`${base}/api/projects/${project}/sessions/${id}`, init()),
+    turns: (project: string, id: string) => call<SessionTurn[]>(`${base}/api/projects/${project}/sessions/${id}/turns`, init()),
+    changes: (project: string, id: string) => call<SessionChanges>(`${base}/api/projects/${project}/sessions/${id}/changes`, init()),
+    previewState: (link: string, retry: boolean) => fetch(`${base}${link}?state=1${retry ? "&retry=1" : ""}`, init()).catch(() => null),
+  };
+}
+
+export function linkApi(token: string) {
+  return token ? sharedApi({ base: "", headers: { authorization: `Bearer ${token}` } }) : null;
+}
+
+export type SharedApi = ReturnType<typeof sharedApi>;
+
 export const settingsApi = {
   get: () => call<SettingsView>("/api/settings"),
   save: (update: SettingsUpdate) => call<SettingsView>("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
