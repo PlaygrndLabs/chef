@@ -35,7 +35,7 @@ function planSchema(roles: readonly string[]) {
       shared: z.array(z.string()),
       env: z.array(z.string()),
       acceptance: z.array(z.object({ id: z.string(), text: z.string() })),
-      body: z.string(),
+      body: z.string().describe("A few sentences of prose describing what the feature does for the person who uses it. Never empty."),
     }),
     items: z.array(z.object({ kind: z.enum(["test", "code", "fix", "refactor"]), role: z.enum(["test", ...roles] as [string, ...string[]]), prompt: z.string() })),
   });
@@ -106,7 +106,7 @@ export class LlmPlanner implements Planner {
         `Environment: when the feature talks to an outside service or needs a key or setting the person provides, list the environment variable names it reads in env, in capital snake case like STRIPE_SECRET_KEY, and reuse a name the project already has when it fits. The app reads them at runtime from context.env; their values never go in the code or the spec. Set in this project: ${input.env?.map((v) => v.name).join(", ") || "none"}.`,
         ...earlier(input.conversation),
         `Request:\n${input.prompt}`,
-        "Write the full spec entry for this feature and the work items.",
+        "Write the full spec entry for this feature, including a body of a few sentences that describes it, and the work items.",
       ].join("\n\n"),
     });
     return toPlan(result, existing, this.model);
