@@ -34,8 +34,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === "/auth/start") {
     if (!client) return redirect("/?signin=unavailable");
-    const then = url.searchParams.get("then");
-    const pending = { state: randomToken(), verifier: randomToken(), ...(then === "remove" || then === "backoffice" ? { then: then as "remove" | "backoffice" } : {}) };
+    const pending = { state: randomToken(), verifier: randomToken(), ...(url.searchParams.get("then") === "remove" ? { then: "remove" as const } : {}) };
     return redirect(await authorizeUrl(client, `${url.origin}/auth/callback`, pending), [setCookie(OAUTH_COOKIE, encodePending(pending), 1800, "/auth/callback")]);
   }
 
@@ -60,7 +59,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     const engine = await org.engine();
     const removing = pending.then === "remove" && can(signed.org.role, "manage");
     await memberOf(env, signed.userId).signIn(profile, grant, admin, { id: signed.org.id, canSetUp: can(signed.org.role, "setup"), engine }, removing);
-    return redirect(removing ? "/remove" : pending.then === "backoffice" && admin ? "/backoffice" : engine ? "/" : "/setup", [clear, await sessionCookie(client, { userId: signed.userId, orgId: signed.org.id })]);
+    return redirect(removing ? "/remove" : engine ? "/" : "/setup", [clear, await sessionCookie(client, { userId: signed.userId, orgId: signed.org.id })]);
   }
 
   if (path === "/auth/signout") {
@@ -237,7 +236,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     const [view, current, orgs, engine, updating, later, signedIn] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId), org.engine(), org.updating().catch(() => false), member.askedLater().catch(() => false), access()]);
     const canUpdate = view.canSetUp && signedIn !== null && can(signedIn.role, "setup");
     const update = updating ? { running: true, canUpdate, ask: false } : needsUpdate(engine, env.ENGINE_VERSION) ? { running: false, canUpdate, ask: canUpdate && !later } : null;
-    return json({ engine: url.origin, account: view.email, org: current, orgs, update, ...(view.admin ? { admin: true } : {}) });
+    return json({ engine: url.origin, account: view.email, org: current, orgs, update });
   }
 
   if (ENGINE_PATH.test(path)) {
@@ -270,12 +269,6 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === "/setup") return (await access()) ? page(env, request, "/setup") : redirect("/");
   if (path === "/remove") return (await access()) ? page(env, request, "/remove") : redirect("/");
-  if (path === "/backoffice") {
-    if (!env.BACKOFFICE_URL) return redirect("/");
-    if (!session || !member || !(await access())) return redirect(client ? "/auth/start?then=backoffice" : "/");
-    if (!(await member.admin())) return redirect("/");
-    return redirect(`${env.BACKOFFICE_URL}/auth/callback?ticket=${session.userId}.${await member.backofficeTicket()}`);
-  }
   if (path === "/app" || path === "/app.html") return redirect("/");
 
   return env.ASSETS.fetch(request);

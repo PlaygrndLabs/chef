@@ -15,7 +15,7 @@ export interface OAuthClient {
 export interface Pending {
   readonly state: string;
   readonly verifier: string;
-  readonly then?: "remove" | "backoffice";
+  readonly then?: "remove";
 }
 
 export function randomToken(bytes = 32): string {
@@ -92,7 +92,7 @@ export function encodePending(pending: Pending): string {
 
 export function decodePending(value: string | undefined): Pending | null {
   const [state, verifier, then] = (value ?? "").split(".");
-  return state && verifier ? { state, verifier, ...(then === "remove" || then === "backoffice" ? { then } : {}) } : null;
+  return state && verifier ? { state, verifier, ...(then === "remove" ? { then } : {}) } : null;
 }
 
 async function hmac(secret: string, text: string): Promise<string> {

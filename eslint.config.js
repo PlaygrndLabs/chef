@@ -45,7 +45,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["apps/dashboard/public/**/*.js", "site/public/**/*.js", "backoffice/public/**/*.js"],
+    files: ["apps/dashboard/public/**/*.js", "site/public/**/*.js"],
     languageOptions: {
       globals: { document: "readonly", confirm: "readonly", CustomEvent: "readonly", location: "readonly", history: "readonly", Node: "readonly", setInterval: "readonly", clearInterval: "readonly", URLSearchParams: "readonly", RTCPeerConnection: "readonly", Audio: "readonly", navigator: "readonly", window: "readonly", matchMedia: "readonly", IntersectionObserver: "readonly", ResizeObserver: "readonly", getComputedStyle: "readonly", devicePixelRatio: "readonly", performance: "readonly", requestAnimationFrame: "readonly" },
     },
