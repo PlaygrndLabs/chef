@@ -43,7 +43,7 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, link, commitId, start, live }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly start: string; readonly live: boolean }) {
+function PreviewTab({ url, link, commitId, start, live, merged = false }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly start: string; readonly live: boolean; readonly merged?: boolean }) {
   const [trail, setTrail] = useState<Trail>({ entries: [start], index: 0 });
   const [load, setLoad] = useState({ path: start, count: 0 });
   const [pages, setPages] = useState<readonly AppPage[]>([]);
@@ -124,7 +124,11 @@ function PreviewTab({ url, link, commitId, start, live }: { readonly url: string
       </div>
       <iframe ref={frame} key={load.count} src={target(load.path)} title={live ? "Live app" : "Preview"} className="min-h-[320px] w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
       <p className="text-xs text-muted-foreground">
-        {live ? `This is the live app, at ${short(commitId)}. Everything chef merges shows up here.` : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
+        {live
+          ? `This is the live app, at ${short(commitId)}. Everything chef merges shows up here.`
+          : merged
+            ? `This is the app as this session left it, at ${short(commitId)}. Its work is live now; the live app shows it together with everything else chef merged. It sleeps when nobody opens it for a while and wakes up on the next visit.`
+            : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
       </p>
     </div>
   );
@@ -368,11 +372,8 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
 }
 
 export function SessionPreview({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
-  const { data } = useWorkspace();
-  const app = data.spec?.live;
-  const live = node?.state === "merged" && app?.url ? { url: app.url, link: null, commitId: app.commitId } : null;
-  const preview = live ?? node?.live?.preview ?? node?.record?.preview ?? feature.preview ?? null;
-  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} start={entryPage(feature.spec?.entrypoint) ?? "/"} live={live !== null} />;
+  const preview = node?.live?.preview ?? node?.record?.preview ?? feature.preview ?? null;
+  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} start={entryPage(feature.spec?.entrypoint) ?? "/"} live={false} merged={node?.state === "merged"} />;
 }
 
 export function LiveApp() {

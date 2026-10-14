@@ -81,6 +81,9 @@ describe("dashboard in a browser", () => {
       await page.locator('[data-view="feature"][data-feature="shout"]').waitFor({ timeout: 10_000 });
       expect(await page.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
       expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual(["todo-add", "shout"]);
+      const ownPreview = page.locator("#sessions").getByRole("tabpanel", { name: "Preview" });
+      expect(await ownPreview.locator('iframe[title="Preview"]').getAttribute("src")).toMatch(/^https:\/\/shout-/);
+      expect(await ownPreview.innerText()).toContain("This is the app as this session left it");
       await page.getByRole("button", { name: "Close Shout a phrase" }).click();
       await page.locator('[data-view="feature"][data-feature="todo-add"]').waitFor({ timeout: 10_000 });
 
