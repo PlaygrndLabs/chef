@@ -15,8 +15,10 @@ import type { OverviewState, Suggestion } from "@/lib/api";
 import { useOverview } from "@/lib/overview";
 import { plainVoiceError, startLive, useTalk, type TalkState } from "@/lib/live-talk";
 import { useWorkspace } from "@/lib/workspace";
-import { useProjectAccess } from "@/lib/account";
+import { host } from "@/host";
 import { Mark, Wordmark } from "@/components/logo";
+
+const useProjectLevel = host.useProjectLevel ?? (() => null);
 
 const sentHere = new Map<string, number>();
 
@@ -310,7 +312,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const introduced = overview !== null && overview.status !== "none";
   const welcome = !loading && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0 && said.length === 0;
   const live = talk.phase !== "off" && talk.project === selection.project;
-  const viewOnly = useProjectAccess(selection.project).access?.you === "view";
+  const viewOnly = useProjectLevel(selection.project) === "view";
   const goLive = () => {
     if (app.available && app.settings && !app.settings.voice) {
       toast.error("Live talk needs a voice key", { description: "Add an OpenAI key under Settings, Models.", action: { label: "Open", onClick: () => openSettings("app", "models") } });

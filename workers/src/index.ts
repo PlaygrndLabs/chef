@@ -27,7 +27,6 @@ export default {
     const blocked = await guard(request, await credential(env), claimPassword(env), siteOrigin(env));
     if (blocked) return blocked;
     const url = new URL(request.url);
-    if (url.pathname === "/api/app" && request.method === "GET") return Response.json({ engine: url.origin });
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/env") return sharedEnvRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).sharedEnvironmentChanged());
     if (url.pathname === "/api/usage") return usageRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).budgetChanged());

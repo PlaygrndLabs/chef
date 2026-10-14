@@ -3,9 +3,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Group } from "@/components/settings-shell";
-import { orgApi, usageApi, type OrgMember, type OrgView, type ProjectApi, type ProjectBudget, type Spending } from "@/lib/api";
+import { usageApi, type ProjectApi, type ProjectBudget, type Spending } from "@/lib/api";
+import { host } from "@/host";
 
 const MICROS = 1_000_000;
+
+const useUsage = host.useUsage ?? (() => null);
 
 export function money(micros: number): string {
   const value = micros / MICROS;
@@ -66,14 +69,14 @@ function CapForm(props: { readonly id: string; readonly label: string; readonly 
   );
 }
 
-export function UsageSection(props: { readonly org: OrgView | null }) {
+export function UsageSection() {
   const [spending, setSpending] = useState<Spending | null>(null);
-  const [members, setMembers] = useState<readonly OrgMember[]>([]);
-  const manager = !props.org || props.org.role !== "member";
+  const usage = useUsage();
+  const manager = usage?.manager ?? true;
+  const members = usage?.people ?? [];
   useEffect(() => {
     usageApi.get().then(setSpending, (e: unknown) => toast.error("Could not load usage", { description: e instanceof Error ? e.message : String(e) }));
-    if (props.org && !props.org.personal) orgApi.people().then((p) => setMembers(p.members), () => setMembers([]));
-  }, [props.org]);
+  }, []);
   if (!spending) return <p className="text-xs text-muted-foreground">Loading usage</p>;
   const { caps, ledger } = spending;
   const projects = [...new Set([...Object.keys(ledger.projects), ...Object.keys(caps.projects)])].sort((a, b) => (ledger.projects[b] ?? 0) - (ledger.projects[a] ?? 0));
@@ -86,7 +89,7 @@ export function UsageSection(props: { readonly org: OrgView | null }) {
             <span>
               {money(ledger.org)} spent{caps.org !== null ? ` of ${money(caps.org)}` : ""}
             </span>
-            <CapForm id="org-budget" label="Monthly budget for the whole organization" cap={caps.org} disabled={!manager} onSave={(cap) => save({ org: cap })} />
+            <CapForm id="org-budget" label="Monthly budget for all projects" cap={caps.org} disabled={!manager} onSave={(cap) => save({ org: cap })} />
           </div>
           <Bar spent={ledger.org} cap={caps.org} />
         </div>
