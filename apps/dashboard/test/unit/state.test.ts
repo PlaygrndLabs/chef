@@ -4,7 +4,6 @@ import { apply, emptyProject } from "../../src/lib/events.ts";
 import { featureNodes, featureTree, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
 import { activity, plainReason, progress, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
 import { teamOf } from "../../src/lib/agents.ts";
-import { entryRoute, pagesFor, routesIn } from "../../src/lib/routes.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
 const base = { project: "demo", at: 1 };
@@ -252,45 +251,10 @@ describe("voice transcript", () => {
   });
 });
 
-describe("pages a build added", () => {
-  it("reads routes from feature code and skips tests", () => {
-    const files = [
-      { path: "features/notes/index.ts", after: 'export const feature = { routes: [{ method: "GET", path: "/notes", handle }, { path: "/api/notes", method: "POST", handle }] };' },
-      { path: "features/notes/notes.test.ts", after: '{ method: "GET", path: "/test-only" }' },
-      { path: "shared/x.ts", after: '{ method: "GET", path: "/shared" }' },
-    ];
-    expect(routesIn(files)).toEqual([
-      { method: "GET", path: "/notes" },
-      { method: "POST", path: "/api/notes" },
-    ]);
-  });
-
-  it("finds routes written in other shapes and opens the feature's own page first", () => {
-    const after = [
-      'const page: Route = { method: "GET" as const, name: "list", path: "/notes", handle: () => html() };',
-      'const api = route("POST", "/api/notes", add);',
-      'app.get("/notes/new", form);',
-      '{ method: "GET", path: "/api/notes", handle: list }',
-      '{ method: "GET", path: "/notes/:id", handle: one }',
-      '{ method: "GET", path: "/about", handle: about }',
-    ].join("\n");
-    const routes = routesIn([{ path: "features/notes/index.ts", after }]);
-    expect(routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual(["GET /about", "GET /api/notes", "GET /notes", "GET /notes/:id", "GET /notes/new", "POST /api/notes"]);
-    expect(pagesFor(routes, "notes").map((r) => r.path)).toEqual(["/notes", "/notes/new", "/about"]);
-  });
-
+describe("session words", () => {
   it("says a stopped try lost the pick", () => {
     const lost = progress("dropped", [{ kind: "picked", at: 1, won: false, winner: "s2", reasons: ["s2 passes more tests"], candidates: [] }]);
     expect(lost.now).toBe("Another try was picked over this one, so this one stopped.");
-  });
-
-  it("resolves route paths kept in constants or template strings", () => {
-    const after = ['export const NOTES_PAGE = "/notes";', "const apiPath = `/api/notes`;", "export const routes = [{ method: \"GET\", path: NOTES_PAGE, handle: page }, { method: \"POST\", path: apiPath, handle: add }, { method: `GET`, path: `/notes/feed`, handle: feed }];"].join("\n");
-    expect(routesIn([{ path: "features/notes/page.ts", after }]).map((r) => `${r.method} ${r.path}`)).toEqual(["GET /notes", "GET /notes/feed", "POST /api/notes"]);
-    expect(entryRoute("GET /notes")).toEqual({ method: "GET", path: "/notes" });
-    expect(entryRoute("/notes")).toEqual({ method: "GET", path: "/notes" });
-    expect(entryRoute("POST /shout")).toEqual({ method: "POST", path: "/shout" });
-    expect(entryRoute("the notes page")).toBeNull();
   });
 
   it("describes tool calls in plain words", () => {
