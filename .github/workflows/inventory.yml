@@ -23,20 +23,28 @@ jobs:
           echo "## sessions"
           curl -sS -m 60 -H "$auth" "$api/sessions" > s.json
           jq -c '.[] | {id, featureId, state: .machine.state, reason: .machine.reason, lanes: [(.lanes // [])[] | {role, state: (.state // null)}], head, needs, overBudget, syncPending, updatedAt, items: [(.workItems // .plan.items // [])[]? | {id, kind, role, status}]}' s.json | cut -c1-3000
-          echo "## events tail"
-          curl -sS -m 60 -H "$auth" "$api/events?after=0" > e.json
-          jq 'length' e.json
-          jq -r '.[-150:][] | select(.event.type != "assistant.message_delta") | "\(.seq) \(.at // .event.at // "") \(.event.type) \(.event.sessionId // "") \(.event.role // "") \(.event.from // "")->\(.event.to // "") \(.event.reason // .event.message // .event.summary // .event.toolName // "" | tostring | .[0:300])"' e.json
-          echo "## telemetry"
-          now=$(date +%s000)
-          from=$(date -d '2026-10-14T17:50:00Z' +%s000)
-          to=$(date -d '2026-10-14T19:20:00Z' +%s000)
-          body=$(jq -n --argjson from "$from" --argjson to "$to" '{queryId: "probe", timeframe: {from: $from, to: $to}, view: "events", limit: 2000, parameters: {filters: [{key: "$metadata.service", operation: "eq", type: "string", value: "chef-dev"}]}}')
-          curl -sS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'content-type: application/json' -d "$body" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/observability/telemetry/query" > t.json
-          jq -c '{success, errors, keys: (.result | keys? // null)}' t.json | cut -c1-2000
-          jq -r '(.result.events.events // [])[] | [(.timestamp|tostring), (.["$metadata"].level // ""), (.["$metadata"].type // ""), ((.["$workers"].entrypoint // .["$workers"].scriptName // "")|tostring), ((.["$metadata"].message // .["$metadata"].error // "") | tostring | .[0:600])] | @tsv' t.json | sort | grep -v -i "^$" | tail -1500
+          echo "## events"
+          last=0; : > e.jsonl
+          for i in $(seq 1 40); do
+            page=$(curl -sS -m 60 -H "$auth" "$api/events?after=$last")
+            n=$(echo "$page" | jq 'length'); [ "$n" = "0" ] && break
+            echo "$page" | jq -c '.[]' >> e.jsonl
+            last=$(echo "$page" | jq '.[-1].seq')
+          done
+          wc -l e.jsonl
+          q() {
+            body=$(jq -n --arg id "$1" --argjson filters "$2" --argjson from "$(date -d "$3" +%s000)" --argjson to "$(date -d "$4" +%s000)" '{queryId: $id, timeframe: {from: $from, to: $to}, view: "events", limit: 2000, parameters: {filterCombination: "and", filters: ([{key: "$metadata.service", operation: "eq", type: "string", value: "chef-dev"}] + $filters)}}')
+            curl -sS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'content-type: application/json' -d "$body" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/observability/telemetry/query" > "t-$1.json"
+            echo "## $1: $(jq -c '{success, errors, n: (.result.events.events // [] | length)}' "t-$1.json")"
+          }
+          q alarms '[{"key":"$workers.eventType","operation":"eq","type":"string","value":"alarm"}]' 2026-10-14T17:40:00Z 2026-10-14T19:30:00Z
+          q problems '[{"key":"$metadata.level","operation":"neq","type":"string","value":"info"}]' 2026-10-14T17:40:00Z 2026-10-14T19:30:00Z
+          q sessionagent '[{"key":"$workers.entrypoint","operation":"eq","type":"string","value":"SessionAgent"}]' 2026-10-14T17:40:00Z 2026-10-14T19:30:00Z
+          q notok '[{"key":"$workers.outcome","operation":"neq","type":"string","value":"ok"}]' 2026-10-14T17:40:00Z 2026-10-14T19:30:00Z
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: probe
-          path: "*.json"
+          path: |
+            *.json
+            *.jsonl
