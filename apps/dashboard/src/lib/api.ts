@@ -89,12 +89,33 @@ export interface ProjectAccess {
   readonly members?: readonly OrgMember[];
 }
 
+export interface UpdateOffer {
+  readonly running: boolean;
+  readonly canUpdate: boolean;
+  readonly ask: boolean;
+}
+
 export interface AppMode {
   readonly engine: string | null;
   readonly account?: string | null;
   readonly admin?: boolean;
   readonly org?: OrgView | null;
   readonly orgs?: readonly OrgSummary[];
+  readonly update?: UpdateOffer | null;
+}
+
+export type UpdateStepId = "account" | "image" | "token" | "deploy";
+
+export interface UpdateRun {
+  readonly status: "idle" | "running" | "done" | "failed";
+  readonly steps: Readonly<Record<UpdateStepId, "waiting" | "running" | "done" | "failed" | "skipped">>;
+  readonly log: readonly string[];
+  readonly error: string | null;
+}
+
+export interface UpdateState {
+  readonly running: boolean;
+  readonly install: UpdateRun | null;
 }
 
 const CLOUD: AppMode = { engine: null };
@@ -102,6 +123,13 @@ const json = (method: string, body: unknown): RequestInit => ({ method, headers:
 
 export const appApi = {
   get: () => call<AppMode>("/api/app").catch(() => CLOUD),
+};
+
+export const updateApi = {
+  state: () => call<UpdateState>("/site/api/update"),
+  start: () => call<UpdateState>("/site/api/update", json("POST", {})),
+  later: () => call<{ readonly ok: true }>("/site/api/update/later", json("POST", {})),
+  finish: () => call<{ readonly ok: true }>("/site/api/install", { method: "DELETE" }),
 };
 
 export const orgApi = {

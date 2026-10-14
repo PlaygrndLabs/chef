@@ -1,5 +1,6 @@
 import { directory, member as memberOf, oauthClient, organization, type Env } from "./env.ts";
 import { API, authorizeUrl, canSeeAccount, cookies, decodePending, encodePending, OAUTH_COOKIE, randomToken, readGrant, readInstall, readProfile, readSession, SESSION_COOKIE, SESSION_SECONDS, setCookie, signSession, tokenRequest, type OAuthClient, type Session } from "./oauth.ts";
+import { needsUpdate } from "./member.ts";
 import type { OrgAccess } from "./organization.ts";
 import { engineRule } from "./access.ts";
 import { atLeast, can, engineLabel, isId, isLevel, isRole, readEmail, readOrgName, type OrgSummary } from "./orgs.ts";
@@ -99,6 +100,23 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const [current, view] = await Promise.all([org.view(session.userId), member.view(session.orgId)]);
       const started = await member.install({ orgId: session.orgId, orgName: current ? engineLabel(current, view.email) : "org", accountId: input.accountId, engine: await org.engine() });
       return typeof started === "string" ? json({ error: started }, 409) : json(started, 202);
+    }
+    if (path === "/site/api/update" && request.method === "GET") {
+      const [running, install] = await Promise.all([org.updating(), member.status()]);
+      return json({ running, install: install.orgId === session.orgId && install.update && install.status !== "idle" ? install : null });
+    }
+    if (path === "/site/api/update" && request.method === "POST") {
+      if (!can(role, "setup")) return json({ error: "only owners and admins of this organization can update chef" }, 403);
+      if (await org.removing()) return json({ error: "chef is being removed from this organization" }, 409);
+      const engine = await org.engine();
+      if (!engine) return json({ error: "chef is not set up for this organization yet" }, 409);
+      const [current, view] = await Promise.all([org.view(session.userId), member.view(session.orgId)]);
+      const started = await member.install({ orgId: session.orgId, orgName: current ? engineLabel(current, view.email) : "org", accountId: engine.accountId, engine });
+      return typeof started === "string" ? json({ error: started }, 409) : json({ running: true, install: started }, 202);
+    }
+    if (path === "/site/api/update/later" && request.method === "POST") {
+      await member.later();
+      return json({ ok: true });
     }
     if (path === "/site/api/install" && request.method === "DELETE") {
       await member.dismiss();
@@ -215,8 +233,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === "/api/app" && request.method === "GET" && session && org && member && (await access())) {
-    const [view, current, orgs] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId)]);
-    return json({ engine: url.origin, account: view.email, org: current, orgs, ...(view.admin ? { admin: true } : {}) });
+    const [view, current, orgs, engine, updating, later, signedIn] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId), org.engine(), org.updating(), member.askedLater(), access()]);
+    const canUpdate = view.canSetUp && signedIn !== null && can(signedIn.role, "setup");
+    const update = updating ? { running: true, canUpdate, ask: false } : needsUpdate(engine, env.ENGINE_VERSION) ? { running: false, canUpdate, ask: canUpdate && !later } : null;
+    return json({ engine: url.origin, account: view.email, org: current, orgs, update, ...(view.admin ? { admin: true } : {}) });
   }
 
   if (ENGINE_PATH.test(path)) {
@@ -224,6 +244,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     const rule = engineRule(request.method, url);
     const signedIn = session && org ? await org.access(session.userId, rule.kind === "project" ? rule.project : null).catch(() => null) : null;
     if (!session || !org || !signedIn?.engine) return json({ error: signedIn ? "chef is not set up for this organization yet" : "sign in with Cloudflare first" }, 401);
+    if (signedIn.updating) return json({ error: "chef is updating; your projects open again when it finishes" }, 423);
     if (rule.kind === "admin" && !can(signedIn.role, "setup")) return json({ error: "only owners and admins can change settings for the whole organization" }, 403);
     if (rule.kind === "project" && !signedIn.level) return json({ error: `there is no project named ${rule.project}` }, 404);
     if (rule.kind === "project" && !atLeast(signedIn.level, rule.need)) return json({ error: rule.need === "manage" ? "only people who manage this project can change its settings" : "you can view this project but not change it" }, 403);

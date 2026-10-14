@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronRight, CircleAlert, Loader2, Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -12,6 +12,7 @@ import { useOverview } from "@/lib/overview";
 import { projectNameFrom } from "@/lib/projects";
 import { isProjectName } from "@/lib/selection";
 import { cn } from "@/lib/utils";
+import { Step, type StepState } from "@/components/step";
 
 type Source = "fresh" | "github" | "other";
 
@@ -40,20 +41,6 @@ interface Plan {
   readonly name: string;
   readonly repository: string | null;
   readonly git: GitLinkUpdate | null;
-}
-
-type StepState = "wait" | "run" | "done" | "failed";
-
-function Step(props: { readonly state: StepState; readonly took?: string | null; readonly children: ReactNode }) {
-  return (
-    <li className={cn("flex items-start gap-2.5 text-sm", props.state === "wait" && "text-muted-foreground")} data-step={props.state}>
-      <span className="mt-0.5 grid size-4 shrink-0 place-items-center">
-        {props.state === "run" ? <Loader2 className="size-4 animate-spin" /> : props.state === "done" ? <Check className="size-4 text-ok" /> : props.state === "failed" ? <CircleAlert className="size-4 text-bad" /> : <span className="size-1.5 rounded-full bg-muted-foreground/50" />}
-      </span>
-      <span className="min-w-0 flex-1">{props.children}</span>
-      {props.took ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{props.took}</span> : null}
-    </li>
-  );
 }
 
 interface Line {

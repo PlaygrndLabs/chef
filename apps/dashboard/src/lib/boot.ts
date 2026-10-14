@@ -1,16 +1,21 @@
-import { projectsApi } from "./api";
+import { appMode } from "./account";
+import { projectsApi, type UpdateOffer } from "./api";
 
 export interface Boot {
   readonly projects: readonly string[] | null;
+  readonly update: UpdateOffer | null;
 }
 
 let started: Promise<Boot> | null = null;
 
 export function boot(): Promise<Boot> {
-  started ??= projectsApi.list().then(
-    (list) => ({ projects: list.map((p) => p.name) }),
-    () => ({ projects: null }),
-  );
+  started ??= Promise.all([
+    appMode(),
+    projectsApi.list().then(
+      (list) => list.map((p) => p.name),
+      () => null,
+    ),
+  ]).then(([mode, projects]) => ({ projects: mode.update?.running ? [] : projects, update: mode.update ?? null }));
   return started;
 }
 
