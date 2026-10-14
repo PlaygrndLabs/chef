@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Brain, FolderGit2, KeyRound, Route, ScanSearch, ScrollText, SlidersHorizontal } from "lucide-react";
+import { Bot, BookOpen, Brain, FolderGit2, KeyRound, Route, ScrollText, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import type { OutboundMode, SyncState } from "@chef/core";
 import { Button } from "@/components/ui/button";
@@ -248,7 +248,6 @@ export function ProjectSettingsDialog(props: {
   readonly item: string | null;
   readonly nav: AgentsNav & { readonly section: (section: string) => void };
   readonly sharedAttempts: number | null;
-  readonly onReadCode: () => void;
   readonly onEditShared: () => void;
 }) {
   const { open, project, api, nav } = props;
@@ -287,18 +286,6 @@ export function ProjectSettingsDialog(props: {
             <ProjectBudgetGroup api={api} />
             <Group title="Previews" note="A preview starts when someone opens its link, and is removed from your Cloudflare account after it sits unused.">
               <PreviewsForm key={settings.previewIdleMinutes} minutes={settings.previewIdleMinutes} save={save} />
-            </Group>
-            <Group
-              title="Read the code"
-              note="Chef reads the whole project and suggests what to build next."
-              action={
-                <Button type="button" size="sm" variant="outline" onClick={props.onReadCode}>
-                  <ScanSearch />
-                  Read and suggest
-                </Button>
-              }
-            >
-              {null}
             </Group>
           </>
         ) : (

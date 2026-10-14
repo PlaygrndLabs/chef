@@ -212,7 +212,9 @@ export class ProjectAgent extends Agent<Env> {
           await this.startReading();
           return { commitId: pulled.commitId, created: true, imported: true };
         }
-        return { commitId: await orchestrator.bootstrap(templateFiles, progress), created: true };
+        const commitId = await orchestrator.bootstrap(templateFiles, progress);
+        await this.startReading();
+        return { commitId, created: true };
       });
     }
     if (action === "overview" && request.method === "GET") return Response.json(await this.overview());
