@@ -39,7 +39,7 @@ dialog.innerHTML = `
     </div>
     <div class="signin-step" data-step="2" hidden>
       <h2 id="signin-title-2">Now we'll send you to Cloudflare.</h2>
-      <p class="signin-sub">There you give chef control of your Cloudflare account with the permissions below. The notes say why chef needs each one. All of them are on already, except <b>one switch at the bottom. Turn it on, or sign-in fails.</b></p>
+      <p class="signin-sub">There you give chef control of your Cloudflare account with the permissions below. The notes say why chef needs each one. All of them are on already, except <b>one switch at the bottom, <span class="hot">Account API Tokens Write</span>. Turn it on, or sign-in fails.</b></p>
       <div class="consent">
         <svg class="consent-art" aria-hidden="true"></svg>
         <div class="cfc">
@@ -51,7 +51,7 @@ dialog.innerHTML = `
           <p class="cfc-label cfc-extra">Additional access ${info}<span class="edit">Edit Permissions</span></p>
           <div class="cfc-sensitive"><span class="cfc-shield">${shield}</span><b>Sensitive scopes</b>${info}<span class="count">1 permission</span><span class="caret" aria-hidden="true"></span></div>
           <div class="cfc-toggle">
-            <span><b>Account API Tokens Write</b><small>Grants write access to account API Tokens</small></span>
+            <span><b class="hot">Account API Tokens Write</b><small>Grants write access to account API Tokens</small></span>
             <span class="cfc-switch" aria-hidden="true"><i></i></span>
           </div>
           <p class="note must"><strong>turn this on!</strong>or sign-in fails. so we can publish your previews and live apps</p>
@@ -82,7 +82,7 @@ function seeded(seed) {
   };
 }
 
-function arrow(sx, sy, ex, ey, seed) {
+function arrow(sx, sy, ex, ey, seed, lead = 0) {
   const rand = seeded(seed);
   const dx = ex - sx;
   const dy = ey - sy;
@@ -92,8 +92,8 @@ function arrow(sx, sy, ex, ey, seed) {
   const side = rand() < 0.5 ? -1 : 1;
   const bend = Math.min(length * (0.12 + rand() * 0.18), 34) * side;
   const lean = 0.25 + rand() * 0.2;
-  const c1x = sx + dx * lean + nx * bend;
-  const c1y = sy + dy * lean + ny * bend;
+  const c1x = lead ? sx + lead * Math.max(Math.abs(dx) * lean * 1.3, 26) : sx + dx * lean + nx * bend;
+  const c1y = lead ? sy + (rand() - 0.5) * 4 : sy + dy * lean + ny * bend;
   const c2x = sx + dx * (0.62 + rand() * 0.18) + nx * bend * (0.15 + rand() * 0.5);
   const c2y = sy + dy * (0.62 + rand() * 0.18) + ny * bend * (0.15 + rand() * 0.5);
   const phase = rand() * Math.PI * 2;
@@ -136,13 +136,27 @@ function ring(box) {
 
 function lines(note) {
   const walker = document.createTreeWalker(note, 4);
-  const rects = [];
   const range = document.createRange();
+  const rows = [];
   while (walker.nextNode()) {
-    range.selectNodeContents(walker.currentNode);
-    rects.push(...[...range.getClientRects()].filter((rect) => rect.width > 4));
+    const node = walker.currentNode;
+    for (let i = 0; i < node.length; i++) {
+      if (!node.data[i].trim()) continue;
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      const rect = range.getBoundingClientRect();
+      if (!rect.width) continue;
+      const mid = (rect.top + rect.bottom) / 2;
+      const row = rows.at(-1);
+      if (row && rect.left > row.right - 4 && Math.abs(mid - row.rmid) < rect.height * 0.6) {
+        row.right = rect.right;
+        row.rmid = mid;
+        row.top = Math.min(row.top, rect.top);
+        row.bottom = Math.max(row.bottom, rect.bottom);
+      } else rows.push({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, lmid: mid, rmid: mid });
+    }
   }
-  return rects;
+  return rows;
 }
 
 function layout() {
@@ -152,7 +166,7 @@ function layout() {
   consent.classList.toggle("stacked", !wide);
   for (const note of notes) note.removeAttribute("style");
   const box = consent.getBoundingClientRect();
-  const local = (rect) => ({ left: rect.left - box.left, right: rect.right - box.left, top: rect.top - box.top, bottom: rect.bottom - box.top, mid: (rect.top + rect.bottom) / 2 - box.top });
+  const local = (rect) => ({ left: rect.left - box.left, right: rect.right - box.left, top: rect.top - box.top, bottom: rect.bottom - box.top, mid: (rect.top + rect.bottom) / 2 - box.top, lmid: (rect.lmid ?? (rect.top + rect.bottom) / 2) - box.top, rmid: (rect.rmid ?? (rect.top + rect.bottom) / 2) - box.top });
   const cardBox = local(card.getBoundingClientRect());
   const paths = [];
   const gap = 52;
@@ -192,20 +206,20 @@ function layout() {
       const line = must ? rows[0] : rows.reduce((best, row) => (Math.abs(row.mid - target.mid) < Math.abs(best.mid - target.mid) ? row : best), rows[0]);
       if (must) {
         paths.push([ring(target), true]);
-        paths.push([arrow(line.left - 10, line.mid + 4, target.right + 18, target.top - 2, i + 11), true]);
-      } else if (left) paths.push([arrow(line.right + 10, line.mid + 2, target.left - 8, target.mid, i + 11), false]);
-      else paths.push([arrow(line.left - 10, line.mid + 2, target.right + 8, target.mid, i + 11), false]);
+        paths.push([arrow(line.left - 8, line.lmid, target.right + 18, target.top - 2, i + 11, -1), true]);
+      } else if (left) paths.push([arrow(line.right + 8, line.rmid, target.left - 8, target.mid, i + 11, 1), false]);
+      else paths.push([arrow(line.left - 8, line.lmid, target.right + 8, target.mid, i + 11, -1), false]);
     } else {
       note.classList.remove("left");
       note.style.marginLeft = must ? "" : `${66 + Math.round(rand() * 22)}px`;
       const first = local(lines(note)[0]);
       if (must) {
         paths.push([ring(target), true]);
-        paths.push([arrow(first.right + 12, first.mid, (target.left + target.right) / 2 - 4, target.bottom + 13, i + 11), true]);
+        paths.push([arrow(first.right + 10, first.rmid, (target.left + target.right) / 2 - 4, target.bottom + 13, i + 11, 1), true]);
         return;
       }
       const icon = local(chip.querySelector(".cfc-ico").getBoundingClientRect());
-      paths.push([arrow(first.left - 8, first.mid + 2, (icon.left + icon.right) / 2, icon.bottom + 6, i + 11), false]);
+      paths.push([arrow(first.left - 7, first.lmid, (icon.left + icon.right) / 2, icon.bottom + 6, i + 11, -1), false]);
     }
   });
   const spill = wide ? Math.max(0, ...notes.map((note) => local(note.getBoundingClientRect()).bottom - cardBox.bottom)) : 0;
