@@ -118,7 +118,7 @@ export function mineRules(corrections: readonly Correction[], tree: Tree, minSes
   const existing = projectRules(tree);
   const groups = new Map<string, { signature: string; normalized: string; sessions: Set<string>; corrections: Correction[] }>();
   for (const correction of corrections) {
-    if (correction.signature === "project-lint") continue;
+    if (correction.signature === "project-lint" || correction.signature === "lane-owner") continue;
     for (const normalized of candidates(correction)) {
       const key = `${correction.signature}\n${normalized}`;
       const group = groups.get(key) ?? { signature: correction.signature, normalized, sessions: new Set(), corrections: [] };
