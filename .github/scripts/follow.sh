@@ -9,7 +9,7 @@ put_env() {
 check_preview() {
   feature=$(curl -sS -m 60 -H "$auth" "$api/sessions" | jq -r '[.[] | select(.machine.state == "merged")][-1].featureId')
   for _ in $(seq 1 30); do
-    page=$(curl -sSL -m 120 -H "$auth" "$CHEF_URL/preview/$PROJECT/$feature?path=$CHECK_PATH")
+    page=$(curl -sSL -b "" -m 120 -H "$auth" "$CHEF_URL/preview/$PROJECT/$feature?path=$CHECK_PATH")
     case "$page" in *"Waking up"*) sleep 10 ;; *) break ;; esac
   done
   echo "$page" | head -c 2000; echo

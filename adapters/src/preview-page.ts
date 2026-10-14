@@ -19,8 +19,8 @@ export function previewPath(raw: string | null): string {
 
 export type PreviewAnswer = { readonly status: "ready"; readonly url: string; readonly commitId: string } | { readonly status: "building"; readonly since: number } | { readonly status: "failed"; readonly error: string } | { readonly status: "missing" };
 
-export function previewResponse(state: PreviewAnswer, input: { readonly key: string; readonly path: string; readonly asState: boolean; readonly now: number }): Response {
+export function previewResponse(state: PreviewAnswer, input: { readonly key: string; readonly path: string; readonly asState: boolean; readonly now: number; readonly enter?: string }): Response {
   if (input.asState) return Response.json(state.status === "building" ? { ...state, elapsedMs: Math.max(0, input.now - state.since) } : state, { headers: { "cache-control": "no-store" } });
-  if (state.status === "ready") return new Response(null, { status: 302, headers: { location: `${state.url.replace(/\/$/, "")}${input.path}`, "cache-control": "no-store" } });
+  if (state.status === "ready") return new Response(null, { status: 302, headers: { location: input.enter ?? `${state.url.replace(/\/$/, "")}${input.path}`, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
   return buildingPage({ status: state.status, key: input.key, ...(state.status === "failed" ? { error: state.error } : {}) });
 }
