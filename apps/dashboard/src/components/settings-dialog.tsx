@@ -136,7 +136,7 @@ function AccountSection(props: { readonly account: string | null; readonly admin
         </p>
         {props.admin ? (
           <Button asChild size="sm" variant="outline">
-            <a href="/admin">Members</a>
+            <a href="/backoffice">Backoffice</a>
           </Button>
         ) : null}
       </div>

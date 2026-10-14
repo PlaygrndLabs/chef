@@ -1,0 +1,12 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "chef-backoffice",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": { "directory": "public", "binding": "ASSETS", "run_worker_first": true },
+  "services": [{ "binding": "SITE", "service": "chef-site", "entrypoint": "Backoffice" }],
+  "vars": { "SITE_URL": "https://chef.playgrndlabs.com" }
+}

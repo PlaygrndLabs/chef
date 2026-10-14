@@ -91,6 +91,8 @@ const STATUS = "status";
 const ADMIN = "admin";
 const REMOVAL_JOB = "removal-job";
 const REMOVAL = "removal";
+const TICKET = "backoffice-ticket";
+const TICKET_MS = 60_000;
 const MAX_LOG = 400;
 const INSTANCE = "standard-2";
 
@@ -147,6 +149,22 @@ export class Member extends DurableObject<Env> {
 
   async admin(): Promise<boolean> {
     return (await this.ctx.storage.get<boolean>(ADMIN)) === true;
+  }
+
+  async email(): Promise<string | null> {
+    return (await this.ctx.storage.get<Profile>(PROFILE))?.email ?? null;
+  }
+
+  async backofficeTicket(): Promise<string> {
+    const value = randomToken();
+    await this.ctx.storage.put(TICKET, { value, expiresAt: Date.now() + TICKET_MS });
+    return value;
+  }
+
+  async redeemTicket(value: string): Promise<boolean> {
+    const ticket = await this.ctx.storage.get<{ value: string; expiresAt: number }>(TICKET);
+    await this.ctx.storage.delete(TICKET);
+    return ticket !== undefined && ticket.value === value && ticket.expiresAt > Date.now();
   }
 
   async accounts(): Promise<AccountView[] | null> {
