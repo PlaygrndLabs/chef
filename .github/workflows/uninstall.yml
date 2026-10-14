@@ -49,7 +49,12 @@ jobs:
           url=$(jq -r 'select(.type == "done") | .url' "$RUNNER_TEMP/install.log")
           test -n "$url"
           echo "chef for the throwaway organization is at $url"
-          curl -sS --max-time 600 -X POST "$url/api/projects" -H "authorization: Bearer $password" -H "content-type: application/json" -d '{"name":"todo"}' | tail -c 1500 || true
+          for attempt in $(seq 1 20); do
+            code=$(curl -sS -o "$RUNNER_TEMP/project.txt" -w '%{http_code}' --max-time 600 -X POST "$url/api/projects" -H "authorization: Bearer $password" -H "content-type: application/json" -d '{"name":"todo"}' || echo 000)
+            echo "creating the project todo: HTTP $code"
+            case "$code" in 2*) tail -c 1500 "$RUNNER_TEMP/project.txt"; break;; esac
+            sleep 15
+          done
       - name: Add an app tagged like chef's and a decoy chef did not make
         run: node --import tsx site/scripts/uninstall-check.ts prepare
       - name: Remove chef for that organization the way the site does, and compare the account before and after
