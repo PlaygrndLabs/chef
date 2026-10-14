@@ -1,4 +1,4 @@
-import { AlertTriangle, ExternalLink, GitCommitHorizontal, Globe, Lightbulb, Loader2, Rocket, Undo2, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, AppWindowMac, ExternalLink, GitCommitHorizontal, Lightbulb, Loader2, Rocket, Undo2, Wifi, WifiOff } from "lucide-react";
 import { BarSkeleton } from "@/components/loading";
 import { ago, short } from "@/lib/format";
 import { useNow } from "@/lib/live";
@@ -93,7 +93,7 @@ function LiveAppChip({ now }: { readonly now: number }) {
   if (live?.url) {
     return (
       <a href={live.url} target="_blank" rel="noreferrer" data-chip="live-app" title={`Open the live app, at commit ${short(live.commitId)}, updated ${ago(live.at, now)}`} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground">
-        <Globe className="size-3.5 text-ok" />
+        <AppWindowMac className="size-3.5" />
         <span className="font-mono">{new URL(live.url).host}</span>
         <ExternalLink className="size-3" />
       </a>

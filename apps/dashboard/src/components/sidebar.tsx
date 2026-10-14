@@ -1,4 +1,4 @@
-import { BookOpen, Bot, Check, ChevronsUpDown, Cpu, Globe, KeyRound, ListTree, Monitor, Moon, Settings, Sun } from "lucide-react";
+import { AppWindowMac, BookOpen, Bot, Check, ChevronsUpDown, Cpu, KeyRound, ListTree, Monitor, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -153,9 +153,12 @@ function AppRow() {
         title={live?.url ? `Open main, live at ${new URL(live.url).host}` : "Open main"}
         className={cn("flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-sidebar-accent", active && "bg-sidebar-accent font-medium", drop.active && "bg-sidebar-accent ring-1 ring-ring ring-inset")}
       >
-        <Globe className={cn("size-4 shrink-0", live?.url ? "text-ok" : "text-muted-foreground")} />
+        <AppWindowMac className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate">{selection.project}</span>
-        <span className="shrink-0 font-mono text-[11px] font-normal text-muted-foreground">main</span>
+        <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] font-normal text-muted-foreground">
+          {live?.url ? <span className="size-1.5 rounded-full bg-ok" aria-label="Live" /> : null}
+          main
+        </span>
       </button>
     </div>
   );
