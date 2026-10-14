@@ -49,7 +49,7 @@ function Card(props: { readonly icon: ReactNode; readonly title: string; readonl
       <div className="flex items-center gap-2">
         {props.icon}
         <h2 className="font-medium">{props.title}</h2>
-        {props.badge ? <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-medium text-brand">{props.badge}</span> : null}
+        {props.badge ? <span className="bg-brand/15 px-2 py-0.5 text-[11px] font-medium text-brand">{props.badge}</span> : null}
       </div>
       <p className="text-sm text-muted-foreground">{props.note}</p>
       {props.children}
