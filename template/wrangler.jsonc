@@ -5,5 +5,7 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "preview_urls": true,
-  "previews": {}
+  "durable_objects": { "bindings": [{ "name": "STORE", "class_name": "StoreObject" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["StoreObject"] }],
+  "previews": { "durable_objects": { "bindings": [{ "name": "STORE", "class_name": "StoreObject" }] } }
 }
