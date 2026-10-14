@@ -57,6 +57,7 @@ interface Job {
   readonly accountId: string;
   readonly secret: string;
   readonly update: boolean;
+  readonly started?: boolean;
 }
 
 const PROFILE = "profile";
@@ -148,13 +149,18 @@ export class Member extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     const job = await this.ctx.storage.get<Job>(JOB);
-    if (job) {
+    if (job?.started) {
       await this.ctx.storage.delete(JOB);
+      await this.update((s) => ({ ...s, status: "failed", error: s.error ?? "setup was interrupted by a chef update; sign in and try again" }));
+      await this.report(job);
+    } else if (job) {
+      await this.ctx.storage.put(JOB, { ...job, started: true });
       try {
         await this.run(job);
       } catch (error) {
         await this.update((s) => ({ ...s, status: "failed", error: s.error ?? (error instanceof Error ? error.message : String(error)) }));
       }
+      await this.ctx.storage.delete(JOB);
       await this.report(job);
     }
     await this.forgetToken();
