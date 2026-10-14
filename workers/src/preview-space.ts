@@ -75,7 +75,7 @@ export class CloudflareWorkerSpace implements PreviewSpace {
   }
 
   async refreshPreview(name: string, patch: EnvPatch): Promise<void> {
-    await this.api("PATCH", `${this.workerPath()}/previews/${encodeURIComponent(name)}/deployments/latest`, { env: patch, annotations: { "workers/message": "chef: environment changed" } }, false, "application/merge-patch+json");
+    await this.api("PATCH", `${this.workerPath()}/previews/${encodeURIComponent(name)}/deployments/latest`, { env: patch, annotations: { "workers/message": "Chef: environment changed" } }, false, "application/merge-patch+json");
   }
 
   private workerPath(): string {

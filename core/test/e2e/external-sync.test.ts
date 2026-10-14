@@ -36,7 +36,7 @@ describe("an optional external git link", () => {
     expect(await remote.head()).toBe(upstreamMain);
     expect(await remote.head("chef")).toBe(await w.repos.resolveRef("demo", "main"));
     const pr = remote.pullRequests.get("chef");
-    expect(pr?.title).toBe("chef: Add an item to a todo list");
+    expect(pr?.title).toBe("Chef: Add an item to a todo list");
     expect(pr?.body).toContain("https://chef.example/preview/demo/todo-add");
     expect((await sync.push()).status).toBe("up-to-date");
 

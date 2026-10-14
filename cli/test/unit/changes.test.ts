@@ -19,6 +19,7 @@ describe("changes", () => {
     expect(changeOf(commit("Preview works like a small browser (#158)", ["apps/dashboard/src/preview.tsx"]))).toEqual({ version: "0123456789ab", date: "2026-10-14", title: "Preview works like a small browser", pr: 158 });
     expect(changeOf(commit("Merge pull request #157 from someone/branch", ["core/src/a.ts"], "Let people leave an unfinished setup.\n\nMore words"))).toMatchObject({ title: "Let people leave an unfinished setup", pr: 157 });
     expect(changeOf(commit("Fix the build", ["workers/src/a.ts"]))).toMatchObject({ title: "Fix the build", pr: null });
+    expect(changeOf(commit("Take the hosted site out of chef, keep `chef deploy` and chef-dev (#159)", ["apps/a.ts"]))).toMatchObject({ title: "Take the hosted site out of Chef, keep `chef deploy` and chef-dev" });
     expect(changeOf(commit("Write the architecture down (#90)", ["docs/ARCHITECTURE.md", "core/test/a.test.ts"]))).toBeNull();
   });
 
