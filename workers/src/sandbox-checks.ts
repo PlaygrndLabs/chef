@@ -1,5 +1,5 @@
 import { parseTap, tapFailures } from "@chef/core/tap";
-import { diffTrees, lintSpecFiles, type CheckResult, type CheckRunner, type PreviewDeployment, type PreviewHost, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@chef/core";
+import { diffTrees, lintSpecFiles, previewName, type CheckResult, type CheckRunner, type PreviewDeployment, type PreviewHost, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@chef/core";
 import { PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
 import type { ChecksJob, CommandResult } from "./session-agent.ts";
 
@@ -87,11 +87,6 @@ export class SandboxProofRunner implements ProofRunner {
 interface PreviewOutput {
   readonly preview?: { readonly urls?: readonly string[] };
   readonly deployment?: { readonly id?: string; readonly urls?: readonly string[] };
-}
-
-export function previewName(branch: string, worker = ""): string {
-  const max = Math.max(1, Math.min(30, 62 - worker.length));
-  return branch.replace(/^preview\//, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, max).replace(/-+$/, "") || "preview";
 }
 
 export function parsePreview(stdout: string, commitId: string): PreviewDeployment {

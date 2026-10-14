@@ -6,6 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
+import { CloudflareList, CloudflareSections } from "@/components/cloudflare-resources";
 import { isActive } from "@/lib/events";
 import { ago, duration, previewHost, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
@@ -160,6 +161,8 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
   const turns = useFetch(() => api.turns(node.id), `${node.id}:${head}`, node.id);
   const changes = useFetch(() => api.changes(node.id), `${node.id}:${head}:${node.state}`, node.id);
   const lane = laneSummary(node, role);
+  const cloudflare = useFetch(() => api.cloudflare(node.id), `${node.id}:${node.state}:${head}`, node.id);
+  const mineOnCloudflare = (cloudflare.data?.resources ?? []).filter((r) => r.role === role);
   const mine = (turns.data ?? []).filter((t) => t.note?.role === role);
   const paths = new Set([...(lane?.owns ?? []), ...mine.flatMap((t) => t.note?.paths ?? [])]);
   const files = (changes.data?.files ?? []).filter((f) => paths.has(f.path));
@@ -174,6 +177,11 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
             ["Commits", `${lane.commits}`],
           ]}
         />
+      ) : null}
+      {mineOnCloudflare.length ? (
+        <Section title="On Cloudflare">
+          <CloudflareList resources={mineOnCloudflare} />
+        </Section>
       ) : null}
       <Section title="Its commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
@@ -232,69 +240,24 @@ function Meter({ label, value, max, text }: { readonly label: string; readonly v
 }
 
 export function DetailsTab({ node }: { readonly node: SessionNode }) {
-  const { api, data, selection } = useWorkspace();
+  const { api } = useWorkspace();
   const detail = useFetch(() => api.session(node.id), `${node.id}:${node.state}:${node.record?.updatedAt ?? 0}`, node.id);
   const turns = useFetch(() => api.turns(node.id), `${node.id}:${node.live?.commits.length ?? node.record?.commits.length ?? 0}`, node.id);
-  const sandbox = useFetch(() => api.sandbox(node.id), `${node.id}:${node.state}`, node.id);
+  const cloudflare = useFetch(() => api.cloudflare(node.id), `${node.id}:${node.state}:${node.record?.updatedAt ?? 0}`, node.id);
   const record = detail.data?.record ?? node.record;
   const budget = detail.data?.budget;
   const usage = record?.machine.usage;
   const elapsed = usage && record ? (isActive(record.machine.state) ? Date.now() : record.updatedAt) - usage.startedAt : 0;
-  const running = sandbox.data?.running ?? false;
-  const lanes = node.live?.lanes.length ? node.live.lanes.map((l) => ({ role: l.role, branch: l.branch })) : (record?.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch }));
   return (
     <div className="flex flex-col gap-6">
-      <Section title="Where the code lives">
-        <Facts
-          rows={[
-            ["Repository", <span className="font-mono text-xs">{record?.forkDeleted ? (record.machine.state === "dropped" ? `archive/${record.id} (fork removed)` : "main (fork removed after merge)") : (record?.fork ?? node.live?.fork ?? "not created")}</span>],
-            [
-              "Live app",
-              data.spec?.live?.url ? (
-                <a href={data.spec.live.url} target="_blank" rel="noreferrer" className="font-mono text-xs underline-offset-2 hover:underline">{`${new URL(data.spec.live.url).host} · main ${short(data.spec.commitId) || "none"}`}</a>
-              ) : (
-                <span className="font-mono text-xs">{`${selection.project} · main ${short(data.spec?.commitId) || "none"}`}</span>
-              ),
-            ],
-            ["Build", <span className="font-mono text-xs">{node.id}</span>],
-            ...(lanes.length
-              ? [
-                  [
-                    "Role branches",
-                    <span className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs" data-lanes>
-                      {lanes.map((l) => (
-                        <span key={l.role} data-lane={l.role}>
-                          {l.branch}
-                        </span>
-                      ))}
-                    </span>,
-                  ] as const,
-                ]
-              : []),
-          ]}
-        />
+      <Section title="On Cloudflare">
+        <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} />
       </Section>
       <Section title="Steps saved as commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
         {turns.data?.length === 0 ? <p className="text-sm text-muted-foreground">No commits yet.</p> : null}
         {turns.error ? <p className="text-sm text-muted-foreground">Could not load the commits: {turns.error}</p> : null}
         <CommitList turns={turns.data ?? []} />
-      </Section>
-      <Section title="Sandbox">
-        <Facts
-          rows={[
-            [
-              "Container",
-              <span className="inline-flex items-center gap-1.5">
-                <StatusDot tone={running ? "run" : "idle"} />
-                {sandbox.loading && !sandbox.data ? "Checking" : sandbox.error ? "Unknown" : running ? "Running" : "Stopped"}
-              </span>,
-            ],
-            ...(lanes.length ? [["Per role", `${lanes.length} containers, one for each role's branch`] as const] : []),
-            ["Internet", "Off, except allowed hosts"],
-            ...(sandbox.data?.exit ? [["Last exit", sandbox.data.exit] as const] : []),
-          ]}
-        />
       </Section>
       {usage && budget ? (
         <Section title="Budget">

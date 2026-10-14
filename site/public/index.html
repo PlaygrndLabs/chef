@@ -33,7 +33,7 @@
 
 <main>
   <section class="hero">
-    <canvas class="field" data-app aria-hidden="true"></canvas>
+    <canvas class="field" data-mark aria-hidden="true"></canvas>
     <div class="inner hero-inner">
       <div class="hero-copy">
         <p class="banner" id="notice" role="status" hidden></p>
@@ -41,12 +41,26 @@
         <h1>Build apps with AI, on your own Cloudflare.</h1>
         <p class="lead">Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass.</p>
         <div class="actions">
-          <a class="btn btn-primary btn-lg" href="/auth/start">Get started</a>
-          <a class="btn btn-pill btn-lg" href="#how">See how it works</a>
+          <a class="btn btn-primary btn-lg btn-go" href="/auth/start">Get started <span class="arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="btn btn-quiet btn-lg" href="#how">See how it works</a>
         </div>
         <p class="fine">Free and open source. Needs a Cloudflare account on the Workers Paid plan.</p>
       </div>
       <div class="stage" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <section class="showcase">
+    <div class="inner">
+      <div class="showcase-head">
+        <p class="kicker">What you can build</p>
+        <h2>Ask in a sentence. Watch it come together.</h2>
+        <p class="sub">A video editor, a whiteboard, a sales pipeline or a delivery map. chef plans it, builds it and puts it online.</p>
+      </div>
+      <div class="term showcase-view">
+        <p class="term-bar"><span data-showcase-label>01 video editor</span><span data-showcase-host>cut.workers.dev</span></p>
+        <canvas data-showcase aria-hidden="true"></canvas>
+      </div>
     </div>
   </section>
 
