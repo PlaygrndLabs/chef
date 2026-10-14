@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
 import { isActive } from "@/lib/events";
 import { ago, duration, previewHost, short, tokens } from "@/lib/format";
+import type { SessionTurn } from "@chef/core";
+import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
 import { entryRoute, isPage, pagesFor, routesIn, type Route } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
@@ -90,7 +92,7 @@ function PreviewTab({ url, link, commitId, routes, featureId, live }: { readonly
   );
 }
 
-function FileDiff({ path, before, after }: { readonly path: string; readonly before: string | null; readonly after: string | null }) {
+export function FileDiff({ path, before, after }: { readonly path: string; readonly before: string | null; readonly after: string | null }) {
   const [open, setOpen] = useState(false);
   const parts = useMemo(() => diffLines(before ?? "", after ?? ""), [before, after]);
   const added = parts.filter((p) => p.added).reduce((n, p) => n + (p.count ?? 0), 0);
@@ -119,6 +121,78 @@ function FileDiff({ path, before, after }: { readonly path: string; readonly bef
         </pre>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function CommitList({ turns }: { readonly turns: readonly SessionTurn[] }) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {turns.map((t) => (
+        <li key={t.commitId}>
+          <Collapsible className="rounded-lg border">
+            <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60">
+              <span className="font-mono text-xs text-muted-foreground">{short(t.commitId)}</span>
+              <span className="min-w-0 flex-1 truncate">{t.message.split("\n")[0]}</span>
+              <span className="text-xs text-muted-foreground">{t.timestamp ? ago(t.timestamp) : ""}</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="border-t px-3 py-2 text-xs">
+              {t.note ? (
+                <>
+                  <div className="mb-1 text-muted-foreground">
+                    {t.note.role} · {t.note.model} · {t.note.paths.length} files
+                  </div>
+                  <pre className="max-h-64 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap">{t.note.prompt}</pre>
+                </>
+              ) : (
+                <span className="text-muted-foreground">No prompt saved with this commit.</span>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function RoleWork({ node, role }: { readonly node: SessionNode; readonly role: string }) {
+  const { api } = useWorkspace();
+  const head = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
+  const turns = useFetch(() => api.turns(node.id), `${node.id}:${head}`, node.id);
+  const changes = useFetch(() => api.changes(node.id), `${node.id}:${head}:${node.state}`, node.id);
+  const lane = laneSummary(node, role);
+  const mine = (turns.data ?? []).filter((t) => t.note?.role === role);
+  const paths = new Set([...(lane?.owns ?? []), ...mine.flatMap((t) => t.note?.paths ?? [])]);
+  const files = (changes.data?.files ?? []).filter((f) => paths.has(f.path));
+  return (
+    <div className="flex flex-col gap-6" data-role-work={role}>
+      {lane ? (
+        <Facts
+          rows={[
+            ["Branch", <span className="font-mono text-xs" data-role-branch>{lane.branch}</span>],
+            ["Status", <span data-role-status>{lane.status}</span>],
+            ...(lane.steps ? [["Steps", `${lane.steps.done} of ${lane.steps.of} done`] as const] : []),
+            ["Commits", `${lane.commits}`],
+          ]}
+        />
+      ) : null}
+      <Section title="Its commits">
+        {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
+        {turns.error ? <p className="text-sm text-muted-foreground">Could not load the commits: {turns.error}</p> : null}
+        {turns.data && !mine.length ? <p className="text-sm text-muted-foreground">No commits from this role yet.</p> : null}
+        <CommitList turns={mine} />
+      </Section>
+      <Section title="Files it changed">
+        {changes.loading && !changes.data ? <Skeleton className="h-16" /> : null}
+        {changes.data && !files.length ? <p className="text-sm text-muted-foreground">{lane ? "None of its files differ from the live app yet." : "This role changed no app files in this build."}</p> : null}
+        {files.length ? (
+          <div className="overflow-hidden border" data-role-files>
+            {files.map((f) => (
+              <FileDiff key={f.path} path={f.path} before={f.before} after={f.after} />
+            ))}
+          </div>
+        ) : null}
+      </Section>
+    </div>
   );
 }
 
@@ -204,31 +278,7 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
         {turns.data?.length === 0 ? <p className="text-sm text-muted-foreground">No commits yet.</p> : null}
         {turns.error ? <p className="text-sm text-muted-foreground">Could not load the commits: {turns.error}</p> : null}
-        <ul className="flex flex-col gap-1.5">
-          {(turns.data ?? []).map((t) => (
-            <li key={t.commitId}>
-              <Collapsible className="rounded-lg border">
-                <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60">
-                  <span className="font-mono text-xs text-muted-foreground">{short(t.commitId)}</span>
-                  <span className="min-w-0 flex-1 truncate">{t.message.split("\n")[0]}</span>
-                  <span className="text-xs text-muted-foreground">{t.timestamp ? ago(t.timestamp) : ""}</span>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="border-t px-3 py-2 text-xs">
-                  {t.note ? (
-                    <>
-                      <div className="mb-1 text-muted-foreground">
-                        {t.note.role} · {t.note.model} · {t.note.paths.length} files
-                      </div>
-                      <pre className="max-h-64 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap">{t.note.prompt}</pre>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">No prompt saved with this commit.</span>
-                  )}
-                </CollapsibleContent>
-              </Collapsible>
-            </li>
-          ))}
-        </ul>
+        <CommitList turns={turns.data ?? []} />
       </Section>
       <Section title="Sandbox">
         <Facts

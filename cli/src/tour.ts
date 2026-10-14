@@ -17,6 +17,7 @@ interface SessionRow {
   readonly id: string;
   readonly featureId: string;
   readonly machine: { readonly state: string; readonly reason?: string; readonly feedback?: string | null };
+  readonly lanes?: readonly { readonly role: string }[] | null;
 }
 
 const ACTIVE = new Set(["queued", "planning", "testing", "coding", "reviewing", "gating"]);
@@ -173,6 +174,11 @@ export async function tour(options: TourOptions): Promise<TourReport> {
             await go(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=${panel}`);
             await shot(`final-${panel}`);
           }
+        }
+        const laned = sessions.filter((s) => s.lanes?.length).at(-1);
+        for (const lane of laned?.lanes ?? []) {
+          await go(`/?project=${project}&feature=${laned?.featureId}&session=${laned?.id}&panel=messages&role=${lane.role}`);
+          await shot(`role-${lane.role}`);
         }
         const phone = await context.newPage();
         await phone.setViewportSize({ width: 390, height: 844 });
