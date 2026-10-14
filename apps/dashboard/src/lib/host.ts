@@ -33,6 +33,7 @@ export interface Host {
   readonly MenuItems?: ComponentType<{ readonly onSettings: (section?: string) => void }>;
   readonly MenuEnd?: ComponentType;
   readonly General?: ComponentType<{ readonly locked: boolean }>;
+  readonly ModelHelp?: ComponentType;
   readonly generalNote?: string;
   readonly useUsage?: () => HostUsage | null;
   readonly useProjectLevel?: (project: string) => ProjectLevel | null;

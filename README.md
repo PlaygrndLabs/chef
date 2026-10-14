@@ -28,6 +28,7 @@ chef takes that work off your plate, so you spend your time on what to build, no
 - **A live address for every project.** Each project's `main` is always online at its own address, updated on every merge.
 - **Checked before it ships.** Tests, typecheck and an AI review must pass before anything reaches `main`.
 - **Your keys stay yours.** Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.
+- **Or use your subscription.** Have a Claude subscription but no API key? [sub2api](https://github.com/PlaygrndLabs/sub2api) turns it into your own API on Cloudflare, so you can make an API key on your subscription and use it in Chef.
 - **GitHub when you want it.** Projects live in your Cloudflare account. Connect GitHub only if you want a repo kept in sync.
 
 ## Under the hood
