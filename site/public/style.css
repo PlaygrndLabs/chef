@@ -215,7 +215,7 @@ pre.log { max-height: 320px; overflow: auto; background: var(--muted); border-ra
 dialog.signin {
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --dash: color-mix(in oklch, var(--foreground) 18%, transparent);
-  width: min(860px, calc(100vw - 32px));
+  width: min(920px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   padding: 0;
   border: 1px solid var(--border);
@@ -228,7 +228,7 @@ dialog.signin {
 dialog.signin::backdrop { background: color-mix(in oklch, oklch(0.145 0 0) 55%, transparent); backdrop-filter: blur(3px); }
 .signin * { border-radius: 0; }
 .signin-body { padding: 32px 32px 0; }
-.signin-kicker { margin: 0 0 12px; font: 12px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
+.signin-kicker { margin: 0; font: 12px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
 dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.15; }
 .signin-sub { margin: 0 0 24px; color: var(--muted-foreground); font-size: 15px; max-width: 640px; }
 .signin-sub b { color: var(--foreground); font-weight: 500; }
@@ -272,12 +272,27 @@ dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-s
 .signin.on .switch i { transform: translateX(20px); border-color: var(--brand); background: #fff; }
 .signin.on .cf-must { animation: must 1.2s 1.2s steps(2, jump-none) 2; }
 @keyframes must { 50% { border-color: transparent; } }
-.cf-must .why { opacity: 1; transform: none; margin: 0; color: var(--foreground); position: relative; padding-left: 22px; }
+.cf-must .why { opacity: 1; transform: none; margin: 0; color: var(--foreground); font-size: 15px; font-weight: 500; position: relative; padding-left: 22px; }
 .cf-must .why::before { content: ""; position: absolute; left: 0; top: 50%; border: 6px solid transparent; border-right: 9px solid var(--brand); border-left: 0; transform: translateY(-50%); }
-.tag { display: block; margin-bottom: 4px; font: 11px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); font-weight: 600; }
+.tag { display: block; margin-bottom: 6px; font: 12px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); font-weight: 600; }
 
-.signin-fine { margin: 14px 0 0; font-size: 13px; color: var(--muted-foreground); }
-.signin-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 10px; margin: 20px -32px 0; padding: 16px 32px; border-top: 1px dashed var(--dash); background: var(--background); }
+.signin-top { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; }
+.signin-steps { display: flex; gap: 4px; }
+.signin-steps i { width: 28px; height: 6px; background: var(--border); }
+.signin-steps i.done { background: var(--brand); }
+.signin-close { margin-left: auto; width: 36px; height: 36px; border: 1px solid var(--border); background: transparent; color: var(--muted-foreground); font-size: 22px; line-height: 1; cursor: pointer; }
+.signin-close:hover { color: var(--foreground); background: var(--muted); }
+.signin-plan { margin: 22px 0 8px; border-top: 1px dashed var(--dash); }
+.signin-plan div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; padding: 20px 0; border-bottom: 1px dashed var(--dash); }
+.signin-plan dt { padding-top: 4px; font: 12px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
+.signin-plan dd { margin: 0; font-size: 17px; line-height: 1.55; }
+.btn-xl { height: 60px; padding: 0 28px; font-size: 18px; }
+.signin-actions { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: 10px; margin: 24px -32px 0; padding: 18px 32px 16px; border-top: 1px dashed var(--dash); background: var(--background); }
+.signin-actions .btn-primary { flex: 1; }
+.signin-revoke { flex-basis: 100%; display: block; text-align: center; padding: 4px 0; font-size: 13.5px; color: var(--muted-foreground); text-decoration: underline; text-decoration-color: var(--dash); text-underline-offset: 3px; }
+.signin-revoke:hover { color: var(--brand); text-decoration-color: currentColor; }
+.signin-revoke svg { display: inline-block; width: 14px; height: 14px; margin-left: 4px; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 2; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 @media (max-width: 720px) {
   .signin-body { padding: 22px 18px 0; }
@@ -294,7 +309,9 @@ dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-s
   .cf-must .why { padding-left: 0; margin: 0; }
   .cf-must .why::before { display: none; }
   .signin-actions { margin: 16px -18px 0; padding: 12px 18px; }
-  .signin-actions .btn { flex: 1; }
+  .btn-xl { height: 54px; font-size: 17px; padding: 0 18px; }
+  .signin-plan div { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 16px 0; }
+  .signin-plan dd { font-size: 16px; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -305,3 +322,18 @@ dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-s
   .signin .leader, .signin .why, .switch, .switch i { transition: none; }
   .signin.on .cf-must { animation: none; }
 }
+
+.guide { --mono: ui-monospace, SFMono-Regular, Menlo, monospace; --dash: color-mix(in oklch, var(--foreground) 18%, transparent); }
+.guide-body { max-width: 680px; }
+.guide-body h1 { font-weight: 500; line-height: 1.15; }
+.guide-kicker { margin: 0 0 12px; font: 12px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
+.guide-steps { list-style: none; counter-reset: step; margin: 0 0 32px; padding: 0; border-top: 1px dashed var(--dash); }
+.guide-steps li { counter-increment: step; position: relative; padding: 22px 0 22px 52px; border-bottom: 1px dashed var(--dash); }
+.guide-steps li::before { content: counter(step, decimal-leading-zero); position: absolute; left: 0; top: 24px; font: 13px/1 var(--mono); color: var(--brand); }
+.guide-steps h2 { margin: 0 0 6px; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
+.guide-steps p { margin: 0 0 14px; color: var(--muted-foreground); }
+.guide-steps p:last-child { margin-bottom: 0; }
+.guide-steps b, .guide-note b { color: var(--foreground); font-weight: 500; }
+.guide-note { border: 1px solid var(--border); border-left: 3px solid var(--brand); background: var(--card); padding: 18px 20px; }
+.guide-note p:last-child { margin: 0; color: var(--muted-foreground); }
+.guide-source { font-size: 13px; margin-top: 24px; }
