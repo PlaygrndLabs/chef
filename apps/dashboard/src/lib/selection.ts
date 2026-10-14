@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { addressWith, currentAddress } from "./address";
 
 export type View = "project" | "feature" | "live";
 export type Panel = "preview" | "messages" | "changes" | "checks" | "details";
@@ -67,8 +68,8 @@ function write(selection: Selection) {
     params.set("settings", `${selection.settings.scope}.${selection.settings.section}`);
     if (selection.item) params.set("item", selection.item);
   }
-  const next = `?${params.toString()}`;
-  if (next !== location.search) history.pushState(null, "", next);
+  const next = addressWith(params);
+  if (next !== currentAddress()) history.pushState(null, "", next);
 }
 
 export function useSelection() {
