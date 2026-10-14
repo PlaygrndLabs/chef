@@ -1,5 +1,6 @@
 import { parse as parseYaml } from "yaml";
 import type { FileChanges, Tree } from "../git/tree.ts";
+import { projectRules, rulePath } from "../checks/project-rules.ts";
 import { MEMORY_DIR } from "../memory/memory.ts";
 import type { MemoryKind } from "../ports/memory-index.ts";
 
@@ -73,6 +74,17 @@ export function memoryEntries(tree: Tree): MemoryEntry[] {
     entries.push({ path, kind, feature: typeof parsed.feature === "string" ? parsed.feature : null, title, text: body });
   }
   return entries.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export interface LearnedRule {
+  readonly id: string;
+  readonly path: string;
+  readonly message: string;
+  readonly files: string;
+}
+
+export function learnedRules(tree: Tree): LearnedRule[] {
+  return projectRules(tree).map((rule) => ({ id: rule.id, path: rulePath(rule.id), message: rule.message, files: rule.files }));
 }
 
 export function memoryText(tree: Tree, path: string): string | null {
