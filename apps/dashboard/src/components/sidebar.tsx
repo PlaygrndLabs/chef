@@ -57,7 +57,7 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
             <span className="truncate text-xs font-medium" data-current="workspace">{account ? account.title : "Settings"}</span>
             <span className="truncate text-[11px] text-muted-foreground">{missing ? need : account ? account.subtitle : "For every project"}</span>
           </span>
-          {missing ? <span className="size-1.5 shrink-0 bg-bad" aria-label={need} title={need} /> : null}
+          {missing ? <span className="size-1.5 shrink-0 bg-bad" aria-label={need} title={need} /> : account?.notice ? <span className="size-1.5 shrink-0 bg-brand" aria-label={account.notice} title={account.notice} data-notice /> : null}
           <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
