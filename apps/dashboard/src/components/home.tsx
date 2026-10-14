@@ -122,7 +122,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
           ["Try it live", "Every feature gets its own preview link."],
         ].map(([title, text], i) => (
           <li key={title} className="rounded-xl border p-4">
-            <span className="mb-2.5 grid size-6 place-items-center bg-muted text-xs font-medium">{i + 1}</span>
+            <span className="mb-2.5 block font-mono text-xs text-brand">{String(i + 1).padStart(2, "0")}</span>
             <span className="block font-medium">{title}</span>
             <span className="text-sm text-muted-foreground">{text}</span>
           </li>

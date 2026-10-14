@@ -52,7 +52,7 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
             <span className="truncate text-xs font-medium">Settings</span>
             <span className="truncate text-[11px] text-muted-foreground">{missing ? "Needs setup" : "For every project"}</span>
           </span>
-          {missing ? <span className="size-1.5 shrink-0 rounded-full bg-bad" aria-label="needs setup" /> : null}
+          {missing ? <span className="size-1.5 shrink-0 bg-bad" aria-label="needs setup" /> : null}
           <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
@@ -104,7 +104,7 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
 export function ProjectHeader({ onMenu }: { readonly onMenu?: () => void }) {
   const { openSettings, selection } = useWorkspace();
   return (
-    <div className="flex h-11 shrink-0 items-center gap-1 border-b px-3">
+    <div className="flex h-11 shrink-0 items-center gap-1 dash-b px-3">
       {onMenu ? (
         <Button variant="ghost" size="icon-sm" className="-ml-1.5 shrink-0" onClick={onMenu} aria-label="Show features">
           <ListTree />
@@ -156,7 +156,7 @@ function AppRow() {
         <AppWindowMac className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate">{selection.project}</span>
         <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] font-normal text-muted-foreground">
-          {live?.url ? <span className="size-1.5 rounded-full bg-ok" aria-label="Live" /> : null}
+          {live?.url ? <span className="size-1.5 bg-ok" aria-label="Live" /> : null}
           main
         </span>
       </button>

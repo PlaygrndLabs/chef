@@ -22,7 +22,7 @@ function Tab({ id }: { readonly id: string }) {
   const title = id === MEMORY_TAB ? "Memory" : id === LIVE_TAB ? "main" : (feature?.title ?? id);
   const active = activeTab === id;
   return (
-    <div role="presentation" className={cn("group flex h-full max-w-56 min-w-0 shrink-0 items-center border-r", active ? "bg-background" : "bg-sidebar text-muted-foreground hover:text-foreground")}>
+    <div role="presentation" className={cn("group flex h-full max-w-56 min-w-0 shrink-0 items-center border-r", active ? "bg-background shadow-[inset_0_2px_0_var(--brand)]" : "bg-sidebar text-muted-foreground hover:text-foreground")}>
       <button type="button" role="tab" aria-selected={active} data-tab={id} onClick={() => selectTab(id)} title={title} className={cn("flex h-full min-w-0 items-center gap-2 pr-1 pl-3 text-[13px]", active && "font-medium")}>
         {id === MEMORY_TAB ? <Lightbulb className="size-3.5 shrink-0" /> : id === LIVE_TAB ? <AppWindowMac className="size-3.5 shrink-0 text-muted-foreground" /> : node ? <StatusDot tone={waitsForKey(node) ? "bad" : stateTone(node.state)} /> : <StatusDot tone="idle" />}
         <span className="truncate">{title}</span>
@@ -83,7 +83,7 @@ export function SessionTabs({ onClose }: { readonly onClose?: () => void }) {
   return (
     <div className="flex h-full min-h-0 flex-col" id="sessions">
       {tabs.length ? (
-        <div role="tablist" aria-label="Open features" className="flex h-11 shrink-0 items-stretch overflow-x-auto border-b bg-sidebar">
+        <div role="tablist" aria-label="Open features" className="flex h-11 shrink-0 items-stretch overflow-x-auto dash-b bg-sidebar">
           {tabs.map((id) => (
             <Tab key={id} id={id} />
           ))}
