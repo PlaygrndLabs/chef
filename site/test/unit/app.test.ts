@@ -2,13 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { handle } from "../../src/app.ts";
 import type { Env } from "../../src/env.ts";
 import { signSession } from "../../src/oauth.ts";
-import type { Role } from "../../src/orgs.ts";
+import type { ProjectLevel, Role } from "../../src/orgs.ts";
 
 interface OrgState {
   name: string;
   personal?: boolean;
   engine: { url: string; secret: string; accountId?: string; version?: string } | null;
   members: Record<string, Role>;
+  projects?: Record<string, Record<string, ProjectLevel>>;
 }
 
 interface Fake {
@@ -22,6 +23,12 @@ const ENGINE = { url: "https://chef.sam.workers.dev", secret: "engine-secret" };
 function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Role } = {}, withClient = true) {
   const fake: Fake = { orgs: { org1: { name: "Personal", personal: true, engine: state.engine ?? null, members: { user1: state.role ?? "owner", boss: "owner" } } }, admins: [], calls: [], ...state };
   const summaries = (userId: string) => Object.entries(fake.orgs).flatMap(([id, org]) => (org.members[userId] ? [{ id, name: org.name, role: org.members[userId], personal: org.personal === true, plan: "free" }] : []));
+  const level = (id: string, userId: string, project: string): ProjectLevel | null => {
+    const state = fake.orgs[id];
+    const role = state?.members[userId];
+    if (role === "owner" || role === "admin") return "manage";
+    return state?.projects?.[project]?.[userId] ?? null;
+  };
   const member = (name: string) => ({
     signIn: async (profile: unknown, grant: unknown, admin: unknown, org: unknown) => void fake.calls.push({ name, method: "signIn", arg: { profile, grant, admin, org } }),
     admin: async () => fake.admins.includes(name),
@@ -37,7 +44,14 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
       fake.orgs[id] ??= { name: info.name, engine: null, members: {} };
       fake.orgs[id].members[who.userId] = who.role;
     },
-    access: async (userId: string) => (fake.orgs[id]?.members[userId] ? { role: fake.orgs[id].members[userId], engine: fake.orgs[id].engine } : null),
+    access: async (userId: string, project: string | null = null) => (fake.orgs[id]?.members[userId] ? { role: fake.orgs[id].members[userId], engine: fake.orgs[id].engine, level: project ? level(id, userId, project) : null } : null),
+    levels: async (userId: string, names: string[]) => Object.fromEntries(names.flatMap((n) => (level(id, userId, n) ? [[n, level(id, userId, n)]] : []))),
+    claimProject: async (userId: string, name: string) => {
+      const state = fake.orgs[id] as OrgState;
+      if (state.projects?.[name] && level(id, userId, name) !== "manage") return false;
+      state.projects = { ...state.projects, [name]: { [userId]: "manage" } };
+      return true;
+    },
     view: async (userId: string) => (fake.orgs[id]?.members[userId] ? { id, name: fake.orgs[id].name, role: fake.orgs[id].members[userId], personal: fake.orgs[id].personal === true, plan: "free", engine: fake.orgs[id].engine?.url ?? null, members: Object.keys(fake.orgs[id].members).length } : null),
     members: async () => Object.entries(fake.orgs[id]?.members ?? {}).map(([userId, role]) => ({ userId, role })),
     rename: async (name: string) => void ((fake.orgs[id] as OrgState).name = name),
@@ -47,7 +61,7 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
   const dir = {
     signIn: async (identity: { subject: string; email: string }, admin: boolean) => {
       fake.calls.push({ name: "directory", method: "signIn", arg: { identity, admin } });
-      return { userId: "usr_new", org: { id: "org_new", name: "Personal", role: "owner", personal: true, plan: "free" }, orgs: [{ id: "org_new", name: "Personal", role: "owner", personal: true, plan: "free" }] };
+      return { userId: "usr_new", org: { id: "org_new", name: "Personal", role: "owner", personal: true, plan: "free" }, orgs: [{ id: "org_new", name: "Personal", role: "owner", personal: true, plan: "free" }], joined: [] };
     },
     orgs: async (userId: string) => summaries(userId),
     createOrg: async (userId: string, name: string) => (fake.calls.push({ name: "directory", method: "createOrg", arg: { userId, name } }), { id: "org2", name, role: "owner", personal: false, plan: "free" }),
@@ -153,6 +167,36 @@ describe("chef site", () => {
       org: { id: "org1", name: "Personal", role: "owner", personal: true, plan: "free", engine: ENGINE.url, members: 2 },
       orgs: [{ id: "org1", name: "Personal", role: "owner", personal: true, plan: "free" }],
     });
+  });
+
+  it("shows each person only the projects they may open and holds them to their level", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(`${init?.method ?? "GET"} ${String(input)}`);
+      return String(input).endsWith("/api/projects") ? Response.json({ projects: [{ name: "shop" }, { name: "blog" }, { name: "secret" }] }) : Response.json({ ok: true });
+    }));
+    const { env, fake } = fakeEnv({ engine: ENGINE, role: "member" });
+    (fake.orgs["org1"] as OrgState).projects = { shop: { user1: "edit" }, blog: { user1: "view" }, secret: { boss: "manage" } };
+    const cookie = await session();
+    const listed = await handle(new Request(`${origin}/api/projects`, { headers: { cookie } }), env);
+    expect(await listed.json()).toEqual({ projects: [{ name: "shop", access: "edit" }, { name: "blog", access: "view" }] });
+    const boss = await handle(new Request(`${origin}/api/projects`, { headers: { cookie: await session("boss") } }), env);
+    expect(((await boss.json()) as { projects: unknown[] }).projects).toHaveLength(3);
+    expect((await handle(new Request(`${origin}/api/projects/secret/events`, { headers: { cookie } }), env)).status).toBe(404);
+    expect((await handle(new Request(`${origin}/api/projects/blog/events`, { headers: { cookie } }), env)).status).toBe(200);
+    expect((await handle(send("/api/projects/blog/prompts", "POST", { prompt: "hi" }, cookie), env)).status).toBe(403);
+    expect((await handle(send("/api/projects/shop/prompts", "POST", { prompt: "hi" }, cookie), env)).status).toBe(200);
+    expect((await handle(send("/api/projects/shop/settings", "PUT", {}, cookie), env)).status).toBe(403);
+    expect((await handle(send("/api/settings", "PUT", {}, cookie), env)).status).toBe(403);
+    expect((await handle(send("/api/settings", "PUT", {}, await session("boss")), env)).status).toBe(200);
+    expect((await handle(send("/api/projects", "POST", { name: "secret" }, cookie), env)).status).toBe(409);
+    expect((await handle(send("/api/projects", "POST", { name: "fresh" }, cookie), env)).status).toBe(200);
+    expect(fake.orgs["org1"]?.projects?.["fresh"]).toEqual({ user1: "manage" });
+    expect(calls.filter((c) => c.startsWith("POST") || c.startsWith("PUT"))).toEqual([
+      `POST ${ENGINE.url}/api/projects/shop/prompts`,
+      `PUT ${ENGINE.url}/api/settings`,
+      `POST ${ENGINE.url}/api/projects`,
+    ]);
   });
 
   it("creates, switches to and renames organizations", async () => {

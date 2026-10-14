@@ -75,6 +75,40 @@ export interface OrgView extends OrgSummary {
   readonly members: number;
 }
 
+export interface OrgMember {
+  readonly userId: string;
+  readonly email: string | null;
+  readonly role: OrgRole;
+  readonly joinedAt: number;
+}
+
+export interface OrgInvite {
+  readonly email: string;
+  readonly role: OrgRole;
+  readonly createdAt: number;
+}
+
+export interface OrgPeople {
+  readonly members: readonly OrgMember[];
+  readonly invites: readonly OrgInvite[];
+}
+
+export type ProjectLevel = "view" | "edit" | "manage";
+
+export interface ProjectSharing {
+  readonly name: string;
+  readonly visibility: "private" | "org";
+  readonly orgLevel: ProjectLevel;
+  readonly createdBy: string | null;
+  readonly people: readonly { readonly userId: string; readonly email: string | null; readonly level: ProjectLevel }[];
+}
+
+export interface ProjectAccess {
+  readonly you: ProjectLevel;
+  readonly sharing?: ProjectSharing;
+  readonly members?: readonly OrgMember[];
+}
+
 export interface AppMode {
   readonly mode: "local" | "cloud";
   readonly place: "computer" | "cloud" | null;
@@ -111,7 +145,21 @@ export const orgApi = {
   create: (name: string) => call<{ readonly org: OrgSummary }>("/site/api/orgs", json("POST", { name })),
   use: (orgId: string) => call<{ readonly org: OrgSummary }>("/site/api/orgs/switch", json("POST", { orgId })),
   rename: (name: string) => call<{ readonly org: OrgView }>("/site/api/org", json("PATCH", { name })),
+  people: () => call<OrgPeople>("/site/api/org/members"),
+  invite: (email: string, role: OrgRole) => call<OrgPeople & { readonly status: "added" | "invited" }>("/site/api/org/members", json("POST", { email, role })),
+  setRole: (userId: string, role: OrgRole) => call<{ readonly members: readonly OrgMember[] }>(`/site/api/org/members/${userId}`, json("PATCH", { role })),
+  remove: (userId: string) => call<{ readonly members: readonly OrgMember[] }>(`/site/api/org/members/${userId}`, { method: "DELETE" }),
+  cancelInvite: (email: string) => call<{ readonly invites: readonly OrgInvite[] }>(`/site/api/org/invites/${encodeURIComponent(email)}`, { method: "DELETE" }),
 };
+
+export function sharingApi(project: string) {
+  const base = `/site/api/projects/${project}/access`;
+  return {
+    get: () => call<ProjectAccess>(base),
+    share: (visibility: ProjectSharing["visibility"], orgLevel: ProjectLevel) => call<ProjectAccess>(base, json("PUT", { visibility, orgLevel })),
+    setLevel: (userId: string, level: ProjectLevel | null) => call<ProjectAccess>(`${base}/${userId}`, level ? json("PUT", { level }) : { method: "DELETE" }),
+  };
+}
 
 export type SettingsUpdate = Readonly<Record<string, unknown>>;
 
@@ -132,6 +180,7 @@ export function agentsApi(project: string | null) {
 export interface ProjectEntry {
   readonly name: string;
   readonly createdAt: number;
+  readonly access?: ProjectLevel;
 }
 
 export interface NewProject {

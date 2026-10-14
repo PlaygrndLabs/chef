@@ -1,7 +1,8 @@
 import { directory, member as memberOf, oauthClient, organization, type Env } from "./env.ts";
 import { API, authorizeUrl, canSeeAccount, cookies, decodePending, encodePending, OAUTH_COOKIE, randomToken, readGrant, readInstall, readProfile, readSession, SESSION_COOKIE, SESSION_SECONDS, setCookie, signSession, tokenRequest, type OAuthClient, type Session } from "./oauth.ts";
 import type { OrgAccess } from "./organization.ts";
-import { can, engineLabel, isId, readOrgName, type OrgSummary } from "./orgs.ts";
+import { engineRule } from "./access.ts";
+import { atLeast, can, engineLabel, isId, isLevel, isRole, readEmail, readOrgName, type OrgSummary } from "./orgs.ts";
 import { ENGINE_PATH, proxy } from "./proxy.ts";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(body, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -9,6 +10,13 @@ const redirect = (location: string, setCookies: readonly string[] = []) => {
   const headers = new Headers({ location, "cache-control": "no-store" });
   for (const cookie of setCookies) headers.append("set-cookie", cookie);
   return new Response(null, { status: 302, headers });
+};
+const readJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 };
 const page = (env: Env, request: Request, path: string) => env.ASSETS.fetch(new Request(new URL(path, request.url), { headers: request.headers }));
 const sessionCookie = async (client: OAuthClient, session: Session) => setCookie(SESSION_COOKIE, await signSession(client.clientSecret, session, Date.now()), SESSION_SECONDS);
@@ -41,6 +49,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     const signed = await directory(env).signIn({ provider: "cloudflare", subject: profile.id, email: profile.email }, admin);
     const org = organization(env, signed.org.id);
     await org.setup({ id: signed.org.id, name: signed.org.name, personal: signed.org.personal }, { userId: signed.userId, email: profile.email, role: signed.org.role });
+    await Promise.all(signed.joined.map((joined) => organization(env, joined.id).setup({ id: joined.id, name: joined.name, personal: false }, { userId: signed.userId, email: profile.email, role: joined.role })));
     const engine = await org.engine();
     await memberOf(env, signed.userId).signIn(profile, grant, admin, { id: signed.org.id, canSetUp: can(signed.org.role, "setup"), engine });
     return redirect(engine ? "/" : "/setup", [clear, await sessionCookie(client, { userId: signed.userId, orgId: signed.org.id })]);
@@ -109,7 +118,62 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       await directory(env).renameOrg(session.orgId, name);
       return json({ org: await org.view(session.userId) });
     }
-    if (path === "/site/api/org/members" && request.method === "GET") return json({ members: await org.members() });
+    if (path === "/site/api/org/members" && request.method === "GET") return json({ members: await org.members(), invites: can(role, "members") ? await directory(env).invites(session.orgId) : [] });
+    if (path === "/site/api/org/members" && request.method === "POST") {
+      if (!can(role, "members")) return json({ error: "only owners and admins can invite people" }, 403);
+      if ((await org.view(session.userId))?.personal) return json({ error: "Personal is yours alone; create an organization to work with others" }, 400);
+      const body = (await request.json().catch(() => null)) as { email?: unknown; role?: unknown } | null;
+      const email = readEmail(body?.email);
+      const invitedRole = body?.role ?? "member";
+      if (!email) return json({ error: "give an email address" }, 400);
+      if (!isRole(invitedRole) || (invitedRole === "owner" && role !== "owner")) return json({ error: "only owners can invite owners" }, 403);
+      const invited = await directory(env).invite(session.orgId, email, invitedRole, session.userId);
+      if (invited.status === "member") return json({ error: `${email} is already a member` }, 409);
+      if (invited.status === "added") await org.setup({ id: session.orgId, name: "", personal: false }, { userId: invited.userId, email, role: invitedRole });
+      return json({ status: invited.status, members: await org.members(), invites: await directory(env).invites(session.orgId) }, 201);
+    }
+    const person = /^\/site\/api\/org\/members\/(usr_[A-Za-z0-9]{20})$/.exec(path)?.[1];
+    if (person && (request.method === "PATCH" || request.method === "DELETE")) {
+      if (!can(role, "members")) return json({ error: "only owners and admins can change members" }, 403);
+      const target = (await org.members()).find((m) => m.userId === person);
+      if (!target) return json({ error: "that person is not a member" }, 404);
+      if (role !== "owner" && target.role === "owner") return json({ error: "only owners can change owners" }, 403);
+      if (request.method === "DELETE") {
+        if (!(await org.removeMember(person))) return json({ error: "an organization keeps at least one owner" }, 409);
+        await directory(env).removeMember(session.orgId, person);
+      } else {
+        const next = ((await request.json().catch(() => null)) as { role?: unknown } | null)?.role;
+        if (!isRole(next) || (next === "owner" && role !== "owner")) return json({ error: "only owners can make owners" }, 403);
+        if (!(await org.setRole(person, next))) return json({ error: "an organization keeps at least one owner" }, 409);
+        await directory(env).setRole(session.orgId, person, next);
+      }
+      return json({ members: await org.members() });
+    }
+    const invite = /^\/site\/api\/org\/invites\/([^/]+)$/.exec(path)?.[1];
+    if (invite && request.method === "DELETE") {
+      if (!can(role, "members")) return json({ error: "only owners and admins can change invitations" }, 403);
+      await directory(env).cancelInvite(session.orgId, decodeURIComponent(invite).toLowerCase());
+      return json({ invites: await directory(env).invites(session.orgId) });
+    }
+    const shared = /^\/site\/api\/projects\/([a-z][a-z0-9-]{1,30})\/access(?:\/(usr_[A-Za-z0-9]{20}))?$/.exec(path);
+    if (shared) {
+      const name = shared[1] as string;
+      const level = (await org.access(session.userId, name))?.level ?? null;
+      if (!level) return json({ error: `there is no project named ${name}` }, 404);
+      if (request.method === "GET") return json({ you: level, ...(atLeast(level, "manage") ? { sharing: await org.sharing(name), members: await org.members() } : {}) });
+      if (!atLeast(level, "manage")) return json({ error: "only people who manage this project can share it" }, 403);
+      const body = (await request.json().catch(() => null)) as { visibility?: unknown; orgLevel?: unknown; level?: unknown } | null;
+      if (shared[2]) {
+        if (request.method !== "PUT" && request.method !== "DELETE") return json({ error: "method not allowed" }, 405);
+        const next = request.method === "DELETE" ? null : body?.level;
+        if (next !== null && !isLevel(next)) return json({ error: "pick view, edit or manage" }, 400);
+        const sharing = await org.setLevel(session.userId, name, shared[2], next);
+        return sharing ? json({ you: level, sharing, members: await org.members() }) : json({ error: "that person is not in this organization" }, 404);
+      }
+      if (request.method !== "PUT") return json({ error: "method not allowed" }, 405);
+      if ((body?.visibility !== "private" && body?.visibility !== "org") || !isLevel(body.orgLevel) || body.orgLevel === "manage") return json({ error: "pick private, or the whole organization with view or edit" }, 400);
+      return json({ you: level, sharing: await org.share(session.userId, name, body.visibility, body.orgLevel), members: await org.members() });
+    }
     return json({ error: "not found" }, 404);
   }
 
@@ -120,9 +184,23 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
   if (ENGINE_PATH.test(path)) {
     if (!sameSite) return json({ error: "cross-site request refused" }, 403);
-    const signedIn = await access();
-    if (!signedIn?.engine) return json({ error: signedIn ? "chef is not set up for this organization yet" : "sign in with Cloudflare first" }, 401);
-    return proxy(request, signedIn.engine, url.origin);
+    const rule = engineRule(request.method, url);
+    const signedIn = session && org ? await org.access(session.userId, rule.kind === "project" ? rule.project : null).catch(() => null) : null;
+    if (!session || !org || !signedIn?.engine) return json({ error: signedIn ? "chef is not set up for this organization yet" : "sign in with Cloudflare first" }, 401);
+    if (rule.kind === "admin" && !can(signedIn.role, "setup")) return json({ error: "only owners and admins can change settings for the whole organization" }, 403);
+    if (rule.kind === "project" && !signedIn.level) return json({ error: `there is no project named ${rule.project}` }, 404);
+    if (rule.kind === "project" && !atLeast(signedIn.level, rule.need)) return json({ error: rule.need === "manage" ? "only people who manage this project can change its settings" : "you can view this project but not change it" }, 403);
+    if (rule.kind === "create") {
+      const body = await request.text();
+      const name = (readJson(body) as { name?: unknown } | null)?.name;
+      if (typeof name === "string" && !(await org.claimProject(session.userId, name.trim()))) return json({ error: `there is already a project named ${name.trim()}` }, 409);
+      return proxy(new Request(request, { body }), signedIn.engine, url.origin);
+    }
+    const response = await proxy(request, signedIn.engine, url.origin);
+    if (rule.kind !== "list" || !response.ok) return response;
+    const listed = (await response.json()) as { projects: readonly { name: string }[] };
+    const levels = await org.levels(session.userId, listed.projects.map((p) => p.name));
+    return json({ projects: listed.projects.flatMap((p) => (levels[p.name] ? [{ ...p, access: levels[p.name] }] : [])) });
   }
 
   if (path === "/" || path === "/index.html") {
