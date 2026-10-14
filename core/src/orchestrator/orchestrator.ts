@@ -32,6 +32,7 @@ import { hashHex } from "../util/hash.ts";
 import type { ExternalRemote } from "../ports/external-git.ts";
 import { ExternalSync, type ExternalSyncOptions } from "../sync/external.ts";
 import { quietSetup, type SetupProgress } from "../setup/progress.ts";
+import type { SpendGate } from "../usage/budget.ts";
 
 export interface Deps {
   readonly repos: RepoHost;
@@ -47,6 +48,7 @@ export interface Deps {
   readonly ids: IdSource;
   readonly store: KeyValueStore;
   readonly memory: MemoryIndex;
+  readonly spend?: SpendGate;
 }
 
 export type Generators = Readonly<Record<string, (tree: Tree) => string>>;
@@ -205,7 +207,12 @@ export class Orchestrator {
     return { commitId, tree: commit?.tree ?? {} };
   }
 
-  async submit(prompt: string, options: { readonly attempts?: number } = {}): Promise<SubmitResult> {
+  async submit(prompt: string, options: { readonly attempts?: number; readonly by?: string | null } = {}): Promise<SubmitResult> {
+    const by = options.by ?? null;
+    return this.deps.spend ? this.deps.spend.scope(by, () => this.submitAs(prompt, options.attempts, by)) : this.submitAs(prompt, options.attempts, by);
+  }
+
+  private async submitAs(prompt: string, attemptsWanted: number | undefined, by: string | null): Promise<SubmitResult> {
     const { tree } = await this.mainTree();
     const spec = arrangedSpec(readSpec(tree), await this.layout());
     const chat = renderConversation(await this.chatMemory());
@@ -221,13 +228,13 @@ export class Orchestrator {
     const hotfix = decision.hotfix === true;
     const parts = chore ? null : await this.router.split(prompt, spec, decision, chat);
     const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, parts.length > 1 ? part.prompt : prompt, chat)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat)];
-    const attempts = chore || hotfix ? 1 : Math.max(1, Math.floor(options.attempts ?? this.specialization.attempts));
+    const attempts = chore || hotfix ? 1 : Math.max(1, Math.floor(attemptsWanted ?? this.specialization.attempts));
     const created: string[] = [];
     for (const [at, plan] of plans.entries()) {
       const part = parts?.[at];
       const ask = parts && parts.length > 1 && part ? part.prompt : null;
       const own = part ? partDecision(decision, part, plan.feature.id) : decision;
-      created.push(...(await this.createSessions(prompt, own, plan, attempts, { chore, hotfix, ask })));
+      created.push(...(await this.createSessions(prompt, own, plan, attempts, { chore, hotfix, ask, by })));
     }
     const first = plans[0]?.feature.id;
     await this.remember(prompt, `${chore ? "Started a chore" : plans.length > 1 ? "Split it into features" : decision.intent === "change_feature" ? "Changing the feature" : "Started the feature"}: ${plans.map((p) => `${p.feature.title} (${p.feature.id})`).join(", ")}`);
@@ -263,8 +270,8 @@ export class Orchestrator {
     return withParent(plan, part.parent);
   }
 
-  private async createSessions(prompt: string, decision: RouteDecision, plan: Plan, attempts: number, options: { readonly chore: boolean; readonly hotfix: boolean; readonly ask: string | null }): Promise<string[]> {
-    const { chore, hotfix, ask } = options;
+  private async createSessions(prompt: string, decision: RouteDecision, plan: Plan, attempts: number, options: { readonly chore: boolean; readonly hotfix: boolean; readonly ask: string | null; readonly by: string | null }): Promise<string[]> {
+    const { chore, hotfix, ask, by } = options;
     const ids = Array.from({ length: attempts }, () => this.deps.ids.next("s"));
     const group = ids[0] as string;
     const parent = (await this.sessions()).filter((s) => s.featureId === plan.feature.id && s.machine.state !== "dropped").at(-1)?.id ?? null;
@@ -293,6 +300,7 @@ export class Orchestrator {
         ...(chore ? { kind: "chore" as const } : {}),
         ...(hotfix ? { hotfix: true } : {}),
         ...(ask ? { ask } : {}),
+        ...(by ? { requestedBy: by } : {}),
         parent,
         history: [],
         previewKey: attempts > 1 ? `${plan.feature.id}--${sessionId}` : plan.feature.id,
@@ -327,8 +335,8 @@ export class Orchestrator {
     return this.router.route(prompt, arrangedSpec(readSpec(tree), await this.layout()));
   }
 
-  async submitSpoken(prompt: string, call: { readonly voiceSessionId: string; readonly delegationId: string }): Promise<SubmitResult> {
-    const result = await this.submit(prompt);
+  async submitSpoken(prompt: string, call: { readonly voiceSessionId: string; readonly delegationId: string; readonly by?: string | null }): Promise<SubmitResult> {
+    const result = await this.submit(prompt, { by: call.by ?? null });
     await this.emit({ type: "voice.request", voiceSessionId: call.voiceSessionId, delegationId: call.delegationId, prompt, intent: result.decision.intent, sessionId: result.sessionId, featureId: result.featureId ?? result.decision.featureId });
     return result;
   }
@@ -486,6 +494,7 @@ export class Orchestrator {
         }
       }
       if (isTerminal(record.machine.state)) return;
+      if (await this.waitForBudget(record)) return await this.save(record);
       try {
         if (record.head && record.machine.state !== "queued") await this.adoptForkHead(record);
         if (record.syncPending && record.head && record.machine.state !== "queued") {
@@ -493,7 +502,7 @@ export class Orchestrator {
           const synced = await this.syncFromMain(record);
           if (synced === "conflict") return await this.save(record);
         }
-        await this.advance(record);
+        await (this.deps.spend ? this.deps.spend.scope(record.requestedBy ?? null, () => this.advance(record)) : this.advance(record));
         if (await this.deps.store.get<number | null>(`retry/${id}`)) await this.deps.store.put(`retry/${id}`, null);
       } catch (error) {
         const retries = (await this.deps.store.get<number | null>(`retry/${id}`)) ?? 0;
@@ -732,6 +741,29 @@ export class Orchestrator {
       if (missing.length === 0) resumed.push(record.id);
     }
     return resumed;
+  }
+
+  async budgetChanged(): Promise<string[]> {
+    const resumed: string[] = [];
+    for (const record of await this.sessions()) {
+      if (isTerminal(record.machine.state) || !record.overBudget) continue;
+      if (await this.waitForBudget(record)) continue;
+      await this.save(record);
+      resumed.push(record.id);
+    }
+    return resumed;
+  }
+
+  async blocked(by: string | null): Promise<string | null> {
+    return this.deps.spend ? this.deps.spend.blocked(by) : null;
+  }
+
+  private async waitForBudget(record: SessionRecord): Promise<boolean> {
+    const reason = this.deps.spend ? await this.deps.spend.blocked(record.requestedBy ?? null) : null;
+    if (reason === (record.overBudget ?? null)) return reason !== null;
+    record.overBudget = reason;
+    await this.emit({ type: "session.budget", sessionId: record.id, featureId: record.featureId, reason });
+    return reason !== null;
   }
 
   private async waitForEnvironment(record: SessionRecord): Promise<boolean> {
@@ -1263,6 +1295,7 @@ export class Orchestrator {
   private async finishTurn(record: SessionRecord, item: WorkItem, turn: StartedTurn, lane?: Lane): Promise<"committed" | "empty" | "rejected"> {
     const { head, feature, scope, prompt, result } = turn;
     record.machine = addTokens(record.machine, result.usage.inputTokens + result.usage.outputTokens);
+    await this.deps.spend?.record(record.requestedBy ?? null, result.model, result.usage);
     const generated = new Set(Object.keys(this.config.generated));
     const paths = changedPaths(result.changes).filter((p) => !generated.has(p));
     const outside = outOfScope(paths, scope);
@@ -1559,7 +1592,7 @@ export function transient(error: unknown): boolean {
 }
 
 export function runnable(record: SessionRecord): boolean {
-  return !isTerminal(record.machine.state) && !record.needs?.length;
+  return !isTerminal(record.machine.state) && !record.needs?.length && !record.overBudget;
 }
 
 function sameNames(a: readonly string[], b: readonly string[]): boolean {

@@ -9,6 +9,7 @@ import { loadProfiles } from "@chef/core";
 import { agentFiles } from "./embedded.gen.ts";
 import { projectOf } from "./routes.ts";
 import { agentStore, claimPassword, credential, currentSettings, settingsRequest, settingsStub, sharedEnvRequest } from "./settings.ts";
+import { usageRequest } from "./usage.ts";
 
 export { ProjectAgent } from "./project-agent.ts";
 export { SandboxOutbound, SessionAgent } from "./session-agent.ts";
@@ -29,6 +30,7 @@ export default {
     if (url.pathname === "/api/app" && request.method === "GET") return Response.json({ mode: "cloud", place: "cloud", engine: url.origin, fixed: true });
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
     if (url.pathname === "/api/env") return sharedEnvRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).sharedEnvironmentChanged());
+    if (url.pathname === "/api/usage") return usageRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).budgetChanged());
     if (url.pathname === "/api/instructions") {
       const settings = settingsStub(env);
       return sharedInstructionsRequest(request, { get: () => settings.sharedInstructions(), put: (value) => settings.saveSharedInstructions(value) });

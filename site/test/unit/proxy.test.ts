@@ -38,3 +38,17 @@ describe("engine proxy", () => {
     expect(response.status).toBe(502);
   });
 });
+
+describe("engine proxy identity", () => {
+  it("tells the engine who is asking and drops anyone's claim to be someone else", async () => {
+    const seen: (string | null)[] = [];
+    const forward = (userId: string | null) =>
+      proxy(new Request("https://chef.example.com/api/projects/shop/prompts", { method: "POST", body: "{}", headers: { "x-chef-user": "usr_forgedforgedforgedfo" } }), engine, "https://chef.example.com", async (input, init) => {
+        seen.push(new Request(input, init).headers.get("x-chef-user"));
+        return new Response("ok");
+      }, userId);
+    await forward("usr_samsamsamsamsamsamsa");
+    await forward(null);
+    expect(seen).toEqual(["usr_samsamsamsamsamsamsa", null]);
+  });
+});
