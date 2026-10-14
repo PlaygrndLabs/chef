@@ -44,7 +44,7 @@ const env = {
   DISABLE_TELEMETRY: "1",
   DISABLE_AUTOUPDATER: "1",
 };
-for (const name of ["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy"]) if (process.env[name]) env[name] = process.env[name];
+for (const name of ["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "PLAYWRIGHT_BROWSERS_PATH", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy"]) if (process.env[name]) env[name] = process.env[name];
 
 const skills = job.agent.skills ?? [];
 const skillsDir = join(env.HOME, ".claude", "skills");
