@@ -98,7 +98,7 @@ describe("chef site", () => {
 
   it("explains when sign-in is not configured yet", async () => {
     const response = await handle(new Request(`${origin}/auth/start`), fakeEnv({}, false).env);
-    expect(response.headers.get("location")).toBe("/?signin=unavailable#get-started");
+    expect(response.headers.get("location")).toBe("/?signin=unavailable");
   });
 
   it("starts sign-in at Cloudflare and remembers the state for the callback only", async () => {
@@ -111,7 +111,17 @@ describe("chef site", () => {
 
   it("refuses a callback whose state does not match", async () => {
     const response = await handle(new Request(`${origin}/auth/callback?code=c&state=other`, { headers: { cookie: "chef_oauth=mine.verifier" } }), fakeEnv().env);
-    expect(response.headers.get("location")).toBe("/?signin=cancelled#get-started");
+    expect(response.headers.get("location")).toBe("/?signin=expired");
+  });
+
+  it("says the sign-in timed out when the pending cookie is gone", async () => {
+    const response = await handle(new Request(`${origin}/auth/callback?code=c&state=mine`), fakeEnv().env);
+    expect(response.headers.get("location")).toBe("/?signin=expired");
+  });
+
+  it("says the sign-in was cancelled when Cloudflare returns an error", async () => {
+    const response = await handle(new Request(`${origin}/auth/callback?error=access_denied&state=mine`, { headers: { cookie: "chef_oauth=mine.verifier" } }), fakeEnv().env);
+    expect(response.headers.get("location")).toBe("/?signin=cancelled");
   });
 
   it("signs a new person in with a default organization they own and sends them to setup", async () => {

@@ -1,13 +1,16 @@
 const messages = {
   unavailable: "Sign-in with Cloudflare opens soon. Please check back shortly.",
-  cancelled: "Sign-in was cancelled. Try again whenever you are ready.",
-  failed: "Cloudflare did not complete the sign-in. Please try again.",
+  cancelled: "Sign-in was cancelled on Cloudflare's page.",
+  expired: "Sign-in timed out before Cloudflare sent you back.",
+  failed: "Cloudflare did not complete the sign-in.",
 };
 const notice = document.getElementById("notice");
 const reason = new URLSearchParams(location.search).get("signin");
 if (notice && reason && messages[reason]) {
-  notice.textContent = messages[reason];
+  const retry = Object.assign(document.createElement("a"), { href: "/auth/start", textContent: "Sign in again" });
+  notice.replaceChildren(Object.assign(document.createElement("span"), { textContent: messages[reason] }), reason === "unavailable" ? "" : retry);
   notice.hidden = false;
+  history.replaceState(null, "", location.pathname + location.hash);
 }
 
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
