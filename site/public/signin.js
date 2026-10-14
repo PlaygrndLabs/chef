@@ -1,24 +1,23 @@
 const scopes = [
-  ["user", "User Details Read", "Tells chef who you are, so you can sign in."],
-  ["card", "Account Settings Read", "Lists your accounts and checks they are on Workers Paid."],
-  ["code", "Workers Scripts Write", "Installs chef in the account you pick."],
-  ["code", "Workers Containers Write", "Adds the sandbox where chef builds your code."],
-  ["code", "Cloudchamber Write", "Starts and stops those sandboxes."],
-  ["globe", "Artifacts Write", "Creates a git repository for each project."],
-  ["code", "Vectorize Write", "Stores what chef remembers about each project."],
-  ["brain", "Workers AI Write", "Lets chef search that memory."],
+  ["card", "Account Settings Read", "Sees your accounts and checks for Workers Paid"],
+  ["globe", "Artifacts Write", "A git repository for each project"],
+  ["code", "Cloudchamber Write", "Starts and stops the sandboxes"],
+  ["card", "User Details Read", "Knows who you are, to sign you in"],
+  ["code", "Vectorize Write", "Saves each project's memory"],
+  ["brain", "Workers AI Write", "Lets chef search that memory"],
+  ["code", "Workers Containers Write", "Adds the sandboxes chef builds in"],
+  ["code", "Workers Scripts Write", "Installs chef in your account"],
 ];
 
 const icons = {
-  user: '<rect x="3" y="6" width="18" height="12"/><path d="M7 14h4M14 14h3"/>',
-  card: '<rect x="3" y="6" width="18" height="12"/><path d="M14 14h3M7 14h1"/>',
+  card: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M14 14h4"/>',
   code: '<path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/>',
-  globe: '<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16"/>',
-  brain: '<path d="M12 6v12M9 6a3 3 0 0 0-3 3 3 3 0 0 0 0 6 3 3 0 0 0 3 3M15 6a3 3 0 0 1 3 3 3 3 0 0 1 0 6 3 3 0 0 1-3 3"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17"/>',
+  brain: '<path d="M12 5.5v13M12 5.5A2.5 2.5 0 0 0 7.2 6 2.6 2.6 0 0 0 5 9.3a2.8 2.8 0 0 0 .4 4.6A2.7 2.7 0 0 0 8 18.4a2.4 2.4 0 0 0 4 .1M12 5.5A2.5 2.5 0 0 1 16.8 6 2.6 2.6 0 0 1 19 9.3a2.8 2.8 0 0 1-.4 4.6 2.7 2.7 0 0 1-2.6 4.5 2.4 2.4 0 0 1-4 .1"/>',
   out: '<path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/>',
-  shield: '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M12 9v4M12 16v.5"/>',
 };
-const icon = (name) => `<span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24">${icons[name]}</svg></span>`;
+const shield = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l8 3v6.2c0 4.6-3.3 8.4-8 9.8-4.7-1.4-8-5.2-8-9.8V5.5z" fill="#7a4a0e"/><path d="M12 7.5v6M12 16.5v.3" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+const info = '<span class="cfc-info" aria-hidden="true">i</span>';
 
 const dialog = document.createElement("dialog");
 dialog.className = "signin";
@@ -40,23 +39,22 @@ dialog.innerHTML = `
     </div>
     <div class="signin-step" data-step="2" hidden>
       <h2 id="signin-title-2">Now we'll send you to Cloudflare.</h2>
-      <p class="signin-sub">There you give chef control of your Cloudflare account with the permissions below. Here is why chef needs each one. They are all on already except <b>one switch at the bottom, which you need to turn on.</b></p>
-      <div class="cf-mock">
-        <p class="cf-bar"><span>dash.cloudflare.com</span><span>Authorize chef</span></p>
-        <div class="cf-head"><span>Permissions this app will be granted</span><span>Required</span></div>
-        <ul class="cf-scopes">
-          ${scopes.map(([kind, name, why]) => `<li><span class="chip">${icon(kind)}${name}</span><span class="leader" aria-hidden="true"></span><span class="why">${why}</span></li>`).join("")}
-        </ul>
-        <div class="cf-head"><span>Additional access</span></div>
-        <div class="cf-sensitive">
-          <p class="cf-group"><span class="ico warn" aria-hidden="true"><svg viewBox="0 0 24 24">${icons.shield}</svg></span>Sensitive scopes<span class="count">1 permission</span></p>
-          <div class="cf-must">
-            <div class="cf-toggle-row">
-              <span><b>Account API Tokens Write</b><small>Grants write access to account API Tokens</small></span>
-              <span class="switch" aria-hidden="true"><i></i></span>
-            </div>
-            <p class="why must"><span class="tag">You must turn this on</span>Cloudflare leaves it off for every app. chef uses it once, to make a token that can only publish your previews and live apps. Without it, previews will not work.</p>
+      <p class="signin-sub">There you give chef control of your Cloudflare account with the permissions below. The notes say why chef needs each one. All of them are on already, except <b>one switch at the bottom that you need to turn on.</b></p>
+      <div class="consent">
+        <svg class="consent-art" aria-hidden="true"></svg>
+        <div class="cfc">
+          <p class="cfc-head"><span>Permissions this app will be granted</span><span>${scopes.length} total permissions</span></p>
+          <p class="cfc-label">Required ${info}</p>
+          <ul class="cfc-scopes">
+            ${scopes.map(([kind, name, why]) => `<li><span class="cfc-chip"><span class="cfc-ico" aria-hidden="true"><svg viewBox="0 0 24 24">${icons[kind]}</svg></span>${name}</span><p class="note">${why}</p></li>`).join("")}
+          </ul>
+          <p class="cfc-label cfc-extra">Additional access ${info}<span class="edit">Edit Permissions</span></p>
+          <div class="cfc-sensitive"><span class="cfc-shield">${shield}</span><b>Sensitive scopes</b>${info}<span class="count">1 permission</span><span class="caret" aria-hidden="true"></span></div>
+          <div class="cfc-toggle">
+            <span><b>Account API Tokens Write</b><small>Grants write access to account API Tokens</small></span>
+            <span class="cfc-switch" aria-hidden="true"><i></i></span>
           </div>
+          <p class="note must"><strong>Turn this on!</strong>Cloudflare leaves it off for every app. chef uses it once, to make a token that only publishes your previews and live apps. Without it, previews won't work.</p>
         </div>
       </div>
     </div>
@@ -72,16 +70,100 @@ document.body.append(dialog);
 const go = dialog.querySelector("[data-go]");
 const next = dialog.querySelector("[data-next]");
 const back = dialog.querySelector("[data-back]");
+const consent = dialog.querySelector(".consent");
+const card = dialog.querySelector(".cfc");
+const art = dialog.querySelector(".consent-art");
+
+// A hand-drawn arrow from (sx, sy) to (ex, ey): a curve with a small loop on the way, like a pen note in a margin.
+function arrow(sx, sy, ex, ey, loop) {
+  const dx = ex - sx;
+  const dy = ey - sy;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const flip = ux >= 0 ? 1 : -1;
+  const vx = uy * flip;
+  const vy = -ux * flip;
+  const lift = Math.min(length * 0.6, 46);
+  const at = (a, b) => `${(sx + ux * a * length + vx * b * lift).toFixed(1)} ${(sy + uy * a * length + vy * b * lift).toFixed(1)}`;
+  const body = loop
+    ? `M${at(0, 0)} C${at(0.18, -0.05)} ${at(0.32, 0.2)} ${at(0.44, 0.5)} C${at(0.5, 0.68)} ${at(0.4, 0.8)} ${at(0.36, 0.62)} C${at(0.32, 0.42)} ${at(0.5, 0.34)} ${at(0.64, 0.36)} C${at(0.8, 0.38)} ${at(0.92, 0.2)} ${at(1, 0)}`
+    : `M${at(0, 0)} C${at(0.3, 0.18)} ${at(0.7, 0.2)} ${at(1, 0)}`;
+  const tx = ux * 0.8 - vx * 0.6 * (lift / length);
+  const ty = uy * 0.8 - vy * 0.6 * (lift / length);
+  const tl = Math.hypot(tx, ty) || 1;
+  const hx = tx / tl;
+  const hy = ty / tl;
+  const wing = (angle) => {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return `M${ex.toFixed(1)} ${ey.toFixed(1)} L${(ex - (hx * c - hy * s) * 10).toFixed(1)} ${(ey - (hx * s + hy * c) * 10).toFixed(1)}`;
+  };
+  return `${body} ${wing(0.5)} ${wing(-0.5)}`;
+}
+
+function layout() {
+  if (!dialog.open || consent.offsetParent === null) return;
+  const notes = [...consent.querySelectorAll(".note")];
+  const wide = consent.clientWidth >= 548 + 2 * 250;
+  consent.classList.toggle("stacked", !wide);
+  for (const note of notes) note.removeAttribute("style");
+  const box = consent.getBoundingClientRect();
+  const local = (rect) => ({ left: rect.left - box.left, right: rect.right - box.left, top: rect.top - box.top, bottom: rect.bottom - box.top, mid: (rect.top + rect.bottom) / 2 - box.top });
+  const cardBox = local(card.getBoundingClientRect());
+  const paths = [];
+  const gap = 64;
+  const width = Math.max(150, cardBox.left - gap);
+  notes.forEach((note, i) => {
+    const must = note.classList.contains("must");
+    const target = must ? local(card.querySelector(".cfc-switch").getBoundingClientRect()) : local(note.previousElementSibling.getBoundingClientRect());
+    note.style.setProperty("--delay", `${200 + i * 90}ms`);
+    if (wide) {
+      const left = !must && target.left + (target.right - target.left) / 2 < cardBox.left + (cardBox.right - cardBox.left) / 2;
+      note.classList.toggle("left", left);
+      note.style.width = `${width}px`;
+      note.style.left = left ? `${-gap - width}px` : `${cardBox.right - cardBox.left + gap}px`;
+      note.style.top = "0px";
+      const height = note.offsetHeight;
+      note.style.top = `${must ? target.top - cardBox.top - 56 : target.mid - cardBox.top - height / 2 + 4}px`;
+      const own = local(note.getBoundingClientRect());
+      const sy = must ? own.top + 18 : own.top + Math.min(height / 2 + 6, 24);
+      paths.push([left ? arrow(own.right + 8, sy, target.left - 8, target.mid, true) : arrow(own.left - 8, sy, target.right + 10, target.mid, true), must]);
+    } else {
+      note.classList.remove("left");
+      const own = local(note.getBoundingClientRect());
+      if (must) {
+        paths.push([arrow(own.left + 180, own.top + 14, target.left + (target.right - target.left) / 2, target.bottom + 8, false), true]);
+        return;
+      }
+      const icon = local(note.previousElementSibling.querySelector(".cfc-ico").getBoundingClientRect());
+      paths.push([arrow(own.left - 6, own.top + 12, icon.left + (icon.right - icon.left) / 2 + 2, icon.bottom + 5, false), false]);
+    }
+  });
+  const spill = wide ? Math.max(0, ...notes.map((note) => local(note.getBoundingClientRect()).bottom - cardBox.bottom)) : 0;
+  consent.style.paddingBottom = spill ? `${spill + 12}px` : "";
+  const tall = consent.getBoundingClientRect().height;
+  art.setAttribute("viewBox", `0 0 ${box.width} ${tall}`);
+  art.innerHTML = paths.map(([d, must], i) => `<path d="${d}"${must ? ' class="must"' : ""} style="--delay:${260 + i * 90}ms"/>`).join("");
+  for (const path of art.querySelectorAll("path")) path.style.setProperty("--len", Math.ceil(path.getTotalLength()));
+}
+new ResizeObserver(layout).observe(consent);
+document.fonts?.ready.then(layout);
+
 const show = (step) => {
   for (const pane of dialog.querySelectorAll("[data-step]")) pane.hidden = pane.dataset.step !== String(step);
   dialog.querySelector("[data-count]").textContent = `Step ${step} / 2`;
   dialog.querySelectorAll(".signin-steps i")[1].classList.toggle("done", step === 2);
   dialog.setAttribute("aria-labelledby", `signin-title-${step}`);
+  dialog.classList.toggle("first", step === 1);
   next.hidden = step === 2;
   go.hidden = back.hidden = step === 1;
   dialog.classList.remove("on");
   dialog.scrollTop = 0;
-  if (step === 2) requestAnimationFrame(() => requestAnimationFrame(() => dialog.classList.add("on")));
+  if (step === 2) {
+    layout();
+    requestAnimationFrame(() => requestAnimationFrame(() => dialog.classList.add("on")));
+  }
   (step === 2 ? go : next).focus();
 };
 next.addEventListener("click", () => show(2));
