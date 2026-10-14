@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>chef backoffice</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..600&family=Geist+Mono:wght@400..500&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="#/" aria-label="Backoffice overview">
+      <img class="light" src="/chef-logo.svg" alt="chef" width="84" height="24">
+      <img class="dark" src="/chef-logo-dark.svg" alt="" width="84" height="24">
+      <span class="label">Backoffice</span>
+    </a>
+    <nav class="nav" id="nav">
+      <a href="#/" data-nav="overview">Overview</a>
+      <a href="#/orgs" data-nav="orgs">Organizations</a>
+      <a href="#/people" data-nav="people">People</a>
+    </nav>
+    <div class="me">
+      <span class="muted small" id="me">Signed in</span>
+      <a id="site" class="small" href="https://chef.playgrndlabs.com">Open chef</a>
+      <button type="button" class="link small" id="signout">Sign out</button>
+    </div>
+  </aside>
+  <main class="main">
+    <p class="error" id="error" role="alert" hidden></p>
+    <div id="view"><p class="muted">Loading…</p></div>
+  </main>
+</div>
+<script src="/app.js" defer></script>
+</body>
+</html>
