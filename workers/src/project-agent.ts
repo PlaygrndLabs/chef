@@ -10,7 +10,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
+import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -22,7 +22,7 @@ import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
-import { previewName, SandboxCheckRunner, SandboxLiveHost, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
+import { SandboxCheckRunner, SandboxLiveHost, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
 import { buildingPage, previewPath } from "@chef/adapters/preview-page";
 import { CloudflareWorkerSpace, WorkerTakenError } from "./preview-space.ts";
@@ -30,6 +30,7 @@ import { gitHubApp } from "./github.ts";
 import { agentStore, currentSettings, envCipher, settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
 import type { SandboxStatus } from "./session-agent.ts";
+import { containerAppName, EngineIdCache } from "./cloudflare-ids.ts";
 
 const SESSION_ROUTE = /^\/api\/projects\/[a-z][a-z0-9-]{1,30}\/sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/;
 const PREVIEW_ROUTE = /^\/preview\/[a-z][a-z0-9-]{1,30}\/([a-z0-9-]{1,80})\/?$/;
@@ -63,6 +64,7 @@ export class ProjectAgent extends Agent<Env> {
   private readonly calls = new Map<string, Promise<VoiceCall | null>>();
   private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; space: CloudflareWorkerSpace | null; live: SandboxLiveHost | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
   private cipher: EnvCipher | null = null;
+  private readonly engineIds = new EngineIdCache();
   private deploying = false;
   private deployAgain = false;
 
@@ -241,12 +243,7 @@ export class ProjectAgent extends Agent<Env> {
       if (request.method === "GET" && action === null) return Response.json({ record: await orchestrator.session(id), budget: DEFAULT_BUDGET });
       if (request.method === "GET" && action === "turns") return Response.json(await orchestrator.turns(id));
       if (request.method === "GET" && action === "changes") return Response.json(await orchestrator.changes(id));
-      if (request.method === "GET" && action === "sandbox") {
-        const lanes = ((await orchestrator.session(id)).lanes ?? []).map((lane) => lane.role);
-        const statuses = await Promise.all([id, ...lanes.map((lane) => sandboxName(id, lane))].map((name) => (this.env.SESSION.get(this.env.SESSION.idFromName(name)) as unknown as { status(): Promise<SandboxStatus> }).status()));
-        const main = statuses[0] as SandboxStatus;
-        return Response.json({ ...main, running: statuses.some((s) => s.running), lanes: Object.fromEntries(lanes.map((lane, i) => [lane, statuses[i + 1]?.running ?? false])) });
-      }
+      if (request.method === "GET" && action === "cloudflare") return Response.json(await this.cloudflare(id));
       if (request.method === "POST" && action === "drop") {
         const { reason } = (await request.json().catch(() => ({}))) as { reason?: string };
         const record = await orchestrator.drop(id, reason?.trim() || undefined);
@@ -272,6 +269,47 @@ export class ProjectAgent extends Agent<Env> {
       throw error;
     }
     return Response.json({ error: "not found" }, { status: 404 });
+  }
+
+  private async cloudflare(id: string): Promise<CloudflareView> {
+    const { orchestrator, repos, keeper, settings } = await this.build();
+    const record = await orchestrator.session(id);
+    const engine = engineOf(this.env.PROJECT_WORKER_PREFIX);
+    const projectWorker = `${this.env.PROJECT_WORKER_PREFIX}${this.name}`;
+    const accountId = settings.cloudflare?.accountId ?? this.env.CF_ACCOUNT_ID ?? null;
+    const lanes = record.lanes ?? [];
+    const box = async (name: string): Promise<SandboxFacts> => {
+      const objectId = this.env.SESSION.idFromName(name);
+      const status = await (this.env.SESSION.get(objectId) as unknown as { status(): Promise<SandboxStatus> }).status().catch(() => ({ running: false, exit: null }));
+      return { name, objectId: objectId.toString(), running: status.running, exit: status.exit };
+    };
+    const branch = previewBranch(record.previewKey);
+    const name = previewName(branch, projectWorker);
+    const [main, fork, ids, session, laneBoxes, previewBox, deployed, awake] = await Promise.all([
+      repos.info(this.name),
+      record.forkDeleted ? Promise.resolve(null) : repos.info(record.fork),
+      this.engineIds.ids(settings.cloudflare, engine),
+      box(id),
+      Promise.all(lanes.map(async (lane) => [lane.role, await box(sandboxName(id, lane.role))] as const)),
+      keeper ? box(`preview-${name}`) : Promise.resolve(null),
+      keeper ? keeper.current({ repo: this.name, branch }) : Promise.resolve(null),
+      keeper ? keeper.live() : Promise.resolve(false),
+    ]);
+    const live = (await this.ctx.storage.get<LiveState>(LIVE)) ?? null;
+    return cloudflareView({
+      accountId,
+      engine,
+      project: this.name,
+      projectWorker,
+      projectObject: this.ctx.id.toString(),
+      namespaces: ids.namespaces,
+      containerApp: { name: containerAppName(engine), id: ids.containerApp },
+      main: { remote: main?.remote ?? null, commitId: (await orchestrator.mainTree()).commitId },
+      session: { id, fork: record.fork, remote: fork?.remote ?? null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: lanes.map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
+      sandboxes: { session, lanes: Object.fromEntries(laneBoxes), preview: previewBox },
+      preview: keeper ? { name, branch, url: record.preview?.url ?? null, versionId: deployed?.versionId ?? null, commitId: deployed?.commitId ?? record.preview?.commitId ?? null, awake } : null,
+      live: live ? { url: live.url, commitId: live.commitId, status: live.status } : null,
+    });
   }
 
   private async previewRequest(key: string, retry: boolean, path: string): Promise<Response> {

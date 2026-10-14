@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, Budget, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, LiveStatus, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, Budget, CloudflareView, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, LiveStatus, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -20,11 +20,6 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const post = (body: unknown): RequestInit => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-
-export interface SandboxStatus {
-  readonly running: boolean;
-  readonly exit: string | null;
-}
 
 export type Source = "app" | "deployment";
 
@@ -361,7 +356,7 @@ export function projectApi(project: string) {
     session: (id: string) => call<{ record: SessionRecord; budget: Budget }>(`${base}/sessions/${id}`),
     turns: (id: string) => call<SessionTurn[]>(`${base}/sessions/${id}/turns`),
     changes: (id: string) => call<SessionChanges>(`${base}/sessions/${id}/changes`),
-    sandbox: (id: string) => call<SandboxStatus>(`${base}/sessions/${id}/sandbox`),
+    cloudflare: (id: string) => call<CloudflareView>(`${base}/sessions/${id}/cloudflare`),
     drop: (id: string, reason: string) => call<{ state: string }>(`${base}/sessions/${id}/drop`, post({ reason })),
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),

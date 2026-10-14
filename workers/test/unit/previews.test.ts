@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { lostCreateRace, parsePreview, previewName } from "../../src/sandbox-checks.ts";
+import { previewName } from "@chef/core";
+import { lostCreateRace, parsePreview } from "../../src/sandbox-checks.ts";
 import { cloudflareAllowed } from "../../src/sandbox-grants.ts";
 import { previewPath } from "@chef/adapters/preview-page";
 

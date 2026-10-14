@@ -11,6 +11,7 @@ export * from "./router/conversation.ts";
 export * from "./session/machine.ts";
 export type * from "./session/record.ts";
 export * from "./session/lanes.ts";
+export * from "./session/cloudflare.ts";
 export type * from "./events/events.ts";
 export * from "./events/replay.ts";
 export type * from "./ports/index.ts";
