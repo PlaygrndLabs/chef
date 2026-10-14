@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
           auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
-          engine="chef-uninstall-check-$(tr -dc 'a-z0-9' < /dev/urandom | head -c 4)"
+          engine="chef-uninstall-check-$(openssl rand -hex 2)"
           echo "ENGINE=$engine" >> "$GITHUB_ENV"
           image=$(curl -fsS -H "$auth" "$api/workers/scripts/chef-site/settings" | jq -r '.result.bindings[] | select(.name == "SANDBOX_IMAGE") | .text')
           echo "copying $image into $engine"

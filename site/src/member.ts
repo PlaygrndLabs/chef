@@ -258,7 +258,7 @@ export class Member extends DurableObject<Env> {
       ownAccount: engine.accountId === this.env.CF_ACCOUNT_ID,
     });
     const found = await tool.find();
-    const plan = summary(found);
+    const plan = summary(found, engine.name);
     await log(plan.length > 0 ? `found what chef made for ${job.orgName} on Cloudflare account ${engine.accountId}:` : `chef found nothing of its own left on Cloudflare account ${engine.accountId}`);
     for (const line of plan) await log(`  ${line}`);
     await mark("find", "done");

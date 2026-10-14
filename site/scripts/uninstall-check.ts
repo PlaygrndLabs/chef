@@ -80,7 +80,7 @@ async function run(): Promise<void> {
   const tool = new Uninstaller(token, { accountId, engine, projects: null, ownAccount: true });
   const found = await tool.find();
   say("the site would remove:");
-  for (const line of summary(found)) say(`  ${line}`);
+  for (const line of summary(found, engine)) say(`  ${line}`);
   const outcome = await tool.remove(found, (line) => say(`  ${line}`));
   const after = await snapshot();
   const removed = [...before].filter((e) => !after.has(e));
