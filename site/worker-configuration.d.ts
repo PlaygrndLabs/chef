@@ -5,6 +5,7 @@ interface __BaseEnv_Env {
 	ASSETS: Fetcher;
 	SANDBOX_IMAGE: "";
 	ENGINE_VERSION: "";
+	SITE_URL: "https://chef.playgrndlabs.com";
 	MEMBER: DurableObjectNamespace<import("./src/index").Member>;
 	MEMBERS: DurableObjectNamespace<import("./src/index").Members>;
 	ORG: DurableObjectNamespace<import("./src/index").Organization>;
@@ -21,7 +22,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "SANDBOX_IMAGE" | "ENGINE_VERSION">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "SANDBOX_IMAGE" | "ENGINE_VERSION" | "SITE_URL">> {}
 }
 declare module "*.txt" {
 	const value: string;
