@@ -21,6 +21,7 @@
     "./workers-ai-reviewer": "./src/workers-ai-reviewer.ts",
     "./agui": "./src/agui.ts",
     "./preview-page": "./src/preview-page.ts",
+    "./preview-gate": "./src/preview-gate.ts",
     "./projects": "./src/projects.ts",
     "./agents": "./src/agents.ts",
     "./guidance": "./src/guidance.ts"

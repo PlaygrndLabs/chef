@@ -11,7 +11,7 @@ import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/ada
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
 import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
-import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
+import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type PlainEnvVar, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
@@ -25,6 +25,7 @@ import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxLiveHost, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
 import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
 import { previewPath, previewResponse, type PreviewAnswer } from "@chef/adapters/preview-page";
+import { newPreviewKey, previewEntry, previewPass, PREVIEW_KEY_VAR } from "@chef/adapters/preview-gate";
 import { CloudflareWorkerSpace, WorkerTakenError } from "./preview-space.ts";
 import { homeOrigin, ORIGIN_HEADER } from "./access.ts";
 import { publicOrigin } from "./github-pages.ts";
@@ -42,6 +43,7 @@ const OVERVIEW = "project/overview";
 const ENV = "project/env";
 const AGENTS = "project/agents/";
 const LIVE = "project/live";
+const PREVIEW_KEY = "project/preview-key";
 
 export interface LiveState {
   readonly status: LiveStatus;
@@ -100,7 +102,7 @@ export class ProjectAgent extends Agent<Env> {
     const live = settings.cloudflare && grant ? new SandboxLiveHost(env.SESSION, repos, grant, settings.cloudflare.apiToken) : null;
     const keeper =
       settings.cloudflare && grant && space
-        ? new PreviewKeeper(new SandboxPreviewHost(env.SESSION, repos, grant, settings.cloudflare.apiToken, () => this.prepareEnvironment(space)), space, { repos, store, clock, canonical: this.name, onActivity: () => void this.scheduleSweep() })
+        ? new PreviewKeeper(new SandboxPreviewHost(env.SESSION, repos, grant, settings.cloudflare.apiToken, () => this.prepareEnvironment(space)), space, { repos, store, clock, canonical: this.name, onActivity: () => void this.scheduleSweep(), gated: true })
         : null;
     const orchestrator = new Orchestrator(
       {
@@ -111,7 +113,7 @@ export class ProjectAgent extends Agent<Env> {
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
         previews: keeper ?? noPreviews,
         checks: new SandboxCheckRunner(env.SESSION, repos),
-        proofs: new SandboxProofRunner(env.SESSION, repos),
+        proofs: new SandboxProofRunner(env.SESSION, repos, async (url) => (keeper ? previewPass(url, await this.previewKey(), Date.now()) : null)),
         bus,
         clock,
         ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
@@ -317,7 +319,22 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   private async previewRequest(key: string, retry: boolean, path: string, asState: boolean): Promise<Response> {
-    return previewResponse(await this.previewState(key, retry), { key, path, asState, now: Date.now() });
+    const state = await this.previewState(key, retry);
+    const now = Date.now();
+    const enter = state.status === "ready" && !asState ? await previewEntry(state.url, await this.previewKey(), { path, now }) : undefined;
+    return previewResponse(state, { key, path, asState, now, ...(enter ? { enter } : {}) });
+  }
+
+  private async previewKey(): Promise<string> {
+    const stored = await this.ctx.storage.get<string>(PREVIEW_KEY);
+    if (stored) return stored;
+    const key = newPreviewKey();
+    await this.ctx.storage.put(PREVIEW_KEY, key);
+    return key;
+  }
+
+  private async previewEnv(): Promise<PlainEnvVar[]> {
+    return [...(await revealEnv(await this.effectiveEnv(), this.envCipher())), { name: PREVIEW_KEY_VAR, secret: true, value: await this.previewKey() }];
   }
 
   private async previewState(key: string, retry: boolean): Promise<PreviewAnswer> {
@@ -452,10 +469,8 @@ export class ProjectAgent extends Agent<Env> {
 
   private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<void> {
     await space.ensure();
-    const vars = await revealEnv(await this.effectiveEnv(), this.envCipher());
-    if (vars.length === 0) return;
     try {
-      await space.applyEnvironment(vars, { create: true });
+      await space.applyEnvironment(await this.previewEnv(), { create: true });
     } catch (error) {
       throw new Error(`giving the preview this project's keys failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
@@ -468,7 +483,7 @@ export class ProjectAgent extends Agent<Env> {
     }
     if (!keeper || !space || !(await keeper.live())) return;
     try {
-      const patch = await space.applyEnvironment(await revealEnv(await this.effectiveEnv(), this.envCipher()), { create: false });
+      const patch = await space.applyEnvironment(await this.previewEnv(), { create: false });
       if (!patch || Object.keys(patch).length === 0) return;
       for (const branch of await keeper.liveBranches()) await space.refreshPreview(previewName(branch, `${this.env.PROJECT_WORKER_PREFIX}${this.name}`), patch).catch((error: unknown) => console.error(`updating the environment of preview ${branch} failed`, error));
     } catch (error) {
