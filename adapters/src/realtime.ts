@@ -12,7 +12,7 @@ export interface RealtimeOptions {
   readonly voice?: string;
 }
 
-const TOOL_RULE = `To delegate to the client, call the ${REQUEST_TOOL} tool with the user's request in their own words, then speak the result it returns. Call it as soon as the user asks for anything, even a short or vague request such as "add an item to a todo list"; never ask for details first, since chef works them out.`;
+const TOOL_RULE = `You cannot build, change or look up anything yourself: the only way is the ${REQUEST_TOOL} tool. Call it with the user's request in their own words as soon as they ask for anything, even a short or vague request such as "add an item to a todo list"; never ask for details first, since chef works them out. Never say you will pass something on without calling the tool in that same turn. Then speak the result it returns. Call the builder "chef", never "the client".`;
 
 export function realtimeSession(options: { readonly model?: string; readonly voice?: string; readonly instructions: string }): Record<string, unknown> {
   return {
@@ -71,7 +71,11 @@ export function liveEvents(event: LiveEvent): LiveEvent[] {
     case "response.audio.delta":
       return [{ type: "session.output_audio.delta", delta: event["delta"] }];
     case "conversation.item.input_audio_transcription.delta":
-      return [{ type: "session.input_transcript.delta", delta: event["delta"], start_ms: null }];
+      return [{ type: "session.input_transcript.delta", delta: event["delta"], item_id: event["item_id"] ?? null, start_ms: null }];
+    case "conversation.item.input_audio_transcription.completed":
+      return [{ type: "session.input_transcript.done", transcript: event["transcript"], item_id: event["item_id"] ?? null }];
+    case "conversation.item.input_audio_transcription.failed":
+      return [{ type: "error", error: { message: `transcribing what the user said failed: ${JSON.stringify(event["error"] ?? null)}` } }];
     case "input_audio_buffer.speech_started":
       return [{ type: "session.input_speech.started" }];
     case "response.function_call_arguments.done":
