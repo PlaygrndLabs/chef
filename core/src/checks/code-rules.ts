@@ -102,10 +102,17 @@ export function checkBoundary(fromPath: string, specifier: string): string | nul
   return null;
 }
 
+const FILE_MODULES = new Set(["fs", "fs/promises", "node:fs", "node:fs/promises"]);
+
+export function checkRuntime(fromPath: string, specifier: string): string | null {
+  if (!FILE_MODULES.has(specifier) || !/^(?:features|shared|src)\//.test(fromPath) || /(?:\.test\.ts|(?:^|\/)flow\.ts)$/.test(fromPath)) return null;
+  return "the app runs on Cloudflare Workers, which have no files to read at runtime; keep text such as CSS in a .ts module that exports it as a string";
+}
+
 export function findBoundaryViolations(path: string, text: string): CodeProblem[] {
   const problems: CodeProblem[] = [];
   for (const { specifier, line } of findImports(path, text)) {
-    const message = checkBoundary(path, specifier);
+    const message = checkBoundary(path, specifier) ?? checkRuntime(path, specifier);
     if (message) problems.push({ rule: "import-boundaries", path, line, message: `${message} (import "${specifier}")` });
   }
   return problems;
