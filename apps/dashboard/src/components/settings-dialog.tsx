@@ -127,19 +127,12 @@ function PasswordForm(props: { readonly settings: SettingsView; readonly save: S
   );
 }
 
-function AccountSection(props: { readonly account: string | null; readonly admin: boolean }) {
+function AccountSection(props: { readonly account: string | null }) {
   return (
     <Group title="Account" note="You signed in with Cloudflare. chef works in your Cloudflare account, and this site keeps only its address. Sign out from the menu at the bottom left.">
-      <div className="flex items-center gap-3">
-        <p className="text-xs text-muted-foreground" data-current="account">
-          {props.account ? `Signed in as ${props.account}` : "Signed in with Cloudflare"}
-        </p>
-        {props.admin ? (
-          <Button asChild size="sm" variant="outline">
-            <a href="/backoffice">Backoffice</a>
-          </Button>
-        ) : null}
-      </div>
+      <p className="text-xs text-muted-foreground" data-current="account">
+        {props.account ? `Signed in as ${props.account}` : "Signed in with Cloudflare"}
+      </p>
     </Group>
   );
 }
@@ -333,7 +326,7 @@ export function SettingsDialog(props: {
           <Group title="Theme">
             <ThemeChoice />
           </Group>
-          {hosted ? <AccountSection account={mode?.account ?? null} admin={mode?.admin === true} /> : null}
+          {hosted ? <AccountSection account={mode?.account ?? null} /> : null}
           {hosted && mode?.org ? <OrgSection org={mode.org} /> : null}
           {hosted && mode?.org && !mode.org.personal ? <MembersSection org={mode.org} /> : null}
           {hosted && mode?.org && !props.locked ? <RemoveSection org={mode.org} /> : null}

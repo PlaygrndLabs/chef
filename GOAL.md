@@ -42,7 +42,6 @@ TypeScript everywhere, pnpm workspaces, Wrangler, Workers, Durable Objects (Agen
 
 ```
 site/        chef.playgrndlabs.com: landing, Sign in with Cloudflare, setup on the person's account, proxy to their engine
-backoffice/  the admin panel for PlaygrndLabs admins, its own Worker that reads and changes the site's records through a private binding
 workers/     the engine: ProjectAgent and SessionAgent Durable Objects, coder sandbox, sync workflow, HTTP API
 core/        spec, router, session state machine, orchestrator, merge gate, ports and fakes (no I/O)
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, CopilotKit agent, GitHub
