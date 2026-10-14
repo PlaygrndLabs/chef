@@ -1,12 +1,12 @@
 const scopes = [
-  ["card", "Account Settings Read", "sees your accounts and checks for Workers Paid"],
-  ["globe", "Artifacts Write", "a git repository for each project"],
-  ["code", "Cloudchamber Write", "starts and stops the sandboxes"],
-  ["card", "User Details Read", "knows who you are, to sign you in"],
-  ["code", "Vectorize Write", "saves each project's memory"],
-  ["brain", "Workers AI Write", "lets chef search that memory"],
-  ["code", "Workers Containers Write", "adds the sandboxes chef builds in"],
-  ["code", "Workers Scripts Write", "installs chef in your account"],
+  ["card", "Account Settings Read", "so we can make sure your account has Workers Paid"],
+  ["globe", "Artifacts Write", "so we can make a git repository for each project"],
+  ["code", "Cloudchamber Write", "so we can start and stop your sandboxes"],
+  ["card", "User Details Read", "so we can sign you in"],
+  ["code", "Vectorize Write", "so we can save each project's memory"],
+  ["brain", "Workers AI Write", "so we can search that memory"],
+  ["code", "Workers Containers Write", "so we can add the sandboxes chef builds in"],
+  ["code", "Workers Scripts Write", "so we can install chef in your account"],
 ];
 
 const icons = {
@@ -54,7 +54,7 @@ dialog.innerHTML = `
             <span><b>Account API Tokens Write</b><small>Grants write access to account API Tokens</small></span>
             <span class="cfc-switch" aria-hidden="true"><i></i></span>
           </div>
-          <p class="note must"><strong>turn this on!</strong>Cloudflare leaves it off. chef needs it to publish your previews and live apps</p>
+          <p class="note must"><strong>turn this on!</strong>so we can publish your previews and live apps. Cloudflare leaves it off</p>
         </div>
       </div>
     </div>
@@ -74,40 +74,50 @@ const consent = dialog.querySelector(".consent");
 const card = dialog.querySelector(".cfc");
 const art = dialog.querySelector(".consent-art");
 
-function arrow(sx, sy, ex, ey, loop) {
-  const length = Math.hypot(ex - sx, ey - sy) || 1;
-  const flip = ex >= sx ? 1 : -1;
-  const bow = Math.min(length * 0.24, 30);
-  const cx = (sx + ex) / 2 + ((ey - sy) / length) * flip * bow;
-  const cy = (sy + ey) / 2 - ((ex - sx) / length) * flip * bow;
-  const radius = loop ? Math.min(11, length * 0.1) : 0;
+function seeded(seed) {
+  let n = seed * 9301 + 49297;
+  return () => {
+    n = (n * 9301 + 49297) % 233280;
+    return n / 233280;
+  };
+}
+
+function arrow(sx, sy, ex, ey, seed) {
+  const rand = seeded(seed);
+  const dx = ex - sx;
+  const dy = ey - sy;
+  const length = Math.hypot(dx, dy) || 1;
+  const nx = -dy / length;
+  const ny = dx / length;
+  const side = rand() < 0.5 ? -1 : 1;
+  const bend = Math.min(length * (0.12 + rand() * 0.18), 34) * side;
+  const lean = 0.25 + rand() * 0.2;
+  const c1x = sx + dx * lean + nx * bend;
+  const c1y = sy + dy * lean + ny * bend;
+  const c2x = sx + dx * (0.62 + rand() * 0.18) + nx * bend * (0.15 + rand() * 0.5);
+  const c2y = sy + dy * (0.62 + rand() * 0.18) + ny * bend * (0.15 + rand() * 0.5);
+  const phase = rand() * Math.PI * 2;
   const points = [];
-  for (let i = 0; i <= 120; i++) {
-    const t = i / 120;
-    let x = (1 - t) ** 2 * sx + 2 * (1 - t) * t * cx + t * t * ex;
-    let y = (1 - t) ** 2 * sy + 2 * (1 - t) * t * cy + t * t * ey;
-    if (radius && t > 0.28 && t < 0.48) {
-      const tx = 2 * (1 - t) * (cx - sx) + 2 * t * (ex - cx);
-      const ty = 2 * (1 - t) * (cy - sy) + 2 * t * (ey - cy);
-      const tl = Math.hypot(tx, ty) || 1;
-      const angle = (2 * Math.PI * (t - 0.28)) / 0.2;
-      const along = Math.sin(angle) * radius * 1.25;
-      const up = (1 - Math.cos(angle)) * radius;
-      x += (tx / tl) * along + (ty / tl) * flip * up;
-      y += (ty / tl) * along - (tx / tl) * flip * up;
-    }
-    points.push([x, y]);
+  for (let i = 0; i <= 48; i++) {
+    const t = i / 48;
+    const u = 1 - t;
+    const shake = Math.sin(t * Math.PI * 3 + phase) * 0.7 * Math.sin(t * Math.PI);
+    points.push([
+      u * u * u * sx + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * ex + nx * shake,
+      u * u * u * sy + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * ey + ny * shake,
+    ]);
   }
-  const [px, py] = points[points.length - 4];
-  const hl = Math.hypot(ex - px, ey - py) || 1;
-  const hx = (ex - px) / hl;
-  const hy = (ey - py) / hl;
+  const hx = ex - c2x;
+  const hy = ey - c2y;
+  const hl = Math.hypot(hx, hy) || 1;
   const wing = (angle, size) => {
     const c = Math.cos(angle);
     const s = Math.sin(angle);
-    return `M${(ex - (hx * c - hy * s) * size).toFixed(1)} ${(ey - (hx * s + hy * c) * size).toFixed(1)} L${ex.toFixed(1)} ${ey.toFixed(1)}`;
+    const wx = ex - ((hx * c - hy * s) / hl) * size;
+    const wy = ey - ((hx * s + hy * c) / hl) * size;
+    return `M${wx.toFixed(1)} ${wy.toFixed(1)} Q${((wx + ex) / 2 + rand() - 0.5).toFixed(1)} ${((wy + ey) / 2 + rand() - 0.5).toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`;
   };
-  return `M${points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(" L")} ${wing(0.6, 12)} ${wing(-0.5, 10)}`;
+  return `M${points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(" L")} ${wing(0.42 + rand() * 0.2, 10 + rand() * 4)} ${wing(-0.38 - rand() * 0.22, 9 + rand() * 4)}`;
 }
 
 function ring(box) {
@@ -124,6 +134,17 @@ function ring(box) {
   return `M${points.join(" L")}`;
 }
 
+function lines(note) {
+  const walker = document.createTreeWalker(note, 4);
+  const rects = [];
+  const range = document.createRange();
+  while (walker.nextNode()) {
+    range.selectNodeContents(walker.currentNode);
+    rects.push(...[...range.getClientRects()].filter((rect) => rect.width > 4));
+  }
+  return rects;
+}
+
 function layout() {
   if (!dialog.open || consent.offsetParent === null) return;
   const notes = [...consent.querySelectorAll(".note")];
@@ -134,33 +155,57 @@ function layout() {
   const local = (rect) => ({ left: rect.left - box.left, right: rect.right - box.left, top: rect.top - box.top, bottom: rect.bottom - box.top, mid: (rect.top + rect.bottom) / 2 - box.top });
   const cardBox = local(card.getBoundingClientRect());
   const paths = [];
-  const gap = 84;
-  const width = Math.max(150, cardBox.left - gap);
+  const gap = 52;
+  const width = Math.max(150, cardBox.left - gap - 20);
+  const sensitive = local(card.querySelector(".cfc-sensitive").getBoundingClientRect());
+  const side = (note) => {
+    if (note.classList.contains("must")) return "must";
+    const chip = local(note.previousElementSibling.getBoundingClientRect());
+    return (chip.left + chip.right) / 2 < (cardBox.left + cardBox.right) / 2 ? "left" : "right";
+  };
+  const groups = { left: notes.filter((note) => side(note) === "left"), right: notes.filter((note) => side(note) === "right") };
+  const slot = (note) => {
+    const group = groups[side(note)];
+    const top = cardBox.top + 6;
+    const bottom = side(note) === "left" ? cardBox.bottom - 6 : sensitive.top - 24;
+    const step = (bottom - top) / group.length;
+    return top + step * (group.indexOf(note) + 0.5);
+  };
   notes.forEach((note, i) => {
+    const rand = seeded(i + 3);
     const must = note.classList.contains("must");
-    const target = must ? local(card.querySelector(".cfc-switch").getBoundingClientRect()) : local(note.previousElementSibling.getBoundingClientRect());
+    const chip = note.previousElementSibling;
+    const target = must ? local(card.querySelector(".cfc-switch").getBoundingClientRect()) : local(chip.getBoundingClientRect());
     note.style.setProperty("--delay", `${200 + i * 90}ms`);
+    note.style.rotate = `${((rand() - 0.5) * (must ? 3 : 5)).toFixed(2)}deg`;
     if (wide) {
-      const left = !must && target.left + (target.right - target.left) / 2 < cardBox.left + (cardBox.right - cardBox.left) / 2;
+      const left = side(note) === "left";
       note.classList.toggle("left", left);
       note.style.width = `${width}px`;
-      note.style.left = left ? `${-gap - width}px` : `${cardBox.right - cardBox.left + gap}px`;
+      const shift = Math.round(rand() * 22);
+      note.style.left = left ? `${-gap - width - shift}px` : `${cardBox.right - cardBox.left + gap + shift}px`;
       note.style.top = "0px";
       const height = note.offsetHeight;
-      note.style.top = `${must ? target.top - cardBox.top - 70 : target.mid - cardBox.top - height / 2 + 12}px`;
-      const own = local(note.getBoundingClientRect());
-      const sy = must ? own.top + 18 : own.top + Math.max(height - 6, 26);
-      if (must) paths.push([ring(target), true], [arrow(own.left - 10, sy, target.right + 20, target.mid - 6, true), true]);
-      else paths.push([left ? arrow(own.right + 10, sy, target.left - 10, target.mid, true) : arrow(own.left - 10, sy, target.right + 12, target.mid, true), false]);
+      const drift = Math.round((rand() - 0.5) * 18);
+      note.style.top = `${must ? target.top - cardBox.top - 74 : slot(note) - cardBox.top - height / 2 + drift}px`;
+      const rows = lines(note).map(local);
+      const line = must ? rows[0] : rows.reduce((best, row) => (Math.abs(row.mid - target.mid) < Math.abs(best.mid - target.mid) ? row : best), rows[0]);
+      if (must) {
+        paths.push([ring(target), true]);
+        paths.push([arrow(line.left - 10, line.mid + 4, target.right + 18, target.top - 2, i + 11), true]);
+      } else if (left) paths.push([arrow(line.right + 10, line.mid + 2, target.left - 8, target.mid, i + 11), false]);
+      else paths.push([arrow(line.left - 10, line.mid + 2, target.right + 8, target.mid, i + 11), false]);
     } else {
       note.classList.remove("left");
-      const own = local(note.getBoundingClientRect());
+      note.style.marginLeft = must ? "" : `${66 + Math.round(rand() * 22)}px`;
+      const first = local(lines(note)[0]);
       if (must) {
-        paths.push([ring(target), true], [arrow(own.left + 170, own.top + 12, target.left + (target.right - target.left) / 2 - 6, target.bottom + 14, false), true]);
+        paths.push([ring(target), true]);
+        paths.push([arrow(first.right + 12, first.mid, (target.left + target.right) / 2 - 4, target.bottom + 13, i + 11), true]);
         return;
       }
-      const icon = local(note.previousElementSibling.querySelector(".cfc-ico").getBoundingClientRect());
-      paths.push([arrow(own.left - 6, own.top + 12, icon.left + (icon.right - icon.left) / 2 + 2, icon.bottom + 5, false), false]);
+      const icon = local(chip.querySelector(".cfc-ico").getBoundingClientRect());
+      paths.push([arrow(first.left - 8, first.mid + 2, (icon.left + icon.right) / 2, icon.bottom + 6, i + 11), false]);
     }
   });
   const spill = wide ? Math.max(0, ...notes.map((note) => local(note.getBoundingClientRect()).bottom - cardBox.bottom)) : 0;
