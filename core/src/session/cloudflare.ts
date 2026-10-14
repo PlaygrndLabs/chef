@@ -183,7 +183,7 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
       key: "engine",
       group: "project",
       kind: "worker",
-      title: "chef engine",
+      title: "Chef engine",
       name: facts.engine,
       roles: engineRoles,
       facts: [{ label: "Runs", value: "this app, plus the planning and review calls to the model" }],
@@ -209,7 +209,7 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
       title: "Workflow",
       name: facts.engine === "chef" ? "upstream-sync" : `${facts.engine}-upstream-sync`,
       roles: [],
-      facts: [{ label: "Does", value: "tells chef when main gets a new commit, so open builds catch up" }],
+      facts: [{ label: "Does", value: "tells Chef when main gets a new commit, so open builds catch up" }],
       dashboard: dashboardLink(facts.accountId, "workers/workflows"),
     },
     {
@@ -221,7 +221,7 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
       roles: coders,
       facts: [
         { label: "Namespace", value: facts.project },
-        { label: "Holds", value: "lessons chef learned in this project" },
+        { label: "Holds", value: "lessons Chef learned in this project" },
       ],
       dashboard: null,
     },

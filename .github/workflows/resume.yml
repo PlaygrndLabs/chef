@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: Name of the separate chef copy to deploy and test (never chef-dev)
+        description: Name of the separate Chef copy to deploy and test (never chef-dev)
         default: resume
       prompt:
-        description: Feature to build while chef is deployed again
+        description: Feature to build while Chef is deployed again
         default: Add a notes page where I can write a note, save it and see my saved notes in a list
       deploys:
         description: How many times to deploy while a coder turn runs
@@ -39,7 +39,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Deploy a separate chef copy
+      - name: Deploy a separate Chef copy
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}

@@ -25,7 +25,7 @@ async function failure(response: Response, fallback: string): Promise<SetupError
 
 function describeLink(git: unknown): string {
   const link = (git ?? {}) as { url?: unknown; branch?: unknown; mode?: unknown; syncBranch?: unknown };
-  const sendBack = link.mode === "off" || !link.mode ? "chef will not send work back" : `finished work goes to ${String(link.syncBranch ?? "chef")} as ${link.mode === "branch" ? "a branch" : "pull requests"}`;
+  const sendBack = link.mode === "off" || !link.mode ? "Chef will not send work back" : `finished work goes to ${String(link.syncBranch ?? "chef")} as ${link.mode === "branch" ? "a branch" : "pull requests"}`;
   return `Linked ${String(link.url ?? "the repository")} (${String(link.branch ?? "main")}); ${sendBack}`;
 }
 

@@ -73,7 +73,7 @@ export class ExternalSync {
     private readonly remote: ExternalRemote,
     private readonly options: ExternalSyncOptions,
   ) {
-    if (options.syncBranch === remote.branch) throw new Error(`chef never pushes to ${remote.branch}; pick another sync branch`);
+    if (options.syncBranch === remote.branch) throw new Error(`Chef never pushes to ${remote.branch}; pick another sync branch`);
     this.externalRef = `external/${remote.branch}`;
   }
 
@@ -97,7 +97,7 @@ export class ExternalSync {
     const state = await this.state();
     if (head === state.pulled) return { status: "up-to-date" };
     if (head === state.failed) return { status: "waiting", commitId: head };
-    progress.step("Copy the repository into chef");
+    progress.step("Copy the repository into Chef");
     const imported = await this.ensureRepo();
     progress.log(imported ? "Imported the repository history in one go" : "Fetching the code over git");
     const merged = await this.ctx.lock(async () => {
@@ -105,7 +105,7 @@ export class ExternalSync {
       return this.withToken(this.ctx.canonical, async (token) => {
         if (!mainBefore || (imported && mainBefore === head)) {
           await this.remote.pull({ token, ref: "main" });
-          progress.log(`Copied ${this.remote.branch} to chef's main`);
+          progress.log(`Copied ${this.remote.branch} to Chef's main`);
           await this.remote.pull({ token, ref: this.externalRef });
           progress.log(`Kept ${this.remote.branch} as ${this.externalRef} to track your changes`);
           return { status: "imported" as const, commitId: head };
@@ -159,7 +159,7 @@ export class ExternalSync {
     const features = await this.pending(mainHead);
     if (features.length === 0) return null;
     const lines = features.map((f) => `- ${f.title} (\`${f.id}\`)${this.options.previewLink ? `: [preview](${this.options.previewLink(f.id)})` : ""}`);
-    const body = [`chef built these features on Cloudflare and keeps this branch in sync with its main line.`, "", ...lines, "", `Merging this pull request brings them into \`${this.remote.branch}\`; chef picks the merge up on its next sync.`].join("\n");
+    const body = [`Chef built these features on Cloudflare and keeps this branch in sync with its main line.`, "", ...lines, "", `Merging this pull request brings them into \`${this.remote.branch}\`; Chef picks the merge up on its next sync.`].join("\n");
     const pr = await this.remote.pullRequest({ head: this.options.syncBranch, title: features.length === 1 ? `chef: ${features[0]?.title}` : `chef: ${features.length} features`, body });
     await this.save({ pullRequest: pr });
     await this.ctx.emit({ type: "external.pull-request", url: pr.url, number: pr.number, branch: this.options.syncBranch, features: features.map((f) => f.id) });
@@ -195,11 +195,11 @@ export class ExternalSync {
       const branch = `${this.options.syncBranch}-${session.featureId}`;
       const commit = await this.withToken(this.ctx.canonical, async (token) => {
         await this.ctx.repos.pushRef(token, { ref, commitId: externalHead, force: true });
-        return this.ctx.repos.commit(token, { ref, parent: externalHead, changes, message: `${session.plan.feature.title}\n\nBuilt by chef in session ${session.id}.`, author: this.ctx.author });
+        return this.ctx.repos.commit(token, { ref, parent: externalHead, changes, message: `${session.plan.feature.title}\n\nBuilt by Chef in session ${session.id}.`, author: this.ctx.author });
       });
       await this.remote.push({ repo: this.ctx.canonical, ref, commitId: commit.id, branch, force: true });
       const link = this.options.previewLink?.(session.featureId);
-      const body = [`chef built **${session.plan.feature.title}** and it passed chef's gate.`, "", ...session.plan.feature.acceptance.map((c) => `- ${c.text}`), ...(link ? ["", `Preview: ${link}`] : [])].join("\n");
+      const body = [`Chef built **${session.plan.feature.title}** and it passed Chef's gate.`, "", ...session.plan.feature.acceptance.map((c) => `- ${c.text}`), ...(link ? ["", `Preview: ${link}`] : [])].join("\n");
       const pr = await this.remote.pullRequest({ head: branch, title: `chef: ${session.plan.feature.title}`, body });
       await this.ctx.emit({ type: "external.pull-request", url: pr.url, number: pr.number, branch, features: [session.featureId] });
       published[session.id] = session.merge.commitId;
@@ -247,7 +247,7 @@ export class ExternalSync {
         if (synced.status === "conflict") return null;
         return this.withToken(this.ctx.canonical, (token) => this.ctx.repos.merge(token, { into: "main", from: { repo: fork, ref: "main" }, message: `Merge ${this.remote.branch} of ${this.remote.url} with resolved conflicts`, author: this.ctx.author, resolvers: this.ctx.resolvers }));
       });
-      if (!outcome || outcome.status === "conflict" || outcome.status === "conflicted") return await this.stuck(head, "main moved while the conflicts were being resolved and they conflict again; chef tries again on the next change");
+      if (!outcome || outcome.status === "conflict" || outcome.status === "conflicted") return await this.stuck(head, "main moved while the conflicts were being resolved and they conflict again; Chef tries again on the next change");
       await this.save({ pulled: head, failed: null });
       await this.ctx.mainChanged();
       await this.ctx.emit({ type: "external.resolved", url: this.remote.url, syncId, mainCommit: outcome.commitId });
@@ -264,7 +264,7 @@ export class ExternalSync {
     const info = await this.ctx.repos.info(fork);
     const readToken = await this.ctx.repos.createToken(fork, "read", this.ctx.ttl);
     const prompt = [
-      `The main branch of the linked repository ${this.remote.url} was merged into chef's main line and these files conflict:`,
+      `The main branch of the linked repository ${this.remote.url} was merged into Chef's main line and these files conflict:`,
       ...scope.map((p) => `- ${p}${unresolved.includes(p) ? " (still has conflict markers)" : ""}`),
       "Resolve every conflict so both sides' behavior survives, and remove all conflict markers.",
       feedback ? `The checks failed after the last resolution:\n${feedback}` : null,

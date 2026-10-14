@@ -82,7 +82,7 @@ export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
 
 function replyFor(decision: RouteDecision, title: string | null, attempts: number, parts: number): string {
   if (decision.intent === "question") return "No answer was saved for this question.";
-  if (parts > 1) return `On it. This is ${parts} features, so chef builds them at the same time.`;
+  if (parts > 1) return `On it. This is ${parts} features, so Chef builds them at the same time.`;
   const parallel = attempts > 1 ? ` I'm trying ${attempts} approaches at once and will keep the best one.` : "";
   const hotfix = decision.hotfix ? " It's a hotfix, so it goes live before other builds." : "";
   if (decision.intent === "chore") return `On it. This is a chore outside any one feature, so every live feature gets checked again before it goes live.${hotfix}`;
@@ -110,7 +110,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
     <div className="flex flex-col items-center gap-3 pt-12 pb-4 text-center @lg:pt-20" data-view="welcome">
       <Wordmark className="mb-2 h-11" />
       <h2 className="text-xl font-medium tracking-tight">What should we build?</h2>
-      <p className="max-w-md text-muted-foreground">Describe a feature in plain words. chef plans it, writes the tests and the code, checks it, and puts it live.</p>
+      <p className="max-w-md text-muted-foreground">Describe a feature in plain words. Chef plans it, writes the tests and the code, checks it, and puts it live.</p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
         {EXAMPLES.map((e) => (
           <button key={e} type="button" onClick={() => onExample(e)} className="border px-3.5 py-1.5 text-sm hover:bg-muted">
@@ -121,7 +121,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
       <ol className="mt-8 grid w-full gap-3 text-left @2xl:grid-cols-3">
         {[
           ["Describe it", "Type or talk. One sentence is enough."],
-          ["chef builds it", "In its own sandbox, with tests and a review."],
+          ["Chef builds it", "In its own sandbox, with tests and a review."],
           ["Try it live", "Every feature gets its own preview link."],
         ].map(([title, text], i) => (
           <li key={title} className="rounded-xl border p-4">
@@ -366,7 +366,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
                 You can view this project. Ask someone who manages it to let you edit.
               </p>
             ) : (
-              <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} onLive={goLive} />
+              <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "Chef is working. You can keep typing." : "Chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} onLive={goLive} />
             )}
           </div>
         )}

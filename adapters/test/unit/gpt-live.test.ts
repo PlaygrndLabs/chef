@@ -33,7 +33,7 @@ class FakeSocket implements SocketLike {
 }
 
 describe("GPT-Live adapter", () => {
-  it("starts a live session for the engine, forwards caller audio and names chef's audio in one shape", async () => {
+  it("starts a live session for the engine, forwards caller audio and names Chef's audio in one shape", async () => {
     const socket = new FakeSocket((message, s) => {
       if (message["type"] === "session.start") s.receive({ type: "session.started", session: { id: "sess_1" } });
       if (message["type"] === "session.close") s.receive({ type: "session.closed", usage: {} });

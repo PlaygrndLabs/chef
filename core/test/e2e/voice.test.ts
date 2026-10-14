@@ -60,8 +60,8 @@ describe("phase 5 voice front end on fakes", () => {
     await delegate.handle({ type: "session.input_transcript.delta", delta: "Also ", start_ms: 2500 });
     await delegate.handle({ type: "session.delegation.created", offset_ms: 2000, delegation: { id: "d1", target: "client" } });
     await delegate.handle({ type: "session.delegation.created", offset_ms: 2000, delegation: { id: "d2", target: "responses" } });
-    expect(prompts).toEqual(["What is chef?"]);
-    expect(sent.at(-1)).toMatchObject({ type: "session.commentary.append", delegation_id: "d1", content: "heard What is chef?" });
+    expect(prompts).toEqual(["What is Chef?"]);
+    expect(sent.at(-1)).toMatchObject({ type: "session.commentary.append", delegation_id: "d1", content: "heard What is Chef?" });
     await delegate.handle({ type: "session.input_transcript.delta", delta: "add a dark mode", start_ms: 2700 });
     await delegate.handle({ type: "session.delegation.created", offset_ms: 4000, delegation: { id: "d3", target: "client" } });
     expect(prompts.at(-1)).toBe("Also add a dark mode");
@@ -73,7 +73,7 @@ describe("phase 5 voice front end on fakes", () => {
     expect(prompts.at(-1)).toBe("Show me the features.");
   });
 
-  it("saves what chef was still saying when the call hangs up, even if the provider never confirms the close", async () => {
+  it("saves what Chef was still saying when the call hangs up, even if the provider never confirms the close", async () => {
     const turns: { speaker: string; text: string }[] = [];
     let emit: (event: LiveEvent) => void = () => {};
     const host: VoiceHost = {

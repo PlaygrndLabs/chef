@@ -83,7 +83,7 @@ export function UsageSection() {
   const save = async (update: Parameters<typeof usageApi.save>[0]) => setSpending(await usageApi.save(update));
   return (
     <>
-      <Group title={`${monthName(ledger.month)} so far`} note="What chef's model calls cost, estimated from tokens at list prices. Your Cloudflare bill is separate. When a budget is reached, chef pauses new work until the budget is raised or the next month starts.">
+      <Group title={`${monthName(ledger.month)} so far`} note="What Chef's model calls cost, estimated from tokens at list prices. Your Cloudflare bill is separate. When a budget is reached, Chef pauses new work until the budget is raised or the next month starts.">
         <div className="grid gap-2" data-current="org-spent">
           <div className="flex items-baseline justify-between text-sm">
             <span>
@@ -135,7 +135,7 @@ export function ProjectBudgetGroup(props: { readonly api: ProjectApi }) {
   }, [props.api]);
   if (!budget) return null;
   return (
-    <Group title="Monthly budget" note={`${money(budget.spent)} spent in ${monthName(budget.month)}. chef pauses new work in this project when it reaches the budget. Leave it empty for no limit.`}>
+    <Group title="Monthly budget" note={`${money(budget.spent)} spent in ${monthName(budget.month)}. Chef pauses new work in this project when it reaches the budget. Leave it empty for no limit.`}>
       <div className="grid gap-2">
         <CapForm id="project-budget" label="Monthly budget for this project" cap={budget.cap} onSave={async (cap) => setBudget(await props.api.saveBudget(cap))} />
         <Bar spent={budget.spent} cap={budget.cap} />

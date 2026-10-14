@@ -29,7 +29,7 @@ export function GitHubPicker(props: { readonly returnTo: string; readonly github
   if (!github.app)
     return (
       <div className="grid gap-2.5 rounded-lg border p-3" data-github="none">
-        <p className="text-xs text-muted-foreground">chef sends you to GitHub, where you pick the repositories it may use, then brings you back here. The first time, GitHub also asks you to create chef&apos;s own app for this deployment.</p>
+        <p className="text-xs text-muted-foreground">Chef sends you to GitHub, where you pick the repositories it may use, then brings you back here. The first time, GitHub also asks you to create Chef&apos;s own app for this deployment.</p>
         <Field label="GitHub organization that owns the repositories (leave empty for your own account)">
           <Input value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="your-org" aria-label="GitHub organization" autoComplete="off" />
         </Field>
@@ -51,7 +51,7 @@ export function GitHubPicker(props: { readonly returnTo: string; readonly github
             {r.private ? <Lock className="size-3 text-muted-foreground" aria-label="Private" /> : null}
           </button>
         ))}
-        {shown.length === 0 ? <p className="px-2 py-1.5 text-xs text-muted-foreground">{github.error ?? (github.repositories.length === 0 ? "chef cannot see any repositories yet." : "No repository matches.")}</p> : null}
+        {shown.length === 0 ? <p className="px-2 py-1.5 text-xs text-muted-foreground">{github.error ?? (github.repositories.length === 0 ? "Chef cannot see any repositories yet." : "No repository matches.")}</p> : null}
       </div>
       <p className="text-xs text-muted-foreground">
         Missing one?{" "}

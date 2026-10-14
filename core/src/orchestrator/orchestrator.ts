@@ -184,7 +184,7 @@ export class Orchestrator {
     progress.log(`Created repository ${this.canonical} with branch main`);
     const token = await this.deps.repos.createToken(this.canonical, "write", this.ttl);
     try {
-      progress.step("Copy chef's starter app");
+      progress.step("Copy Chef's starter app");
       const tree = this.regenerate(template);
       const paths = Object.keys(tree).sort();
       for (const path of paths.slice(0, SETUP_LOG_FILES)) progress.log(`+ ${path}`);

@@ -43,7 +43,7 @@ test("scripts, styles and other files a page loads are not pages", async () => {
   assert.deepEqual(await (await app(new Request("http://app.test/"))).json(), { ok: true, pages: ["/notes"] });
 });
 
-test("every page tells the chef preview around it which page is open and which pages exist", async () => {
+test("every page tells the Chef preview around it which page is open and which pages exist", async () => {
   const app = createApp([notes], new MemoryStore());
   const page = await (await app(new Request("http://app.test/notes"))).text();
   assert.match(page, /^<p>notes<\/p><script>.*postMessage\(\{chef:"page",path:location\.pathname\+location\.search,title:document\.title,pages:\[\{"title":"Notes","path":"\/notes"\}\]\}/);

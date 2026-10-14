@@ -12,7 +12,7 @@ export interface RealtimeOptions {
   readonly voice?: string;
 }
 
-const TOOL_RULE = `You cannot build, change or look up anything yourself: the only way is the ${REQUEST_TOOL} tool. Call it with the user's request in their own words as soon as they ask for anything, even a short or vague request such as "add an item to a todo list"; never ask for details first, since chef works them out. Never say you will pass something on without calling the tool in that same turn. Then speak the result it returns. Call the builder "chef", never "the client".`;
+const TOOL_RULE = `You cannot build, change or look up anything yourself: the only way is the ${REQUEST_TOOL} tool. Call it with the user's request in their own words as soon as they ask for anything, even a short or vague request such as "add an item to a todo list"; never ask for details first, since Chef works them out. Never say you will pass something on without calling the tool in that same turn. Then speak the result it returns. Call the builder "Chef", never "the client".`;
 
 export function realtimeSession(options: { readonly model?: string; readonly voice?: string; readonly instructions: string }): Record<string, unknown> {
   return {
@@ -28,7 +28,7 @@ export function realtimeSession(options: { readonly model?: string; readonly voi
       {
         type: "function",
         name: REQUEST_TOOL,
-        description: "Hand a request to build, change or fix something, or a question about the project, to chef. Returns what chef did.",
+        description: "Hand a request to build, change or fix something, or a question about the project, to Chef. Returns what Chef did.",
         parameters: { type: "object", properties: { request: { type: "string", description: "The user's request, in their words." } }, required: ["request"] },
       },
     ],

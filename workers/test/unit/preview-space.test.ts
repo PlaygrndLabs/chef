@@ -17,7 +17,7 @@ describe("preview Worker space", () => {
     expect(calls[0]?.auth).toBe("Bearer tok");
   });
 
-  it("claims the project's Worker name with a tag and refuses a Worker chef did not make", async () => {
+  it("claims the project's Worker name with a tag and refuses a Worker Chef did not make", async () => {
     const calls: { method: string; path: string; body: unknown }[] = [];
     const replies: Response[] = [
       new Response("{}", { status: 404 }),

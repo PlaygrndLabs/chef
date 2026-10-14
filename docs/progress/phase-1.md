@@ -4,7 +4,7 @@ Date: 2026-10-11.
 
 ## Built
 
-- Spec format with typed frontmatter and `chef spec lint`; chef's own feature map in `spec/features`.
+- Spec format with typed frontmatter and `chef spec lint`; Chef's own feature map in `spec/features`.
 - Router with rules, Jev and planner tiers.
 - Session state machine with budgets on attempts, tokens and time.
 - Fork per session with scoped tokens; the coder never gets a write token.

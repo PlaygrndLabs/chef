@@ -176,7 +176,7 @@ export function KeyPrompt(props: { readonly names: readonly string[]; readonly a
         <KeyRound className="size-4" />
         {props.names.length === 1 ? "This feature needs a key" : "This feature needs keys"}
       </div>
-      <p className="text-sm text-muted-foreground">The code is ready. chef checks it on the preview once these are set, and carries on by itself. Values stay hidden from the agents and are never written to the code.</p>
+      <p className="text-sm text-muted-foreground">The code is ready. Chef checks it on the preview once these are set, and carries on by itself. Values stay hidden from the agents and are never written to the code.</p>
       {props.names.map((name) => (
         <NeededKey key={name} name={name} features={[]} api={props.api} onSaved={() => props.onSaved?.()} />
       ))}

@@ -92,7 +92,7 @@ describe("dashboard access", () => {
 });
 
 describe("API keys", () => {
-  it("lets the deployment's key in as an app that manages chef, on every path", async () => {
+  it("lets the deployment's key in as an app that manages Chef, on every path", async () => {
     const { token } = newToken();
     const gate = access({ deploymentKey: token });
     for (const path of ["/api/projects", "/preview/demo/abc", "/agents/project/demo", "/"]) {
@@ -111,7 +111,7 @@ describe("API keys", () => {
     expect(response(await guard(at("/api/projects", bearer(forged)), access({ grants: [grant] }))).status).toBe(401);
   });
 
-  it("keeps a key-only chef closed to browsers: no sign-in page, no setup for the first visitor", async () => {
+  it("keeps a key-only Chef closed to browsers: no sign-in page, no setup for the first visitor", async () => {
     const { token } = newToken();
     const home = "https://dashboard.example";
     const withHome = access({ deploymentKey: token, home });
@@ -121,13 +121,13 @@ describe("API keys", () => {
     expect(response(await guard(at("/setup", form({ password: "long enough", confirm: "long enough" })), withHome)).status).toBe(302);
     const api = response(await guard(at("/api/projects"), withHome));
     expect(api.status).toBe(401);
-    expect(await api.json()).toEqual({ error: `open chef at ${home}` });
+    expect(await api.json()).toEqual({ error: `open Chef at ${home}` });
     const sealed = access({ sealed: true });
     expect(response(await guard(at("/"), sealed)).status).toBe(403);
     expect(response(await guard(at("/setup", form({ password: "long enough", confirm: "long enough" })), sealed)).status).toBe(403);
   });
 
-  it("passes on who a request is for only when it comes from an app that manages chef", async () => {
+  it("passes on who a request is for only when it comes from an app that manages Chef", async () => {
     const { grant } = await mintGrant({ name: "script", kind: "key", expiresAt: null }, 1);
     const sent = at("/api/projects", { headers: { "x-chef-user": "usr_abcdefghijklmnopqrst", "x-chef-origin": "https://dashboard.example" } });
     const controller: Caller = { kind: "grant", grant: { ...grant, kind: "controller" } };

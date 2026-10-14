@@ -64,7 +64,7 @@ function PreviewTab({ url, link, commitId, start, live, merged = false }: { read
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
   }, []);
-  if (!url) return <Empty>The preview appears after chef's first step.</Empty>;
+  if (!url) return <Empty>The preview appears after Chef's first step.</Empty>;
   const path = trail.entries[trail.index] ?? "/";
   const target = (to: string) => (to === "/" ? (link ?? url) : link ? `${link}?path=${encodeURIComponent(to)}` : `${url.replace(/\/$/, "")}${to}`);
   const open = (to: string) => setLoad((current) => ({ path: to, count: current.count + 1 }));
@@ -142,9 +142,9 @@ function PreviewTab({ url, link, commitId, start, live, merged = false }: { read
       />
       <p className="text-xs text-muted-foreground">
         {live
-          ? `This is the live app, at ${short(commitId)}. Everything chef merges shows up here.`
+          ? `This is the live app, at ${short(commitId)}. Everything Chef merges shows up here.`
           : merged
-            ? `This is the app as this session left it, at ${short(commitId)}. Its work is live now; the live app shows it together with everything else chef merged. It sleeps when nobody opens it for a while and wakes up on the next visit.`
+            ? `This is the app as this session left it, at ${short(commitId)}. Its work is live now; the live app shows it together with everything else Chef merged. It sleeps when nobody opens it for a while and wakes up on the next visit.`
             : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
       </p>
     </div>
@@ -405,7 +405,7 @@ export function LiveApp() {
       {live?.url ? (
         <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} start="/" live />
       ) : (
-        <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
+        <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "Chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
       )}
     </div>
   );

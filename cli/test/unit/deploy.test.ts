@@ -13,7 +13,7 @@ describe("deploy", () => {
     expect(parseJsonc('{\n  // note\n  "a": "x // not a comment", /* gone */ "b": [1, 2,],\n}')).toEqual({ a: "x // not a comment", b: [1, 2] });
   });
 
-  it("keeps the main chef's resource names and gives a named copy its own", () => {
+  it("keeps the main Chef's resource names and gives a named copy its own", () => {
     expect(instanceConfig(base, "chef")).toBe(base);
     const copy = instanceConfig(base, "trial");
     expect(copy).toMatchObject({

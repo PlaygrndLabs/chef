@@ -31,7 +31,7 @@ describe("GitHub pull requests for the sync branch", () => {
     expect(calls[3]?.url).toBe("https://api.github.com/repos/o/r/pulls/7");
   });
 
-  it("asks for a fresh token each time it talks to GitHub when the link uses chef's app", async () => {
+  it("asks for a fresh token each time it talks to GitHub when the link uses Chef's app", async () => {
     let minted = 0;
     const seen: string[] = [];
     const fetcher = (async (_url: string, init: RequestInit = {}) => {

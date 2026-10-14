@@ -11,7 +11,7 @@ acceptance:
   - id: AC3
     text: Stuck sessions are shown with their last feedback
   - id: AC4
-    text: A first visit shows what chef does in three steps with example requests
+    text: A first visit shows what Chef does in three steps with example requests
   - id: AC5
     text: The feature tree lists the app's live address and every feature from main's spec and live sessions with a plain status, child features under their parent and working ones first
   - id: AC6
@@ -24,7 +24,7 @@ acceptance:
     text: The project chat on the right is the only place a person asks for work, and shows how much of its memory is in use
 ---
 
-Served from the chef Worker's assets, built from `apps/dashboard` with Vite, Tailwind and shadcn/ui. The project page has three plain panes: the feature tree on the left, the features opened as tabs in the middle, and the project chat on the right. Each tab opens on the feature's preview; its messages, changes, checks and details sit one click away. The chat is the CopilotKit stream in [session-stream](session-stream.md).
+Served from the Chef Worker's assets, built from `apps/dashboard` with Vite, Tailwind and shadcn/ui. The project page has three plain panes: the feature tree on the left, the features opened as tabs in the middle, and the project chat on the right. Each tab opens on the feature's preview; its messages, changes, checks and details sit one click away. The chat is the CopilotKit stream in [session-stream](session-stream.md).
 
 Read and control routes on the project:
 

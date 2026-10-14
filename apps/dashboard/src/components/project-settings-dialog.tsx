@@ -15,10 +15,10 @@ import { githubApi, type GitHubView, type GitLinkView, type ProjectApi, type Pro
 import { cn } from "@/lib/utils";
 
 const MODES: readonly { readonly mode: OutboundMode; readonly label: string; readonly note: string; readonly pullRequests?: true }[] = [
-  { mode: "pull-request", label: "One pull request", note: "chef keeps one pull request from the sync branch up to date, listing each finished feature with its preview link.", pullRequests: true },
+  { mode: "pull-request", label: "One pull request", note: "Chef keeps one pull request from the sync branch up to date, listing each finished feature with its preview link.", pullRequests: true },
   { mode: "feature-pull-requests", label: "A pull request per feature", note: "Each finished feature gets its own branch and pull request.", pullRequests: true },
-  { mode: "branch", label: "Sync branch only", note: "chef mirrors its main to the sync branch. You merge it when you like." },
-  { mode: "off", label: "Pull only", note: "chef takes changes from your repository but never pushes back." },
+  { mode: "branch", label: "Sync branch only", note: "Chef mirrors its main to the sync branch. You merge it when you like." },
+  { mode: "off", label: "Pull only", note: "Chef takes changes from your repository but never pushes back." },
 ];
 
 function Field(props: { readonly label: string; readonly children: ReactNode }) {
@@ -53,17 +53,17 @@ function SyncStatus(props: { readonly project: string; readonly api: ProjectApi;
       <p className="text-muted-foreground">
         {state?.pulled ? `Last taken from ${props.git.branch}: ${state.pulled.slice(0, 7)}.` : `Nothing taken from ${props.git.branch} yet.`} {state?.pushed ? `Last sent: ${state.pushed.slice(0, 7)}.` : ""}
       </p>
-      {state?.failed ? <p className="text-bad">chef could not merge {state.failed.slice(0, 7)} from {props.git.branch}. Fix it there or press Sync now to try again.</p> : null}
+      {state?.failed ? <p className="text-bad">Chef could not merge {state.failed.slice(0, 7)} from {props.git.branch}. Fix it there or press Sync now to try again.</p> : null}
       {state?.pullRequest ? (
         <a className="underline" href={state.pullRequest.url} target="_blank" rel="noreferrer">
           Pull request #{state.pullRequest.number}
         </a>
       ) : null}
       {props.git.github ? (
-        <p className="text-muted-foreground">GitHub tells chef about every push, and chef also checks every 5 minutes.</p>
+        <p className="text-muted-foreground">GitHub tells Chef about every push, and Chef also checks every 5 minutes.</p>
       ) : (
         <>
-          <p className="text-muted-foreground">chef checks the repository every 5 minutes. For instant syncs, add a webhook for push events:</p>
+          <p className="text-muted-foreground">Chef checks the repository every 5 minutes. For instant syncs, add a webhook for push events:</p>
           <Input readOnly value={webhook} aria-label="Webhook URL" onFocus={(e) => e.currentTarget.select()} />
           <Input readOnly value={props.git.webhookSecret} aria-label="Webhook secret" type="password" onFocus={(e) => ((e.currentTarget.type = "text"), e.currentTarget.select())} />
         </>
@@ -114,7 +114,7 @@ function RepositoryForm(props: { readonly project: string; readonly api: Project
       onSubmit={(e) => {
         e.preventDefault();
         const link = viaGitHub ? { github: true } : token.trim() ? { token: token.trim() } : {};
-        void run({ git: { url: url.trim(), branch: branch.trim(), mode, syncBranch: syncBranch.trim(), ...link } }, current ? "Saved" : "Linked; chef is taking the repository in");
+        void run({ git: { url: url.trim(), branch: branch.trim(), mode, syncBranch: syncBranch.trim(), ...link } }, current ? "Saved" : "Linked; Chef is taking the repository in");
       }}
     >
       {viaGitHub ? (
@@ -163,12 +163,12 @@ function RepositoryForm(props: { readonly project: string; readonly api: Project
               </button>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">{MODES.find((m) => m.mode === mode)?.note} chef never pushes to {branch.trim() || "main"}.</p>
+          <p className="text-xs text-muted-foreground">{MODES.find((m) => m.mode === mode)?.note} Chef never pushes to {branch.trim() || "main"}.</p>
         </>
       ) : null}
       <div className="flex justify-end gap-2">
         {current ? (
-          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void run({ git: null }, "Unlinked; the project stays on chef")}>
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void run({ git: null }, "Unlinked; the project stays on Chef")}>
             Unlink
           </Button>
         ) : null}
@@ -278,10 +278,10 @@ export function ProjectSettingsDialog(props: {
       render: () =>
         settings ? (
           <>
-            <Group title="Name" note="Its address in chef, its previews and its Cloudflare resources use this name.">
+            <Group title="Name" note="Its address in Chef, its previews and its Cloudflare resources use this name.">
               <Input value={project} readOnly aria-label="Project name" className="font-mono" />
             </Group>
-            <Group title="Parallel tries" note="How many ways chef builds each new feature at once in this project. Each try costs as much as a whole build.">
+            <Group title="Parallel tries" note="How many ways Chef builds each new feature at once in this project. Each try costs as much as a whole build.">
               <TriesForm key={`${settings.attempts ?? "shared"}`} own={settings.attempts ?? null} shared={props.sharedAttempts} save={save} />
             </Group>
             <ProjectBudgetGroup api={api} />
@@ -290,7 +290,7 @@ export function ProjectSettingsDialog(props: {
             </Group>
             <Group
               title="Read the code"
-              note="chef reads the whole project and suggests what to build next."
+              note="Chef reads the whole project and suggests what to build next."
               action={
                 <Button type="button" size="sm" variant="outline" onClick={props.onReadCode}>
                   <ScanSearch />
@@ -309,10 +309,10 @@ export function ProjectSettingsDialog(props: {
       id: "repository",
       label: "Repository",
       icon: FolderGit2,
-      note: "chef always works on its own copy of the code. Linking a repository is optional and only keeps the two in sync.",
+      note: "Chef always works on its own copy of the code. Linking a repository is optional and only keeps the two in sync.",
       render: () =>
         settings ? (
-          <Group title={settings.git ? "Linked repository" : "Link a repository"} note="chef takes in every push to the repository's main branch and sends finished features back the way you pick below.">
+          <Group title={settings.git ? "Linked repository" : "Link a repository"} note="Chef takes in every push to the repository's main branch and sends finished features back the way you pick below.">
             <RepositoryForm key={settings.git?.url ?? "none"} project={project} api={api} current={settings.git} save={save} />
           </Group>
         ) : (
@@ -330,7 +330,7 @@ export function ProjectSettingsDialog(props: {
       id: "memory",
       label: "Memory",
       icon: Brain,
-      note: "What chef remembers about this project. Agents recall the entries that fit each task. It lives in the memory folder of the project's code.",
+      note: "What Chef remembers about this project. Agents recall the entries that fit each task. It lives in the memory folder of the project's code.",
       render: () => <MemoryForm api={api} />,
     },
     { id: "agents", label: "Agents", icon: Bot, fill: true, render: agents("agents") },

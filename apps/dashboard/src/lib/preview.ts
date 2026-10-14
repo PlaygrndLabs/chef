@@ -156,8 +156,8 @@ export function loadView(load: FrameLoad, now: number, input: { readonly preview
     failed: input.preview ? "This preview could not open" : "The app could not open",
   }[phase];
   const detail = {
-    check: "Asking chef whether this preview is awake.",
-    build: "It was asleep because nobody opened it for a while. chef is building it again from the latest commit of this feature. It opens here by itself when it is ready.",
+    check: "Asking Chef whether this preview is awake.",
+    build: "It was asleep because nobody opened it for a while. Chef is building it again from the latest commit of this feature. It opens here by itself when it is ready.",
     start: waking ? "Nobody opened it for a while, so Cloudflare is starting it again. The first visit after a pause takes longer." : "Sending the first request to the app.",
     page: "The app answered. Its page is loading.",
     done: "",

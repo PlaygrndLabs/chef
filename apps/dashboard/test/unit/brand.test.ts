@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { BLUE, faviconDataUri, MARK, wordmarkSvg } from "@chef/core/brand";
 
 describe("brand", () => {
-  it("uses the chef mark as the dashboard favicon", () => {
+  it("uses the Chef mark as the dashboard favicon", () => {
     expect(readFileSync(new URL("../../index.html", import.meta.url), "utf8")).toContain(`<link rel="icon" href="${faviconDataUri()}">`);
   });
 
-  it("shows the chef mark while the dashboard loads", () => {
+  it("shows the Chef mark while the dashboard loads", () => {
     const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
     expect(html).toMatch(/<div id="splash"[^>]*>.*<\/div>\n<div id="root"><\/div>/);
     expect(html).toContain(`fill="${BLUE}" d="${MARK.d}"`);
@@ -17,7 +17,7 @@ describe("brand", () => {
     expect(wordmarkSvg()).toMatch(/^<svg [^>]*fill="currentColor"[^>]*aria-label="chef"/);
   });
 
-  it("draws the three squares in chef blue", () => {
+  it("draws the three squares in Chef blue", () => {
     expect(wordmarkSvg()).toContain(`<path fill="${BLUE}" d="${MARK.d}"/>`);
     expect(decodeURIComponent(faviconDataUri())).toContain(`<path fill="${BLUE}" d="${MARK.d}"/>`);
   });

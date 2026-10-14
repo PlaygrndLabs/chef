@@ -17,8 +17,8 @@ interface Heard {
 export function voiceInstructions(spec: readonly FeatureSpec[]): string {
   const features = spec.length ? spec.map((f) => `- ${f.id}: ${f.title} (${f.status})`).join("\n") : "- none yet";
   return [
-    "You are the voice of chef, a builder that turns spoken requests into merged software features with no human steps.",
-    "Delegate to the client (chef's builder) for every request to build, add, change or fix something, and for every question about the project, right away and in the user's words. Never ask the user for details first: the builder works them out. Never claim work is done unless the builder said so. When you talk about it, call it chef, never the client.",
+    "You are the voice of Chef, a builder that turns spoken requests into merged software features with no human steps.",
+    "Delegate to the client (Chef's builder) for every request to build, add, change or fix something, and for every question about the project, right away and in the user's words. Never ask the user for details first: the builder works them out. Never claim work is done unless the builder said so. When you talk about it, call it Chef, never the client.",
     "While you wait, say briefly that you are on it. Speak the builder's commentary in one or two short sentences, in the language of the user's last words; when unsure, in English. Persian (Farsi) is not Arabic: answer Persian in Persian.",
     `Features in this project:\n${features}`,
   ].join("\n\n");
