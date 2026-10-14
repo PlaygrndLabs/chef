@@ -30,7 +30,7 @@
   "cloudflare": {
     "bindings": {
       "CHEF_PASSWORD": {
-        "description": "The password you sign in to chef with. Scripts send it as a Bearer token. Use at least 8 characters; a long random one is best, for example from `openssl rand -base64 24`."
+        "description": "The password you sign in to chef with from a browser. Scripts use API keys from Settings instead. Use at least 8 characters; a long random one is best, for example from `openssl rand -base64 24`."
       }
     }
   }

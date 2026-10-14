@@ -41,7 +41,7 @@ npx wrangler secret put CHEF_PASSWORD
 
 1. Fork this repository.
 2. Add the Actions secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (a token that can edit Workers Scripts, Containers, Vectorize, Workflows and Artifacts), and `CHEF_PASSWORD`.
-3. Every green `ci` run on `main` now deploys with `pnpm run deploy`, then checks the Worker answers and accepts the password. You can also run the `deploy` workflow by hand.
+3. Every green `ci` run on `main` now deploys with `pnpm run deploy`, then checks the Worker answers and that the password signs in. You can also run the `deploy` workflow by hand.
 
 Any secret from [Settings](#settings) that the repository has is passed to the Worker as a default.
 
@@ -51,7 +51,9 @@ Any secret from [Settings](#settings) that the repository has is passed to the W
 
 ## Scripts and the API
 
-Scripts can call chef with `Authorization: Bearer <password>`. For example, `curl -X POST -H "Authorization: Bearer <password>" -H "content-type: application/json" -d '{"name":"shop"}' https://<chef>/api/projects` creates the project `shop` from `template/`. The `cloud` workflow (Actions, run by hand) bootstraps a project, sends a prompt, follows its sessions until they end and prints the Worker's logs.
+Scripts and other apps call chef with an API key: `Authorization: Bearer chef_…`. Make one in Settings > API keys; chef shows it once and keeps only a hash. For example, `curl -X POST -H "Authorization: Bearer <key>" -H "content-type: application/json" -d '{"name":"shop"}' https://<chef>/api/projects` creates the project `shop` from `template/`. Each key has a name, can end after a set time, and can be revoked on its own. The password only signs in from a browser; it is never accepted as a Bearer token.
+
+`pnpm run deploy --api-key` makes a new key during the deploy, sends it as the `CHEF_API_KEY` secret and prints it once; `--api-key-file <path>` writes it to that file instead. It is the key for an app that manages chef for other people: requests made with it may say which person they act for (`x-chef-user`) and which address their links should use (`x-chef-origin`), which chef ignores from any other caller. Each such deploy replaces the earlier key. A chef with a key but no password never shows a sign-in or setup page; set `CHEF_HOME` to the address browsers should be sent to instead. The `cloud` workflow (Actions, run by hand) bootstraps a project, sends a prompt, follows its sessions until they end and prints the Worker's logs.
 
 ## Models
 
@@ -69,6 +71,7 @@ A self-hosted chef is set up from its own dashboard, like any other app. On the 
 | Previews | Cloudflare account id and an API token that can edit Workers, for each feature's live preview | Yes | `CF_ACCOUNT_ID`, `CF_API_TOKEN` |
 | Voice | An OpenAI key (GPT-Live), or a provider that serves the OpenAI Realtime API (base URL with `/v1`, and key) | No | `OPENAI_API_KEY`, or `VOICE_BASE_URL` and `VOICE_API_KEY` |
 | Routing | A TypeSafe key, so Jev routes requests in about 100ms; without it Claude routes them | No | `TYPESAFE_API_KEY` |
-| Password | The dashboard password, also accepted as a Bearer token by scripts | Yes | `CHEF_PASSWORD` |
+| Password | The password for signing in from a browser | For browsers | `CHEF_PASSWORD` |
+| API keys | Named keys for scripts and apps, each revocable | No | `CHEF_API_KEY`, one key for an app that manages chef |
 
 What is saved in the dashboard wins over the Worker's secrets, so the secrets are only defaults for a scripted deploy. Saved settings live in the `Settings` Durable Object; the password is stored as a salted PBKDF2 hash. Keys never go back to the browser; the dashboard shows only their last four characters. The coder sandbox gets only placeholders; the Worker's outbound handler swaps in the real keys on the provider's and Cloudflare's hosts.

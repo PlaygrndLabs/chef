@@ -1,10 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { costMicros, readCap, type SpendGate, type TokenUsage } from "@chef/core";
 import { settingsStub } from "./settings.ts";
+import { USER_HEADER } from "./access.ts";
 
 const spender = new AsyncLocalStorage<{ readonly by: string | null }>();
-
-export const USER_HEADER = "x-chef-user";
 
 export function requester(request: Request): string | null {
   const by = request.headers.get(USER_HEADER);

@@ -12,7 +12,8 @@
     "./brand": "./src/brand/brand.ts",
     "./replay": "./src/events/replay.ts",
     "./setup": "./src/setup/progress.ts",
-    "./chat": "./src/router/conversation.ts"
+    "./chat": "./src/router/conversation.ts",
+    "./access": "./src/access/token.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
