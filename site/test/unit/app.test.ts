@@ -6,6 +6,7 @@ import type { Role } from "../../src/orgs.ts";
 
 interface OrgState {
   name: string;
+  personal?: boolean;
   engine: { url: string; secret: string; accountId?: string; version?: string } | null;
   members: Record<string, Role>;
 }
@@ -19,8 +20,8 @@ interface Fake {
 const ENGINE = { url: "https://chef.sam.workers.dev", secret: "engine-secret" };
 
 function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Role } = {}, withClient = true) {
-  const fake: Fake = { orgs: { org1: { name: "sam's org", engine: state.engine ?? null, members: { user1: state.role ?? "owner", boss: "owner" } } }, admins: [], calls: [], ...state };
-  const summaries = (userId: string) => Object.entries(fake.orgs).flatMap(([id, org]) => (org.members[userId] ? [{ id, name: org.name, role: org.members[userId] }] : []));
+  const fake: Fake = { orgs: { org1: { name: "Personal", personal: true, engine: state.engine ?? null, members: { user1: state.role ?? "owner", boss: "owner" } } }, admins: [], calls: [], ...state };
+  const summaries = (userId: string) => Object.entries(fake.orgs).flatMap(([id, org]) => (org.members[userId] ? [{ id, name: org.name, role: org.members[userId], personal: org.personal === true, plan: "free" }] : []));
   const member = (name: string) => ({
     signIn: async (profile: unknown, grant: unknown, admin: unknown, org: unknown) => void fake.calls.push({ name, method: "signIn", arg: { profile, grant, admin, org } }),
     admin: async () => fake.admins.includes(name),
@@ -37,7 +38,7 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
       fake.orgs[id].members[who.userId] = who.role;
     },
     access: async (userId: string) => (fake.orgs[id]?.members[userId] ? { role: fake.orgs[id].members[userId], engine: fake.orgs[id].engine } : null),
-    view: async (userId: string) => (fake.orgs[id]?.members[userId] ? { id, name: fake.orgs[id].name, role: fake.orgs[id].members[userId], engine: fake.orgs[id].engine?.url ?? null, members: Object.keys(fake.orgs[id].members).length } : null),
+    view: async (userId: string) => (fake.orgs[id]?.members[userId] ? { id, name: fake.orgs[id].name, role: fake.orgs[id].members[userId], personal: fake.orgs[id].personal === true, plan: "free", engine: fake.orgs[id].engine?.url ?? null, members: Object.keys(fake.orgs[id].members).length } : null),
     members: async () => Object.entries(fake.orgs[id]?.members ?? {}).map(([userId, role]) => ({ userId, role })),
     rename: async (name: string) => void ((fake.orgs[id] as OrgState).name = name),
     engine: async () => fake.orgs[id]?.engine ?? null,
@@ -46,10 +47,10 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
   const dir = {
     signIn: async (identity: { subject: string; email: string }, admin: boolean) => {
       fake.calls.push({ name: "directory", method: "signIn", arg: { identity, admin } });
-      return { userId: "usr_new", org: { id: "org_new", name: "sam's org", role: "owner" }, orgs: [{ id: "org_new", name: "sam's org", role: "owner" }] };
+      return { userId: "usr_new", org: { id: "org_new", name: "Personal", role: "owner", personal: true, plan: "free" }, orgs: [{ id: "org_new", name: "Personal", role: "owner", personal: true, plan: "free" }] };
     },
     orgs: async (userId: string) => summaries(userId),
-    createOrg: async (userId: string, name: string) => (fake.calls.push({ name: "directory", method: "createOrg", arg: { userId, name } }), { id: "org2", name, role: "owner" }),
+    createOrg: async (userId: string, name: string) => (fake.calls.push({ name: "directory", method: "createOrg", arg: { userId, name } }), { id: "org2", name, role: "owner", personal: false, plan: "free" }),
     use: async (userId: string, orgId: string) => summaries(userId).find((o) => o.id === orgId) ?? null,
     renameOrg: async (orgId: string, name: string) => void fake.calls.push({ name: "directory", method: "renameOrg", arg: { orgId, name } }),
     recordSetup: async (orgId: string, setup: unknown) => void fake.calls.push({ name: "directory", method: "recordSetup", arg: { orgId, setup } }),
@@ -112,7 +113,7 @@ describe("chef site", () => {
     expect(response.headers.get("location")).toBe("/setup");
     expect(fake.calls).toMatchObject([
       { name: "directory", method: "signIn", arg: { identity: { provider: "cloudflare", subject: "cfuser", email: "sam@example.com" }, admin: false } },
-      { name: "org_new", method: "setup", arg: { info: { id: "org_new", name: "sam's org" }, who: { userId: "usr_new", role: "owner" } } },
+      { name: "org_new", method: "setup", arg: { info: { id: "org_new", name: "Personal", personal: true }, who: { userId: "usr_new", role: "owner" } } },
       { name: "usr_new", method: "signIn", arg: { profile: { id: "cfuser" }, grant: { token: "tok" }, admin: false, org: { id: "org_new", canSetUp: true, engine: null } } },
     ]);
     expect(fake.orgs["org_new"]?.members).toEqual({ usr_new: "owner" });
@@ -128,7 +129,7 @@ describe("chef site", () => {
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: forged } }), env)).status).toBe(401);
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session("user1", "someone-elses") } }), env)).status).toBe(401);
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session() } }), env)).status).toBe(202);
-    expect(fake.calls).toEqual([{ name: "user1", method: "install", arg: { orgId: "org1", orgName: "sam's org", accountId: "0123456789abcdef0123456789abcdef", engine: null } }]);
+    expect(fake.calls).toEqual([{ name: "user1", method: "install", arg: { orgId: "org1", orgName: "sam", accountId: "0123456789abcdef0123456789abcdef", engine: null } }]);
     const plain = fakeEnv({ role: "member" });
     expect((await handle(new Request(`${origin}/site/api/install`, { method: "POST", body, headers: { origin, cookie: await session() } }), plain.env)).status).toBe(403);
   });
@@ -149,15 +150,15 @@ describe("chef site", () => {
       engine: origin,
       fixed: true,
       account: "sam@example.com",
-      org: { id: "org1", name: "sam's org", role: "owner", engine: ENGINE.url, members: 2 },
-      orgs: [{ id: "org1", name: "sam's org", role: "owner" }],
+      org: { id: "org1", name: "Personal", role: "owner", personal: true, plan: "free", engine: ENGINE.url, members: 2 },
+      orgs: [{ id: "org1", name: "Personal", role: "owner", personal: true, plan: "free" }],
     });
   });
 
   it("creates, switches to and renames organizations", async () => {
     const { env, fake } = fakeEnv();
     const created = await handle(send("/site/api/orgs", "POST", { name: "  Acme   Labs " }, await session()), env);
-    expect(await created.json()).toEqual({ org: { id: "org2", name: "Acme Labs", role: "owner" } });
+    expect(await created.json()).toEqual({ org: { id: "org2", name: "Acme Labs", role: "owner", personal: false, plan: "free" } });
     expect(created.headers.get("set-cookie")).toMatch(/^chef_session=user1\.org2\./);
     expect(fake.orgs["org2"]?.members).toEqual({ user1: "owner" });
     expect((await handle(send("/site/api/orgs", "POST", { name: "" }, await session()), env)).status).toBe(400);
@@ -167,9 +168,10 @@ describe("chef site", () => {
     const switched = await handle(send("/site/api/orgs/switch", "POST", { orgId: "org_abcdefghijklmnopqrst" }, await session()), env);
     expect(switched.headers.get("set-cookie")).toMatch(/^chef_session=user1\.org_abcdefghijklmnopqrst\./);
     expect((await handle(send("/site/api/org", "PATCH", { name: "Nope" }, await session("user1", "org_abcdefghijklmnopqrst")), env)).status).toBe(403);
-    const renamed = await handle(send("/site/api/org", "PATCH", { name: "Sam and co" }, await session()), env);
-    expect(((await renamed.json()) as { org: { name: string } }).org.name).toBe("Sam and co");
-    expect(fake.calls).toContainEqual({ name: "directory", method: "renameOrg", arg: { orgId: "org1", name: "Sam and co" } });
+    expect((await handle(send("/site/api/org", "PATCH", { name: "Sam and co" }, await session()), env)).status).toBe(400);
+    const renamed = await handle(send("/site/api/org", "PATCH", { name: "Acme and co" }, await session("user1", "org2")), env);
+    expect(((await renamed.json()) as { org: { name: string } }).org.name).toBe("Acme and co");
+    expect(fake.calls).toContainEqual({ name: "directory", method: "renameOrg", arg: { orgId: "org2", name: "Acme and co" } });
   });
 
   it("signs out only from its own pages", async () => {

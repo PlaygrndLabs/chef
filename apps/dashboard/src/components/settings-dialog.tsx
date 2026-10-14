@@ -8,9 +8,10 @@ import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/a
 import { EnvironmentForm } from "@/components/environment";
 import { SharedInstructionsForm } from "@/components/guidance";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
-import { appApi, githubApi, orgApi, settingsApi, sharedEnvApi, type AppMode, type GitHubView, type OrgSummary, type OrgView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
+import { appApi, githubApi, orgApi, settingsApi, sharedEnvApi, type GitHubView, type OrgView, type SettingsUpdate, type SettingsView, type Source } from "@/lib/api";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { orgLabel, PLAN_LABEL, useAppMode } from "@/lib/account";
 
 interface Choice {
   readonly kind: string;
@@ -204,14 +205,6 @@ function PasswordForm(props: { readonly settings: SettingsView; readonly save: S
   );
 }
 
-function useAppMode() {
-  const [mode, setMode] = useState<AppMode | null>(null);
-  useEffect(() => {
-    void appApi.get().then(setMode);
-  }, []);
-  return mode;
-}
-
 function ChangePlace(props: { readonly note: string }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -255,27 +248,24 @@ function ComputerSection(props: { readonly settings: SettingsView }) {
 
 function AccountSection(props: { readonly account: string | null; readonly admin: boolean }) {
   return (
-    <Group title="Account" note="You signed in with Cloudflare. chef works in your Cloudflare account, and this site keeps only its address.">
-      <form method="post" action="/auth/signout" className="flex items-center gap-3">
+    <Group title="Account" note="You signed in with Cloudflare. chef works in your Cloudflare account, and this site keeps only its address. Sign out from the menu at the bottom left.">
+      <div className="flex items-center gap-3">
         <p className="text-xs text-muted-foreground" data-current="account">
           {props.account ? `Signed in as ${props.account}` : "Signed in with Cloudflare"}
         </p>
-        <Button type="submit" size="sm" variant="outline">
-          Sign out
-        </Button>
         {props.admin ? (
           <Button asChild size="sm" variant="outline">
             <a href="/admin">Members</a>
           </Button>
         ) : null}
-      </form>
+      </div>
     </Group>
   );
 }
 
 const ROLE_LABEL = { owner: "an owner", admin: "an admin", member: "a member" } as const;
 
-function OrgSection(props: { readonly org: OrgView; readonly orgs: readonly OrgSummary[] }) {
+function OrgSection(props: { readonly org: OrgView }) {
   const [name, setName] = useState(props.org.name);
   const [fresh, setFresh] = useState("");
   const [busy, setBusy] = useState(false);
@@ -290,12 +280,14 @@ function OrgSection(props: { readonly org: OrgView; readonly orgs: readonly OrgS
       setBusy(false);
     }
   };
-  const others = props.orgs.filter((org) => org.id !== props.org.id);
+  const note = props.org.personal
+    ? "Your own workspace. Its chef, projects and Cloudflare account are yours alone. Switch workspaces from the menu at the bottom left."
+    : `This organization owns its chef, its projects and the Cloudflare account it runs on. You are ${ROLE_LABEL[props.org.role]} of it. Switch workspaces from the menu at the bottom left.`;
   return (
-    <Group title="Organization" note={`Your chef, its projects and the Cloudflare account it runs on belong to this organization. You are ${ROLE_LABEL[props.org.role]} of it.`}>
-      {props.org.role === "member" ? (
+    <Group title="Workspace" note={note}>
+      {props.org.personal || props.org.role === "member" ? (
         <p className="text-sm" data-current="org">
-          {props.org.name}
+          {orgLabel(props.org)} · {PLAN_LABEL[props.org.plan]}
         </p>
       ) : (
         <form
@@ -309,15 +301,8 @@ function OrgSection(props: { readonly org: OrgView; readonly orgs: readonly OrgS
           <Actions busy={busy} />
         </form>
       )}
-      {others.map((org) => (
-        <div key={org.id} className="flex items-center gap-3">
-          <p className="flex-1 text-xs text-muted-foreground">{org.name}</p>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void act(() => orgApi.use(org.id), () => location.assign("/"))}>
-            Switch
-          </Button>
-        </div>
-      ))}
       <form
+        id="new-org"
         className="flex items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
@@ -326,7 +311,7 @@ function OrgSection(props: { readonly org: OrgView; readonly orgs: readonly OrgS
       >
         <Input value={fresh} onChange={(e) => setFresh(e.target.value)} placeholder="New organization name" aria-label="New organization name" maxLength={60} required />
         <Button type="submit" size="sm" variant="outline" disabled={busy}>
-          Create
+          Create organization
         </Button>
       </form>
     </Group>
@@ -464,7 +449,7 @@ export function SettingsDialog(props: {
           </Group>
           {settings && computer ? <ComputerSection settings={settings} /> : null}
           {hosted ? <AccountSection account={mode?.account ?? null} admin={mode?.admin === true} /> : null}
-          {hosted && mode?.org ? <OrgSection org={mode.org} orgs={mode.orgs ?? []} /> : null}
+          {hosted && mode?.org ? <OrgSection org={mode.org} /> : null}
           {settings && !computer && !hosted ? (
             <Group title="Password" note="Changing it signs out every other browser and script.">
               <PasswordForm settings={settings} save={save} />

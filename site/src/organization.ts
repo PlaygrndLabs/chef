@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./env.ts";
 import type { Engine } from "./member.ts";
-import type { Role } from "./orgs.ts";
+import type { OrgPlan, Role } from "./orgs.ts";
 
 export interface OrgAccess {
   readonly role: Role;
@@ -12,6 +12,8 @@ export interface OrgView {
   readonly id: string;
   readonly name: string;
   readonly role: Role;
+  readonly personal: boolean;
+  readonly plan: OrgPlan;
   readonly engine: string | null;
   readonly members: number;
 }
@@ -26,6 +28,7 @@ export interface OrgMember {
 interface Meta {
   readonly id: string;
   readonly name: string;
+  readonly personal: boolean;
   readonly createdAt: number;
 }
 
@@ -45,8 +48,8 @@ export class Organization extends DurableObject<Env> {
     ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS members (user_id TEXT PRIMARY KEY, email TEXT, role TEXT NOT NULL, joined_at INTEGER NOT NULL)`);
   }
 
-  async setup(org: { readonly id: string; readonly name: string }, member: { readonly userId: string; readonly email: string | null; readonly role: Role }): Promise<void> {
-    if (!(await this.ctx.storage.get<Meta>(META))) await this.ctx.storage.put(META, { id: org.id, name: org.name, createdAt: Date.now() } satisfies Meta);
+  async setup(org: { readonly id: string; readonly name: string; readonly personal: boolean }, member: { readonly userId: string; readonly email: string | null; readonly role: Role }): Promise<void> {
+    if (!(await this.ctx.storage.get<Meta>(META))) await this.ctx.storage.put(META, { id: org.id, name: org.name, personal: org.personal, createdAt: Date.now() } satisfies Meta);
     this.ctx.storage.sql.exec(
       `INSERT INTO members (user_id, email, role, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, role = excluded.role`,
       member.userId, member.email, member.role, Date.now(),
@@ -64,7 +67,7 @@ export class Organization extends DurableObject<Env> {
     if (!meta || !role) return null;
     const engine = await this.ctx.storage.get<Engine>(ENGINE);
     const count = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM members").one().n;
-    return { id: meta.id, name: meta.name, role, engine: engine?.url ?? null, members: count };
+    return { id: meta.id, name: meta.name, role, personal: meta.personal === true, plan: "free", engine: engine?.url ?? null, members: count };
   }
 
   async members(): Promise<OrgMember[]> {
