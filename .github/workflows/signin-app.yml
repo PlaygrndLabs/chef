@@ -8,6 +8,10 @@ on:
         description: Restart domain verification
         type: boolean
         default: false
+      logs:
+        description: Minutes of chef-site request logs to show (0 for none)
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -45,3 +49,19 @@ jobs:
           for name in playgrndlabs.com chef.playgrndlabs.com; do
             echo "$name: $(curl -sS -H 'accept: application/dns-json' "https://cloudflare-dns.com/dns-query?name=$name&type=TXT" | jq -c '[.Answer[]?.data]')"
           done
+      - name: Show recent site requests
+        if: inputs.logs > 0
+        env:
+          MINUTES: ${{ inputs.logs }}
+        run: |
+          set -euo pipefail
+          now=$(($(date +%s) * 1000))
+          from=$((now - MINUTES * 60000))
+          body=$(jq -nc --argjson from "$from" --argjson to "$now" '{queryId: "site-logs", timeframe: {from: $from, to: $to}, view: "events", limit: 200, parameters: {filters: [{key: "$metadata.service", operation: "eq", type: "string", value: "chef-site"}]}}')
+          out=$(curl -sS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "content-type: application/json" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/observability/telemetry/query" -d "$body")
+          if [ "$(echo "$out" | jq -r '.success')" != "true" ]; then
+            echo "::warning::Cloudflare did not return logs: $(echo "$out" | jq -c '.errors')"
+            exit 0
+          fi
+          echo "$out" | jq -r '.result.events.events[0] // {} | [paths(scalars) | map(tostring) | join(".")] | join(" ")'
+          echo "$out" | jq -r '.result.events.events[]? | [(.timestamp // "" | tostring), (.["$workers"].event.request.method // ""), ((.["$workers"].event.request.url // "") | sub("\\?.*"; "")), (.["$workers"].event.response.status // "" | tostring), (.["$workers"].outcome // ""), ((.["$metadata"].message // "") | tostring | gsub("[^ @]+@[^ ]+"; "<email>") | .[0:200])] | join(" ")'
