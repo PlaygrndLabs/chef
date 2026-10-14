@@ -280,6 +280,12 @@ describe("dashboard in a browser", () => {
       for (const role of ["planner", "test", "backend", "reviewer"]) await expect.poll(() => team.locator(`[data-member="${role}"]`).getAttribute("data-member-state"), { timeout: 10_000 }).toBe("done");
       await page.locator('[data-update-role="test"]').first().waitFor({ timeout: 10_000 });
       await team.locator('[data-member="backend"]').click();
+      const work = page.locator('[data-role-view="backend"]');
+      await work.waitFor({ timeout: 10_000 });
+      expect(new URL(page.url()).searchParams.get("role")).toBe("backend");
+      await work.locator("[data-role-files]").waitFor({ timeout: 10_000 });
+      expect(await work.locator("[data-update-role]").evaluateAll((items) => [...new Set(items.map((i) => i.getAttribute("data-update-role")))])).toEqual(["backend"]);
+      await work.getByRole("button", { name: "Prompt and skills" }).click();
       await page.locator('[data-role-editor="backend"]').waitFor({ timeout: 10_000 });
       expect(errors).toEqual([]);
     } finally {
