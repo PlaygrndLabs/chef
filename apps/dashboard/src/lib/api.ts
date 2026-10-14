@@ -98,7 +98,6 @@ export interface UpdateOffer {
 export interface AppMode {
   readonly engine: string | null;
   readonly account?: string | null;
-  readonly admin?: boolean;
   readonly org?: OrgView | null;
   readonly orgs?: readonly OrgSummary[];
   readonly update?: UpdateOffer | null;

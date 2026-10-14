@@ -7,4 +7,3 @@ packages:
   - apps/*
   - template
   - site
-  - backoffice

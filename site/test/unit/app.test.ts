@@ -35,7 +35,6 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
   const member = (name: string) => ({
     signIn: async (profile: unknown, grant: unknown, admin: unknown, org: unknown, removing?: boolean) => void fake.calls.push({ name, method: "signIn", arg: { profile, grant, admin, org, ...(removing ? { removing } : {}) } }),
     admin: async () => fake.admins.includes(name),
-    backofficeTicket: async () => (fake.calls.push({ name, method: "backofficeTicket" }), `ticket-${fake.calls.filter((c) => c.method === "backofficeTicket").length}`),
     view: async () => ({ email: "sam@example.com", admin: fake.admins.includes(name), canSetUp: true, install: null }),
     accounts: async () => [{ id: "a1", name: "Mine", plan: "paid", subdomain: "mine" }],
     status: async () => ({ status: "idle" }),
@@ -278,18 +277,6 @@ describe("chef site", () => {
     expect(response.headers.get("set-cookie")).toContain("chef_session=; Path=/; Max-Age=0");
   });
 
-  it("sends only PlaygrndLabs admins to the backoffice, with a one-time ticket", async () => {
-    const { env: admin, fake } = fakeEnv({ admins: ["boss"] });
-    const withBackoffice = { ...admin, BACKOFFICE_URL: "https://chef-backoffice.example.workers.dev" } as Env;
-    expect((await handle(new Request(`${origin}/backoffice`, { headers: { cookie: await session() } }), withBackoffice)).headers.get("location")).toBe("/");
-    expect((await handle(new Request(`${origin}/backoffice`), withBackoffice)).headers.get("location")).toBe("/auth/start?then=backoffice");
-    expect((await handle(new Request(`${origin}/backoffice`, { headers: { cookie: await session("boss") } }), admin)).headers.get("location")).toBe("/");
-    const sent = await handle(new Request(`${origin}/backoffice`, { headers: { cookie: await session("boss") } }), withBackoffice);
-    expect(sent.headers.get("location")).toBe("https://chef-backoffice.example.workers.dev/auth/callback?ticket=boss.ticket-1");
-    expect(fake.calls).toContainEqual({ name: "boss", method: "backofficeTicket" });
-    expect((await handle(new Request(`${origin}/site/api/admin/members`, { headers: { cookie: await session("boss") } }), admin)).status).toBe(404);
-  });
-
   it("lets only an owner delete an organization, after typing its name, and lists what goes", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ projects: [{ name: "shop" }, { name: "blog" }] })));
     const engine = { ...ENGINE, name: "chef-acme-x7k2", accountId: "acc" };
@@ -325,23 +312,6 @@ describe("chef site", () => {
       expect(response.headers.get("set-cookie")).toMatch(/^chef_session=user1\.org1\./);
     }
     expect(await (await handle(new Request(`${origin}/remove`, { headers: { cookie: await session() } }), env)).text()).toBe("asset /remove");
-  });
-
-  it("signs people in with Cloudflare on the way to the backoffice, and sends only admins on", async () => {
-    const start = await handle(new Request(`${origin}/auth/start?then=backoffice`), fakeEnv().env);
-    expect(start.headers.get("set-cookie")).toMatch(/^chef_oauth=[\w-]+\.[\w-]+\.backoffice;/);
-    const accounts = { list: [{ id: "site-account" }] };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const target = String(input);
-      if (target.endsWith("/user")) return Response.json({ result: { id: "cfuser", email: "boss@example.com" } });
-      if (target.includes("/accounts")) return Response.json({ result: accounts.list });
-      return Response.json({ access_token: "tok", expires_in: 600 });
-    }));
-    const admin = await handle(new Request(`${origin}/auth/callback?code=c&state=mine`, { headers: { cookie: "chef_oauth=mine.verifier.backoffice" } }), fakeEnv().env);
-    expect(admin.headers.get("location")).toBe("/backoffice");
-    accounts.list = [];
-    const other = await handle(new Request(`${origin}/auth/callback?code=c&state=mine`, { headers: { cookie: "chef_oauth=mine.verifier.backoffice" } }), fakeEnv().env);
-    expect(other.headers.get("location")).toBe("/setup");
   });
 
   it("keeps the Cloudflare sign-in an owner makes to remove chef until removal starts", async () => {
