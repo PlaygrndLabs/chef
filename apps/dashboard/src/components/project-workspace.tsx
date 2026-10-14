@@ -23,7 +23,11 @@ export const MainView = preloadable(() => import("@/components/main-view").then(
 const CommandPalette = preloadable(() => import("@/components/command-palette").then((m) => m.CommandPalette));
 const NewProjectDialog = preloadable(() => import("@/components/project-setup").then((m) => m.NewProjectDialog));
 
-const CHAT = { initial: 440, min: 340, max: 720 } as const;
+const CHAT = { share: 0.32, initial: 480, widest: 680, min: 360, max: 900 } as const;
+
+function chatInitial(window: number): number {
+  return Math.round(Math.min(Math.max(window * CHAT.share, CHAT.initial), CHAT.widest));
+}
 const TREE = { initial: 280, min: 240, max: 440 } as const;
 const TABS_MIN = 420;
 const COMPOSE_DELAY_MS = 50;
@@ -89,7 +93,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const [fromGitHub] = useState(returningToNewProject);
   const [adding, setAdding] = useState(fromGitHub);
   const [expanded, setExpanded] = useState(false);
-  const [chatWidth, setChatWidth] = useStoredWidth("chef:chat-width", CHAT.initial);
+  const [chatWidth, setChatWidth] = useStoredWidth("chef:chat-width-v2", chatInitial(width));
   const [treeWidth, setTreeWidth] = useStoredWidth("chef:tree-width", TREE.initial);
   const app = useSettings();
   const paletteLoaded = useOpenedOnce(palette);
@@ -212,7 +216,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
             </main>
             <section className="relative shrink-0 border-l" style={{ width: chat }} aria-label="Chat">
               <ChatPane />
-              <ResizeHandle edge="left" width={chat} min={CHAT.min} max={chatMax} initial={CHAT.initial} onResize={setChatWidth} label="Resize the chat" />
+              <ResizeHandle edge="left" width={chat} min={CHAT.min} max={chatMax} initial={chatInitial(width)} onResize={setChatWidth} label="Resize the chat" />
             </section>
           </div>
         )}
