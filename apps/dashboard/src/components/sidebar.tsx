@@ -58,7 +58,7 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" id="app-menu" className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left hover:bg-sidebar-accent" aria-label="chef menu" title={org ? "Workspaces, settings and help" : "Settings for every project, theme and help"}>
+        <button type="button" id="app-menu" className="flex h-12 w-full min-w-0 items-center gap-2 px-3 text-left outline-none hover:bg-sidebar-accent focus-visible:bg-sidebar-accent data-[state=open]:bg-sidebar-accent" aria-label="chef menu" title={org ? "Workspaces, settings and help" : "Settings for every project, theme and help"}>
           <Mark className="size-6" />
           <span className="grid min-w-0 flex-1 leading-tight">
             <span className="truncate text-xs font-medium" data-current="workspace">{org ? orgLabel(org) : "Settings"}</span>
@@ -169,7 +169,7 @@ export function TreePane({ header = false }: { readonly header?: boolean }) {
       <FeatureTree>
         <AppRow />
       </FeatureTree>
-      <div className="flex items-center gap-1 border-t px-2.5 py-2">
+      <div className="shrink-0 dash-t">
         <AppMenu app={app} onSettings={(section) => openSettings("app", section)} />
       </div>
     </div>
