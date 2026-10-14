@@ -4,7 +4,7 @@ Status: partly proven locally, not yet run on a Cloudflare account.
 
 ## Question
 
-Can chef create a canonical repo, fork it per session, issue a token scoped to the fork, push `refs/notes/*`, and learn about pushes to `main` through `cf.artifacts.repo.pushed`?
+Can Chef create a canonical repo, fork it per session, issue a token scoped to the fork, push `refs/notes/*`, and learn about pushes to `main` through `cf.artifacts.repo.pushed`?
 
 ## What the docs say
 

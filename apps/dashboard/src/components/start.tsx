@@ -87,7 +87,7 @@ function ConnectModel(props: { readonly app: ReturnType<typeof useSettings>; rea
     <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 pt-12 pb-16 text-center sm:pt-20" data-onboarding="model">
       <div className="kicker text-brand">{props.first ? "Step 1 of 2" : "One thing first"}</div>
       <h1 className="text-xl font-medium tracking-tight">Connect a model</h1>
-      <p className="text-muted-foreground">chef plans, writes and reviews code with Claude. Paste your Anthropic API key, or the base URL and key of any Anthropic-compatible provider. The key stays on your chef.</p>
+      <p className="text-muted-foreground">Chef plans, writes and reviews code with Claude. Paste your Anthropic API key, or the base URL and key of any Anthropic-compatible provider. The key stays on your Chef.</p>
       <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="kicker inline-flex w-fit items-center gap-1 text-brand hover:underline">
         Get an Anthropic API key
         <ArrowUpRight className="size-3.5" />
@@ -105,7 +105,7 @@ function FirstProject(props: { readonly fromGitHub: boolean; readonly step: bool
     <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 pt-12 pb-16 text-center sm:pt-20">
       {props.step ? <div className="kicker text-brand">Step 2 of 2</div> : null}
       <h1 className="text-xl font-medium tracking-tight">Create your first project</h1>
-      <p className="text-muted-foreground">Start fresh, or bring a repository you already have and chef reads it first.</p>
+      <p className="text-muted-foreground">Start fresh, or bring a repository you already have and Chef reads it first.</p>
       <div className="mt-4 w-full">
         <NewProjectForm autoFocus fromGitHub={props.fromGitHub} onCreated={props.onCreated} />
       </div>
@@ -152,7 +152,7 @@ export function Start(props: {
     return () => window.removeEventListener("keydown", onKey);
   });
   useEffect(() => {
-    document.title = place ? "Settings · chef" : "chef";
+    document.title = place ? "Settings · Chef" : "Chef";
   }, [place]);
   const onNew = locked
     ? null

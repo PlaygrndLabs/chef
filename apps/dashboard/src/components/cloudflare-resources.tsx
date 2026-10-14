@@ -139,7 +139,7 @@ export function CloudflareSections({ view, loading, error }: { readonly view: Cl
   return (
     <div className="flex flex-col gap-5">
       <p className="text-xs text-muted-foreground">
-        Everything here runs on {view.accountId ? <span className="font-mono">account {view.accountId}</span> : "your Cloudflare account"}, under the chef engine <span className="font-mono">{view.engine}</span>. The Cloudflare links open the dashboard for that account.
+        Everything here runs on {view.accountId ? <span className="font-mono">account {view.accountId}</span> : "your Cloudflare account"}, under the Chef engine <span className="font-mono">{view.engine}</span>. The Cloudflare links open the dashboard for that account.
       </p>
       <div className="flex flex-col gap-1">
         <h4 className="kicker">This build</h4>

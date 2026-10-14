@@ -100,7 +100,7 @@ export class LlmPlanner implements Planner {
       prompt: [
         `Intent: ${input.intent}${input.changeKind ? ` (${input.changeKind})` : ""}`,
         `Roles for code, fix and refactor items (pick the one that fits each item; "test" items use the test role):\n${builders.map((b) => `- ${b.role}: ${b.description}`).join("\n")}`,
-        "Items of different roles run at the same time, each role on its own branch, and chef merges them into the feature; items of one role run in order. When the feature has parts that can be built apart (its server routes, its page, its look), give each part to its role as a separate item, and write into every item the contract the parts share (route paths, JSON shapes, element ids and class names, file names) so no role has to wait for another. Name one role for each shared thing, such as the .ts module that holds the page's CSS: a file belongs to the role that writes it first, and only that role may change it. Use a single role when the parts cannot be built apart.",
+        "Items of different roles run at the same time, each role on its own branch, and Chef merges them into the feature; items of one role run in order. When the feature has parts that can be built apart (its server routes, its page, its look), give each part to its role as a separate item, and write into every item the contract the parts share (route paths, JSON shapes, element ids and class names, file names) so no role has to wait for another. Name one role for each shared thing, such as the .ts module that holds the page's CSS: a file belongs to the role that writes it first, and only that role may change it. Use a single role when the parts cannot be built apart.",
         existing ? `Current spec entry:\n${JSON.stringify(existing, null, 2)}` : `Existing feature ids: ${input.spec.map((f) => f.id).join(", ") || "none"}`,
         ...(parent ? [`This feature sits under ${parent.id} (${parent.title}) and adds to it. Give it its own id and folder. It may also change files in features/${parent.id}/ to wire itself in, for example a button on that feature's page.`] : []),
         `Environment: when the feature talks to an outside service or needs a key or setting the person provides, list the environment variable names it reads in env, in capital snake case like STRIPE_SECRET_KEY, and reuse a name the project already has when it fits. The app reads them at runtime from context.env; their values never go in the code or the spec. Set in this project: ${input.env?.map((v) => v.name).join(", ") || "none"}.`,
@@ -121,7 +121,7 @@ export class LlmPlanner implements Planner {
       prompt: [
         `Summary so far:\n${input.summary || "(none)"}`,
         `Messages to fold in, oldest first:\n${input.turns.map(renderTurn).join("\n\n")}`,
-        "Write the new running summary of this chat between a person and chef, the app builder. Keep what later requests may refer to: what they asked for, the feature ids chef made, decisions, names, preferences and anything still open. Drop greetings and repetition. Use short lines, at most 300 words.",
+        "Write the new running summary of this chat between a person and Chef, the app builder. Keep what later requests may refer to: what they asked for, the feature ids Chef made, decisions, names, preferences and anything still open. Drop greetings and repetition. Use short lines, at most 300 words.",
       ].join("\n\n"),
     });
     return result.summary.trim();

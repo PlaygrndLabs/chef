@@ -12,7 +12,7 @@ export async function featureRequest(request: Request, orchestrator: Orchestrato
     }
     if (request.method === "DELETE") {
       const result = await orchestrator.removeFeature(featureId);
-      if (result.reverted) return { response: Response.json({ ...result, error: "Taking this feature out broke the app's checks, so chef kept it." }, { status: 409 }), mainChanged: true };
+      if (result.reverted) return { response: Response.json({ ...result, error: "Taking this feature out broke the app's checks, so Chef kept it." }, { status: 409 }), mainChanged: true };
       return { response: Response.json(result), mainChanged: result.commitId !== null };
     }
   } catch (error) {

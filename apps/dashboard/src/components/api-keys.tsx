@@ -67,7 +67,7 @@ function NewToken(props: { readonly token: string; readonly onDone: () => void }
   };
   return (
     <div className="grid gap-2 border border-dashed p-3" data-new-api-key>
-      <p className="text-xs">Copy the key now. chef keeps only a fingerprint of it and cannot show it again.</p>
+      <p className="text-xs">Copy the key now. Chef keeps only a fingerprint of it and cannot show it again.</p>
       <div className="flex items-center gap-2">
         <code className="min-w-0 flex-1 break-all font-mono text-[11px]">{props.token}</code>
         <Button type="button" size="icon-sm" variant="ghost" aria-label="Copy the key" onClick={() => void copy()}>
@@ -116,7 +116,7 @@ function CreateForm(props: { readonly onCreated: (token: string) => void }) {
       </div>
       <label className="flex items-center gap-2 text-xs text-muted-foreground">
         <input type="checkbox" checked={controller} onChange={(e) => setController(e.target.checked)} />
-        For an app that manages this chef and acts for its people
+        For an app that manages this Chef and acts for its people
       </label>
       <Button type="submit" size="sm" className="w-fit" disabled={busy || !name.trim()}>
         Make a key
@@ -136,7 +136,7 @@ export function ApiKeysSection() {
   useEffect(() => void load(), []);
   return (
     <>
-      <Group title="Keys" note="Each key opens the whole chef API. Revoke one and anything that uses it stops at once.">
+      <Group title="Keys" note="Each key opens the whole Chef API. Revoke one and anything that uses it stops at once.">
         {keys === null ? (
           <p className="text-xs text-muted-foreground">Loading…</p>
         ) : keys.length === 0 ? (

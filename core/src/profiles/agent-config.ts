@@ -61,7 +61,7 @@ export function configProblems(config: AgentConfig, defaults: Profiles): string[
     names.add(skill.name);
   }
   for (const [role, setting] of Object.entries(config.roles)) {
-    if (RESERVED_ROLES.includes(role)) problems.push(`${role} is a name chef uses itself; pick another role id`);
+    if (RESERVED_ROLES.includes(role)) problems.push(`${role} is a name Chef uses itself; pick another role id`);
     for (const skill of setting.skills) if (!names.has(skill)) problems.push(`${setting.label} uses a skill that does not exist: ${skill}`);
     if (!defaults[role] && setting.label.trim().length === 0) problems.push(`${role} needs a name`);
   }
@@ -129,7 +129,7 @@ export interface StoredAgents extends AgentVersion {
   readonly config: AgentConfig;
 }
 
-export const DEFAULT_STORED_AGENTS: StoredAgents = { version: 0, at: 0, summary: "chef defaults", config: EMPTY_AGENT_CONFIG };
+export const DEFAULT_STORED_AGENTS: StoredAgents = { version: 0, at: 0, summary: "Chef defaults", config: EMPTY_AGENT_CONFIG };
 
 
 export type SaveResult = { readonly ok: true; readonly stored: StoredAgents } | { readonly ok: false; readonly error: string; readonly status: 404 | 409 };
@@ -176,7 +176,7 @@ export class AgentSettings implements AgentStore {
   async restore(version: number): Promise<SaveResult> {
     const target = version === 0 ? { config: EMPTY_AGENT_CONFIG } : await this.store.get<StoredAgents>(`${this.versions}${String(version).padStart(6, "0")}`);
     if (!target) return { ok: false, status: 404, error: `version ${version} is no longer kept` };
-    return this.save(target.config, version === 0 ? "Back to chef defaults" : `Restored version ${version}`, null);
+    return this.save(target.config, version === 0 ? "Back to Chef defaults" : `Restored version ${version}`, null);
   }
 
   private async prune(): Promise<void> {

@@ -198,7 +198,7 @@ export async function startTalk(options: { readonly project: string; readonly on
       }
       if (event.type === "session.closed") {
         ended = true;
-        reject(new Error(problem || "chef ended the live talk"));
+        reject(new Error(problem || "Chef ended the live talk"));
       }
       options.onEvent(event);
     });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { transient } from "../../src/orchestrator/orchestrator.ts";
 
 describe("transient errors", () => {
-  it("retries a sandbox that a chef update restarted mid-turn", () => {
+  it("retries a sandbox that a Chef update restarted mid-turn", () => {
     expect(transient(new Error("Container service disconnected."))).toBe(true);
     expect(transient(new Error("Error: exec failed (the sandbox container stopped: its main process exited)"))).toBe(true);
     expect(transient(new Error("the sandbox container did not start: timed out"))).toBe(true);

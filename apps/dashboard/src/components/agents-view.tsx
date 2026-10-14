@@ -22,7 +22,7 @@ const RUNS: Readonly<Record<RoleView["runs"], { readonly badge: string; readonly
   },
   api: {
     badge: "Claude call",
-    text: "Runs as one Claude call. It reads what chef gives it and answers; it never edits files. Its skills are added to its system prompt.",
+    text: "Runs as one Claude call. It reads what Chef gives it and answers; it never edits files. Its skills are added to its system prompt.",
   },
   rules: {
     badge: "Code rules",
@@ -301,11 +301,11 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
             ))}
             {role?.writeScope.length === 0 ? <li>nothing</li> : null}
           </ul>
-          <span className="text-xs text-muted-foreground">chef's checks reject any change outside these paths, whatever the prompt says.</span>
+          <span className="text-xs text-muted-foreground">Chef's checks reject any change outside these paths, whatever the prompt says.</span>
         </div>
       ) : null}
       <div className="sticky bottom-0 -mx-1 flex items-center gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
-        <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : view.scope ? (own ? "Saved for this project. History can bring back any earlier version." : "Using the setting for all projects.") : role?.edited ? "Saved. History can bring back any earlier version." : "Using chef's default."}</span>
+        <span className="text-xs text-muted-foreground">{dirty ? "Unsaved changes" : view.scope ? (own ? "Saved for this project. History can bring back any earlier version." : "Using the setting for all projects.") : role?.edited ? "Saved. History can bring back any earlier version." : "Using Chef's default."}</span>
         <span className="flex-1" />
         {dirty ? (
           <Button type="button" variant="ghost" size="sm" onClick={() => setDraft(base)}>
@@ -480,7 +480,7 @@ function HistoryMenu({ view }: { readonly view: View }) {
   const restore = async (version: number) => {
     try {
       setAgents(await agentsApi(view.scope?.project ?? null).restore(version));
-      toast.success(version === 0 ? (view.scope ? "Back to the settings for all projects" : "Back to chef's defaults") : `Restored version ${version}`, { description: "The version you left is still in History." });
+      toast.success(version === 0 ? (view.scope ? "Back to the settings for all projects" : "Back to Chef's defaults") : `Restored version ${version}`, { description: "The version you left is still in History." });
     } catch (error) {
       toast.error("Could not restore", {
         description: error instanceof Error ? error.message : String(error),
@@ -507,7 +507,7 @@ function HistoryMenu({ view }: { readonly view: View }) {
         {view.history.length ? <DropdownMenuSeparator /> : null}
         <DropdownMenuItem disabled={view.version === 0} onClick={() => void restore(0)}>
           <RotateCcw />
-          {view.scope ? "Back to the settings for all projects" : "Back to chef's defaults"}
+          {view.scope ? "Back to the settings for all projects" : "Back to Chef's defaults"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -517,7 +517,7 @@ function HistoryMenu({ view }: { readonly view: View }) {
 const INTRO: Readonly<Record<AgentSection, { readonly app: string; readonly project: string }>> = {
   agents: { app: "Every project starts with these roles. A project can change any of them for itself.", project: "The roles that plan, test, build and review this project. Change one here to change it for this project only." },
   skills: { app: "Short guides roles follow in every project.", project: "Skills from all projects, plus this project's own. A skill with the same name here replaces the shared one." },
-  router: { app: "How chef decides whether a request is a new feature, a change, a chore or a question, in every project.", project: "How chef sorts requests in this project. It follows the setting for all projects until you save a change here." },
+  router: { app: "How Chef decides whether a request is a new feature, a change, a chore or a question, in every project.", project: "How Chef sorts requests in this project. It follows the setting for all projects until you save a change here." },
 };
 
 export function AgentsSection(props: { readonly project: string | null; readonly section: AgentSection; readonly item: string | null; readonly nav: AgentsNav; readonly before?: ReactNode }) {

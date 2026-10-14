@@ -102,7 +102,7 @@ export async function aesCipher(rawKey: Uint8Array<ArrayBuffer>): Promise<EnvCip
     },
     async decrypt(sealed) {
       const [version, iv, data] = sealed.split(".");
-      if (version !== "v1" || !iv || !data) throw new Error("an environment value is not in a format chef can read");
+      if (version !== "v1" || !iv || !data) throw new Error("an environment value is not in a format Chef can read");
       return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromBase64(iv) }, key, fromBase64(data)));
     },
   };

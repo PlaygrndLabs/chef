@@ -1,16 +1,16 @@
-# Developing chef
+# Developing Chef
 
 ## Repository layout
 
 ```
-spec/        chef's own feature map
+spec/        Chef's own feature map
 core/        spec, router, state machine, orchestrator, merge, ports and fakes
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, guidance, GitHub, the CopilotKit agent
-workers/     the engine, the chef Worker: project and session Durable Objects, coder sandbox, sync workflow (configured by the root wrangler.jsonc)
+workers/     the engine, the Chef Worker: project and session Durable Objects, coder sandbox, sync workflow (configured by the root wrangler.jsonc)
 apps/        dashboard: feature tree, session tabs that open on each preview, and the CopilotKit project chat
 agents/      default role profiles with write scopes
-template/    the template every project chef builds starts from
-cli/         chef CLI: spec lint, deploy script (chef deploy), benchmarks, the test server, local check runners
+template/    the template every project Chef builds starts from
+cli/         Chef CLI: spec lint, deploy script (`chef deploy`), benchmarks, the test server, local check runners
 docs/        architecture, spikes, progress
 ```
 

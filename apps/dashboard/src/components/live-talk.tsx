@@ -42,7 +42,7 @@ export function LivePanel() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const label = talk.phase === "starting" ? "Starting live talk" : talk.phase === "connecting" ? "Connecting" : talking ? "chef is talking" : talk.muted ? "Muted. chef can't hear you." : "Listening";
+  const label = talk.phase === "starting" ? "Starting live talk" : talk.phase === "connecting" ? "Connecting" : talking ? "Chef is talking" : talk.muted ? "Muted. Chef can't hear you." : "Listening";
   return (
     <div className="pointer-events-none sticky bottom-0 z-10 bg-linear-to-t from-background via-background/90 to-transparent px-4 pt-8 pb-4 sm:px-6 sm:pb-5" id="live-talk" data-phase={talk.phase} data-muted={talk.muted}>
       <div className="pointer-events-auto mx-auto flex w-fit flex-col items-center gap-2 px-4 pt-3 pb-1">

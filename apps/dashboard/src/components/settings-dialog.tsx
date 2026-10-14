@@ -49,7 +49,7 @@ function ModelsForm(props: { readonly settings: SettingsView; readonly save: Sav
       <label className="grid gap-1 text-xs text-muted-foreground">
         Parallel tries per feature
         <Input value={count} onChange={(e) => setCount(e.target.value)} aria-label="Parallel attempts" type="number" min={1} max={4} required />
-        <span>With more than 1, chef builds each new feature that many ways at once and keeps the one that passes the most checks. Each try costs as much as a whole build. A project can set its own number.</span>
+        <span>With more than 1, Chef builds each new feature that many ways at once and keeps the one that passes the most checks. Each try costs as much as a whole build. A project can set its own number.</span>
       </label>
       <Actions busy={busy} onRemove={models.source === "app" || attempts.source === "app" ? () => void run({ models: null, attempts: null }, "Back to the defaults") : undefined} />
     </form>
@@ -150,7 +150,7 @@ function GitHubSection(props: { readonly returnTo: string }) {
   if (!github) return <p className="text-xs text-muted-foreground">Checking GitHub…</p>;
   if (!github.app)
     return (
-      <Group title="Not connected" note="Connect once and every project can link a GitHub repository by picking it from a list. GitHub asks you to create chef's own app for this deployment, then to pick the repositories it may use.">
+      <Group title="Not connected" note="Connect once and every project can link a GitHub repository by picking it from a list. GitHub asks you to create Chef's own app for this deployment, then to pick the repositories it may use.">
         <div className="grid gap-2" data-github="none">
           <label className="grid gap-1 text-xs text-muted-foreground">
             GitHub organization that owns the repositories (leave empty for your own account)
@@ -166,9 +166,9 @@ function GitHubSection(props: { readonly returnTo: string }) {
     );
   const app = github.app;
   return (
-    <Group title="Connected" note={`chef uses its own GitHub app, ${app.name}, owned by ${app.owner}. Projects link a repository in Project settings > Repository.`}>
+    <Group title="Connected" note={`Chef uses its own GitHub app, ${app.name}, owned by ${app.owner}. Projects link a repository in Project settings > Repository.`}>
       <div className="grid gap-2" data-github="connected">
-        <p className="text-xs text-muted-foreground">{github.repositories.length === 1 ? "1 repository is" : `${github.repositories.length} repositories are`} shared with chef.</p>
+        <p className="text-xs text-muted-foreground">{github.repositories.length === 1 ? "1 repository is" : `${github.repositories.length} repositories are`} shared with Chef.</p>
         <ul className="grid max-h-48 gap-px overflow-y-auto rounded-lg border p-1 text-xs">
           {github.repositories.map((r) => (
             <li key={r.fullName} className="truncate px-2 py-1">
@@ -235,7 +235,7 @@ export function SettingsDialog(props: {
       id: "general",
       label: "General",
       icon: SlidersHorizontal,
-      note: host.generalNote ?? "How chef looks and who can open it.",
+      note: host.generalNote ?? "How Chef looks and who can open it.",
       render: () => (
         <>
           <Group title="Theme">
@@ -254,7 +254,7 @@ export function SettingsDialog(props: {
       id: "usage",
       label: "Usage",
       icon: Wallet,
-      note: "What chef spends on models this month, and the budgets that pause work when they are reached.",
+      note: "What Chef spends on models this month, and the budgets that pause work when they are reached.",
       render: () => <UsageSection />,
     },
     {
@@ -262,7 +262,7 @@ export function SettingsDialog(props: {
       label: "Models",
       icon: Cpu,
       attention: missing.includes("models"),
-      note: "The provider and models every project uses. Keys stay on your chef; only their last four characters come back here.",
+      note: "The provider and models every project uses. Keys stay on your Chef; only their last four characters come back here.",
       render: () =>
         settings ? (
           <>
@@ -272,7 +272,7 @@ export function SettingsDialog(props: {
             <Group title="Models" note="Model ids your providers accept, and how many tries race on each new feature. The voice model is the one you talk to in live talk. A role can pick its own model in Agents.">
               <ModelsForm key={JSON.stringify([settings.models, settings.attempts])} settings={settings} save={save} />
             </Group>
-            <Group title="Voice (optional)" note="Live talk with chef. Use an OpenAI key, or a provider that serves the OpenAI Realtime API.">
+            <Group title="Voice (optional)" note="Live talk with Chef. Use an OpenAI key, or a provider that serves the OpenAI Realtime API.">
               <ProviderForm key={`voice-${settings.voice?.kind ?? "none"}`} part="voice" choices={VOICE_CHOICES} current={settings.voice} save={save} />
             </Group>
           </>
@@ -319,7 +319,7 @@ export function SettingsDialog(props: {
         ),
     },
     { id: "github", label: "GitHub", icon: GitBranch, note: "One connection for every project that links a GitHub repository.", render: () => <GitHubSection returnTo={props.returnTo} /> },
-    { id: "api-keys", label: "API keys", icon: Key, note: "Keys for scripts and apps that use chef without a browser.", render: () => <ApiKeysSection /> },
+    { id: "api-keys", label: "API keys", icon: Key, note: "Keys for scripts and apps that use Chef without a browser.", render: () => <ApiKeysSection /> },
   ];
   const hidden = new Set(host.hiddenSections ?? []);
   const sections = all

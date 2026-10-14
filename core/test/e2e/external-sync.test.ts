@@ -52,16 +52,16 @@ describe("an optional external git link", () => {
     const id = (await w.orchestrator.submit(PROMPT)).sessionId as string;
     await w.orchestrator.step(id);
     await w.orchestrator.step(id);
-    await remote.commit({ "docs/notes.md": "written outside chef\n" }, "Add notes");
+    await remote.commit({ "docs/notes.md": "written outside Chef\n" }, "Add notes");
     const pulled = await sync.pull();
     expect(pulled.status).toBe("merged");
     const main = await w.orchestrator.mainTree();
-    expect(main.tree["docs/notes.md"]).toBe("written outside chef\n");
+    expect(main.tree["docs/notes.md"]).toBe("written outside Chef\n");
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect((await w.orchestrator.session(id)).syncPending).toBe(true);
     const record = await w.orchestrator.run(id);
     expect(record.machine.state).toBe("merged");
-    expect((await w.orchestrator.mainTree()).tree["docs/notes.md"]).toBe("written outside chef\n");
+    expect((await w.orchestrator.mainTree()).tree["docs/notes.md"]).toBe("written outside Chef\n");
     expect(w.bus.log.some((e) => e.type === "external.pulled" && e.status === "merged")).toBe(true);
   });
 
