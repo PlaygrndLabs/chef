@@ -1,55 +1,51 @@
 export const LIVE_MOCK = `
 (() => {
-  const voice = { channel: null, sent: [], tone: null };
+  const voice = { channel: null, sent: [], closed: false, sockets: 0 };
   window.__voice = voice;
-  const tone = (gain) => {
+  navigator.mediaDevices.getUserMedia = async () => {
     const context = new AudioContext();
     const osc = context.createOscillator();
     const level = context.createGain();
-    level.gain.value = gain;
+    level.gain.value = 0;
     const out = context.createMediaStreamDestination();
     osc.connect(level).connect(out);
     osc.start();
-    return { stream: out.stream, level };
+    return out.stream;
   };
-  navigator.mediaDevices.getUserMedia = async () => {
-    voice.mic = tone(0);
-    return voice.mic.stream;
-  };
-  class FakeChannel extends EventTarget {
-    readyState = "open";
+  class FakeVoiceSocket extends EventTarget {
+    readyState = 0;
+    binaryType = "blob";
+    constructor(url) {
+      super();
+      this.url = url;
+      voice.channel = this;
+      voice.closed = false;
+      voice.sockets++;
+      setTimeout(() => {
+        this.readyState = 1;
+        this.dispatchEvent(new Event("open"));
+        this.emit({ type: "session.started", session: { id: "voice" + voice.sockets } });
+      }, 30);
+    }
     send(data) {
       voice.sent.push(data);
-      if (JSON.parse(data).type === "session.close") setTimeout(() => this.emit({ type: "session.closed" }), 10);
+    }
+    close() {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      voice.closed = true;
+      this.dispatchEvent(new CloseEvent("close", { code: 1000 }));
     }
     emit(event) {
       this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(event) }));
     }
   }
-  class FakePeer extends EventTarget {
-    iceGatheringState = "complete";
-    localDescription = null;
-    createDataChannel() {
-      voice.channel = new FakeChannel();
-      return voice.channel;
+  const Real = window.WebSocket;
+  window.WebSocket = class extends Real {
+    constructor(url, protocols) {
+      if (String(url).includes("voice=1")) return new FakeVoiceSocket(url);
+      super(url, protocols);
     }
-    addTrack() {}
-    async createOffer() {
-      return { type: "offer", sdp: "v=0 fake offer" };
-    }
-    async setLocalDescription(description) {
-      this.localDescription = description;
-    }
-    async setRemoteDescription() {
-      voice.chef = tone(0);
-      const event = new Event("track");
-      event.streams = [voice.chef.stream];
-      event.track = voice.chef.stream.getAudioTracks()[0];
-      this.dispatchEvent(event);
-      setTimeout(() => voice.channel.emit({ type: "session.started", session: { id: "voice1" } }), 50);
-    }
-    close() {}
-  }
-  window.RTCPeerConnection = FakePeer;
+  };
 })();
 `;

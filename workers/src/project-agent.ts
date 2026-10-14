@@ -1,4 +1,4 @@
-import { Agent, type Connection, type ConnectionContext } from "agents";
+import { Agent, type Connection, type ConnectionContext, type WSMessage } from "agents";
 import { ArtifactsRepoHost, bindingControl, type ArtifactsBindingLike } from "@chef/adapters/artifacts";
 import { JevClassifier } from "@chef/adapters/jev";
 import { llmFromProvider, providerBaseUrl, type LlmEndpoint, type MessagesClient } from "@chef/adapters/anthropic";
@@ -59,7 +59,7 @@ function role(profiles: Profiles, name: string) {
 }
 
 export class ProjectAgent extends Agent<Env> {
-  private readonly calls = new Map<string, VoiceCall>();
+  private readonly calls = new Map<string, Promise<VoiceCall | null>>();
   private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; space: CloudflareWorkerSpace | null; live: SandboxLiveHost | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
   private cipher: EnvCipher | null = null;
   private deploying = false;
@@ -81,7 +81,7 @@ export class ProjectAgent extends Agent<Env> {
     const env = this.env;
     const control = bindingControl(env.ARTIFACTS as unknown as ArtifactsBindingLike);
     const repos = new ArtifactsRepoHost(control);
-    const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message));
+    const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message, [...this.calls.keys()]));
     const llm = settings.llm ? llmFromProvider(settings.llm) : missingLlm;
     const profiles = applyAgentConfig(loadProfiles(agentFiles), agents.config);
     const reviewerRole = role(profiles, "reviewer");
@@ -217,44 +217,6 @@ export class ProjectAgent extends Agent<Env> {
       const { prompt } = (await request.json().catch(() => ({}))) as { prompt?: string };
       if (!prompt?.trim()) return Response.json({ error: "prompt is required" }, { status: 400 });
       return Response.json(await orchestrator.route(prompt.trim()));
-    }
-    if (request.method === "POST" && action === "voice") {
-      const { sdp } = (await request.json()) as { sdp?: string };
-      if (!sdp) return Response.json({ error: "sdp is required" }, { status: 400 });
-      if (!settings.llm) return Response.json({ error: NO_LLM }, { status: 409 });
-      const voice = settings.voice;
-      if (!voice) return Response.json({ error: "voice needs an OpenAI API key or a custom Realtime provider in Settings" }, { status: 409 });
-      const host =
-        voice.kind === "openai"
-          ? new GptLiveHost({ apiKey: voice.apiKey, model: this.env.VOICE_MODEL, voice: this.env.VOICE, connect: workersConnect })
-          : new RealtimeHost({ baseUrl: voice.baseUrl, apiKey: voice.apiKey, model: this.env.REALTIME_MODEL, voice: this.env.VOICE, connect: workersConnect });
-      const target = {
-        submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
-          const result = await orchestrator.submitSpoken(prompt, call);
-          if (result.sessionId) await this.schedule(1, "drive");
-          return result;
-        },
-        recordSpoken: (turn: SpokenTurn & { voiceSessionId: string }) => orchestrator.recordSpoken(turn),
-      };
-      let call: VoiceCall;
-      try {
-        call = await startVoiceCall({
-          host,
-          target,
-          spec: readSpec((await orchestrator.mainTree()).tree),
-          sdp,
-          ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
-          settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
-          onEvent: (event) => {
-            if (event.type === "session.closed") this.calls.delete(call.sessionId);
-          },
-        });
-      } catch (error) {
-        console.error("starting a voice call failed", error);
-        return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 502 });
-      }
-      this.calls.set(call.sessionId, call);
-      return Response.json({ sessionId: call.sessionId, sdp: call.sdp }, { status: 201 });
     }
     if (request.method === "GET" && action === "sessions") return Response.json(await orchestrator.sessions());
     if (request.method === "GET" && action === "cursor") return Response.json({ seq: await bus.cursor() });
@@ -458,7 +420,15 @@ export class ProjectAgent extends Agent<Env> {
     if (outcome.status === "awake") await this.schedule(Math.max(60, Math.ceil((idleMs - outcome.idleForMs) / 1000)), "sweepPreviews", undefined, { idempotent: true });
   }
 
+  override shouldSendProtocolMessages(_connection: Connection, context: ConnectionContext): boolean {
+    return !isVoice(context.request.url);
+  }
+
   override async onConnect(connection: Connection, context: ConnectionContext): Promise<void> {
+    if (isVoice(context.request.url)) {
+      this.calls.set(connection.id, this.startVoice(connection));
+      return;
+    }
     const { bus } = await this.build();
     let after = replayFrom(context.request.url);
     for (;;) {
@@ -469,6 +439,75 @@ export class ProjectAgent extends Agent<Env> {
       if (!last || entries.length < 500) break;
     }
     connection.send(JSON.stringify(caughtUp(after)));
+  }
+
+  override async onMessage(connection: Connection, message: WSMessage): Promise<void> {
+    const call = this.calls.get(connection.id);
+    if (!call || typeof message === "string") return;
+    const audio = message instanceof ArrayBuffer ? new Uint8Array(message) : new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
+    (await call)?.sendAudio(audio);
+  }
+
+  override async onClose(connection: Connection): Promise<void> {
+    const call = this.calls.get(connection.id);
+    if (!call) return;
+    this.calls.delete(connection.id);
+    await (await call)?.connection.close();
+  }
+
+  private async startVoice(connection: Connection): Promise<VoiceCall | null> {
+    const send = (event: object) => {
+      try {
+        connection.send(JSON.stringify(event));
+      } catch {
+        return;
+      }
+    };
+    const hangUp = () => {
+      try {
+        connection.close(1000, "done");
+      } catch {
+        return;
+      }
+    };
+    const fail = (message: string) => {
+      send({ type: "error", error: { message } });
+      send({ type: "session.closed" });
+      hangUp();
+      return null;
+    };
+    const { orchestrator, settings } = await this.build();
+    if (!settings.llm) return fail(NO_LLM);
+    const voice = settings.voice;
+    if (!voice) return fail("Live talk needs a voice key in Settings > Voice.");
+    const host =
+      voice.kind === "openai"
+        ? new GptLiveHost({ apiKey: voice.apiKey, model: this.env.VOICE_MODEL, voice: this.env.VOICE, connect: workersConnect })
+        : new RealtimeHost({ baseUrl: voice.baseUrl, apiKey: voice.apiKey, model: this.env.REALTIME_MODEL, voice: this.env.VOICE, connect: workersConnect });
+    const target = {
+      submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
+        const result = await orchestrator.submitSpoken(prompt, call);
+        if (result.sessionId) await this.schedule(1, "drive");
+        return result;
+      },
+      recordSpoken: (turn: SpokenTurn & { voiceSessionId: string }) => orchestrator.recordSpoken(turn),
+    };
+    try {
+      return await startVoiceCall({
+        host,
+        target,
+        spec: readSpec((await orchestrator.mainTree()).tree),
+        ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
+        settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
+        onEvent: (event) => {
+          send(event);
+          if (event.type === "session.closed") hangUp();
+        },
+      });
+    } catch (error) {
+      console.error("starting a voice call failed", error);
+      return fail(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async syncExternal(): Promise<void> {
@@ -624,6 +663,10 @@ const noPreviews: PreviewHost = {
   },
   current: async () => null,
 };
+
+function isVoice(url: string): boolean {
+  return new URL(url).searchParams.get("voice") === "1";
+}
 
 const workersConnect: Connect = async (url, headers) => {
   const response = await fetch(url.replace(/^ws/, "http"), { headers: { ...headers, upgrade: "websocket" } });

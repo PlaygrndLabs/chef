@@ -34,55 +34,55 @@ class FakeSocket implements SocketLike {
 }
 
 describe("Realtime adapter for a custom provider", () => {
-  it("opens a WebRTC call with the request tool and turns its tool call into a client delegation", async () => {
-    const requests: { url: string; body: Record<string, unknown>; auth: string | null }[] = [];
-    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
-      requests.push({ url: String(url), body: JSON.parse(String(init?.body)) as Record<string, unknown>, auth: new Headers(init?.headers).get("authorization") });
-      return new Response("answer-sdp", { status: 201, headers: { "content-type": "application/sdp", location: "/v1/realtime/calls/rtc_123" } });
-    }) as typeof fetch;
-    const socket = new FakeSocket();
-    const connects: string[] = [];
-    const host = new RealtimeHost({ baseUrl: "https://gateway.example/v1", apiKey: "app-key", fetchImpl, connect: async (url) => (connects.push(url), socket) });
-
-    expect(await host.open({ sdp: "offer-sdp", instructions: "be brief" })).toEqual({ sessionId: "rtc_123", sdp: "answer-sdp" });
-    expect(requests[0]?.url).toBe("https://gateway.example/v1/realtime/calls");
-    expect(requests[0]?.auth).toBe("Bearer app-key");
-    const session = requests[0]?.body["session"] as { model: string; tools: { name: string }[]; instructions: string };
-    expect(session.model).toBe("gpt-realtime");
+  it("starts an audio session, forwards caller audio and turns the request tool into a client delegation", async () => {
+    const socket = new FakeSocket((message, s) => {
+      if (message["type"] === "session.update" && !message["event_id"]) s.receive({ type: "session.created", session: { id: "sess_9" } });
+    });
+    const urls: string[] = [];
+    const host = new RealtimeHost({ baseUrl: "https://gateway.example/v1/", apiKey: "app-key", connect: async (url, headers) => (urls.push(`${url} ${headers["authorization"]}`), socket) });
+    const events: Record<string, unknown>[] = [];
+    const stream = await host.start({ instructions: "be brief", onEvent: (event) => events.push(event) });
+    expect(stream.sessionId).toBe("sess_9");
+    expect(urls).toEqual(["wss://gateway.example/v1/realtime?model=gpt-realtime Bearer app-key"]);
+    const session = socket.sent[0]?.["session"] as { tools: { name: string }[]; instructions: string; audio: { input: { format: unknown; transcription: unknown } } };
     expect(session.tools.map((t) => t.name)).toEqual([REQUEST_TOOL]);
     expect(session.instructions.startsWith("be brief")).toBe(true);
+    expect(session.audio.input.format).toEqual({ type: "audio/pcm", rate: 24000 });
 
-    const events: Record<string, unknown>[] = [];
-    const live = await host.attach("rtc_123", (event) => events.push(event));
-    expect(connects).toEqual(["wss://gateway.example/v1/realtime?call_id=rtc_123"]);
+    stream.sendAudio(new Uint8Array(30000).fill(1));
+    const chunks = socket.sent.filter((m) => m["type"] === "input_audio_buffer.append").map((m) => Buffer.from(String(m["audio"]), "base64").length);
+    expect(chunks).toEqual([24000, 6000]);
+
+    socket.receive({ type: "input_audio_buffer.speech_started" });
+    socket.receive({ type: "conversation.item.input_audio_transcription.delta", delta: "uh add a to-do list" });
+    socket.receive({ type: "response.output_audio.delta", delta: "AAA=" });
     socket.receive({ type: "response.output_audio_transcript.delta", delta: "On it." });
-    socket.receive({ type: "response.function_call_arguments.done", name: REQUEST_TOOL, call_id: "call_1", arguments: JSON.stringify({ request: "Add an item to a to-do list" }) });
+    socket.receive({ type: "response.function_call_arguments.done", name: REQUEST_TOOL, call_id: "call_1", arguments: JSON.stringify({ request: "Add a to-do list" }) });
     socket.receive({ type: "response.done" });
-    expect(events).toEqual([
+    expect(events.slice(1)).toEqual([
+      { type: "session.input_speech.started" },
+      { type: "session.input_transcript.delta", delta: "uh add a to-do list", start_ms: null },
+      { type: "session.output_audio.delta", delta: "AAA=" },
       { type: "session.output_transcript.delta", delta: "On it." },
-      { type: "session.input_transcript.delta", delta: "Add an item to a to-do list", start_ms: null },
-      { type: "session.delegation.created", delegation: { id: "call_1", target: "client" }, offset_ms: null },
+      { type: "session.delegation.created", delegation: { id: "call_1", target: "client", request: "Add a to-do list" }, offset_ms: null },
     ]);
 
-    live.send({ type: "session.commentary.append", event_id: "e1", delegation_id: "call_1", content: "Started todo-add." });
-    expect(socket.sent).toEqual([
+    const sent = socket.sent.length;
+    stream.connection.send({ type: "session.commentary.append", event_id: "e1", delegation_id: "call_1", content: "Started todo-add." });
+    expect(socket.sent.slice(sent)).toEqual([
       { type: "conversation.item.create", event_id: "e1", item: { type: "function_call_output", call_id: "call_1", output: JSON.stringify({ result: "Started todo-add." }) } },
       { type: "response.create" },
     ]);
-    await live.close();
+    await stream.connection.close();
     expect(socket.closedWith).toBe(1000);
     expect(events.at(-1)).toEqual({ type: "session.closed" });
   });
 
-  it("starts a server-side session and sends a typed request", async () => {
+  it("fails fast when the provider reports an error before the session starts", async () => {
     const socket = new FakeSocket((message, s) => {
-      if (message["type"] === "session.update") s.receive({ type: "session.created", session: { id: "sess_9" } });
+      if (message["type"] === "session.update") s.receive({ type: "error", error: { message: "no realtime here" } });
     });
-    const urls: string[] = [];
-    const session = await startRealtimeSession({ baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", instructions: "hi", onEvent: () => {}, connect: async (url) => (urls.push(url), socket) });
-    expect(urls).toEqual(["ws://127.0.0.1:1/v1/realtime?model=gpt-realtime"]);
-    session.say("Add an item");
-    expect(socket.sent.map((m) => m["type"])).toEqual(["session.update", "conversation.item.create", "response.create"]);
+    await expect(startRealtimeSession({ baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", instructions: "hi", onEvent: () => {}, connect: async () => socket })).rejects.toThrow("no realtime here");
   });
 });
 

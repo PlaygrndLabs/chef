@@ -1,4 +1,4 @@
-import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceOffer } from "../ports/voice.ts";
+import type { LiveCommand, LiveEvent, VoiceHost, VoiceStream } from "../ports/voice.ts";
 
 export function spokenEvents(text: string, delegationId: string, startMs: number): LiveEvent[] {
   const events: LiveEvent[] = [];
@@ -13,26 +13,31 @@ export function spokenEvents(text: string, delegationId: string, startMs: number
 
 export class ScriptedVoiceHost implements VoiceHost {
   readonly model = "scripted-voice";
-  readonly offers: VoiceOffer[] = [];
+  readonly instructions: string[] = [];
   readonly commands: LiveCommand[] = [];
+  readonly audio: Uint8Array[] = [];
   private listener: ((event: LiveEvent) => void) | null = null;
   private clock = 0;
   private count = 0;
 
-  async open(offer: VoiceOffer): Promise<{ sessionId: string; sdp: string }> {
-    this.offers.push(offer);
-    return { sessionId: `voice${this.offers.length}`, sdp: `answer for ${offer.sdp}` };
-  }
-
-  async attach(sessionId: string, onEvent: (event: LiveEvent) => void): Promise<LiveConnection> {
-    this.listener = onEvent;
-    onEvent({ type: "session.started", session: { id: sessionId } });
+  async start(input: { readonly instructions: string; readonly onEvent: (event: LiveEvent) => void }): Promise<VoiceStream> {
+    this.instructions.push(input.instructions);
+    const sessionId = `voice${this.instructions.length}`;
+    this.listener = input.onEvent;
+    input.onEvent({ type: "session.started", session: { id: sessionId } });
     return {
-      send: (command) => {
-        this.commands.push(command);
+      sessionId,
+      connection: {
+        send: (command) => {
+          this.commands.push(command);
+        },
+        close: async () => {
+          this.listener?.({ type: "session.closed" });
+          this.listener = null;
+        },
       },
-      close: async () => {
-        this.listener = null;
+      sendAudio: (pcm) => {
+        this.audio.push(pcm);
       },
     };
   }

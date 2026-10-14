@@ -53,11 +53,12 @@ export class VoiceDelegate {
       return this.pending;
     }
     if (event.type !== "session.delegation.created") return this.pending;
-    const delegation = event["delegation"] as { id?: unknown; target?: unknown } | undefined;
+    const delegation = event["delegation"] as { id?: unknown; target?: unknown; request?: unknown } | undefined;
     if (typeof delegation?.id !== "string" || delegation.target !== "client") return this.pending;
     const offset = typeof event["offset_ms"] === "number" ? event["offset_ms"] : null;
     const id = delegation.id;
-    this.pending = this.pending.then(() => this.delegate(id, offset));
+    const request = typeof delegation.request === "string" ? delegation.request.trim() : "";
+    this.pending = this.pending.then(() => this.delegate(id, offset, request));
     return this.pending;
   }
 
@@ -71,9 +72,10 @@ export class VoiceDelegate {
       .trim();
   }
 
-  private async delegate(delegationId: string, offset: number | null): Promise<void> {
+  private async delegate(delegationId: string, offset: number | null, request: string): Promise<void> {
     await this.settle();
-    const prompt = this.take(offset);
+    const heard = this.take(offset);
+    const prompt = request || heard;
     if (!prompt) {
       this.requests.push({ delegationId, prompt, result: null });
       this.reply(delegationId, "I did not catch a request. Please say it again.");
@@ -100,23 +102,31 @@ export class VoiceDelegate {
 
 export interface VoiceCall {
   readonly sessionId: string;
-  readonly sdp: string;
   readonly delegate: VoiceDelegate;
   readonly connection: LiveConnection;
+  sendAudio(pcm: Uint8Array): void;
 }
 
-export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTarget; spec: readonly FeatureSpec[]; sdp: string; ids: IdSource; settle?: () => Promise<void>; onEvent?: (event: LiveEvent) => void; now?: () => number }): Promise<VoiceCall> {
-  const { sessionId, sdp } = await input.host.open({ sdp: input.sdp, instructions: voiceInstructions(input.spec) });
-  let connection: LiveConnection | null = null;
-  const queued: LiveCommand[] = [];
-  const delegate = new VoiceDelegate(sessionId, input.target, (command) => (connection ? connection.send(command) : queued.push(command)), input.ids, input.settle);
-  const record = input.target.recordSpoken?.bind(input.target);
-  const turns = record ? new SpokenTurns((turn) => void record({ ...turn, voiceSessionId: sessionId }).catch(() => {}), input.now) : null;
-  connection = await input.host.attach(sessionId, (event) => {
+export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTarget; spec: readonly FeatureSpec[]; ids: IdSource; settle?: () => Promise<void>; onEvent?: (event: LiveEvent) => void; now?: () => number }): Promise<VoiceCall> {
+  let delegate: VoiceDelegate | null = null;
+  let turns: SpokenTurns | null = null;
+  const early: LiveEvent[] = [];
+  const handle = (event: LiveEvent) => {
     input.onEvent?.(event);
+    if (!delegate) {
+      early.push(event);
+      return;
+    }
     turns?.handle(event);
     void delegate.handle(event);
-  });
-  for (const command of queued.splice(0)) connection.send(command);
-  return { sessionId, sdp, delegate, connection };
+  };
+  const stream = await input.host.start({ instructions: voiceInstructions(input.spec), onEvent: handle });
+  const record = input.target.recordSpoken?.bind(input.target);
+  turns = record ? new SpokenTurns((turn) => void record({ ...turn, voiceSessionId: stream.sessionId }).catch(() => {}), input.now) : null;
+  delegate = new VoiceDelegate(stream.sessionId, input.target, (command) => stream.connection.send(command), input.ids, input.settle);
+  for (const event of early.splice(0)) {
+    turns?.handle(event);
+    void delegate.handle(event);
+  }
+  return { sessionId: stream.sessionId, delegate, connection: stream.connection, sendAudio: (pcm) => stream.sendAudio(pcm) };
 }
