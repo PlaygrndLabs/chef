@@ -19,6 +19,7 @@ const RUNNING = /^(?:apps|core|workers|agents|template|adapters)\/|^wrangler\.js
 const NOT_RUNNING = /(?:^|\/)test\/|\.test\.[cm]?[jt]sx?$|\.md$/;
 const SQUASHED = /^(.*?)\s*\(#(\d+)\)$/;
 const MERGED = /^Merge pull request #(\d+) from /;
+const NAME = /(?<![\w`./-])chef(?![\w`/-]|\.\w)/g;
 
 export const shapesChef = (file: string): boolean => RUNNING.test(file) && !NOT_RUNNING.test(file);
 
@@ -27,7 +28,7 @@ export function changeOf(commit: Commit): Change | null {
   const merged = MERGED.exec(commit.subject);
   const squashed = merged ? null : SQUASHED.exec(commit.subject);
   const raw = merged ? (commit.body.split("\n").find((line) => line.trim()) ?? "") : (squashed?.[1] ?? commit.subject);
-  const title = raw.trim().replace(/\.$/, "");
+  const title = raw.trim().replace(/\.$/, "").replace(NAME, "Chef");
   if (!title) return null;
   const pr = merged?.[1] ?? squashed?.[2];
   return { version: commit.sha.slice(0, 12), date: commit.date.slice(0, 10), title, pr: pr ? Number(pr) : null };

@@ -199,7 +199,7 @@ export class ChefAgent extends AbstractAgent {
   private readonly options: ChefAgentOptions;
 
   constructor(options: ChefAgentOptions) {
-    super({ description: "chef: routes a request to a feature, runs its sessions and streams them until they merge" });
+    super({ description: "Chef: routes a request to a feature, runs its sessions and streams them until they merge" });
     this.options = options;
   }
 

@@ -91,7 +91,7 @@ describe("the main chat's memory", () => {
     await w.orchestrator.submit("Let people delete an item");
     const asked = w.planner.splitAsked.at(-1);
     expect(asked?.conversation).toContain(`Person: ${TODO}`);
-    expect(asked?.conversation).toContain("chef: Started the feature:");
+    expect(asked?.conversation).toContain("Chef: Started the feature:");
     expect(w.planner.splitAsked[0]?.conversation).toBeUndefined();
     expect((await w.orchestrator.chatMemory()).turns.map((t) => t.prompt)).toEqual([TODO, "Let people delete an item"]);
     const contexts = w.bus.log.filter((e) => e.type === "chat.context");
