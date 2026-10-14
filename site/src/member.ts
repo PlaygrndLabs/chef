@@ -94,6 +94,12 @@ const REMOVAL = "removal";
 const MAX_LOG = 400;
 const INSTANCE = "standard-2";
 
+const LATER = "later";
+
+export function needsUpdate(engine: Engine | null, version: string | undefined): boolean {
+  return Boolean(engine && version && (engine.version !== version || engine.previews === false));
+}
+
 const FRESH: InstallStatus = { orgId: null, status: "idle", update: false, steps: { account: "waiting", image: "waiting", token: "waiting", deploy: "waiting" }, log: [], error: null };
 
 interface Envelope<T> {
@@ -106,6 +112,7 @@ export class Member extends DurableObject<Env> {
     await this.ctx.storage.put(PROFILE, profile);
     await this.ctx.storage.put(TOKEN, grant);
     await this.ctx.storage.put(ADMIN, admin);
+    await this.ctx.storage.delete(LATER);
     const engine = org.engine;
     const running = (await this.status()).status === "running" || (await this.removal())?.status === "running";
     if (!running) await this.ctx.storage.delete(STATUS);
@@ -113,8 +120,8 @@ export class Member extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(grant.expiresAt);
       return;
     }
-    if (engine && !running && org.canSetUp && this.env.ENGINE_VERSION && (engine.version !== this.env.ENGINE_VERSION || engine.previews === false) && this.ready()) {
-      await this.start({ orgId: org.id, name: engine.name, accountId: engine.accountId, secret: engine.secret, update: true });
+    if (engine && !running && org.canSetUp && needsUpdate(engine, this.env.ENGINE_VERSION) && this.ready()) {
+      await this.ctx.storage.setAlarm(grant.expiresAt);
       return;
     }
     if (engine && !running) {
@@ -128,6 +135,14 @@ export class Member extends DurableObject<Env> {
     const profile = await this.ctx.storage.get<Profile>(PROFILE);
     const install = await this.status();
     return { email: profile?.email ?? null, admin: await this.admin(), canSetUp: (await this.grant()) !== null, install: install.status === "idle" || install.orgId !== orgId ? null : install };
+  }
+
+  async later(): Promise<void> {
+    await this.ctx.storage.put(LATER, true);
+  }
+
+  async askedLater(): Promise<boolean> {
+    return (await this.ctx.storage.get<boolean>(LATER)) === true;
   }
 
   async admin(): Promise<boolean> {
@@ -239,6 +254,7 @@ export class Member extends DurableObject<Env> {
     if (job?.started) {
       await this.ctx.storage.delete(JOB);
       await this.update((s) => ({ ...s, status: "failed", error: s.error ?? "setup was interrupted by a chef update; sign in and try again" }));
+      if (job.update) await organization(this.env, job.orgId).setUpdating(false).catch(() => undefined);
       await this.report(job);
     } else if (job) {
       await this.ctx.storage.put(JOB, { ...job, started: true });
@@ -248,6 +264,7 @@ export class Member extends DurableObject<Env> {
         await this.update((s) => ({ ...s, status: "failed", error: s.error ?? (error instanceof Error ? error.message : String(error)) }));
       }
       await this.ctx.storage.delete(JOB);
+      if (job.update) await organization(this.env, job.orgId).setUpdating(false).catch(() => undefined);
       await this.report(job);
     }
     await this.forgetToken();
@@ -318,6 +335,7 @@ export class Member extends DurableObject<Env> {
     const status: InstallStatus = { ...FRESH, orgId: job.orgId, status: "running", update: job.update };
     await this.ctx.storage.put(JOB, job);
     await this.ctx.storage.put(STATUS, status);
+    if (job.update) await organization(this.env, job.orgId).setUpdating(true);
     await this.ctx.storage.setAlarm(Date.now());
     await this.report(job);
     return status;
