@@ -44,7 +44,9 @@ function ProjectSwitcher() {
 
 export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readonly onSettings: (section?: string) => void }) {
   const { setTheme } = useTheme();
-  const missing = app.available && missingSettings(app.settings).length > 0;
+  const needs = app.available ? missingSettings(app.settings) : [];
+  const missing = needs.length > 0;
+  const need = needs[0] === "models" ? "Add a model key in Settings" : "Add a previews token in Settings";
   const mode = useAppMode();
   const org = mode && mode.account !== undefined ? (mode.org ?? null) : null;
   const switchTo = async (orgId: string) => {
@@ -62,9 +64,9 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
           <Mark className="size-6" />
           <span className="grid min-w-0 flex-1 leading-tight">
             <span className="truncate text-xs font-medium" data-current="workspace">{org ? orgLabel(org) : "Settings"}</span>
-            <span className="truncate text-[11px] text-muted-foreground">{missing ? "Needs setup" : org ? (mode?.account ?? "Signed in with Cloudflare") : "For every project"}</span>
+            <span className="truncate text-[11px] text-muted-foreground">{missing ? need : org ? (mode?.account ?? "Signed in with Cloudflare") : "For every project"}</span>
           </span>
-          {missing ? <span className="size-1.5 shrink-0 bg-bad" aria-label="needs setup" /> : null}
+          {missing ? <span className="size-1.5 shrink-0 bg-bad" aria-label={need} title={need} /> : null}
           <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
