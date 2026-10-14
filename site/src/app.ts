@@ -38,22 +38,24 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   const sameSite = request.headers.get("origin") === null ? request.method === "GET" || request.method === "HEAD" : request.headers.get("origin") === url.origin;
 
   if (path === "/auth/start") {
-    if (!client) return redirect("/?signin=unavailable#get-started");
+    if (!client) return redirect("/?signin=unavailable");
     const pending = { state: randomToken(), verifier: randomToken(), ...(url.searchParams.get("then") === "remove" ? { then: "remove" as const } : {}) };
-    return redirect(await authorizeUrl(client, `${url.origin}/auth/callback`, pending), [setCookie(OAUTH_COOKIE, encodePending(pending), 600, "/auth/callback")]);
+    return redirect(await authorizeUrl(client, `${url.origin}/auth/callback`, pending), [setCookie(OAUTH_COOKIE, encodePending(pending), 1800, "/auth/callback")]);
   }
 
   if (path === "/auth/callback") {
     const clear = setCookie(OAUTH_COOKIE, "", 0, "/auth/callback");
     const pending = decodePending(jar[OAUTH_COOKIE]);
     const code = url.searchParams.get("code");
-    if (!client || !pending || !code || url.searchParams.get("state") !== pending.state) return redirect("/?signin=cancelled#get-started", [clear]);
+    if (!client) return redirect("/?signin=unavailable", [clear]);
+    if (url.searchParams.has("error") || !code) return redirect("/?signin=cancelled", [clear]);
+    if (!pending || url.searchParams.get("state") !== pending.state) return redirect("/?signin=expired", [clear]);
     const response = await fetch(tokenRequest(client, { grant_type: "authorization_code", code, redirect_uri: `${url.origin}/auth/callback`, code_verifier: pending.verifier })).catch(() => null);
     const grant = readGrant(response?.ok ? await response.json().catch(() => null) : null, Date.now());
-    if (!grant) return redirect("/?signin=failed#get-started", [clear]);
+    if (!grant) return redirect("/?signin=failed", [clear]);
     const user = await fetch(`${API}/user`, { headers: { authorization: `Bearer ${grant.token}` } }).catch(() => null);
     const profile = readProfile(user?.ok ? await user.json().catch(() => null) : null);
-    if (!profile) return redirect("/?signin=failed#get-started", [clear]);
+    if (!profile) return redirect("/?signin=failed", [clear]);
     const admin = await canSeeAccount(grant.token, env.CF_ACCOUNT_ID);
     const signed = await directory(env).signIn({ provider: "cloudflare", subject: profile.id, email: profile.email }, admin);
     const org = organization(env, signed.org.id);

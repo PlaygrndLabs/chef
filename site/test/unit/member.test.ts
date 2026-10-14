@@ -87,6 +87,17 @@ describe("removing chef for an organization", () => {
     expect(w.dir.orgs(w.userId).map((o) => o.name)).toEqual(["Personal", "Acme"]);
   });
 
+  it("fails a removal that a site deploy interrupted so a new sign-in can pick it up", async () => {
+    const w = await setUp();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null)));
+    await w.member.remove({ orgId: w.team.id, orgName: "Acme", personal: false, engine, projects: null });
+    await w.storage.put("removal-job", { ...((await w.storage.get("removal-job")) as object), started: true });
+    await w.member.alarm();
+    expect(await w.member.removal()).toMatchObject({ status: "failed", error: expect.stringMatching(/interrupted/) });
+    expect(await w.org(w.team.id).removing()).toBe(false);
+    expect(await w.storage.get("removal-job")).toBeUndefined();
+  });
+
   it("resets Personal instead of deleting it", async () => {
     const w = await setUp();
     await w.org(w.personal.id).setup({ id: w.personal.id, name: "Personal", personal: true }, { userId: w.userId, email: "sam@example.com", role: "owner" });

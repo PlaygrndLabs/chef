@@ -49,13 +49,13 @@
         <li data-step="token" data-state="waiting"><span class="dot"></span>Create a token for previews</li>
         <li data-step="deploy" data-state="waiting"><span class="dot"></span>Deploy chef's engine</li>
       </ol>
+      <button class="log-toggle" id="toggle-log" type="button" aria-controls="log" aria-expanded="false">Show log</button>
+      <pre class="log" id="log" hidden></pre>
       <p class="error" id="install-error" role="alert"></p>
       <div class="actions" style="justify-content:flex-start">
         <button class="btn btn-primary" id="open" type="button" hidden>Start building</button>
         <a class="btn btn-primary" id="retry" href="/auth/start" hidden>Sign in and try again</a>
-        <button class="btn btn-outline" id="toggle-log" type="button">Show log</button>
       </div>
-      <pre class="log" id="log" hidden></pre>
     </div>
   </div>
 </main>

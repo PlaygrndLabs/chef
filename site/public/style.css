@@ -172,7 +172,8 @@ label.field input:focus { outline: 2px solid color-mix(in oklch, var(--foregroun
 .progress { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 10px; }
 .progress li { display: flex; gap: 10px; align-items: center; }
 .progress .dot { width: 18px; height: 18px; border-radius: 0; border: 2px solid var(--border); flex: none; display: grid; place-items: center; font-size: 11px; }
-.progress li[data-state="running"] .dot { border-color: var(--foreground); border-top-color: transparent; animation: spin 0.8s linear infinite; }
+.progress li[data-state="running"] .dot { border-color: var(--brand); }
+.progress li[data-state="running"] .dot::after { content: ""; width: 8px; height: 8px; background: var(--brand); animation: pixel 1s steps(2, jump-none) infinite; }
 .progress li[data-state="done"] .dot { background: var(--success); border-color: var(--success); color: var(--background); }
 .progress li[data-state="done"] .dot::after { content: "✓"; }
 .progress li[data-state="skipped"] .dot { border-style: dashed; }
@@ -180,9 +181,12 @@ label.field input:focus { outline: 2px solid color-mix(in oklch, var(--foregroun
 .progress li[data-state="failed"] .dot::after { content: "!"; }
 .progress li[data-state="waiting"] { color: var(--muted-foreground); }
 
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .progress li[data-state="running"] .dot { animation: none; } }
+@keyframes pixel { from { opacity: 1; } to { opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) { .progress li[data-state="running"] .dot::after { animation: none; } }
 
+.log-toggle { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 0; border: 0; background: none; color: var(--muted-foreground); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+.log-toggle::before { content: ""; width: 6px; height: 6px; background: var(--brand); }
+.log-toggle:hover, .log-toggle[aria-expanded="true"] { color: var(--foreground); }
 pre.log { max-height: 320px; overflow: auto; background: var(--muted); border-radius: var(--radius); padding: 12px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 
 @media (max-width: 720px) {

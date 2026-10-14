@@ -27,7 +27,7 @@ function renderConfirm() {
     goes.push(item("chef's engine ", code(engine.name), " and its sandboxes"));
     if (projects === null) goes.push(item("Every project, with its live app and previews"));
     else if (projects.length === 0) goes.push(item("No projects yet"));
-    else goes.push(item(`${projects.length} ${projects.length === 1 ? "project" : "projects"} with their live apps and previews: `, el("span", { className: "sub-list" }, projects.join(", "))));
+    else goes.push(item(projects.length === 1 ? "1 project with its live app and previews: " : `${projects.length} projects with their live apps and previews: `, el("span", { className: "sub-list" }, projects.join(", "))));
     goes.push(item("Their repos, chef's memory, the previews token and the sandbox image"));
   }
   if (!personal) goes.push(item("The organization: its members, invitations, project sharing and budgets"));

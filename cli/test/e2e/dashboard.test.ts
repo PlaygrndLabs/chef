@@ -121,20 +121,31 @@ describe("dashboard in a browser", () => {
     }
   });
 
-  it("asks for a model and a Cloudflare account when none is set and saves them", async () => {
+  it("onboards a model on the start page, then asks for a Cloudflare account in settings and saves them", async () => {
     const local = await serve({ port: 0, real: false, assets: DIST, settings: { TYPESAFE_API_KEY: "ts-deployment-key" } });
     const browser = await chromium.launch();
     try {
       const page = await browser.newPage();
       await page.goto(local.url);
+      const onboarding = page.locator('[data-view="onboarding"]');
+      await onboarding.waitFor({ timeout: 10_000 });
+      expect(await onboarding.innerText()).toContain("Connect a model");
+      expect(await page.locator('[data-dialog="settings"]').count()).toBe(0);
+      const first = onboarding.locator("#settings-llm");
+      expect(await first.locator('[data-current="llm"]').getAttribute("data-set")).toBe("no");
+      await first.getByRole("radio", { name: "Custom provider" }).click();
+      await first.getByLabel("Base URL").fill("https://llm.example/");
+      await first.getByLabel("API key").fill("sk-test-12345678");
+      await first.getByRole("button", { name: "Continue" }).click();
+      const setup = page.locator('[data-view="setup"]');
+      await setup.waitFor({ timeout: 10_000 });
+      expect(await setup.locator(".kicker").textContent()).toBe("Step 2 of 2");
+      expect(await setup.innerText()).toContain("Create your first project");
+      await page.keyboard.press("Control+,");
       const dialog = page.locator('[data-dialog="settings"]');
       await dialog.waitFor({ timeout: 10_000 });
+      await dialog.locator('[data-settings-nav="models"]').click();
       const claude = dialog.locator("#settings-llm");
-      expect(await claude.locator('[data-current="llm"]').getAttribute("data-set")).toBe("no");
-      await claude.getByRole("radio", { name: "Custom provider" }).click();
-      await claude.getByLabel("Base URL").fill("https://llm.example/");
-      await claude.getByLabel("API key").fill("sk-test-12345678");
-      await claude.getByRole("button", { name: "Save" }).click();
       await expect.poll(() => claude.locator('[data-current="llm"] [data-key-hint]').getAttribute("data-key-hint"), { timeout: 10_000 }).toBe("…5678");
       expect(await claude.locator('[data-current="llm"]').innerText()).toContain("5678");
       expect(await claude.getByRole("button", { name: "Save" }).isDisabled()).toBe(true);
