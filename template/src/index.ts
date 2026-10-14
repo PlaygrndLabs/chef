@@ -1,9 +1,11 @@
 import { createApp, type Env } from "../shared/http.ts";
-import { KvStore, MemoryStore, type KvLike } from "../shared/storage.ts";
+import { DurableStore, MemoryStore, type StoreNamespace } from "../shared/storage.ts";
 import { features } from "./registry.gen.ts";
 
+export { StoreObject } from "../shared/storage.ts";
+
 interface Bindings {
-  readonly STORE?: KvLike;
+  readonly STORE?: StoreNamespace;
   readonly [name: string]: unknown;
 }
 
@@ -11,7 +13,7 @@ const memory = new MemoryStore();
 
 export default {
   fetch(request: Request, env: Bindings): Promise<Response> {
-    return createApp(features, env.STORE ? new KvStore(env.STORE) : memory, settings(env))(request);
+    return createApp(features, env.STORE ? new DurableStore(env.STORE) : memory, settings(env))(request);
   },
 };
 
