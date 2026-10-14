@@ -406,97 +406,255 @@ function moving(app, p) {
   return cells;
 }
 
-const born = performance.now();
+const MARK = [[96, 0, 240, 70], [0, 70, 96, 200], [96, 200, 240, 270]];
 
-function app(ctx, width, height) {
+function voxels(pitch, room) {
+  const depth = 72;
+  const boxes = MARK.map(([x0, y0, x1, y1]) => ({ lo: [x0, 270 - y1, 0], hi: [x1, 270 - y0, depth] }));
+  const norm = (v) => {
+    const l = Math.hypot(...v);
+    return v.map((k) => k / l);
+  };
+  const dir = norm([-0.5, -0.42, -1]);
+  const right = norm([-dir[2], 0, dir[0]]);
+  const up = [right[1] * dir[2] - right[2] * dir[1], right[2] * dir[0] - right[0] * dir[2], right[0] * dir[1] - right[1] * dir[0]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const box of boxes) {
+    for (let k = 0; k < 8; k++) {
+      const p = [k & 1 ? box.hi[0] : box.lo[0], k & 2 ? box.hi[1] : box.lo[1], k & 4 ? box.hi[2] : box.lo[2]];
+      const x = dot(p, right);
+      const y = dot(p, up);
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  const unit = Math.min(room.w / (maxX - minX), room.h / (maxY - minY));
+  const cols = Math.floor(((maxX - minX) * unit) / pitch);
+  const rows = Math.floor(((maxY - minY) * unit) / pitch);
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const sx = minX + ((c + 0.5) * pitch) / unit;
+      const sy = maxY - ((r + 0.5) * pitch) / unit;
+      const origin = [0, 1, 2].map((k) => sx * right[k] + sy * up[k] - dir[k] * 2000);
+      let best = Infinity;
+      let face = 0;
+      let at = null;
+      for (const box of boxes) {
+        let near = -Infinity;
+        let far = Infinity;
+        let axis = -1;
+        for (let k = 0; k < 3; k++) {
+          const t1 = (box.lo[k] - origin[k]) / dir[k];
+          const t2 = (box.hi[k] - origin[k]) / dir[k];
+          const enter = Math.min(t1, t2);
+          if (enter > near) {
+            near = enter;
+            axis = k;
+          }
+          far = Math.min(far, Math.max(t1, t2));
+        }
+        if (near <= far && near < best) {
+          best = near;
+          face = axis === 2 ? 1 : axis === 1 ? 2 : 3;
+          at = origin.map((v, k) => v + dir[k] * near);
+        }
+      }
+      if (face) cells.push({ c, r, face, depth: at[2] / depth, height: at[1] / 270 });
+    }
+  }
+  return { cols, rows, cells, w: cols * pitch, h: rows * pitch };
+}
+
+function mark(ctx, width, height) {
   const blue = brand();
-  const muted = css("--muted-foreground", "#777");
-  const green = css("--success", "#16a34a");
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
   const canvas = ctx.canvas.getBoundingClientRect();
-  const area = (selector) => {
-    const rect = ctx.canvas.parentElement?.querySelector(selector)?.getBoundingClientRect();
-    return rect && rect.width ? { x: rect.left - canvas.left, y: rect.top - canvas.top, w: rect.width, h: rect.height } : null;
-  };
-  const box = area(".stage") || { x: width * 0.55, y: height * 0.2, w: width * 0.4, h: height * 0.6 };
-  const copy = area(".hero-copy");
-  const quiet = (x, y) => {
-    if (!copy) return 1;
-    const dx = Math.max(copy.x - 24 - x, 0, x - copy.x - copy.w - 24);
-    const dy = Math.max(copy.y - 24 - y, 0, y - copy.y - copy.h - 24);
-    return 0.15 + 0.85 * Math.min(1, Math.hypot(dx, dy) / 96);
-  };
-  const step = box.w / COLS;
-  const grid = { x: box.x, y: box.y + Math.max(36, (box.h - ROWS * step) / 2) };
-  const cycle = 11;
-  const intro = 1.4;
+  const stage = ctx.canvas.parentElement?.querySelector(".stage")?.getBoundingClientRect();
+  const room = stage && stage.width ? { x: stage.left - canvas.left, y: stage.top - canvas.top, w: stage.width, h: stage.height } : { x: width * 0.55, y: height * 0.2, w: width * 0.4, h: height * 0.6 };
+  const pitch = width < 600 ? 5 : 6;
+  const shape = voxels(pitch, { w: room.w * 0.8, h: room.h * 0.8 });
+  const ox = Math.round(room.x + (room.w - shape.w) / 2);
+  const oy = Math.round(room.y + (room.h - shape.h) / 2);
+  const tones = dark ? { 1: [blue, 1], 2: ["#c4d4ff", 0.9], 3: [blue, 0.4] } : { 1: [blue, 1], 2: [blue, 0.36], 3: ["#062a8c", 1] };
   const rand = random(5);
-  const count = Math.max(...apps.map((a) => a.cells.length));
-  const loose = Math.round((width * height) / 3600);
-  const dots = Array.from({ length: count + loose }, (_, k) => {
-    const near = k < count;
-    return {
-      x: near ? Math.max(0, Math.min(width, box.x + (rand() * 1.3 - 0.05) * box.w)) : rand() * width,
-      y: near ? Math.max(0, Math.min(height, box.y + (rand() * 1.4 - 0.2) * box.h)) : rand() * height,
-      ax: 6 + rand() * 22,
-      ay: 6 + rand() * 18,
-      sx: 0.00012 + rand() * 0.00025,
-      sy: 0.0001 + rand() * 0.0002,
-      phase: rand() * 100,
-      size: 1.2 + rand() * 1.2,
-      jitter: rand(),
-    };
-  });
-  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
-  const ink = 0.72;
+  const cells = shape.cells.map((cell) => ({ ...cell, x: ox + cell.c * pitch, y: oy + cell.r * pitch, n: rand(), intro: (1 - cell.height) * 0.9 + rand() * 0.35 }));
+  const tops = cells.filter((cell) => cell.face === 2);
+  const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const shadow = [];
+  const floor = { x: ox + shape.w * 0.55, y: oy + shape.h + pitch * 3, rx: shape.w * 0.7, ry: pitch * 5 };
+  for (let y = floor.y - floor.ry; y < floor.y + floor.ry; y += pitch) {
+    for (let x = floor.x - floor.rx; x < floor.x + floor.rx; x += pitch) {
+      const d = Math.hypot((x - floor.x) / floor.rx, (y - floor.y) / floor.ry);
+      const c = Math.round(x / pitch);
+      const r = Math.round(y / pitch);
+      if (d < 1 && (1 - d) * 0.9 > (bayer[(r & 3) * 4 + (c & 3)] + 0.5) / 16) shadow.push({ x, y, a: 0.25 + 0.35 * (1 - d) });
+    }
+  }
+  const clear = { x0: ox - 24, y0: oy - 24, x1: ox + shape.w + 24, y1: floor.y + floor.ry + 12 };
+  const dots = Array.from({ length: Math.round((width * height) / 450) }, () => ({
+    x: rand() * width,
+    y: rand() * height,
+    ax: 6 + rand() * 22,
+    ay: 6 + rand() * 18,
+    sx: 0.00012 + rand() * 0.00025,
+    sy: 0.0001 + rand() * 0.0002,
+    phase: rand() * 100,
+    size: 1.2 + rand() * 1.2,
+  })).filter((d) => !(d.x > clear.x0 && d.x < clear.x1 && d.y > clear.y0 && d.y < clear.y1));
+  const steam = Array.from({ length: 46 }, (_, k) => ({ from: tops[Math.floor(rand() * tops.length)], born: -rand() * 6, life: 4 + rand() * 3, drift: 4 + rand() * 10, rise: 9 + rand() * 9, phase: rand() * 9, k }));
+  const start = performance.now();
   return (now) => {
-    const since = (now - born) / 1000;
-    const total = still ? 6.2 : since - intro;
-    const index = total < 0 ? 0 : Math.floor(total / cycle) % apps.length;
-    const t = total < 0 ? total : total % cycle;
-    const app = apps[index];
     const ratio = ctx.canvas.width / width;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, width, height);
     const pointer = ctx.canvas.pointer;
     const time = still ? 0 : now;
-    const appear = still ? 1 : ease(since / 1.6);
+    const since = still ? 9 : (now - start) / 1000;
+
+    ctx.fillStyle = blue;
+    for (const dot of dots) {
+      let x = dot.x + Math.sin(time * dot.sx + dot.phase) * dot.ax;
+      let y = dot.y + Math.cos(time * dot.sy + dot.phase * 1.3) * dot.ay;
+      let alpha = 0.14 + 0.26 * (Math.sin(time / 900 + dot.phase) * 0.5 + 0.5);
+      if (pointer) {
+        const d = Math.hypot(x - pointer.x, y - pointer.y) || 1;
+        const push = Math.max(0, 1 - d / 90);
+        x += ((x - pointer.x) / d) * push * push * 18;
+        y += ((y - pointer.y) / d) * push * push * 18;
+        alpha = Math.min(1, alpha + push * 0.45);
+      }
+      ctx.globalAlpha = alpha;
+      ctx.fillRect(x, y, dot.size, dot.size);
+    }
+
+    ctx.fillStyle = blue;
+    for (const dot of shadow) {
+      ctx.globalAlpha = dot.a * Math.min(1, since / 1.2);
+      ctx.fillRect(dot.x, dot.y, pitch * 0.45, pitch * 0.45);
+    }
+
+    const side = pitch - 1.4;
+    for (const cell of cells) {
+      const show = Math.max(0, Math.min(1, (since - cell.intro) / 0.35));
+      if (!show) continue;
+      const [color, base] = tones[cell.face];
+      let alpha = base * (0.86 + 0.14 * cell.n) * show;
+      let lift = (1 - show) * 10;
+      if (pointer) {
+        const near = Math.max(0, 1 - Math.hypot(cell.x - pointer.x, cell.y - pointer.y) / 70);
+        lift += near * near * 5;
+        alpha = Math.min(1, alpha + near * 0.25);
+      }
+      ctx.fillStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.fillRect(cell.x, cell.y - lift, side, side);
+    }
+
+    if (!still && tops.length) {
+      ctx.fillStyle = blue;
+      for (const puff of steam) {
+        let age = since - 1.2 - puff.born;
+        if (age < 0) continue;
+        const round = Math.floor(age / puff.life);
+        age -= round * puff.life;
+        const from = round ? tops[Math.floor(Math.abs(Math.sin(puff.k * 12.9 + round * 7.7)) * tops.length) % tops.length] : puff.from;
+        const p = age / puff.life;
+        const x = from.x + age * puff.drift + Math.sin(age * 1.3 + puff.phase) * 3;
+        const y = from.y - age * puff.rise;
+        ctx.globalAlpha = 0.5 * Math.sin(p * Math.PI) * (dark ? 0.9 : 0.75);
+        const size = 2.2 + p * 1.6;
+        ctx.fillRect(x, y, size, size);
+      }
+    }
+    ctx.globalAlpha = 1;
+  };
+}
+
+const showcaseNames = ["01 video editor", "02 whiteboard", "03 sales pipeline", "04 delivery map"];
+
+function showcase(ctx, width, height) {
+  const blue = brand();
+  const muted = css("--muted-foreground", "#777");
+  const green = css("--success", "#16a34a");
+  const pad = width < 600 ? 16 : 32;
+  const gridW = Math.min(width - pad * 2, (height - 92) * (COLS / ROWS));
+  const step = gridW / COLS;
+  const grid = { x: Math.round((width - gridW) / 2), y: 46 };
+  const cycle = 11;
+  const rand = random(5);
+  const count = Math.max(...apps.map((a) => a.cells.length));
+  const dots = Array.from({ length: count + Math.round((width * height) / 3600) }, () => ({
+    x: rand() * width,
+    y: rand() * height,
+    ax: 4 + rand() * 14,
+    ay: 4 + rand() * 12,
+    sx: 0.00012 + rand() * 0.00025,
+    sy: 0.0001 + rand() * 0.0002,
+    phase: rand() * 100,
+    size: 1.2 + rand() * 1.2,
+    jitter: rand(),
+  }));
+  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+  const label = ctx.canvas.closest(".term")?.querySelector("[data-showcase-label]");
+  const host = ctx.canvas.closest(".term")?.querySelector("[data-showcase-host]");
+  let start = null;
+  let shownIndex = -1;
+  return (now) => {
+    const box = ctx.canvas.getBoundingClientRect();
+    if (start === null && box.top < window.innerHeight && box.bottom > 0) start = now;
+    const total = still ? 6.2 : start === null ? 0 : (now - start) / 1000;
+    const index = Math.floor(total / cycle) % apps.length;
+    const t = still ? 6.2 : total % cycle;
+    const app = apps[index];
+    if (index !== shownIndex) {
+      shownIndex = index;
+      if (label) label.textContent = showcaseNames[index];
+      if (host) host.textContent = app.host;
+    }
+    const ratio = ctx.canvas.width / width;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const pointer = ctx.canvas.pointer;
+    const time = still ? 0 : now;
 
     ctx.fillStyle = blue;
     for (let k = 0; k < dots.length; k++) {
       const dot = dots[k];
       let x = dot.x + Math.sin(time * dot.sx + dot.phase) * dot.ax;
       let y = dot.y + Math.cos(time * dot.sy + dot.phase * 1.3) * dot.ay;
-      let alpha = 0.1 + 0.16 * (Math.sin(time / 1400 + dot.phase) * 0.5 + 0.5);
+      let alpha = 0.1 + 0.18 * (Math.sin(time / 1100 + dot.phase) * 0.5 + 0.5);
       let size = dot.size;
-      let here = 0;
       const cell = k < count ? app.cells[k] : undefined;
       if (cell) {
         const tx = grid.x + (cell[0] % COLS) * step;
         const ty = grid.y + Math.floor(cell[0] / COLS) * step;
         const delay = ((cell[0] % COLS) / COLS) * 0.6 + dot.jitter * 0.6;
-        here = ease((t - 1.6 - delay) / 2.0) * (1 - ease((t - 9.0 - dot.jitter * 0.5) / 1.4));
-        const shimmer = t > 4.4 && t < 9 ? 0.06 * Math.sin(t * 2 - (cell[0] % COLS) / 6) : 0;
+        const here = ease((t - 1.4 - delay) / 1.8) * (1 - ease((t - 9.0 - dot.jitter * 0.5) / 1.4));
+        const shimmer = t > 4 && t < 9 ? 0.08 * Math.sin(t * 2.4 - (cell[0] % COLS) / 6) : 0;
         x += (tx - x) * here;
         y += (ty - y) * here;
-        alpha += (ink * Math.min(1, cell[1] + shimmer) - alpha) * here;
+        alpha += (Math.min(1, cell[1] + shimmer) - alpha) * here;
         size += (step * 0.55 - size) * here;
       }
-      const calm = here > 0.98 ? 1 : quiet(x, y);
       if (pointer) {
         const d = Math.hypot(x - pointer.x, y - pointer.y) || 1;
-        const push = Math.max(0, 1 - d / 90);
-        x += ((x - pointer.x) / d) * push * push * 18;
-        y += ((y - pointer.y) / d) * push * push * 18;
-        alpha = Math.min(1, alpha + push * 0.45 * calm);
+        const push = Math.max(0, 1 - d / 80);
+        x += ((x - pointer.x) / d) * push * push * 14;
+        y += ((y - pointer.y) / d) * push * push * 14;
+        alpha = Math.min(1, alpha + push * 0.4);
       }
-      ctx.globalAlpha = alpha * calm * appear;
+      ctx.globalAlpha = alpha;
       ctx.fillRect(x, y, size, size);
     }
 
-    const shown = ease((t - 4.2) / 0.5) * (1 - ease((t - 8.8) / 0.4));
+    const shown = ease((t - 3.8) / 0.5) * (1 - ease((t - 8.8) / 0.4));
     if (shown > 0) {
-      ctx.globalAlpha = shown * ink;
-      for (const [c, r] of moving(app, Math.max(0, Math.min(1, (t - 4.2) / 4.6)))) ctx.fillRect(grid.x + c * step, grid.y + r * step, step * 0.55, step * 0.55);
+      ctx.globalAlpha = shown;
+      for (const [c, r] of moving(app, Math.max(0, Math.min(1, (t - 3.8) / 4.8)))) ctx.fillRect(grid.x + c * step, grid.y + r * step, step * 0.55, step * 0.55);
     }
 
     const typing = ease(Math.min(1, t / 1.3));
@@ -506,10 +664,10 @@ function app(ctx, width, height) {
     ctx.globalAlpha = fade;
     const typed = `> ${app.prompt.slice(0, Math.round(app.prompt.length * typing))}`;
     ctx.fillText(typed, grid.x, grid.y - 18);
-    if (t >= 0 && t < 1.5 && Math.floor(now / 450) % 2 === 0) ctx.fillRect(grid.x + ctx.measureText(typed).width + 2, grid.y - 28, 6, 13);
-    if (t > 4.4 && t < 10) {
+    if (t < 1.5 && Math.floor(now / 450) % 2 === 0) ctx.fillRect(grid.x + ctx.measureText(typed).width + 2, grid.y - 28, 6, 13);
+    if (t > 4 && t < 10) {
       const below = grid.y + ROWS * step + 26;
-      ctx.globalAlpha = Math.min(1, (t - 4.4) / 0.4, (10 - t) / 0.4);
+      ctx.globalAlpha = Math.min(1, (t - 4) / 0.4, (10 - t) / 0.4);
       ctx.fillStyle = green;
       ctx.fillRect(grid.x, below - 6, 5, 5);
       ctx.fillStyle = muted;
@@ -945,7 +1103,7 @@ window.addEventListener("scroll", queuePick, { passive: true });
 window.addEventListener("resize", queuePick);
 pickStep();
 
-const scenes = { city, app, dots, story };
+const scenes = { city, mark, showcase, dots, story };
 for (const [name, setup] of Object.entries(scenes)) {
   document.querySelectorAll(`[data-${name}]`).forEach((canvas) => animate(canvas, setup));
 }
