@@ -1,5 +1,5 @@
-import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceOffer } from "@chef/core";
-import type { Connect, SocketLike } from "./gpt-live.ts";
+import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceStream } from "@chef/core";
+import { encodeBase64, type Connect, type SocketLike } from "./gpt-live.ts";
 
 export const REALTIME_MODEL = "gpt-realtime";
 export const REQUEST_TOOL = "chef_request";
@@ -10,7 +10,6 @@ export interface RealtimeOptions {
   readonly connect: Connect;
   readonly model?: string;
   readonly voice?: string;
-  readonly fetchImpl?: typeof fetch;
 }
 
 const TOOL_RULE = `To delegate to the client, call the ${REQUEST_TOOL} tool with the user's request in their own words, then speak the result it returns.`;
@@ -21,7 +20,10 @@ export function realtimeSession(options: { readonly model?: string; readonly voi
     model: options.model ?? REALTIME_MODEL,
     instructions: `${options.instructions}\n\n${TOOL_RULE}`,
     output_modalities: ["audio"],
-    audio: { output: { voice: options.voice ?? "marin" } },
+    audio: {
+      input: { format: { type: "audio/pcm", rate: 24000 }, transcription: { model: "gpt-4o-mini-transcribe" }, turn_detection: { type: "server_vad", silence_duration_ms: 600 } },
+      output: { format: { type: "audio/pcm", rate: 24000 }, voice: options.voice ?? "marin" },
+    },
     tools: [
       {
         type: "function",
@@ -65,12 +67,16 @@ export function liveEvents(event: LiveEvent): LiveEvent[] {
     case "response.output_audio_transcript.delta":
     case "response.audio_transcript.delta":
       return [{ type: "session.output_transcript.delta", delta: event["delta"] }];
+    case "response.output_audio.delta":
+    case "response.audio.delta":
+      return [{ type: "session.output_audio.delta", delta: event["delta"] }];
+    case "conversation.item.input_audio_transcription.delta":
+      return [{ type: "session.input_transcript.delta", delta: event["delta"], start_ms: null }];
+    case "input_audio_buffer.speech_started":
+      return [{ type: "session.input_speech.started" }];
     case "response.function_call_arguments.done":
       if (event["name"] !== REQUEST_TOOL || typeof event["call_id"] !== "string") return [];
-      return [
-        { type: "session.input_transcript.delta", delta: requestOf(event["arguments"]), start_ms: null },
-        { type: "session.delegation.created", delegation: { id: event["call_id"], target: "client" }, offset_ms: null },
-      ];
+      return [{ type: "session.delegation.created", delegation: { id: event["call_id"], target: "client", request: requestOf(event["arguments"]) }, offset_ms: null }];
     case "error":
       return [event];
     default:
@@ -92,12 +98,15 @@ export function bridge(socket: SocketLike, instructions: string, onEvent: (event
     }
     if (event && typeof event.type === "string") for (const live of liveEvents(event)) onEvent(live);
   });
-  const ended = () => {
+  let ended = false;
+  const end = () => {
+    if (ended) return;
+    ended = true;
     onEvent({ type: "session.closed" });
     finish();
   };
-  socket.addEventListener("close", ended);
-  socket.addEventListener("error", ended);
+  socket.addEventListener("close", end);
+  socket.addEventListener("error", end);
   const send = (event: Record<string, unknown>) => socket.send(JSON.stringify(event));
   return {
     send: (command: LiveCommand) => {
@@ -120,55 +129,37 @@ export function bridge(socket: SocketLike, instructions: string, onEvent: (event
   };
 }
 
-function callId(location: string | null): string {
-  if (!location) return "";
-  const url = new URL(location, "http://call.invalid");
-  return url.searchParams.get("call_id") ?? url.pathname.split("/").filter(Boolean).at(-1) ?? "";
-}
-
 export class RealtimeHost implements VoiceHost {
   readonly model: string;
-  private readonly instructions = new Map<string, string>();
 
   constructor(private readonly options: RealtimeOptions) {
     this.model = options.model ?? REALTIME_MODEL;
   }
 
-  async open(offer: VoiceOffer): Promise<{ sessionId: string; sdp: string }> {
-    const session = realtimeSession({ model: this.model, instructions: offer.instructions, ...(this.options.voice ? { voice: this.options.voice } : {}) });
-    const response = await (this.options.fetchImpl ?? fetch)(endpoint(this.options.baseUrl, "/realtime/calls"), {
-      method: "POST",
-      headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ sdp: offer.sdp, session }),
-    });
-    const body = await response.text();
-    if (!response.ok) throw new Error(`Realtime call failed: ${response.status} ${body.slice(0, 500)}`);
-    const sdp = (response.headers.get("content-type") ?? "").includes("json") ? ((JSON.parse(body) as { sdp?: string }).sdp ?? "") : body;
-    const id = callId(response.headers.get("location"));
-    if (!id || !sdp) throw new Error("Realtime call response has no call id or SDP answer");
-    this.instructions.set(id, offer.instructions);
-    return { sessionId: id, sdp };
-  }
-
-  async attach(sessionId: string, onEvent: (event: LiveEvent) => void): Promise<LiveConnection> {
-    const socket = await this.options.connect(wsUrl(this.options.baseUrl, `/realtime?call_id=${encodeURIComponent(sessionId)}`), { authorization: `Bearer ${this.options.apiKey}` });
-    const instructions = this.instructions.get(sessionId) ?? "";
-    this.instructions.delete(sessionId);
-    return bridge(socket, instructions, onEvent);
+  async start(input: { readonly instructions: string; readonly onEvent: (event: LiveEvent) => void }): Promise<VoiceStream> {
+    const session = await startRealtimeSession({ ...this.options, model: this.model, instructions: input.instructions, onEvent: input.onEvent });
+    return { sessionId: session.sessionId, connection: session.connection, sendAudio: (pcm) => session.sendAudio(pcm) };
   }
 }
 
-export async function startRealtimeSession(options: RealtimeOptions & { readonly instructions: string; readonly onEvent: (event: LiveEvent) => void; readonly timeoutMs?: number }): Promise<{ readonly connection: LiveConnection; say(text: string): void }> {
+export interface RealtimeSession {
+  readonly sessionId: string;
+  readonly connection: LiveConnection;
+  say(text: string): void;
+  sendAudio(pcm: Uint8Array): void;
+}
+
+export async function startRealtimeSession(options: RealtimeOptions & { readonly instructions: string; readonly onEvent: (event: LiveEvent) => void; readonly timeoutMs?: number }): Promise<RealtimeSession> {
   const model = options.model ?? REALTIME_MODEL;
   const socket = await options.connect(wsUrl(options.baseUrl, `/realtime?model=${encodeURIComponent(model)}`), { authorization: `Bearer ${options.apiKey}` });
-  let started: () => void = () => {};
+  let started: (id: string) => void = () => {};
   let failed: (error: Error) => void = () => {};
-  const ready = new Promise<void>((resolve, reject) => {
+  const ready = new Promise<string>((resolve, reject) => {
     started = resolve;
     failed = reject;
   });
   const connection = bridge(socket, options.instructions, (event) => {
-    if (event.type === "session.started") started();
+    if (event.type === "session.started") started(String((event["session"] as { id?: unknown } | undefined)?.id ?? ""));
     if (event.type === "error") failed(new Error(`Realtime error: ${JSON.stringify(event["error"] ?? event)}`));
     if (event.type === "session.closed") failed(new Error("the Realtime API closed before the session started"));
     options.onEvent(event);
@@ -176,12 +167,16 @@ export async function startRealtimeSession(options: RealtimeOptions & { readonly
   socket.send(JSON.stringify({ type: "session.update", session: realtimeSession({ model, instructions: options.instructions, ...(options.voice ? { voice: options.voice } : {}) }) }));
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error("the Realtime API did not start in time")), options.timeoutMs ?? 20_000)));
-  await Promise.race([ready, timeout]).finally(() => clearTimeout(timer));
+  const sessionId = await Promise.race([ready, timeout]).finally(() => clearTimeout(timer));
   return {
+    sessionId: sessionId || `realtime-${Date.now()}`,
     connection,
     say: (said: string) => {
       socket.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: said }] } }));
       socket.send(JSON.stringify({ type: "response.create" }));
+    },
+    sendAudio: (pcm: Uint8Array) => {
+      for (let i = 0; i < pcm.length; i += 24000) socket.send(JSON.stringify({ type: "input_audio_buffer.append", audio: encodeBase64(pcm.subarray(i, Math.min(pcm.length, i + 24000))) }));
     },
   };
 }

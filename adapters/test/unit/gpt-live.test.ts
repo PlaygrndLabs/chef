@@ -33,35 +33,27 @@ class FakeSocket implements SocketLike {
 }
 
 describe("GPT-Live adapter", () => {
-  it("exchanges the browser offer with client delegation and attaches a sideband socket", async () => {
-    const requests: { url: string; body: Record<string, unknown>; auth: string | null }[] = [];
-    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
-      requests.push({ url: String(url), body: JSON.parse(String(init?.body)) as Record<string, unknown>, auth: new Headers(init?.headers).get("authorization") });
-      return Response.json({ session: { id: "sess_1" }, transport: { type: "webrtc", sdp: "answer-sdp" } }, { status: 201 });
-    }) as typeof fetch;
+  it("starts a live session for the engine, forwards caller audio and names chef's audio in one shape", async () => {
     const socket = new FakeSocket((message, s) => {
+      if (message["type"] === "session.start") s.receive({ type: "session.started", session: { id: "sess_1" } });
       if (message["type"] === "session.close") s.receive({ type: "session.closed", usage: {} });
     });
     const connects: { url: string; headers: Record<string, string> }[] = [];
-    const host = new GptLiveHost({ apiKey: "sk-test", voice: "marin", fetchImpl, connect: async (url, headers) => (connects.push({ url, headers }), socket) });
-
-    expect(await host.open({ sdp: "offer-sdp", instructions: "be brief" })).toEqual({ sessionId: "sess_1", sdp: "answer-sdp" });
-    expect(requests[0]).toEqual({
-      url: "https://api.openai.com/v1/live/sessions",
-      auth: "Bearer sk-test",
-      body: { session: { model: "gpt-live-1", instructions: "be brief", delegation: { type: "client" }, audio: { output: { voice: "marin" } } }, transport: { type: "webrtc", sdp: "offer-sdp" } },
-    });
-
-    const events: string[] = [];
-    const live = await host.attach("sess_1", (event) => events.push(event.type));
-    expect(connects).toEqual([{ url: "wss://api.openai.com/v1/live/sessions/sess_1/attach", headers: { authorization: "Bearer sk-test" } }]);
+    const host = new GptLiveHost({ apiKey: "sk-test", voice: "marin", connect: async (url, headers) => (connects.push({ url, headers }), socket) });
+    const events: Record<string, unknown>[] = [];
+    const stream = await host.start({ instructions: "be brief", onEvent: (event) => events.push(event) });
+    expect(stream.sessionId).toBe("sess_1");
+    expect(connects).toEqual([{ url: "wss://api.openai.com/v1/live/sessions", headers: { authorization: "Bearer sk-test" } }]);
+    expect((socket.sent[0]?.["session"] as { instructions: string; delegation: unknown }).instructions).toBe("be brief");
+    stream.sendAudio(new Uint8Array(4).fill(2));
+    expect(socket.sent.at(-1)).toEqual({ type: "session.input_audio.append", audio: Buffer.from(new Uint8Array(4).fill(2)).toString("base64") });
+    socket.receive({ type: "session.output_audio.delta", audio: "AAA=" });
     socket.receive({ type: "session.delegation.created", delegation: { id: "d1", target: "client" } });
-    socket.emit("message", { data: "not json" });
-    live.send({ type: "session.commentary.append", event_id: "e1", delegation_id: "d1", content: "on it" });
-    await live.close();
-    expect(events).toEqual(["session.delegation.created", "error", "session.closed"]);
-    expect(socket.sent.map((m) => m["type"])).toEqual(["session.commentary.append", "session.close"]);
-    expect(socket.closedWith).toBe(1000);
+    stream.connection.send({ type: "session.commentary.append", event_id: "e1", delegation_id: "d1", content: "on it" });
+    await stream.connection.close();
+    expect(events.map((e) => e["type"])).toEqual(["session.started", "session.output_audio.delta", "session.delegation.created", "session.closed"]);
+    expect(events[1]).toEqual({ type: "session.output_audio.delta", delta: "AAA=" });
+    expect(socket.sent.map((m) => m["type"]).slice(1)).toEqual(["session.input_audio.append", "session.commentary.append", "session.close"]);
   });
 
   it("starts a server-side audio session and sends PCM in base64 chunks", async () => {

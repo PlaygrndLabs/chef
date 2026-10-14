@@ -54,15 +54,14 @@ export function Composer({
         />
         <div className="flex items-center gap-1.5 px-2 pb-2 pl-4">
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{hint}</span>
-          {onLive && !text.trim() && !sending ? (
-            <Button size="icon" className="rounded-xl" onClick={onLive} aria-label="Talk live" title="Talk live with chef" id="talk-button">
+          {onLive ? (
+            <Button size="icon" variant="ghost" className="rounded-xl" onClick={onLive} aria-label="Talk live" title="Talk live with chef" id="talk-button">
               <AudioLines />
             </Button>
-          ) : (
-            <Button size="icon" className="rounded-xl" onClick={() => void submit()} disabled={!text.trim() || sending} aria-label="Send">
-              {sending ? <Loader2 className="animate-spin" /> : <ArrowUp />}
-            </Button>
-          )}
+          ) : null}
+          <Button size="icon" className="rounded-xl" onClick={() => void submit()} disabled={!text.trim() || sending} aria-label="Send">
+            {sending ? <Loader2 className="animate-spin" /> : <ArrowUp />}
+          </Button>
         </div>
       </div>
     </div>
