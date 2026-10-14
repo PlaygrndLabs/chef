@@ -195,22 +195,7 @@ pre.log { max-height: 320px; overflow: auto; background: var(--muted); border-ra
   section { padding: 56px 0; }
 }
 
-.admin { padding-top: 40px; padding-bottom: 64px; }
-.admin h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 8px; }
-.admin .sub { margin-bottom: 24px; }
-.admin h2 { font-size: 18px; margin: 28px 0 12px; }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
-.stat { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
-.stat strong { font-size: 24px; }
-.stat span { font-size: 13px; }
-.table { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
-.table table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.table th { text-align: left; font-weight: 500; color: var(--muted-foreground); padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.table tr:last-child td { border-bottom: 0; }
-.table .badge:first-child { margin-left: 0; }
 .small { font-size: 12px; margin-top: 2px; }
-.table .error { min-height: 0; margin: 4px 0 0; }
 
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover:not(:disabled) { opacity: 0.9; }
