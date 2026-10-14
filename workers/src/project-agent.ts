@@ -479,11 +479,11 @@ export class ProjectAgent extends Agent<Env> {
     const { orchestrator, settings } = await this.build();
     if (!settings.llm) return fail(NO_LLM);
     const voice = settings.voice;
-    if (!voice) return fail("Live talk needs a voice key in Settings > Voice.");
+    if (!voice) return fail("Live talk needs a voice key in Settings > Models.");
     const host =
       voice.kind === "openai"
-        ? new GptLiveHost({ apiKey: voice.apiKey, model: this.env.VOICE_MODEL, voice: this.env.VOICE, connect: workersConnect })
-        : new RealtimeHost({ baseUrl: voice.baseUrl, apiKey: voice.apiKey, model: this.env.REALTIME_MODEL, voice: this.env.VOICE, connect: workersConnect });
+        ? new GptLiveHost({ apiKey: voice.apiKey, model: settings.models.voice, voice: this.env.VOICE, connect: workersConnect })
+        : new RealtimeHost({ baseUrl: voice.baseUrl, apiKey: voice.apiKey, model: settings.models.voice, voice: this.env.VOICE, connect: workersConnect });
     const target = {
       submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
         const result = await orchestrator.submitSpoken(prompt, call);

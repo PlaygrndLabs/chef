@@ -40,7 +40,7 @@ export interface SettingsView {
   readonly voice: ProviderView | null;
   readonly jev: { readonly keyHint: string; readonly source: Source } | null;
   readonly cloudflare: { readonly accountId: string; readonly keyHint: string; readonly source: Source } | null;
-  readonly models: { readonly planner: string; readonly reviewer: string; readonly coder: string; readonly source: Source };
+  readonly models: { readonly planner: string; readonly reviewer: string; readonly coder: string; readonly voice: string; readonly source: Source };
   readonly attempts: { readonly value: number; readonly source: Source };
   readonly password: Source | "none";
   readonly runsOn?: "computer";
@@ -247,6 +247,7 @@ export interface EnvVarView {
   readonly name: string;
   readonly secret: boolean;
   readonly value: string | null;
+  readonly hint?: string;
   readonly updatedAt: number;
   readonly scope?: "shared" | "overrides";
 }

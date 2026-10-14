@@ -20,7 +20,7 @@ describe("project environment", () => {
     const view = await viewEnv(result.env, c, [{ name: "MAPS_KEY", features: ["map"] }]);
     expect(view.vars).toEqual([
       { name: "API_URL", secret: false, value: "https://api.example.com", updatedAt: 5 },
-      { name: "STRIPE_SECRET_KEY", secret: true, value: null, updatedAt: 5 },
+      { name: "STRIPE_SECRET_KEY", secret: true, value: null, hint: "…ve_1", updatedAt: 5 },
     ]);
     expect(view.needs).toEqual([{ name: "MAPS_KEY", features: ["map"] }]);
     expect((await revealEnv(result.env, c)).find((v) => v.name === "STRIPE_SECRET_KEY")?.value).toBe("sk_live_1");
