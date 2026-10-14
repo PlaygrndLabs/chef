@@ -8,7 +8,7 @@ on:
         required: false
         default: ""
       prompt:
-        description: Request to type into the chat; empty only looks around
+        description: Requests to type into the chat, one per line, each sent once the last one is answered; empty only looks around
         required: false
         default: ""
       minutes:

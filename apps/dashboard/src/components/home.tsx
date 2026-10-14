@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type Ref } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import { useAgent, useCopilotKit, UseAgentUpdate } from "@copilotkit/react-core/v2";
 import type { RouteDecision } from "@chef/core";
-import { AudioLines, Check, ChevronRight, Loader2, Play } from "lucide-react";
+import { AudioLines, Check, ChevronRight, Loader2, Play, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Composer } from "@/components/composer";
 import { LivePanel } from "@/components/live-talk";
@@ -11,6 +11,7 @@ import { StatusPill } from "@/components/status";
 import { statusOf, waitsForBudget, waitsForKey, type FeatureStatus, type SessionNode } from "@/lib/model";
 import { activity, stripFeatureTag } from "@/lib/progress";
 import { isActive } from "@/lib/events";
+import { sendError } from "@/lib/send";
 import type { OverviewState, Suggestion } from "@/lib/api";
 import { useOverview } from "@/lib/overview";
 import { plainVoiceError, startLive, useTalk, type TalkState } from "@/lib/live-talk";
@@ -20,7 +21,34 @@ import { Mark, Wordmark } from "@/components/logo";
 
 const useProjectLevel = host.useProjectLevel ?? (() => null);
 
-const sentHere = new Map<string, number>();
+interface Sent {
+  readonly seen: number;
+  readonly failed: boolean;
+  readonly reason?: string;
+}
+
+const sentHere = new Map<string, Sent>();
+const sentWatchers = new Set<() => void>();
+let sentVersion = 0;
+let delivering: Promise<void> = Promise.resolve();
+const QUEUE_WAIT_MS = 180_000;
+
+function setSent(prompt: string, sent: Sent, moveToEnd: boolean): void {
+  if (moveToEnd) sentHere.delete(prompt);
+  sentHere.set(prompt, sent);
+  sentVersion += 1;
+  for (const watch of sentWatchers) watch();
+}
+
+function useSent(): number {
+  return useSyncExternalStore(
+    (watch) => {
+      sentWatchers.add(watch);
+      return () => sentWatchers.delete(watch);
+    },
+    () => sentVersion,
+  );
+}
 
 const EXAMPLES = ["A todo list where I can add items", "Let me mark an item as done", "A page that lists my orders"];
 
@@ -269,6 +297,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const { copilotkit } = useCopilotKit();
   const [draft, setDraft] = useState<{ text: string; n: number } | null>(null);
   const end = useRef<HTMLDivElement>(null);
+  useSent();
   const messages = agent.messages as unknown as readonly ChatMessage[];
   const routes = data.live.routes;
 
@@ -284,19 +313,50 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
       });
   const said = spokenTurns(data.live.spoken, talk, selection.project);
   const timeline = [...history.map((item) => ({ at: item.at, item, turn: null })), ...said.map((turn) => ({ at: turn.at, item: null, turn }))].sort((a, b) => a.at - b.at);
-  const pending = [...sentHere].filter(([prompt, seen]) => routes.filter((r) => r.prompt === prompt).length <= seen).map(([prompt]) => prompt);
+  const pending = [...sentHere].filter(([prompt, sent]) => routes.filter((r) => r.prompt === prompt).length <= sent.seen).map(([prompt, sent]) => ({ prompt, failed: sent.failed, reason: sent.reason ?? null }));
 
   const loading = !data.ready || overview === null;
   useLayoutEffect(() => {
     if (!loading && (history.length || pending.length || said.length)) end.current?.scrollIntoView({ block: "end" });
   }, [loading, messages.length, history.length, pending.length, said.length, said[said.length - 1]?.text, talk.phase]);
 
-  const send = async (text: string) => {
-    sentHere.delete(text);
-    sentHere.set(text, routes.filter((r) => r.prompt === text).length);
-    if (agent.isRunning) agent.abortRun();
-    agent.addMessage({ id: crypto.randomUUID(), role: "user", content: text });
-    copilotkit.runAgent({ agent }).catch((error: unknown) => toast.error("The request failed", { description: error instanceof Error ? error.message : String(error) }));
+  const deliver = (text: string, seen: number) =>
+    new Promise<void>((settle) => {
+      let accepted = false;
+      let done = false;
+      let reason: string | null = null;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (!accepted && sentHere.get(text)?.seen === seen) setSent(text, { seen, failed: true, ...(reason ? { reason } : {}) }, false);
+        settle();
+      };
+      const watch = agent.subscribe({
+        onStateSnapshotEvent: ({ event }) => {
+          if ((event.snapshot as { prompt?: unknown } | undefined)?.prompt !== text) return;
+          accepted = true;
+          finish();
+        },
+        onRunErrorEvent: ({ event }) => {
+          reason = sendError(event.message);
+        },
+      });
+      if (agent.isRunning) agent.abortRun();
+      agent.addMessage({ id: crypto.randomUUID(), role: "user", content: text });
+      copilotkit
+        .runAgent({ agent })
+        .catch(() => undefined)
+        .finally(() => {
+          watch.unsubscribe();
+          finish();
+        });
+    });
+
+  const send = (text: string) => {
+    const seen = routes.filter((r) => r.prompt === text).length;
+    setSent(text, { seen, failed: false }, true);
+    const turn = delivering.then(() => deliver(text, seen));
+    delivering = Promise.race([turn, new Promise<void>((resolve) => setTimeout(resolve, QUEUE_WAIT_MS))]);
     return true;
   };
 
@@ -344,13 +404,27 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
                   </div>
                 ) : null,
               )}
-              {pending.map((prompt) => (
-                <div key={`pending-${prompt}`} className="flex flex-col gap-4">
+              {pending.map(({ prompt, failed, reason }) => (
+                <div key={`pending-${prompt}`} className="flex flex-col gap-4" data-pending={failed ? "failed" : "sending"}>
                   <You>{prompt}</You>
                   <div className="flex items-center gap-3">
                     <Avatar />
-                    <span className="text-muted-foreground">{agent.isRunning ? "Thinking about where this belongs" : "No answer yet. Try sending it again."}</span>
-                    {agent.isRunning ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
+                    {failed ? (
+                      <>
+                        <span className="text-muted-foreground">{reason ? `Chef could not take this message. ${reason}` : "This message did not reach Chef."}</span>
+                        {viewOnly ? null : (
+                          <Button size="sm" variant="outline" onClick={() => send(prompt)} data-retry={prompt}>
+                            <RotateCcw className="size-3.5" />
+                            Retry
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-muted-foreground">Thinking about where this belongs</span>
+                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
