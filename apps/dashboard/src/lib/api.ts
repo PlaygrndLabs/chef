@@ -101,6 +101,10 @@ export function sharesApi(project: string) {
 
 export const SHARE_PAGE = "/s";
 
+export function isSharePage(pathname: string): boolean {
+  return pathname === SHARE_PAGE || /^\/s\/[A-Za-z0-9_-]{1,80}$/.test(pathname);
+}
+
 export function shareLink(origin: string, token: string): string {
   return `${origin}${SHARE_PAGE}#${token}`;
 }
@@ -113,15 +117,20 @@ export interface SharedTarget {
   readonly expiresAt: number | null;
 }
 
-export function sharedApi(token: string) {
-  const init = (): RequestInit => ({ headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
+export function sharedApi(input: { readonly base: string; readonly headers?: Readonly<Record<string, string>> }) {
+  const { base } = input;
+  const init = (): RequestInit => ({ headers: { ...input.headers }, cache: "no-store" });
   return {
-    target: () => call<SharedTarget>("/api/share", init()),
-    session: (project: string, id: string) => call<{ record: SessionRecord }>(`/api/projects/${project}/sessions/${id}`, init()),
-    turns: (project: string, id: string) => call<SessionTurn[]>(`/api/projects/${project}/sessions/${id}/turns`, init()),
-    changes: (project: string, id: string) => call<SessionChanges>(`/api/projects/${project}/sessions/${id}/changes`, init()),
-    previewState: (link: string, retry: boolean) => fetch(`${link}?state=1${retry ? "&retry=1" : ""}`, init()).catch(() => null),
+    target: () => call<SharedTarget>(`${base}/api/share`, init()),
+    session: (project: string, id: string) => call<{ record: SessionRecord }>(`${base}/api/projects/${project}/sessions/${id}`, init()),
+    turns: (project: string, id: string) => call<SessionTurn[]>(`${base}/api/projects/${project}/sessions/${id}/turns`, init()),
+    changes: (project: string, id: string) => call<SessionChanges>(`${base}/api/projects/${project}/sessions/${id}/changes`, init()),
+    previewState: (link: string, retry: boolean) => fetch(`${base}${link}?state=1${retry ? "&retry=1" : ""}`, init()).catch(() => null),
   };
+}
+
+export function linkApi(token: string) {
+  return token ? sharedApi({ base: "", headers: { authorization: `Bearer ${token}` } }) : null;
 }
 
 export type SharedApi = ReturnType<typeof sharedApi>;

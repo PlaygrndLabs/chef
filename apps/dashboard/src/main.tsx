@@ -4,13 +4,13 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { boot } from "@/lib/boot";
-import { SHARE_PAGE } from "@/lib/api";
+import { isSharePage } from "@/lib/api";
 import { App, preloadScreen } from "./app";
 import "./index.css";
 
 const SharedPage = lazy(() => import("@/components/shared-page").then((m) => ({ default: m.SharedPage })));
 
-const sharedPage = location.pathname === SHARE_PAGE;
+const sharedPage = isSharePage(location.pathname);
 if (!sharedPage) {
   void boot();
   preloadScreen();

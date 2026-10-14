@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type { SettingsSection } from "@/components/settings-shell";
+import type { SharedApi } from "@/lib/api";
 
 export type ProjectLevel = "view" | "edit" | "manage";
 
@@ -47,4 +48,5 @@ export interface Host {
   readonly projectSections?: (project: string) => readonly SettingsSection[];
   readonly hiddenSections?: readonly string[];
   readonly Share?: ComponentType<HostShare> | false;
+  readonly sharedApi?: () => SharedApi | null;
 }

@@ -7,7 +7,8 @@ import { CommitList, Empty, FileDiff } from "@/components/session-sections";
 import { StatusPill } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { sharedApi, type SharedApi, type SharedTarget } from "@/lib/api";
+import { linkApi, type SharedApi, type SharedTarget } from "@/lib/api";
+import { host } from "@/host";
 import { previewHost } from "@/lib/format";
 import { statusOf } from "@/lib/model";
 import { entryPage, enterAt } from "@/lib/preview";
@@ -79,28 +80,16 @@ function SharedCommits({ api, project, id }: { readonly api: SharedApi; readonly
   return <CommitList turns={turns} />;
 }
 
-export function SharedPage() {
-  const token = location.hash.replace(/^#/, "");
-  const api = useMemo(() => sharedApi(token), [token]);
+function SharedView({ api }: { readonly api: SharedApi }) {
   const [shared, setShared] = useState<Shared | null>(null);
-  const [error, setError] = useState<string | null>(token ? null : "This link is missing its key. Ask for the whole link again.");
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    if (!token) return;
     api
       .target()
       .then(async (target) => setShared({ target, record: target.kind === "session" ? (await api.session(target.project, target.id)).record : null }))
       .catch((e: unknown) => setError(e instanceof Error && /401|403|not valid/.test(e.message) ? "This link has ended or was never valid." : e instanceof Error ? e.message : String(e)));
-  }, [api, token]);
-  useEffect(() => document.getElementById("splash")?.remove(), []);
-  if (error)
-    return (
-      <div className="grid h-dvh place-items-center p-6 text-center" data-view="shared-error">
-        <div className="grid justify-items-center gap-3">
-          <Wordmark />
-          <p className="text-sm text-muted-foreground">{error}</p>
-        </div>
-      </div>
-    );
+  }, [api]);
+  if (error) return <SharedError message={error} />;
   if (!shared) return <div className="h-dvh" data-view="shared-loading" />;
   const { target, record } = shared;
   const previewKey = record ? record.previewKey : target.id;
@@ -141,4 +130,22 @@ export function SharedPage() {
       )}
     </div>
   );
+}
+
+function SharedError({ message }: { readonly message: string }) {
+  return (
+    <div className="grid h-dvh place-items-center p-6 text-center" data-view="shared-error">
+      <div className="grid justify-items-center gap-3">
+        <Wordmark />
+        <p className="text-sm text-muted-foreground">{message}</p>
+      </div>
+    </div>
+  );
+}
+
+export function SharedPage() {
+  const api = useMemo(() => (host.sharedApi ? host.sharedApi() : linkApi(location.hash.replace(/^#/, ""))), []);
+  useEffect(() => document.getElementById("splash")?.remove(), []);
+  if (!api) return <SharedError message="This link is missing its key. Ask for the whole link again." />;
+  return <SharedView api={api} />;
 }
