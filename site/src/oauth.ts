@@ -15,6 +15,7 @@ export interface OAuthClient {
 export interface Pending {
   readonly state: string;
   readonly verifier: string;
+  readonly then?: "remove";
 }
 
 export function randomToken(bytes = 32): string {
@@ -86,12 +87,12 @@ export function setCookie(name: string, value: string, maxAge: number, path = "/
 }
 
 export function encodePending(pending: Pending): string {
-  return `${pending.state}.${pending.verifier}`;
+  return [pending.state, pending.verifier, ...(pending.then ? [pending.then] : [])].join(".");
 }
 
 export function decodePending(value: string | undefined): Pending | null {
-  const [state, verifier] = (value ?? "").split(".");
-  return state && verifier ? { state, verifier } : null;
+  const [state, verifier, then] = (value ?? "").split(".");
+  return state && verifier ? { state, verifier, ...(then === "remove" ? { then } : {}) } : null;
 }
 
 async function hmac(secret: string, text: string): Promise<string> {
