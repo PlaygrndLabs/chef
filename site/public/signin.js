@@ -82,7 +82,7 @@ function seeded(seed) {
   };
 }
 
-function arrow(sx, sy, ex, ey, seed, lead = 0) {
+function arrow(sx, sy, ex, ey, seed, lead = 0, land = null) {
   const rand = seeded(seed);
   const dx = ex - sx;
   const dy = ey - sy;
@@ -94,8 +94,9 @@ function arrow(sx, sy, ex, ey, seed, lead = 0) {
   const lean = 0.25 + rand() * 0.2;
   const c1x = lead ? sx + lead * Math.max(Math.abs(dx) * lean * 1.3, 26) : sx + dx * lean + nx * bend;
   const c1y = lead ? sy + (rand() - 0.5) * 4 : sy + dy * lean + ny * bend;
-  const c2x = sx + dx * (0.62 + rand() * 0.18) + nx * bend * (0.15 + rand() * 0.5);
-  const c2y = sy + dy * (0.62 + rand() * 0.18) + ny * bend * (0.15 + rand() * 0.5);
+  const reach = Math.min(Math.max(length * 0.3, 18), 60);
+  const c2x = land ? ex - land[0] * reach : sx + dx * (0.62 + rand() * 0.18) + nx * bend * (0.15 + rand() * 0.5);
+  const c2y = land ? ey - land[1] * reach : sy + dy * (0.62 + rand() * 0.18) + ny * bend * (0.15 + rand() * 0.5);
   const phase = rand() * Math.PI * 2;
   const points = [];
   for (let i = 0; i <= 48; i++) {
@@ -207,19 +208,19 @@ function layout() {
       if (must) {
         paths.push([ring(target), true]);
         paths.push([arrow(line.left - 8, line.lmid, target.right + 18, target.top - 2, i + 11, -1), true]);
-      } else if (left) paths.push([arrow(line.right + 8, line.rmid, target.left - 8, target.mid, i + 11, 1), false]);
-      else paths.push([arrow(line.left - 8, line.lmid, target.right + 8, target.mid, i + 11, -1), false]);
+      } else if (left) paths.push([arrow(line.right + 8, line.rmid, target.left - 8, target.mid, i + 11, 1, [1, 0]), false]);
+      else paths.push([arrow(line.left - 8, line.lmid, target.right + 8, target.mid, i + 11, -1, [-1, 0]), false]);
     } else {
       note.classList.remove("left");
       note.style.marginLeft = must ? "" : `${66 + Math.round(rand() * 22)}px`;
       const first = local(lines(note)[0]);
       if (must) {
         paths.push([ring(target), true]);
-        paths.push([arrow(first.right + 10, first.rmid, (target.left + target.right) / 2 - 4, target.bottom + 13, i + 11, 1), true]);
+        paths.push([arrow(first.right + 10, first.rmid, (target.left + target.right) / 2 - 4, target.bottom + 13, i + 11, 1, [0.5, -0.87]), true]);
         return;
       }
       const icon = local(chip.querySelector(".cfc-ico").getBoundingClientRect());
-      paths.push([arrow(first.left - 7, first.lmid, (icon.left + icon.right) / 2, icon.bottom + 6, i + 11, -1), false]);
+      paths.push([arrow(first.left - 7, first.lmid, (icon.left + icon.right) / 2, icon.bottom + 6, i + 11, -1, [-0.55, -0.83]), false]);
     }
   });
   const spill = wide ? Math.max(0, ...notes.map((note) => local(note.getBoundingClientRect()).bottom - cardBox.bottom)) : 0;
