@@ -121,10 +121,10 @@ describe("organization", () => {
     await org.setup({ id: "org1", name: "Acme", personal: false }, { userId: "usr1", email: "sam@example.com", role: "owner" });
     await org.setup({ id: "org1", name: "ignored", personal: true }, { userId: "usr2", email: null, role: "member" });
     expect(await org.access("usr3")).toBeNull();
-    expect(await org.access("usr2")).toEqual({ role: "member", engine: null, level: null });
+    expect(await org.access("usr2")).toEqual({ role: "member", engine: null, level: null, updating: false });
     const engine = { name: "chef-acme-ab12", url: "https://chef.acme.workers.dev", accountId: "acct", secret: "s", version: "v1" };
     await org.setEngine(engine);
-    expect(await org.access("usr1")).toEqual({ role: "owner", engine, level: null });
+    expect(await org.access("usr1")).toEqual({ role: "owner", engine, level: null, updating: false });
     await org.rename("Acme Labs");
     expect(await org.view("usr1")).toEqual({ id: "org1", name: "Acme Labs", role: "owner", personal: false, plan: "free", engine: engine.url, members: 2 });
     expect((await org.members()).map((m) => [m.userId, m.role])).toEqual([["usr1", "owner"], ["usr2", "member"]]);

@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { orgLabel, PLAN_LABEL, useAppMode } from "@/lib/account";
 import { MembersSection } from "@/components/people";
 import { UsageSection } from "@/components/usage";
+import { LockedWhileUpdating } from "@/components/update";
 
 function ModelsForm(props: { readonly settings: SettingsView; readonly save: Save }) {
   const { models, attempts } = props.settings;
@@ -297,6 +298,7 @@ export function SettingsDialog(props: {
   readonly item: string | null;
   readonly nav: AgentsNav & { readonly section: (section: string) => void };
   readonly returnTo: string;
+  readonly locked?: boolean;
 }) {
   const { settings, onChange, nav } = props;
   const missing = missingSettings(settings);
@@ -334,7 +336,7 @@ export function SettingsDialog(props: {
           {hosted ? <AccountSection account={mode?.account ?? null} admin={mode?.admin === true} /> : null}
           {hosted && mode?.org ? <OrgSection org={mode.org} /> : null}
           {hosted && mode?.org && !mode.org.personal ? <MembersSection org={mode.org} /> : null}
-          {hosted && mode?.org ? <RemoveSection org={mode.org} /> : null}
+          {hosted && mode?.org && !props.locked ? <RemoveSection org={mode.org} /> : null}
           {settings && !hosted ? (
             <Group title="Password" note="Changing it signs out every other browser and script.">
               <PasswordForm settings={settings} save={save} />
@@ -413,7 +415,9 @@ export function SettingsDialog(props: {
     },
     { id: "github", label: "GitHub", icon: GitBranch, note: "One connection for every project that links a GitHub repository.", render: () => <GitHubSection returnTo={props.returnTo} /> },
   ];
-  const sections = all.filter((s) => props.available || !needsSettings.has(s.id));
+  const sections = all
+    .filter((s) => props.available || !needsSettings.has(s.id))
+    .map((s) => (props.locked && s.id !== "general" ? { ...s, fill: false, attention: false, render: () => <LockedWhileUpdating /> } : s));
   return (
     <SettingsShell
       open={props.open}

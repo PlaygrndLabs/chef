@@ -10,11 +10,13 @@ interface OrgState {
   engine: { url: string; secret: string; accountId?: string; version?: string } | null;
   members: Record<string, Role>;
   projects?: Record<string, Record<string, ProjectLevel>>;
+  updating?: boolean;
 }
 
 interface Fake {
   orgs: Record<string, OrgState>;
   admins: string[];
+  later?: boolean;
   calls: { name: string; method: string; arg?: unknown }[];
 }
 
@@ -41,6 +43,8 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
     removal: async () => null,
     remove: async (arg: unknown) => (fake.calls.push({ name, method: "remove", arg }), { status: "running" }),
     dismissRemoval: async () => undefined,
+    later: async () => void (fake.later = true),
+    askedLater: async () => fake.later === true,
   });
   const org = (id: string) => ({
     setup: async (info: { name: string }, who: { userId: string; role: Role }) => {
@@ -48,7 +52,7 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
       fake.orgs[id] ??= { name: info.name, engine: null, members: {} };
       fake.orgs[id].members[who.userId] = who.role;
     },
-    access: async (userId: string, project: string | null = null) => (fake.orgs[id]?.members[userId] ? { role: fake.orgs[id].members[userId], engine: fake.orgs[id].engine, level: project ? level(id, userId, project) : null } : null),
+    access: async (userId: string, project: string | null = null) => (fake.orgs[id]?.members[userId] ? { role: fake.orgs[id].members[userId], engine: fake.orgs[id].engine, level: project ? level(id, userId, project) : null, updating: fake.orgs[id].updating === true } : null),
     levels: async (userId: string, names: string[]) => Object.fromEntries(names.flatMap((n) => (level(id, userId, n) ? [[n, level(id, userId, n)]] : []))),
     claimProject: async (userId: string, name: string) => {
       const state = fake.orgs[id] as OrgState;
@@ -62,6 +66,7 @@ function fakeEnv(state: Partial<Fake> & { engine?: OrgState["engine"]; role?: Ro
     engine: async () => fake.orgs[id]?.engine ?? null,
     setEngine: async (engine: OrgState["engine"]) => void ((fake.orgs[id] as OrgState).engine = engine),
     removing: async () => false,
+    updating: async () => fake.orgs[id]?.updating === true,
   });
   const dir = {
     signIn: async (identity: { subject: string; email: string }, admin: boolean) => {
@@ -181,7 +186,29 @@ describe("chef site", () => {
       account: "sam@example.com",
       org: { id: "org1", name: "Personal", role: "owner", personal: true, plan: "free", engine: ENGINE.url, members: 2 },
       orgs: [{ id: "org1", name: "Personal", role: "owner", personal: true, plan: "free" }],
+      update: null,
     });
+  });
+
+  it("asks owners to update chef after sign-in, starts it on their word and locks only chef while it runs", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ projects: [] })));
+    const { env, fake } = fakeEnv({ engine: { ...ENGINE, accountId: "a1", version: "v1" } });
+    (env as { ENGINE_VERSION?: string }).ENGINE_VERSION = "v2";
+    const cookie = await session();
+    const mode = async (who = cookie) => ((await (await handle(new Request(`${origin}/api/app`, { headers: { cookie: who } }), env)).json()) as { update: unknown }).update;
+    expect(await mode()).toEqual({ running: false, canUpdate: true, ask: true });
+    expect((await handle(send("/site/api/update/later", "POST", {}, cookie), env)).status).toBe(200);
+    expect(await mode()).toEqual({ running: false, canUpdate: true, ask: false });
+    const started = await handle(send("/site/api/update", "POST", {}, cookie), env);
+    expect(started.status).toBe(202);
+    expect(fake.calls.find((c) => c.method === "install")?.arg).toMatchObject({ orgId: "org1", accountId: "a1", engine: { version: "v1" } });
+    (fake.orgs["org1"] as OrgState).updating = true;
+    expect(await mode()).toEqual({ running: true, canUpdate: true, ask: false });
+    const locked = await handle(new Request(`${origin}/api/projects`, { headers: { cookie } }), env);
+    expect(locked.status).toBe(423);
+    expect((await handle(new Request(`${origin}/site/api/orgs`, { headers: { cookie } }), env)).status).toBe(200);
+    (fake.orgs["org1"] as OrgState).members["kim"] = "member";
+    expect((await handle(send("/site/api/update", "POST", {}, await session("kim")), env)).status).toBe(403);
   });
 
   it("shows each person only the projects they may open and holds them to their level", async () => {

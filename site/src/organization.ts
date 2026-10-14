@@ -7,6 +7,7 @@ export interface OrgAccess {
   readonly role: Role;
   readonly engine: Engine | null;
   readonly level: ProjectLevel | null;
+  readonly updating: boolean;
 }
 
 export interface ProjectPerson {
@@ -64,6 +65,8 @@ interface MemberRow extends Record<string, SqlStorageValue> {
 const META = "meta";
 const ENGINE = "engine";
 const REMOVING = "removing";
+const UPDATING = "updating";
+const UPDATE_LIMIT = 30 * 60_000;
 
 export class Organization extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -83,7 +86,7 @@ export class Organization extends DurableObject<Env> {
 
   async access(userId: string, project: string | null = null): Promise<OrgAccess | null> {
     const role = this.role(userId);
-    return role ? { role, engine: (await this.ctx.storage.get<Engine>(ENGINE)) ?? null, level: project ? this.level(userId, role, project) : null } : null;
+    return role ? { role, engine: (await this.ctx.storage.get<Engine>(ENGINE)) ?? null, level: project ? this.level(userId, role, project) : null, updating: await this.updating() } : null;
   }
 
   levels(userId: string, names: readonly string[]): Record<string, ProjectLevel> {
@@ -194,9 +197,20 @@ export class Organization extends DurableObject<Env> {
     else await this.ctx.storage.delete(REMOVING);
   }
 
+  async updating(): Promise<boolean> {
+    const since = await this.ctx.storage.get<number>(UPDATING);
+    return since !== undefined && Date.now() - since < UPDATE_LIMIT;
+  }
+
+  async setUpdating(on: boolean): Promise<void> {
+    if (on) await this.ctx.storage.put(UPDATING, Date.now());
+    else await this.ctx.storage.delete(UPDATING);
+  }
+
   async reset(): Promise<void> {
     await this.ctx.storage.delete(ENGINE);
     await this.ctx.storage.delete(REMOVING);
+    await this.ctx.storage.delete(UPDATING);
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM project_people");
       this.ctx.storage.sql.exec("DELETE FROM projects");
@@ -204,7 +218,7 @@ export class Organization extends DurableObject<Env> {
   }
 
   async erase(): Promise<void> {
-    for (const key of [META, ENGINE, REMOVING]) await this.ctx.storage.delete(key);
+    for (const key of [META, ENGINE, REMOVING, UPDATING]) await this.ctx.storage.delete(key);
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM project_people");
       this.ctx.storage.sql.exec("DELETE FROM projects");
