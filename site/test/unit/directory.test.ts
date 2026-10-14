@@ -10,11 +10,11 @@ const organization = () => new Organization({ storage: new FakeStorage() } as un
 const sam = { provider: "cloudflare", subject: "cf-sam", email: "sam@example.com" } as const;
 
 describe("directory", () => {
-  it("gives a new person one default organization they own and keeps it on later sign-ins", () => {
+  it("gives a new person a Personal workspace they own and keeps it on later sign-ins", () => {
     const dir = directory();
     const first = dir.signIn(sam, false);
     expect(first.userId).toMatch(/^usr_[A-Za-z0-9]{20}$/);
-    expect(first.org).toMatchObject({ name: "sam's org", role: "owner" });
+    expect(first.org).toMatchObject({ name: "Personal", role: "owner", personal: true, plan: "free" });
     expect(first.org.id).toMatch(/^org_[A-Za-z0-9]{20}$/);
     const again = dir.signIn({ ...sam, email: "sam@new.example" }, true);
     expect(again).toEqual({ userId: first.userId, org: first.org, orgs: [first.org] });
@@ -25,6 +25,7 @@ describe("directory", () => {
     const dir = directory();
     const { userId, org } = dir.signIn(sam, false);
     const team = dir.createOrg(userId, "Acme");
+    expect(team).toMatchObject({ name: "Acme", role: "owner", personal: false, plan: "free" });
     expect(dir.orgs(userId)).toEqual([org, team]);
     expect(dir.use(userId, team.id)).toEqual(team);
     expect(dir.use(userId, "org_missing")).toBeNull();
@@ -35,28 +36,29 @@ describe("directory", () => {
     const dir = directory();
     const a = dir.signIn(sam, false);
     const b = dir.signIn({ provider: "cloudflare", subject: "cf-kim", email: null }, false);
-    expect(b.org.name).toBe("My org");
+    expect(b.org).toMatchObject({ name: "Personal", personal: true });
+    expect(b.org.id).not.toBe(a.org.id);
     expect(dir.use(a.userId, b.org.id)).toBeNull();
     dir.renameOrg(a.org.id, "Sam and co");
     dir.recordSetup(a.org.id, { accountId: "acct", engine: "https://chef.sam.workers.dev", version: "v1", install: "done", error: null });
     const list = dir.list();
     expect(list.latest).toBe("v2");
-    expect(list.orgs.find((o) => o.id === a.org.id)).toMatchObject({ name: "Sam and co", owner: "sam@example.com", members: 1, accountId: "acct", install: "done" });
+    expect(list.orgs.find((o) => o.id === a.org.id)).toMatchObject({ name: "Sam and co", personal: true, owner: "sam@example.com", members: 1, accountId: "acct", install: "done" });
   });
 });
 
 describe("organization", () => {
   it("lets only its members in and keeps the engine with the organization", async () => {
     const org = organization();
-    await org.setup({ id: "org1", name: "Acme" }, { userId: "usr1", email: "sam@example.com", role: "owner" });
-    await org.setup({ id: "org1", name: "ignored" }, { userId: "usr2", email: null, role: "member" });
+    await org.setup({ id: "org1", name: "Acme", personal: false }, { userId: "usr1", email: "sam@example.com", role: "owner" });
+    await org.setup({ id: "org1", name: "ignored", personal: true }, { userId: "usr2", email: null, role: "member" });
     expect(await org.access("usr3")).toBeNull();
     expect(await org.access("usr2")).toEqual({ role: "member", engine: null });
     const engine = { name: "chef-acme-ab12", url: "https://chef.acme.workers.dev", accountId: "acct", secret: "s", version: "v1" };
     await org.setEngine(engine);
     expect(await org.access("usr1")).toEqual({ role: "owner", engine });
     await org.rename("Acme Labs");
-    expect(await org.view("usr1")).toEqual({ id: "org1", name: "Acme Labs", role: "owner", engine: engine.url, members: 2 });
+    expect(await org.view("usr1")).toEqual({ id: "org1", name: "Acme Labs", role: "owner", personal: false, plan: "free", engine: engine.url, members: 2 });
     expect((await org.members()).map((m) => [m.userId, m.role])).toEqual([["usr1", "owner"], ["usr2", "member"]]);
   });
 });
