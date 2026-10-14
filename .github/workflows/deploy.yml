@@ -70,7 +70,7 @@ jobs:
       - name: Show Cloudflare's errors from the Wrangler log
         if: failure() && steps.creds.outputs.ready == 'true'
         run: grep -hiE '"(code|message)"|error' ~/.config/.wrangler/logs/*.log | grep -viE 'token|secret|authorization|password|key' | cut -c1-400 | tail -60 || true
-      - name: Smoke test in the browser's place and through the local app
+      - name: Smoke test
         if: steps.creds.outputs.ready == 'true'
         env:
           CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
@@ -80,9 +80,5 @@ jobs:
           curl -fsS --retry 10 --retry-all-errors --retry-delay 6 -o /dev/null -w '%{http_code}\n' "$url/"
           test "$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/projects")" != 200
           if [ -n "$CHEF_PASSWORD" ]; then
-            CHEF_URL="$url" CI=1 node --import tsx cli/src/bin.ts app --no-open --port 4300 &
-            for i in $(seq 1 20); do curl -fsS -o /dev/null http://localhost:4300/api/app && break; sleep 1; done
-            curl -fsS http://localhost:4300/api/app
-            curl -fsS --retry 5 --retry-all-errors --retry-delay 5 -o /dev/null -w 'projects through the local app: %{http_code}\n' http://localhost:4300/api/projects
-            kill %1
+            curl -fsS --retry 5 --retry-all-errors --retry-delay 5 -o /dev/null -w 'projects with the password: %{http_code}\n' -H "authorization: Bearer $CHEF_PASSWORD" "$url/api/projects"
           fi

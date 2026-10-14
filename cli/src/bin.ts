@@ -13,11 +13,7 @@ import { BENCH_ITEMS } from "./bench/items.ts";
 import { runVoice, VOICE_PROMPT } from "./voice.ts";
 import { exportTuneData } from "./tune/data.ts";
 import { serve } from "./serve.ts";
-import { fileStore, startApp } from "./app.ts";
-import { Docker } from "./engine/docker.ts";
-import { LocalEngine, localHome } from "./engine/engine.ts";
 import { deploy } from "./deploy.ts";
-import { spawn } from "node:child_process";
 import { tour } from "./tour.ts";
 import { renderReport, runBench, runReplay, type BenchMode, type BenchResult } from "./bench/run.ts";
 
@@ -246,37 +242,6 @@ async function serveCommand(args: readonly string[]): Promise<number> {
   return 0;
 }
 
-async function appCommand(args: readonly string[]): Promise<number> {
-  const local = args.includes("--local");
-  const docker = new Docker({ repos: join(localHome(), "repos") });
-  const app = await startApp({
-    port: Number(option(args, "port") ?? process.env["PORT"] ?? 4300),
-    store: fileStore(undefined, process.env, local ? { place: "computer" } : null),
-    dockerProblem: () => docker.available(),
-    startEngine: async (log) => {
-      const engine = await LocalEngine.start({
-        log: (line) => {
-          log(line);
-          process.stderr.write(`${line}\n`);
-        },
-      });
-      process.stderr.write(`chef is running on this computer. Data is in ${engine.dir}.\n`);
-      return engine;
-    },
-  });
-  process.stdout.write(`chef is open at ${app.url}\nPress Ctrl+C to stop.\n`);
-  if (!args.includes("--no-open") && !process.env["CI"]) {
-    const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-    spawn(opener, [app.url], { stdio: "ignore", detached: true }).on("error", () => undefined).unref();
-  }
-  await new Promise<void>((resolve) => {
-    process.once("SIGINT", resolve);
-    process.once("SIGTERM", resolve);
-  });
-  await app.close();
-  return 0;
-}
-
 async function deployCommand(args: readonly string[]): Promise<number> {
   const name = option(args, "name");
   const image = option(args, "image");
@@ -330,9 +295,8 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "tune" && sub === "data") return tuneData(args);
   if (command === "serve") return serveCommand(args);
   if (command === "tour") return tourCommand(args);
-  if (command === "app") return appCommand(args);
   if (command === "deploy") return deployCommand(args);
-  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef app [--local] [--port n] [--no-open] | chef deploy [--name n] [--image ref] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef deploy [--name n] [--image ref] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
   return 2;
 }
 

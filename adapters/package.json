@@ -20,7 +20,6 @@
     "./realtime": "./src/realtime.ts",
     "./workers-ai-reviewer": "./src/workers-ai-reviewer.ts",
     "./agui": "./src/agui.ts",
-    "./local-git": "./src/local-git.ts",
     "./preview-page": "./src/preview-page.ts",
     "./projects": "./src/projects.ts",
     "./agents": "./src/agents.ts",
