@@ -48,6 +48,13 @@ async function signIn(page: Page, url: string, password: string | undefined): Pr
   }
 }
 
+async function reveal(page: Page, selector: string): Promise<boolean> {
+  const target = page.locator(selector).first();
+  if (!(await target.waitFor({ timeout: 10_000 }).then(() => true, () => false))) return false;
+  await target.scrollIntoViewIfNeeded();
+  return true;
+}
+
 async function json<T>(page: Page, path: string, init?: { method: string; data?: unknown }): Promise<T> {
   const response = init?.method === "POST" ? await page.request.post(path, { data: init.data ?? {} }) : await page.request.get(path);
   if (!response.ok()) throw new Error(`${init?.method ?? "GET"} ${path}: ${response.status()} ${await response.text()}`);
@@ -174,11 +181,13 @@ export async function tour(options: TourOptions): Promise<TourReport> {
             await go(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=${panel}`);
             await shot(`final-${panel}`);
           }
+          if (await reveal(page, '[data-cf="sandbox"]')) await shot("final-details-sandbox");
         }
         const laned = sessions.filter((s) => s.lanes?.length).at(-1);
         for (const lane of laned?.lanes ?? []) {
           await go(`/?project=${project}&feature=${laned?.featureId}&session=${laned?.id}&panel=messages&role=${lane.role}`);
           await shot(`role-${lane.role}`);
+          if (await reveal(page, `[data-cf="sandbox:${lane.role}"]`)) await shot(`role-${lane.role}-sandbox`);
         }
         const phone = await context.newPage();
         await phone.setViewportSize({ width: 390, height: 844 });

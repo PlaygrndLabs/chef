@@ -180,6 +180,23 @@ export class Members extends DurableObject<Env> {
     this.ctx.storage.sql.exec("UPDATE users SET last_org = NULL WHERE id = ? AND last_org = ?", userId, orgId);
   }
 
+  home(userId: string): OrgSummary | null {
+    const personal = this.ctx.storage.sql.exec<{ org_id: string }>("SELECT org_id FROM personal_orgs WHERE user_id = ?", userId).toArray()[0];
+    return personal ? this.use(userId, personal.org_id) : null;
+  }
+
+  deleteOrg(orgId: string): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      const sql = this.ctx.storage.sql;
+      if (sql.exec("SELECT 1 FROM personal_orgs WHERE org_id = ?", orgId).toArray().length > 0) return false;
+      sql.exec("DELETE FROM invites WHERE org_id = ?", orgId);
+      sql.exec("DELETE FROM memberships WHERE org_id = ?", orgId);
+      sql.exec("UPDATE users SET last_org = NULL WHERE last_org = ?", orgId);
+      sql.exec("DELETE FROM orgs WHERE id = ?", orgId);
+      return true;
+    });
+  }
+
   renameOrg(orgId: string, name: string): void {
     this.ctx.storage.sql.exec("UPDATE orgs SET name = ? WHERE id = ?", name, orgId);
   }

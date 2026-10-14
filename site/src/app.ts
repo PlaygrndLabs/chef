@@ -1,5 +1,6 @@
 import { directory, member as memberOf, oauthClient, organization, type Env } from "./env.ts";
 import { API, authorizeUrl, canSeeAccount, cookies, decodePending, encodePending, OAUTH_COOKIE, randomToken, readGrant, readInstall, readProfile, readSession, SESSION_COOKIE, SESSION_SECONDS, setCookie, signSession, tokenRequest, type OAuthClient, type Session } from "./oauth.ts";
+import type { Engine } from "./member.ts";
 import type { OrgAccess } from "./organization.ts";
 import { engineRule } from "./access.ts";
 import { atLeast, can, engineLabel, isId, isLevel, isRole, readEmail, readOrgName, type OrgSummary } from "./orgs.ts";
@@ -18,6 +19,14 @@ const readJson = (text: string): unknown => {
     return null;
   }
 };
+const HOME_PATHS = new Set(["/", "/index.html", "/setup", "/remove", "/api/app"]);
+
+async function engineProjects(engine: Engine): Promise<string[] | null> {
+  const response = await fetch(`${engine.url}/api/projects`, { headers: { authorization: `Bearer ${engine.secret}` } }).catch(() => null);
+  const body = (response?.ok ? await response.json().catch(() => null) : null) as { projects?: readonly { name?: unknown }[] } | null;
+  return Array.isArray(body?.projects) ? body.projects.flatMap((p) => (typeof p?.name === "string" ? [p.name] : [])) : null;
+}
+
 const page = (env: Env, request: Request, path: string) => env.ASSETS.fetch(new Request(new URL(path, request.url), { headers: request.headers }));
 const sessionCookie = async (client: OAuthClient, session: Session) => setCookie(SESSION_COOKIE, await signSession(client.clientSecret, session, Date.now()), SESSION_SECONDS);
 
@@ -30,7 +39,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === "/auth/start") {
     if (!client) return redirect("/?signin=unavailable");
-    const pending = { state: randomToken(), verifier: randomToken() };
+    const pending = { state: randomToken(), verifier: randomToken(), ...(url.searchParams.get("then") === "remove" ? { then: "remove" as const } : {}) };
     return redirect(await authorizeUrl(client, `${url.origin}/auth/callback`, pending), [setCookie(OAUTH_COOKIE, encodePending(pending), 1800, "/auth/callback")]);
   }
 
@@ -53,8 +62,9 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     await org.setup({ id: signed.org.id, name: signed.org.name, personal: signed.org.personal }, { userId: signed.userId, email: profile.email, role: signed.org.role });
     await Promise.all(signed.joined.map((joined) => organization(env, joined.id).setup({ id: joined.id, name: joined.name, personal: false }, { userId: signed.userId, email: profile.email, role: joined.role })));
     const engine = await org.engine();
-    await memberOf(env, signed.userId).signIn(profile, grant, admin, { id: signed.org.id, canSetUp: can(signed.org.role, "setup"), engine });
-    return redirect(engine ? "/" : "/setup", [clear, await sessionCookie(client, { userId: signed.userId, orgId: signed.org.id })]);
+    const removing = pending.then === "remove" && can(signed.org.role, "manage");
+    await memberOf(env, signed.userId).signIn(profile, grant, admin, { id: signed.org.id, canSetUp: can(signed.org.role, "setup"), engine }, removing);
+    return redirect(removing ? "/remove" : engine ? "/" : "/setup", [clear, await sessionCookie(client, { userId: signed.userId, orgId: signed.org.id })]);
   }
 
   if (path === "/auth/signout") {
@@ -67,6 +77,14 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   let checked: Promise<OrgAccess | null> | null = null;
   const access = () => (checked ??= session && org ? org.access(session.userId).catch(() => null) : Promise.resolve(null));
   const member = session ? memberOf(env, session.userId) : null;
+
+  if (client && session && (path.startsWith("/site/api/") || HOME_PATHS.has(path)) && !(await access())) {
+    const home = await directory(env).home(session.userId).catch(() => null);
+    if (home && home.id !== session.orgId) {
+      const cookie = await sessionCookie(client, { userId: session.userId, orgId: home.id });
+      return request.method === "GET" ? redirect(`${path}${url.search}`, [cookie]) : json({ error: "that organization is gone, so chef took you back to Personal" }, 409, { "set-cookie": cookie });
+    }
+  }
 
   if (path.startsWith("/site/api/")) {
     if (!sameSite) return json({ error: "cross-site request refused" }, 403);
@@ -85,6 +103,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     }
     if (path === "/site/api/install" && request.method === "POST") {
       if (!can(role, "setup")) return json({ error: "only owners and admins of this organization can set up chef" }, 403);
+      if (await org.removing()) return json({ error: "chef is being removed from this organization" }, 409);
       const input = readInstall(await request.json().catch(() => null));
       if (typeof input === "string") return json({ error: input }, 400);
       const [current, view] = await Promise.all([org.view(session.userId), member.view(session.orgId)]);
@@ -93,6 +112,32 @@ export async function handle(request: Request, env: Env): Promise<Response> {
     }
     if (path === "/site/api/install" && request.method === "DELETE") {
       await member.dismiss();
+      return json({ ok: true });
+    }
+    if (path === "/site/api/remove" && request.method === "GET") {
+      const [current, view, removal, engine] = await Promise.all([org.view(session.userId), member.view(session.orgId), member.removal(), org.engine()]);
+      const owner = can(role, "manage");
+      return json({
+        org: current,
+        allowed: owner,
+        signedIn: view.canSetUp,
+        engine: owner && engine ? { name: engine.name, accountId: engine.accountId, url: engine.url } : null,
+        projects: owner && engine && !removal ? await engineProjects(engine) : null,
+        removal,
+      });
+    }
+    if (path === "/site/api/remove" && request.method === "POST") {
+      if (!can(role, "manage")) return json({ error: "only owners can delete this organization" }, 403);
+      const [current, engine] = await Promise.all([org.view(session.userId), org.engine()]);
+      if (!current) return json({ error: "sign in with Cloudflare first" }, 401);
+      if (current.personal && !engine) return json({ error: "chef is not set up in Personal, so there is nothing to uninstall" }, 400);
+      const confirm = ((await request.json().catch(() => null)) as { confirm?: unknown } | null)?.confirm;
+      if (typeof confirm !== "string" || confirm.trim() !== current.name) return json({ error: `type ${current.name} to confirm` }, 400);
+      const started = await member.remove({ orgId: session.orgId, orgName: current.name, personal: current.personal, engine, projects: engine ? await engineProjects(engine) : null });
+      return typeof started === "string" ? json({ error: started }, 409) : json(started, 202);
+    }
+    if (path === "/site/api/remove" && request.method === "DELETE") {
+      await member.dismissRemoval();
       return json({ ok: true });
     }
     if (path === "/site/api/orgs" && request.method === "GET") return json({ current: session.orgId, orgs: await directory(env).orgs(session.userId) });
@@ -212,6 +257,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === "/setup") return (await access()) ? page(env, request, "/setup") : redirect("/");
+  if (path === "/remove") return (await access()) ? page(env, request, "/remove") : redirect("/");
   if (path === "/admin") return member && (await access()) && (await member.admin()) ? page(env, request, "/admin") : redirect("/");
   if (path === "/app" || path === "/app.html") return redirect("/");
 
