@@ -9,6 +9,10 @@ describe("project routes", () => {
     expect(projectOf("/preview/treetest/edit-todo-items")).toBe("treetest");
   });
 
+  it("sends a new preview key to the project", () => {
+    expect(projectOf("/api/projects/treetest/preview-key")).toBe("treetest");
+  });
+
   it("leaves other paths to the app", () => {
     expect(projectOf("/api/projects/treetest/features")).toBeNull();
     expect(projectOf("/api/projects/treetest/features/Edit")).toBeNull();
