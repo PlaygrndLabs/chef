@@ -117,6 +117,7 @@ nav.links a:hover { color: var(--foreground); }
 .hero p.lead { font-size: clamp(17px, 2.2vw, 20px); color: var(--muted-foreground); max-width: 660px; margin: 0 auto 32px; }
 .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .fine { font-size: 13px; color: var(--muted-foreground); margin-top: 16px; }
+.fine b { color: var(--foreground); font-weight: 500; }
 
 section { padding: 72px 0; border-top: 1px solid var(--border); }
 section h2 { font-size: clamp(26px, 3.6vw, 36px); letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 12px; }
