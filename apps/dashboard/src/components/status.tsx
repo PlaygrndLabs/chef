@@ -20,7 +20,7 @@ const BADGE: Readonly<Record<Tone, string>> = {
 };
 
 export function StatusDot({ tone, className }: { readonly tone: Tone; readonly className?: string }) {
-  return <span aria-hidden="true" className={cn("inline-block size-2 shrink-0 rounded-full", DOT[tone], className)} />;
+  return <span aria-hidden="true" className={cn("inline-block size-2 shrink-0", DOT[tone], className)} />;
 }
 
 export function ToneBadge({ tone, children, className }: { readonly tone: Tone; readonly children: React.ReactNode; readonly className?: string }) {

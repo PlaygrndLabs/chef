@@ -47,7 +47,7 @@ function StatusChips() {
         </Chip>
       ) : null}
       <Chip id="working" label="Builds running now" tone={working.length || starting ? "text-run" : undefined} {...(working.length ? { onClick: () => openSession(working[0]?.id ?? "") } : {})}>
-        {working.length || starting ? <Loader2 className="size-3.5 animate-spin" /> : <span className="size-2 rounded-full border border-muted-foreground" />}
+        {working.length || starting ? <Loader2 className="size-3.5 animate-spin" /> : <span className="size-2 border border-muted-foreground" />}
         {[working.length ? `${working.length} working` : "", starting ? "getting a new build ready" : ""].filter(Boolean).join(", ") || "Nothing running"}
       </Chip>
       <Chip id="live" label="Features live in the app">
@@ -115,7 +115,7 @@ export function ProjectBar() {
   const learned = data.live.lessons.length + data.live.rules.length;
   const connection = CONNECTION[data.connection];
   return (
-    <div className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-t bg-sidebar px-1.5" id="project-bar" aria-label="Project status">
+    <div className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto dash-t bg-sidebar px-1.5 font-mono" id="project-bar" aria-label="Project status">
       {data.ready ? <StatusChips /> : <BarSkeleton />}
       <span className="flex-1" />
       <Chip id="memory" label="Lessons and rules chef learned in this project" onClick={openMemory}>
