@@ -14,7 +14,16 @@ export interface SignedIn {
   readonly userId: string;
   readonly org: OrgSummary;
   readonly orgs: readonly OrgSummary[];
+  readonly joined: readonly OrgSummary[];
 }
+
+export interface Invite {
+  readonly email: string;
+  readonly role: Role;
+  readonly createdAt: number;
+}
+
+export type Invited = { readonly status: "added"; readonly userId: string } | { readonly status: "invited" } | { readonly status: "member" };
 
 export interface OrgSetup {
   readonly accountId: string | null;
@@ -88,6 +97,8 @@ export class Members extends DurableObject<Env> {
     sql.exec(`CREATE TABLE IF NOT EXISTS memberships (org_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (org_id, user_id))`);
     sql.exec(`CREATE INDEX IF NOT EXISTS memberships_by_user ON memberships (user_id)`);
     sql.exec(`CREATE TABLE IF NOT EXISTS personal_orgs (user_id TEXT PRIMARY KEY, org_id TEXT NOT NULL UNIQUE)`);
+    sql.exec(`CREATE TABLE IF NOT EXISTS invites (org_id TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, invited_by TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (org_id, email))`);
+    sql.exec(`CREATE INDEX IF NOT EXISTS invites_by_email ON invites (email)`);
   }
 
   signIn(identity: Identity, admin: boolean): SignedIn {
@@ -105,11 +116,16 @@ export class Members extends DurableObject<Env> {
       }
       const personal = sql.exec<{ org_id: string }>("SELECT org_id FROM personal_orgs WHERE user_id = ?", userId).toArray()[0];
       if (!personal) sql.exec("INSERT INTO personal_orgs (user_id, org_id) VALUES (?, ?)", userId, this.insertOrg(userId, PERSONAL, now));
+      const email = identity.email?.trim().toLowerCase() ?? "";
+      const invited = email ? sql.exec<{ org_id: string; role: string }>("SELECT org_id, role FROM invites WHERE email = ?", email).toArray() : [];
+      for (const invite of invited) sql.exec("INSERT OR IGNORE INTO memberships (org_id, user_id, role, created_at) VALUES (?, ?, ?, ?)", invite.org_id, userId, invite.role, now);
+      if (invited.length > 0) sql.exec("DELETE FROM invites WHERE email = ?", email);
       const orgs = this.memberships(userId);
+      const joined = orgs.filter((o) => invited.some((i) => i.org_id === o.id));
       const last = sql.exec<{ last_org: string | null }>("SELECT last_org FROM users WHERE id = ?", userId).one().last_org;
       const org = orgs.find((o) => o.id === last) ?? (orgs[0] as OrgSummary);
       sql.exec("UPDATE users SET last_org = ? WHERE id = ?", org.id, userId);
-      return { userId, org, orgs };
+      return { userId, org, orgs, joined };
     });
   }
 
@@ -128,6 +144,40 @@ export class Members extends DurableObject<Env> {
     const org = this.memberships(userId).find((o) => o.id === orgId) ?? null;
     if (org) this.ctx.storage.sql.exec("UPDATE users SET last_org = ? WHERE id = ?", orgId, userId);
     return org;
+  }
+
+  invite(orgId: string, email: string, role: Role, by: string): Invited {
+    return this.ctx.storage.transactionSync(() => {
+      const sql = this.ctx.storage.sql;
+      const user = sql.exec<{ id: string }>("SELECT users.id AS id FROM users LEFT JOIN identities ON identities.user_id = users.id WHERE lower(users.email) = ? OR lower(identities.email) = ? LIMIT 1", email, email).toArray()[0];
+      if (!user) {
+        sql.exec("INSERT INTO invites (org_id, email, role, invited_by, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(org_id, email) DO UPDATE SET role = excluded.role", orgId, email, role, by, Date.now());
+        return { status: "invited" };
+      }
+      if (sql.exec("SELECT 1 FROM memberships WHERE org_id = ? AND user_id = ?", orgId, user.id).toArray().length > 0) return { status: "member" };
+      sql.exec("INSERT INTO memberships (org_id, user_id, role, created_at) VALUES (?, ?, ?, ?)", orgId, user.id, role, Date.now());
+      return { status: "added", userId: user.id };
+    });
+  }
+
+  invites(orgId: string): Invite[] {
+    return this.ctx.storage.sql
+      .exec<{ email: string; role: string; created_at: number }>("SELECT email, role, created_at FROM invites WHERE org_id = ? ORDER BY created_at", orgId)
+      .toArray()
+      .map((row) => ({ email: row.email, role: row.role as Role, createdAt: row.created_at }));
+  }
+
+  cancelInvite(orgId: string, email: string): void {
+    this.ctx.storage.sql.exec("DELETE FROM invites WHERE org_id = ? AND email = ?", orgId, email);
+  }
+
+  setRole(orgId: string, userId: string, role: Role): void {
+    this.ctx.storage.sql.exec("UPDATE memberships SET role = ? WHERE org_id = ? AND user_id = ?", role, orgId, userId);
+  }
+
+  removeMember(orgId: string, userId: string): void {
+    this.ctx.storage.sql.exec("DELETE FROM memberships WHERE org_id = ? AND user_id = ?", orgId, userId);
+    this.ctx.storage.sql.exec("UPDATE users SET last_org = NULL WHERE id = ? AND last_org = ?", userId, orgId);
   }
 
   renameOrg(orgId: string, name: string): void {

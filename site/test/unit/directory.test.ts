@@ -17,7 +17,7 @@ describe("directory", () => {
     expect(first.org).toMatchObject({ name: "Personal", role: "owner", personal: true, plan: "free" });
     expect(first.org.id).toMatch(/^org_[A-Za-z0-9]{20}$/);
     const again = dir.signIn({ ...sam, email: "sam@new.example" }, true);
-    expect(again).toEqual({ userId: first.userId, org: first.org, orgs: [first.org] });
+    expect(again).toEqual({ userId: first.userId, org: first.org, orgs: [first.org], joined: [] });
     expect(dir.list().users).toMatchObject([{ id: first.userId, email: "sam@new.example", admin: true, orgs: 1 }]);
   });
 
@@ -47,16 +47,84 @@ describe("directory", () => {
   });
 });
 
+describe("invitations", () => {
+  it("adds people who already use chef at once and the rest when they first sign in", () => {
+    const dir = directory();
+    const sam1 = dir.signIn(sam, false);
+    const team = dir.createOrg(sam1.userId, "Acme");
+    const kim = dir.signIn({ provider: "cloudflare", subject: "cf-kim", email: "kim@example.com" }, false);
+    expect(dir.invite(team.id, "kim@example.com", "admin", sam1.userId)).toEqual({ status: "added", userId: kim.userId });
+    expect(dir.invite(team.id, "kim@example.com", "member", sam1.userId)).toEqual({ status: "member" });
+    expect(dir.orgs(kim.userId).map((o) => [o.name, o.role])).toEqual([["Personal", "owner"], ["Acme", "admin"]]);
+    expect(dir.invite(team.id, "lee@example.com", "member", sam1.userId)).toEqual({ status: "invited" });
+    expect(dir.invites(team.id)).toMatchObject([{ email: "lee@example.com", role: "member" }]);
+    const lee = dir.signIn({ provider: "cloudflare", subject: "cf-lee", email: "Lee@Example.com" }, false);
+    expect(lee.joined).toMatchObject([{ id: team.id, name: "Acme", role: "member", personal: false }]);
+    expect(dir.invites(team.id)).toEqual([]);
+    dir.setRole(team.id, lee.userId, "admin");
+    dir.removeMember(team.id, kim.userId);
+    expect(dir.orgs(lee.userId).map((o) => [o.name, o.role])).toEqual([["Personal", "owner"], ["Acme", "admin"]]);
+    expect(dir.orgs(kim.userId).map((o) => o.name)).toEqual(["Personal"]);
+  });
+});
+
+describe("project access", () => {
+  const setUp = async () => {
+    const org = organization();
+    await org.setup({ id: "org1", name: "Acme", personal: false }, { userId: "own", email: "own@example.com", role: "owner" });
+    await org.setup({ id: "org1", name: "Acme", personal: false }, { userId: "kim", email: "kim@example.com", role: "member" });
+    await org.setup({ id: "org1", name: "Acme", personal: false }, { userId: "lee", email: "lee@example.com", role: "member" });
+    return org;
+  };
+
+  it("keeps a new project private to its maker and to owners and admins", async () => {
+    const org = await setUp();
+    expect(await org.claimProject("kim", "shop")).toBe(true);
+    expect(await org.levels("kim", ["shop", "other"])).toEqual({ shop: "manage" });
+    expect(await org.levels("lee", ["shop"])).toEqual({});
+    expect(await org.levels("own", ["shop", "other"])).toEqual({ shop: "manage", other: "manage" });
+    expect(await org.claimProject("lee", "shop")).toBe(false);
+    expect((await org.access("lee", "shop"))?.level).toBeNull();
+  });
+
+  it("shares with the whole organization or with chosen people", async () => {
+    const org = await setUp();
+    await org.claimProject("kim", "shop");
+    expect((await org.share("kim", "shop", "org", "view")).visibility).toBe("org");
+    expect((await org.access("lee", "shop"))?.level).toBe("view");
+    const sharing = await org.setLevel("kim", "shop", "lee", "edit");
+    expect(sharing?.people.map((p) => [p.email, p.level])).toEqual([["kim@example.com", "manage"], ["lee@example.com", "edit"]]);
+    expect((await org.access("lee", "shop"))?.level).toBe("edit");
+    expect(await org.setLevel("kim", "shop", "stranger", "edit")).toBeNull();
+    await org.share("kim", "shop", "private", "edit");
+    await org.setLevel("kim", "shop", "lee", null);
+    expect((await org.access("lee", "shop"))?.level).toBeNull();
+  });
+
+  it("keeps at least one owner and forgets removed people's projects", async () => {
+    const org = await setUp();
+    await org.claimProject("kim", "shop");
+    await org.setLevel("kim", "shop", "lee", "view");
+    expect(await org.removeMember("own")).toBe(false);
+    expect(await org.setRole("own", "member")).toBe(false);
+    expect(await org.setRole("kim", "owner")).toBe(true);
+    expect(await org.setRole("own", "member")).toBe(true);
+    expect(await org.removeMember("lee")).toBe(true);
+    expect((await org.sharing("shop")).people.map((p) => p.userId)).toEqual(["kim"]);
+    expect(await org.access("lee", "shop")).toBeNull();
+  });
+});
+
 describe("organization", () => {
   it("lets only its members in and keeps the engine with the organization", async () => {
     const org = organization();
     await org.setup({ id: "org1", name: "Acme", personal: false }, { userId: "usr1", email: "sam@example.com", role: "owner" });
     await org.setup({ id: "org1", name: "ignored", personal: true }, { userId: "usr2", email: null, role: "member" });
     expect(await org.access("usr3")).toBeNull();
-    expect(await org.access("usr2")).toEqual({ role: "member", engine: null });
+    expect(await org.access("usr2")).toEqual({ role: "member", engine: null, level: null });
     const engine = { name: "chef-acme-ab12", url: "https://chef.acme.workers.dev", accountId: "acct", secret: "s", version: "v1" };
     await org.setEngine(engine);
-    expect(await org.access("usr1")).toEqual({ role: "owner", engine });
+    expect(await org.access("usr1")).toEqual({ role: "owner", engine, level: null });
     await org.rename("Acme Labs");
     expect(await org.view("usr1")).toEqual({ id: "org1", name: "Acme Labs", role: "owner", personal: false, plan: "free", engine: engine.url, members: 2 });
     expect((await org.members()).map((m) => [m.userId, m.role])).toEqual([["usr1", "owner"], ["usr2", "member"]]);

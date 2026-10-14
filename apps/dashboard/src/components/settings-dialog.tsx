@@ -13,6 +13,7 @@ import { appApi, githubApi, orgApi, settingsApi, sharedEnvApi, type GitHubView, 
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { orgLabel, PLAN_LABEL, useAppMode } from "@/lib/account";
+import { MembersSection } from "@/components/people";
 
 interface Choice {
   readonly kind: string;
@@ -454,6 +455,7 @@ export function SettingsDialog(props: {
           {settings && computer ? <ComputerSection settings={settings} /> : null}
           {hosted ? <AccountSection account={mode?.account ?? null} admin={mode?.admin === true} /> : null}
           {hosted && mode?.org ? <OrgSection org={mode.org} /> : null}
+          {hosted && mode?.org && !mode.org.personal ? <MembersSection org={mode.org} /> : null}
           {settings && !computer && !hosted ? (
             <Group title="Password" note="Changing it signs out every other browser and script.">
               <PasswordForm settings={settings} save={save} />

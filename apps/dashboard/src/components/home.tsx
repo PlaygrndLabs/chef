@@ -15,6 +15,7 @@ import type { OverviewState, Suggestion } from "@/lib/api";
 import { useOverview } from "@/lib/overview";
 import { plainVoiceError, startLive, useTalk, type TalkState } from "@/lib/live-talk";
 import { useWorkspace } from "@/lib/workspace";
+import { useProjectAccess } from "@/lib/account";
 import { Mark, Wordmark } from "@/components/logo";
 
 const sentHere = new Map<string, number>();
@@ -309,6 +310,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const introduced = overview !== null && overview.status !== "none";
   const welcome = !loading && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0 && said.length === 0;
   const live = talk.phase !== "off" && talk.project === selection.project;
+  const viewOnly = useProjectAccess(selection.project).access?.you === "view";
   const goLive = () => {
     if (app.available && app.settings && !app.settings.voice) {
       toast.error("Live talk needs a voice key", { description: "Add an OpenAI key under Settings, Models.", action: { label: "Open", onClick: () => openSettings("app", "models") } });
@@ -357,7 +359,13 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
           <LivePanel />
         ) : (
           <div className="sticky bottom-0 bg-background">
-            <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} onLive={goLive} />
+            {viewOnly ? (
+              <p className="px-6 pt-2 pb-5 text-center text-xs text-muted-foreground" id="view-only">
+                You can view this project. Ask someone who manages it to let you edit.
+              </p>
+            ) : (
+              <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "chef is working. You can keep typing." : "chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} onLive={goLive} />
+            )}
           </div>
         )}
         <div ref={end} />
