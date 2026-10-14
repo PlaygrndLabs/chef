@@ -121,14 +121,38 @@ export interface UpdateState {
 const CLOUD: AppMode = { engine: null };
 const json = (method: string, body: unknown): RequestInit => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
-async function appMode(tries = 3): Promise<AppMode> {
+export const ON_SITE = typeof document !== "undefined" && document.querySelector('meta[name="chef-host"]')?.getAttribute("content") === "site";
+
+function reconnecting(on: boolean) {
+  const splash = typeof document === "undefined" ? null : document.getElementById("splash");
+  if (!splash) return;
+  const shown = splash.querySelector("[data-reconnecting]");
+  if (!on) return shown?.remove();
+  if (shown) return;
+  const note = document.createElement("p");
+  note.dataset["reconnecting"] = "";
+  note.textContent = "Reconnecting to chef…";
+  note.style.cssText = "position:absolute;top:calc(50% + 40px);left:0;right:0;margin:0;text-align:center;font:13px system-ui,sans-serif;opacity:.6";
+  splash.append(note);
+}
+
+async function appMode(): Promise<AppMode> {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await call<AppMode>("/api/app");
-    } catch {
-      if (attempt >= tries) return CLOUD;
-      await new Promise((resolve) => setTimeout(resolve, attempt * 700));
+      const mode = await call<AppMode>("/api/app");
+      if (!ON_SITE || mode.account !== undefined) {
+        reconnecting(false);
+        return mode;
+      }
+    } catch (e) {
+      if (ON_SITE && e instanceof ApiError && e.status === 401) {
+        location.assign("/");
+        return new Promise<AppMode>(() => undefined);
+      }
+      if (!ON_SITE && attempt >= 3) return CLOUD;
     }
+    if (ON_SITE) reconnecting(true);
+    await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 700, 5000)));
   }
 }
 
