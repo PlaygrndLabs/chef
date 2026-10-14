@@ -7,7 +7,7 @@ import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCap
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, homeOrigin, passwordProblem, sessionCookie, type Access, type Caller, type Credential, type StoredPassword } from "./access.ts";
 import { deploymentGrant, deploymentKey, mintGrant, readGrantRequest, viewGrant, type Grant, type GrantView } from "./grants.ts";
-import { mintShare, readShareRequest, SHARE_ROUTE, SHARES_ROUTE, viewShare, type ShareKind, type ShareView } from "./shares.ts";
+import { mintShare, readShareRequest, SHARE_ROUTE, SHARES_ROUTE, targetOf, viewShare, type ShareKind, type ShareView } from "./shares.ts";
 import { DurableStore } from "./do-store.ts";
 
 const SETTINGS = "providers";
@@ -93,6 +93,13 @@ export class Settings extends DurableObject<Env> {
     if (list.some((p) => p.name === entry.name)) return false;
     await this.ctx.storage.put(PROJECTS, [...list, entry]);
     return true;
+  }
+
+  async forgetProject(name: string): Promise<void> {
+    await this.ctx.storage.put(PROJECTS, (await this.projects()).filter((p) => p.name !== name));
+    await this.linkRepository(name, null);
+    await this.updateCaps({ projects: { [name]: null } });
+    for (const grant of (await this.grants()).grants) if (grant.kind === "share" && targetOf(grant)?.project === name) await this.removeGrant(grant.id);
   }
 
   async envKey(): Promise<string> {

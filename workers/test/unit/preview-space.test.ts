@@ -104,4 +104,24 @@ describe("preview Worker space", () => {
     const space = new CloudflareWorkerSpace({ accountId: "acc1", worker: "chef-project-demo" }, "tok", fetcher);
     expect(await space.applyEnvironment([{ name: "A", secret: true, value: "x" }], { create: false })).toBeNull();
   });
+
+  it("deletes the project's Worker with its previews only when Chef made it", async () => {
+    const calls: string[] = [];
+    const replies: Response[] = [
+      Response.json({ success: true, result: { id: "w123", tags: ["chef-project"] } }),
+      Response.json({ success: true, result: null }),
+      new Response("{}", { status: 404 }),
+      new Response("{}", { status: 404 }),
+      Response.json({ success: true, result: { id: "w9", tags: [] } }),
+    ];
+    const fetcher = (async (url: string, init: RequestInit) => {
+      calls.push(`${init.method ?? "GET"} ${url.replace("https://api.cloudflare.com/client/v4/accounts/acc1", "")}`);
+      return replies.shift() as Response;
+    }) as unknown as typeof fetch;
+    const space = new CloudflareWorkerSpace({ accountId: "acc1", worker: "chef-x-shop" }, "tok", fetcher);
+    expect(await space.removeWorker()).toBe("removed");
+    expect(await space.removeWorker()).toBe("missing");
+    await expect(space.removeWorker()).rejects.toBeInstanceOf(WorkerTakenError);
+    expect(calls).toEqual(["GET /workers/workers/chef-x-shop", "DELETE /workers/scripts/chef-x-shop?force=true", "DELETE /workers/workers/w123", "GET /workers/workers/chef-x-shop", "GET /workers/workers/chef-x-shop"]);
+  });
 });
