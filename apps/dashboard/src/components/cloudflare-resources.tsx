@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy, ExternalLink } from "lucide-react";
+import { Check, Cloud, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
@@ -59,7 +59,10 @@ function Resource({ resource }: { readonly resource: CloudflareResource }) {
   return (
     <li className="flex flex-col gap-1.5 py-3 dash-b last:border-b-0" data-cf={resource.key} data-cf-kind={resource.kind} data-cf-role={resource.role}>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="kicker shrink-0 text-brand">{KIND[resource.kind]}</span>
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-brand" title={`Cloudflare ${KIND[resource.kind]}`}>
+          <Cloud className="size-3.5" aria-hidden="true" data-cf-cloud />
+          <span className="kicker text-brand">{KIND[resource.kind]}</span>
+        </span>
         <span className="truncate text-xs text-muted-foreground">{resource.title}</span>
         {resource.state ? (
           <span className="inline-flex shrink-0 items-center gap-1.5 text-xs" data-cf-state={resource.state.tone}>
