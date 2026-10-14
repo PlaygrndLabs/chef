@@ -424,40 +424,8 @@ function lastOfLane(timeline: readonly TimelineItem[], lane: string): TimelineIt
 
 const LANE_LOOKBACK = 80;
 
-export interface Metrics {
-  readonly sessions: number;
-  readonly running: number;
-  readonly stuck: number;
-  readonly mergedFeatures: number;
-  readonly merges: number;
-  readonly reverts: number;
-  readonly revertRate: number;
-  readonly lessonRecalls: number;
-}
-
 const ACTIVE: ReadonlySet<SessionState> = new Set(["queued", "planning", "testing", "coding", "reviewing", "gating"]);
 
 export function isActive(state: SessionState): boolean {
   return ACTIVE.has(state);
-}
-
-export function metrics(state: ProjectLive): Metrics {
-  const all = state.order.map((id) => state.sessions[id]).filter((s): s is SessionLive => Boolean(s));
-  return {
-    sessions: all.length,
-    running: all.filter((s) => isActive(s.state)).length,
-    stuck: all.filter((s) => s.state === "stuck").length,
-    mergedFeatures: new Set(state.merges.map((m) => m.featureId)).size,
-    merges: state.merges.length,
-    reverts: state.reverts.length,
-    revertRate: state.merges.length ? state.reverts.length / state.merges.length : 0,
-    lessonRecalls: state.recalls.filter((r) => r.paths.some((p) => p.startsWith(`memory/lessons/${r.featureId}-`))).length,
-  };
-}
-
-export function lessonsWithRecalls(state: ProjectLive): { readonly featureId: string; readonly path: string; readonly at: number; readonly recalls: number }[] {
-  const counts = new Map<string, number>();
-  for (const r of state.recalls) for (const path of r.paths) counts.set(path, (counts.get(path) ?? 0) + 1);
-  const seen = new Map(state.lessons.map((l) => [l.path, l]));
-  return [...seen.values()].map((l) => ({ ...l, recalls: counts.get(l.path) ?? 0 }));
 }

@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, Budget, FeatureArrangement, FeatureLayout, FeatureSpec, LiveStatus, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, Budget, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, LiveStatus, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -316,6 +316,7 @@ export interface InstructionsView {
 export interface MemoryView {
   readonly commitId: string | null;
   readonly entries: readonly MemoryEntry[];
+  readonly rules: readonly LearnedRule[];
 }
 
 export interface LiveApp {

@@ -6,7 +6,7 @@ import { ChatViewSkeleton, Shown } from "@/components/loading";
 import { preloadSettings, SettingsHost } from "@/components/settings-host";
 import { ContextMeter } from "@/components/context-meter";
 import { ProjectBar } from "@/components/project-bar";
-import { InsightsView, SessionTabs, SessionView, TabContent } from "@/components/session-tabs";
+import { SessionTabs, SessionView, TabContent } from "@/components/session-tabs";
 import { ProjectHeader, TreePane } from "@/components/sidebar";
 import { projectApi } from "@/lib/api";
 import { preloadable, useOpenedOnce, whenIdle } from "@/lib/lazy";
@@ -16,7 +16,7 @@ import { currentSession, featureNodes, sessionNodes } from "@/lib/model";
 import { rememberProject, returningToNewProject } from "@/lib/projects";
 import type { Selection, SettingsScope } from "@/lib/selection";
 import { useSettings } from "@/lib/settings";
-import { LIVE_TAB, MEMORY_TAB, useTabs } from "@/lib/tabs";
+import { LIVE_TAB, useTabs } from "@/lib/tabs";
 import { WorkspaceContext, type Workspace } from "@/lib/workspace";
 
 export const MainView = preloadable(() => import("@/components/main-view").then((m) => m.MainView));
@@ -41,7 +41,6 @@ function focusComposerSoon() {
 }
 
 function tabPlace(id: string): Partial<Selection> {
-  if (id === MEMORY_TAB) return { view: "insights", feature: null, session: null, panel: null };
   if (id === LIVE_TAB) return { view: "live", feature: null, session: null, panel: null };
   return { view: "feature", feature: id, session: null, panel: null };
 }
@@ -84,7 +83,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const featureId = selection.view === "feature" ? (selection.feature ?? picked?.featureId ?? null) : null;
   const feature = featureId ? (features.find((f) => f.id === featureId) ?? null) : null;
   const session = feature ? currentSession(feature, selection.session) : null;
-  const activeTab = selection.view === "insights" ? MEMORY_TAB : selection.view === "live" ? LIVE_TAB : (featureId ?? (selection.view === "feature" ? selection.session : null));
+  const activeTab = selection.view === "live" ? LIVE_TAB : (featureId ?? (selection.view === "feature" ? selection.session : null));
   const { tabs, close, keep } = useTabs(project, activeTab);
   const compact = useMediaQuery("(max-width: 1023px)");
   const width = useWindowWidth();
@@ -103,7 +102,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const chat = Math.min(Math.max(chatWidth, CHAT.min), chatMax);
 
   useEffect(() => {
-    if (data.ready) keep((id) => id === MEMORY_TAB || id === LIVE_TAB || features.some((f) => f.id === id));
+    if (data.ready) keep((id) => id === LIVE_TAB || features.some((f) => f.id === id));
   }, [data.ready, features, keep]);
 
   const openSettings = useCallback(
@@ -140,7 +139,6 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
         select({ view: "feature", feature: id, session: null, panel: null });
         setTreeSheet(false);
       },
-      openMemory: () => select({ view: "insights", feature: null, session: null, panel: null }),
       openLive: () => {
         select({ view: "live", feature: null, session: null, panel: null });
         setTreeSheet(false);
@@ -189,7 +187,6 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
     () =>
       whenIdle(() => {
         void SessionView.preload();
-        void InsightsView.preload();
         void CommandPalette.preload();
         preloadSettings();
       }),

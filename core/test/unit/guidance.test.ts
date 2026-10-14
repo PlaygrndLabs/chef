@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AGENTS_FILE, applyGuidanceEdit, GOAL_FILE, memoryEntries, projectGuidance, renderGuidance } from "../../src/guidance/guidance.ts";
+import { AGENTS_FILE, applyGuidanceEdit, GOAL_FILE, learnedRules, memoryEntries, projectGuidance, renderGuidance } from "../../src/guidance/guidance.ts";
 
 const lesson = "---\nkind: lesson\nfeature: todo-add\n---\n\n# todo-add: a merge was reverted\n\nCheck the order.\n";
 
@@ -47,5 +47,11 @@ describe("project instructions and memory", () => {
     const added = applyGuidanceEdit(tree, { kind: "note", title: "Prices are in euros!", text: "Show €." });
     expect(added).toMatchObject({ ok: true, path: "memory/notes/prices-are-in-euros-2.md", changes: { "memory/notes/prices-are-in-euros-2.md": "---\nkind: note\n---\n\n# Prices are in euros!\n\nShow €.\n" } });
     expect(applyGuidanceEdit(tree, { kind: "note", title: " ", text: "x" })).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it("lists the lint rules chef learned in the project", () => {
+    const rule = { id: "no-inline-style", message: "Use the UI kit classes instead of inline styles.", files: "src/**/*.tsx", forbid: "style=\\{", source: "gardener", evidence: ["s1", "s2"] };
+    const tree = { "lint/rules/no-inline-style.json": JSON.stringify(rule), "lint/rules/broken.json": "{", "memory/notes/a.md": "x" };
+    expect(learnedRules(tree)).toEqual([{ id: "no-inline-style", path: "lint/rules/no-inline-style.json", message: rule.message, files: "src/**/*.tsx" }]);
   });
 });
