@@ -1,9 +1,12 @@
-import { Suspense, useEffect, useRef, useState } from "react";
-import { ChevronRight, Folder, Menu, Plus } from "lucide-react";
+import { Suspense, useEffect, useState } from "react";
+import { ArrowUpRight, ChevronRight, Folder, Menu, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Wordmark } from "@/components/logo";
 import { NewProjectDialog, NewProjectForm } from "@/components/project-setup";
+import { MODEL_CHOICES, ProviderForm, type Save } from "@/components/provider-form";
+import { settingsApi } from "@/lib/api";
 import { missingSettings, useSettings } from "@/lib/settings";
 import { AppMenu } from "@/components/sidebar";
 import { preloadable, useOpenedOnce } from "@/lib/lazy";
@@ -70,9 +73,37 @@ function ProjectList(props: { readonly projects: readonly string[]; readonly onO
   );
 }
 
-function FirstProject(props: { readonly fromGitHub: boolean; readonly onCreated: (name: string) => void }) {
+function ConnectModel(props: { readonly app: ReturnType<typeof useSettings>; readonly first: boolean }) {
+  const save: Save = async (update) => {
+    try {
+      props.app.setSettings(await settingsApi.save(update));
+      return true;
+    } catch (e) {
+      toast.error("Could not save", { description: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  };
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 pt-12 pb-16 text-center sm:pt-20" data-onboarding="model">
+      <div className="kicker text-brand">{props.first ? "Step 1 of 2" : "One thing first"}</div>
+      <h1 className="text-xl font-medium tracking-tight">Connect a model</h1>
+      <p className="text-muted-foreground">chef plans, writes and reviews code with Claude. Paste your Anthropic API key, or the base URL and key of any Anthropic-compatible provider. The key stays on your chef.</p>
+      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="kicker inline-flex w-fit items-center gap-1 text-brand hover:underline">
+        Get an Anthropic API key
+        <ArrowUpRight className="size-3.5" />
+      </a>
+      <div className="mt-4 w-full text-left">
+        <ProviderForm part="llm" choices={MODEL_CHOICES} current={null} save={save} submit="Continue" />
+      </div>
+      <p className="text-xs text-muted-foreground">Models, voice and the rest can be changed later in Settings.</p>
+    </div>
+  );
+}
+
+function FirstProject(props: { readonly fromGitHub: boolean; readonly step: boolean; readonly onCreated: (name: string) => void }) {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 pt-12 pb-16 text-center sm:pt-20">
+      {props.step ? <div className="kicker text-brand">Step 2 of 2</div> : null}
       <h1 className="text-xl font-medium tracking-tight">Create your first project</h1>
       <p className="text-muted-foreground">Start fresh, or bring a repository you already have and chef reads it first.</p>
       <div className="mt-4 w-full">
@@ -90,19 +121,18 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
   const [sidebar, setSidebar] = useState(false);
   const any = props.projects.length > 0;
   const place = selection.settings?.scope === "app" ? selection.settings : null;
-  const missing = app.available ? missingSettings(app.settings) : [];
+  const needsModel = app.available && missingSettings(app.settings).includes("models");
+  const [onboarding] = useState(() => !any);
+  const [stepped, setStepped] = useState(false);
+  useEffect(() => {
+    if (needsModel) setStepped(true);
+  }, [needsModel]);
   const settingsLoaded = useOpenedOnce(place !== null);
   const openSettings = (section?: string, item?: string | null, scope?: SettingsScope) => {
     if (scope === "project") return;
     setSidebar(false);
     select({ settings: { scope: "app", section: section ?? place?.section ?? "general" }, item: item ?? null });
   };
-  const asked = useRef(false);
-  useEffect(() => {
-    if (asked.current || missing.length === 0) return;
-    asked.current = true;
-    if (!place) openSettings(missing[0]);
-  }, [missing.length]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
@@ -124,7 +154,7 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
     : null;
   const side = <StartSidebar app={app} onSettings={openSettings} onNew={onNew} />;
   return (
-    <div className="flex h-dvh overflow-hidden" data-view={any ? "start" : "setup"}>
+    <div className="flex h-dvh overflow-hidden" data-view={needsModel ? "onboarding" : any ? "start" : "setup"}>
       <aside className="hidden w-64 shrink-0 border-r lg:block" aria-label="chef">
         {side}
       </aside>
@@ -135,7 +165,15 @@ export function Start(props: { readonly projects: readonly string[]; readonly se
           </Button>
           <Wordmark className="h-[17px]" />
         </div>
-        <main className="min-h-0 flex-1 overflow-y-auto">{any ? <ProjectList projects={props.projects} onOpen={props.onOpen} onNew={() => setAdding(true)} /> : <FirstProject fromGitHub={fromGitHub} onCreated={props.onCreated} />}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto">
+          {app.available && app.settings === null ? null : needsModel ? (
+            <ConnectModel app={app} first={onboarding} />
+          ) : any ? (
+            <ProjectList projects={props.projects} onOpen={props.onOpen} onNew={() => setAdding(true)} />
+          ) : (
+            <FirstProject fromGitHub={fromGitHub} step={stepped && onboarding} onCreated={props.onCreated} />
+          )}
+        </main>
       </div>
       <Sheet open={sidebar} onOpenChange={setSidebar}>
         <SheetContent side="left" className="w-72 p-0 lg:hidden">
