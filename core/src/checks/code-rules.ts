@@ -72,6 +72,8 @@ export function resolveRelative(fromPath: string, specifier: string): string {
   return parts.join("/");
 }
 
+const TEST_FILE = /(?:\.test\.ts|(?:^|\/)flow\.ts)$/;
+
 function area(path: string): { kind: "feature"; name: string } | { kind: "shared" } | { kind: "app" } | { kind: "other" } {
   const feature = /^features\/([^/]+)\//.exec(path);
   if (feature) return { kind: "feature", name: feature[1] as string };
@@ -87,7 +89,7 @@ export function checkBoundary(fromPath: string, specifier: string): string | nul
   const to = area(target);
   if (from.kind === "feature") {
     if (to.kind === "feature" && to.name !== from.name) return `feature "${from.name}" must not import feature "${to.name}"; move the contract to shared/`;
-    if (to.kind === "app") return `feature "${from.name}" must not import the app shell`;
+    if (to.kind === "app" && !(TEST_FILE.test(fromPath) && /^src\/registry\.gen(?:\.ts)?$/.test(target))) return `feature "${from.name}" must not import the app shell; its tests may import src/registry.gen.ts`;
     return null;
   }
   if (from.kind === "shared") {
@@ -105,7 +107,7 @@ export function checkBoundary(fromPath: string, specifier: string): string | nul
 const FILE_MODULES = new Set(["fs", "fs/promises", "node:fs", "node:fs/promises"]);
 
 export function checkRuntime(fromPath: string, specifier: string): string | null {
-  if (!FILE_MODULES.has(specifier) || !/^(?:features|shared|src)\//.test(fromPath) || /(?:\.test\.ts|(?:^|\/)flow\.ts)$/.test(fromPath)) return null;
+  if (!FILE_MODULES.has(specifier) || !/^(?:features|shared|src)\//.test(fromPath) || TEST_FILE.test(fromPath)) return null;
   return "the app runs on Cloudflare Workers, which have no files to read at runtime; keep text such as CSS in a .ts module that exports it as a string";
 }
 
