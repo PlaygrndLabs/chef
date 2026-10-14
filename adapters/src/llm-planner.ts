@@ -31,7 +31,7 @@ function planSchema(roles: readonly string[]) {
     feature: z.object({
       id: z.string(),
       title: z.string(),
-      entrypoint: z.string(),
+      entrypoint: z.string().describe("Where a person meets the feature, as `GET /path` of the page they open, for example `GET /notes`. A feature that changes another feature's page names that page. Only a feature with no page names its API route, like `POST /api/notes`."),
       shared: z.array(z.string()),
       env: z.array(z.string()),
       acceptance: z.array(z.object({ id: z.string(), text: z.string() })),
