@@ -54,14 +54,18 @@ describe("Realtime adapter for a custom provider", () => {
     expect(chunks).toEqual([24000, 6000]);
 
     socket.receive({ type: "input_audio_buffer.speech_started" });
-    socket.receive({ type: "conversation.item.input_audio_transcription.delta", delta: "uh add a to-do list" });
+    socket.receive({ type: "conversation.item.input_audio_transcription.delta", item_id: "item_1", delta: "uh add a to-do list" });
+    socket.receive({ type: "conversation.item.input_audio_transcription.completed", item_id: "item_1", transcript: "uh add a to-do list" });
+    socket.receive({ type: "conversation.item.input_audio_transcription.failed", item_id: "item_2", error: { message: "no audio" } });
     socket.receive({ type: "response.output_audio.delta", delta: "AAA=" });
     socket.receive({ type: "response.output_audio_transcript.delta", delta: "On it." });
     socket.receive({ type: "response.function_call_arguments.done", name: REQUEST_TOOL, call_id: "call_1", arguments: JSON.stringify({ request: "Add a to-do list" }) });
     socket.receive({ type: "response.done" });
     expect(events.slice(1)).toEqual([
       { type: "session.input_speech.started" },
-      { type: "session.input_transcript.delta", delta: "uh add a to-do list", start_ms: null },
+      { type: "session.input_transcript.delta", delta: "uh add a to-do list", item_id: "item_1", start_ms: null },
+      { type: "session.input_transcript.done", transcript: "uh add a to-do list", item_id: "item_1" },
+      { type: "error", error: { message: 'transcribing what the user said failed: {"message":"no audio"}' } },
       { type: "session.output_audio.delta", delta: "AAA=" },
       { type: "session.output_transcript.delta", delta: "On it." },
       { type: "session.delegation.created", delegation: { id: "call_1", target: "client", request: "Add a to-do list" }, offset_ms: null },

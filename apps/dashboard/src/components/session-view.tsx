@@ -33,8 +33,8 @@ function Steps({ node }: { readonly node: SessionNode }) {
         return (
           <li key={name} className="flex shrink-0 items-center gap-1.5" aria-current={now ? "step" : undefined}>
             {i > 0 ? <span className={cn("h-px w-3 sm:w-8", done ? "bg-ok" : "bg-border")} /> : null}
-            <span className={cn("grid size-5 place-items-center rounded-full border-[1.5px]", done && "border-ok bg-ok text-background", running && "border-run", failed && "border-bad bg-bad text-background")}>
-              {done ? <Check className="size-3" strokeWidth={3.5} /> : failed ? <X className="size-3" strokeWidth={3.5} /> : running ? <span className="pulse-run size-2 rounded-full bg-run" /> : null}
+            <span className={cn("grid size-5 place-items-center border-[1.5px]", done && "border-ok bg-ok text-background", running && "border-run", failed && "border-bad bg-bad text-background")}>
+              {done ? <Check className="size-3" strokeWidth={3.5} /> : failed ? <X className="size-3" strokeWidth={3.5} /> : running ? <span className="pulse-run size-2 bg-run" /> : null}
             </span>
             <span className={cn("text-sm text-muted-foreground", !now && "max-sm:sr-only", done && "text-foreground", running && "font-medium text-run", failed && "font-medium text-bad")}>{name}</span>
           </li>
@@ -75,9 +75,9 @@ function Team({ node }: { readonly node: SessionNode }) {
             data-branch={m.branch ?? undefined}
             title={`${label} ${MEMBER_NOTE[m.state]}${model ? ` on ${model}` : ""}${m.branch ? `, on its own branch ${m.branch}` : ""}. Open its prompt and skills.`}
             onClick={() => openSettings("project", "agents", m.role)}
-            className={cn("inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs hover:bg-muted", MEMBER[m.state])}
+            className={cn("inline-flex h-6 items-center gap-1 border px-2 text-xs hover:bg-muted", MEMBER[m.state])}
           >
-            {m.state === "done" ? <Check className="size-3 text-ok" strokeWidth={3} /> : m.state === "working" ? <span className="pulse-run size-1.5 rounded-full bg-run" /> : m.state === "stopped" ? <X className="size-3" strokeWidth={3} /> : <Circle className="size-2.5" />}
+            {m.state === "done" ? <Check className="size-3 text-ok" strokeWidth={3} /> : m.state === "working" ? <span className="pulse-run size-1.5 bg-run" /> : m.state === "stopped" ? <X className="size-3" strokeWidth={3} /> : <Circle className="size-2.5" />}
             {label}
             {m.branch ? <GitBranch className="size-3 text-muted-foreground" aria-label={`branch ${m.branch}`} /> : null}
             {m.state === "working" && model ? <span className="font-normal text-muted-foreground">· {model}</span> : null}
@@ -246,7 +246,7 @@ function Related({ node }: { readonly node: SessionNode }) {
   return (
     <section className="flex flex-col gap-3 rounded-2xl border p-4" data-related={node.id}>
       <div className="flex flex-col gap-1.5">
-        <h2 className="text-xs font-medium text-muted-foreground">Builds of this feature, oldest first</h2>
+        <h2 className="kicker">Builds of this feature, oldest first</h2>
         <ol className="flex flex-wrap items-center gap-1">
           {chain.map((s, i) => (
             <li key={s.id} className="flex items-center gap-1">
@@ -365,18 +365,18 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
         {node ? <Related node={node} /> : null}
         {criteria.length ? (
           <section className="flex flex-col gap-2.5" data-criteria>
-            <h2 className="text-xs font-medium text-muted-foreground">{isLive ? "What it does" : "What it must do to go live"}</h2>
+            <h2 className="kicker">{isLive ? "What it does" : "What it must do to go live"}</h2>
             <ul className="flex flex-col gap-2">
               {criteria.map((c) => (
                 <li key={c.id} className="flex gap-2.5">
-                  {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 rounded-full border border-muted-foreground" />}
+                  {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 border border-muted-foreground" />}
                   <span>{c.text}</span>
                 </li>
               ))}
             </ul>
           </section>
         ) : null}
-        {list.length ? <h2 className="-mb-2 text-xs font-medium text-muted-foreground">What happened</h2> : null}
+        {list.length ? <h2 className="kicker -mb-2">What happened</h2> : null}
         {list.map((u) => (
           <UpdateRow key={u.key} update={u} />
         ))}
