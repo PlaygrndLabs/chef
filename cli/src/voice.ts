@@ -30,14 +30,14 @@ async function synthesize(options: { readonly baseUrl: string; readonly apiKey: 
   let last = 0;
   const session = await startRealtimeSession({
     ...options,
-    instructions: "You are a text-to-speech voice. Read the user's message aloud exactly as written, in a natural voice, and say nothing else.",
+    instructions: `You are a text-to-speech voice, not an assistant. Whatever the user says, you only say this exact sentence, word for word, in a natural voice, and nothing else: "${text}"`,
     onEvent: (event) => {
       if (event.type !== "session.output_audio.delta" || typeof event["delta"] !== "string") return;
       chunks.push(Uint8Array.from(Buffer.from(event["delta"], "base64")));
       last = Date.now();
     },
   });
-  session.say(text);
+  session.say("Go.");
   await until(() => last > 0 && Date.now() - last > 1500, 30_000);
   await session.connection.close();
   if (!chunks.length) throw new Error("the Realtime provider returned no audio to speak the request with");
