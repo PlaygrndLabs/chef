@@ -1,7 +1,8 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, type FeatureSpec, type SplitPart } from "@chef/core";
+import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, cloudflareView, previewBranch, previewName, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, sharedInstructionsRequest, type GuidanceHost, type SharedInstructions } from "@chef/adapters/guidance";
@@ -99,13 +100,34 @@ export async function serve(options: { readonly port: number; readonly project?:
   const assets = options.assets ?? join(REPO_ROOT, "apps", "dashboard", "dist");
   if (!existsSync(join(assets, "index.html"))) log(`no dashboard build in ${assets}; run pnpm build`);
 
+  const localCloudflare = async (id: string): Promise<CloudflareView> => {
+    const record = await w.orchestrator.session(id);
+    const name = record.project;
+    const box = (sandbox: string): SandboxFacts => ({ name: sandbox, objectId: createHash("sha256").update(sandbox).digest("hex"), running: false, exit: null });
+    const branch = previewBranch(record.previewKey);
+    return cloudflareView({
+      accountId: null,
+      engine: "chef",
+      project: name,
+      projectWorker: name,
+      projectObject: createHash("sha256").update(name).digest("hex"),
+      namespaces: {},
+      containerApp: { name: "chef-sessionagent", id: null },
+      main: { remote: null, commitId: (await w.orchestrator.mainTree()).commitId },
+      session: { id, fork: record.fork, remote: null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: (record.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
+      sandboxes: { session: box(id), lanes: Object.fromEntries((record.lanes ?? []).map((l) => [l.role, box(`${id}--${l.role}`)])), preview: null },
+      preview: { name: previewName(branch), branch, url: record.preview?.url ?? null, versionId: null, commitId: record.preview?.commitId ?? null, awake: false },
+      live: null,
+    });
+  };
+
   const sessionRequest = async (request: Request, id: string, sub: string | null): Promise<Response> => {
     const body = async () => (request.method === "POST" ? ((await request.json().catch(() => ({}))) as Record<string, string | undefined>) : {});
     try {
       if (request.method === "GET" && sub === null) return Response.json({ record: await w.orchestrator.session(id), budget: DEFAULT_BUDGET });
       if (request.method === "GET" && sub === "turns") return Response.json(await w.orchestrator.turns(id));
       if (request.method === "GET" && sub === "changes") return Response.json(await w.orchestrator.changes(id));
-      if (request.method === "GET" && sub === "sandbox") return Response.json({ running: false, exit: "local runs have no sandbox container" });
+      if (request.method === "GET" && sub === "cloudflare") return Response.json(await localCloudflare(id));
       if (request.method === "POST" && sub === "drop") return Response.json({ state: (await w.orchestrator.drop(id, (await body())["reason"]?.trim() || undefined)).machine.state }, { status: 202 });
       if (request.method === "POST" && sub === "retry") {
         const record = await w.orchestrator.retry(id, (await body())["guidance"] ?? "");

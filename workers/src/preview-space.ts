@@ -1,6 +1,6 @@
 import type { PreviewSpace } from "@chef/core";
 import type { PlainEnvVar } from "@chef/adapters/project-env";
-import { previewName } from "./sandbox-checks.ts";
+import { previewName } from "@chef/core";
 
 export type EnvPatch = Readonly<Record<string, { readonly type: "secret_text" | "plain_text"; readonly text: string } | null>>;
 
