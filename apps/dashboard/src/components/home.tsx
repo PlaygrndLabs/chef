@@ -286,7 +286,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const loading = !data.ready || overview === null;
   useLayoutEffect(() => {
     if (!loading && (history.length || pending.length || said.length)) end.current?.scrollIntoView({ block: "end" });
-  }, [loading, messages.length, history.length, pending.length, said.length, said[said.length - 1]?.text]);
+  }, [loading, messages.length, history.length, pending.length, said.length, said[said.length - 1]?.text, talk.phase]);
 
   const send = async (text: string) => {
     sentHere.delete(text);
@@ -318,7 +318,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   };
   const busy = agent.isRunning || sessions.some((s) => isActive(s.state));
   return (
-    <div className="@container flex h-full min-h-0 flex-col" data-view="project" id="chat">
+    <div className="@container relative flex h-full min-h-0 flex-col" data-view="project" id="chat">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 sm:px-6">
           {loading ? (
@@ -352,6 +352,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
               ))}
             </>
           )}
+          {live ? <div className="h-52 shrink-0" aria-hidden /> : null}
           <div ref={end} />
         </div>
       </div>

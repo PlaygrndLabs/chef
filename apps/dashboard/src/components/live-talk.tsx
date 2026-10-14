@@ -44,8 +44,8 @@ export function LivePanel() {
 
   const label = talk.phase === "starting" ? "Starting live talk" : talk.phase === "connecting" ? "Connecting" : talking ? "chef is talking" : talk.muted ? "Muted. chef can't hear you." : "Listening";
   return (
-    <div className="px-4 pt-2 pb-4 sm:px-6 sm:pb-5" id="live-talk" data-phase={talk.phase} data-muted={talk.muted}>
-      <div className="mx-auto flex max-w-3xl flex-col items-center gap-2 px-4 pt-3 pb-1">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-background via-background/85 to-transparent px-4 pt-20 pb-4 sm:px-6 sm:pb-5" id="live-talk" data-phase={talk.phase} data-muted={talk.muted}>
+      <div className="pointer-events-auto mx-auto flex w-fit flex-col items-center gap-2 px-4 pt-3 pb-1">
         <PixelOrb size={132} waiting={waiting} muted={talk.muted} levels={levels} />
         <p className={cn("text-sm", talking ? "text-foreground" : "text-muted-foreground")} aria-live="polite" id="live-status">
           {label}
