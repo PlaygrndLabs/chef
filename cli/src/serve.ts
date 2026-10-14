@@ -11,7 +11,7 @@ import { ChefAgent, type ChefLink } from "@chef/adapters/agui";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type SettingsEnv } from "@chef/adapters/settings";
 import { aesCipher, applyEnvUpdate, envKeyBytes, envNames, mergeEnv, newEnvKey, viewEnv, viewProjectEnv, type StoredEnv } from "@chef/adapters/project-env";
 import { applyProjectUpdate, readProjectSettings, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
-import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
+import { CopilotRuntime, InMemoryAgentRunner, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { createNodeFetchHandler } from "@copilotkit/runtime/v2/node";
 import { benchScript } from "./bench/agent.ts";
 import { BENCH_ITEMS, promptFor, specFor } from "./bench/items.ts";
@@ -86,7 +86,7 @@ export async function serve(options: { readonly port: number; readonly project?:
   };
   let project: { readonly name: string; readonly createdAt: number } | null = options.project ? { name: options.project, createdAt: Date.now() } : null;
   process.env["COPILOTKIT_TELEMETRY_DISABLED"] ??= "true";
-  const runtime = new CopilotRuntime({ agents: () => ({ default: new ChefAgent({ link, pollMs: 200 }) }) });
+  const runtime = new CopilotRuntime({ agents: () => ({ default: new ChefAgent({ link, pollMs: 200 }) }), runner: new InMemoryAgentRunner({ onConcurrentRun: "supersede" }) });
   const copilotFor = (name: string) => createCopilotRuntimeHandler({ runtime, basePath: `/api/projects/${name}/copilotkit` });
   let copilot = project ? copilotFor(project.name) : null;
   const projects = async (request: Request): Promise<Response> => {

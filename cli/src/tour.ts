@@ -32,6 +32,7 @@ export interface TourReport {
   readonly setup: string[];
   finished: boolean;
   featureRoute?: number;
+  readonly sent: { readonly prompt: string; readonly answered: boolean; readonly retried: boolean }[];
   readonly previewLoads: { readonly name: string; readonly loadedMs: number | null; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
 }
 
@@ -48,6 +49,16 @@ async function signIn(page: Page, url: string, password: string | undefined): Pr
     await Promise.all([page.waitForNavigation(), page.locator('form[action="/login"] button').click()]);
     if (await field.count()) throw new Error("sign in failed: wrong CHEF_PASSWORD");
   }
+}
+
+async function answered(page: Page): Promise<"answered" | "failed" | "waiting"> {
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    if (await page.locator('[data-pending="failed"]').count()) return "failed";
+    if ((await page.locator("[data-pending]").count()) === 0) return "answered";
+    await page.waitForTimeout(1000);
+  }
+  return "waiting";
 }
 
 async function reveal(page: Page, selector: string): Promise<boolean> {
@@ -88,7 +99,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
   const { chromium } = await import("playwright");
   mkdirSync(options.out, { recursive: true });
   const base = options.url.replace(/\/$/, "");
-  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, previewLoads: [] };
+  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, previewLoads: [], sent: [] };
   const browser: Browser = await chromium.launch();
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
@@ -184,12 +195,23 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         await shot(`settings-${scope}-${section}`);
       }
     }
-    if (options.prompt) {
+    const prompts = (options.prompt ?? "").split("\n").map((p) => p.trim()).filter(Boolean);
+    if (prompts.length > 0) {
       await go(`/?project=${project}`);
       const input = page.locator("#chat textarea");
-      await input.fill(options.prompt);
-      await input.press("Enter");
-      await shot("sent");
+      for (const [i, prompt] of prompts.entries()) {
+        await input.fill(prompt);
+        await input.press("Enter");
+        const outcome = await answered(page);
+        let retried = false;
+        if (outcome === "failed") {
+          await shot(`sent${i + 1}-failed`);
+          await page.locator("[data-retry]").first().click();
+          retried = true;
+        }
+        report.sent.push({ prompt, answered: (retried ? await answered(page) : outcome) === "answered", retried });
+        await shot(prompts.length > 1 ? `sent${i + 1}` : "sent");
+      }
     }
     const deadline = Date.now() + options.minutes * 60_000;
     let round = 0;
