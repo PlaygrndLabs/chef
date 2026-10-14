@@ -1,5 +1,6 @@
 import { parseTap, tapFailures } from "@chef/core/tap";
 import { diffTrees, lintSpecFiles, previewName, type CheckResult, type CheckRunner, type PreviewDeployment, type PreviewHost, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@chef/core";
+import { gateModule, previewMain, PREVIEW_GATE_FILE } from "@chef/adapters/preview-gate";
 import { PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
 import type { ChecksJob, CommandResult } from "./session-agent.ts";
 
@@ -60,17 +61,19 @@ export class SandboxProofRunner implements ProofRunner {
   constructor(
     private readonly sessions: DurableObjectNamespace,
     private readonly repos: RepoHost,
+    private readonly pass: (url: string) => Promise<ChecksJob["previewPass"] | null> = async () => null,
   ) {}
 
   async prove(input: { repo: string; feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord> {
     const repo = input.repo;
     const prepared = await job(this.repos, repo, input.commitId, [{ name: "proof", argv: ["npm", "run", "--silent", "app", "--", "proof", input.feature, "--url", input.url, "--commit", input.commitId] }], [new URL(input.url).hostname]);
     const stub = this.sessions.get(this.sessions.idFromName(sessionOf(repo))) as unknown as ChecksStub;
+    const previewPass = await this.pass(input.url);
     let result: CommandResult | undefined;
     try {
       const { token, ...rest } = prepared;
       void token;
-      result = (await stub.runChecks({ ...rest, sessionId: sessionOf(repo) }))[0];
+      result = (await stub.runChecks({ ...rest, sessionId: sessionOf(repo), ...(previewPass ? { previewPass } : {}) }))[0];
     } finally {
       await prepared.token();
     }
@@ -120,8 +123,11 @@ export class SandboxPreviewHost implements PreviewHost {
   async deploy(input: { repo: string; branch: string; commitId: string }): Promise<PreviewDeployment> {
     const name = previewName(input.branch, this.grant.worker);
     await this.prepare();
+    const commit = await this.repos.readCommit(input.repo, input.commitId);
+    if (!commit) throw new Error(`unknown commit ${input.commitId} in ${input.repo}`);
+    const overlay = { [PREVIEW_GATE_FILE]: gateModule(previewMain(commit.tree)) };
     const env = { CLOUDFLARE_API_TOKEN: PLACEHOLDER, CLOUDFLARE_ACCOUNT_ID: this.grant.accountId, WRANGLER_SEND_METRICS: "false", CI: "true" };
-    const command = { name: "preview", argv: ["npx", "wrangler", "preview", "--name", name, "--worker-name", this.grant.worker, "--json"], timeoutMs: 300_000, env };
+    const command = { name: "preview", argv: ["npx", "wrangler", "preview", PREVIEW_GATE_FILE, "--name", name, "--worker-name", this.grant.worker, "--json"], timeoutMs: 300_000, env };
     let result: CommandResult | undefined;
     for (let attempt = 1; ; attempt++) {
       const prepared = await job(this.repos, input.repo, input.commitId, [command], [], input.branch);
@@ -129,7 +135,7 @@ export class SandboxPreviewHost implements PreviewHost {
       try {
         const { token, ...rest } = prepared;
         void token;
-        result = (await stub.runChecks({ ...rest, sessionId: `preview-${name}`, cloudflare: this.grant }, this.apiToken))[0];
+        result = (await stub.runChecks({ ...rest, sessionId: `preview-${name}`, cloudflare: this.grant, overlay }, this.apiToken))[0];
       } finally {
         await prepared.token();
       }
@@ -137,7 +143,7 @@ export class SandboxPreviewHost implements PreviewHost {
       break;
     }
     if (!result || result.code !== 0) throw new Error(`wrangler preview failed: ${tail(`${result?.stdout ?? ""}\n${result?.stderr ?? ""}`, 20)}`);
-    const deployment = parsePreview(result.stdout, input.commitId);
+    const deployment = { ...parsePreview(result.stdout, input.commitId), gated: true };
     this.latest.set(input.branch, deployment);
     return deployment;
   }

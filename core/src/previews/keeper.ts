@@ -50,7 +50,7 @@ export class PreviewKeeper implements PreviewHost {
   constructor(
     private readonly host: PreviewHost,
     private readonly space: PreviewSpace,
-    private readonly deps: { readonly repos: RepoHost; readonly store: KeyValueStore; readonly clock: Clock; readonly canonical: string; readonly onActivity?: () => void },
+    private readonly deps: { readonly repos: RepoHost; readonly store: KeyValueStore; readonly clock: Clock; readonly canonical: string; readonly onActivity?: () => void; readonly gated?: boolean },
   ) {}
 
   async deploy(input: { repo: string; branch: string; commitId: string }): Promise<PreviewDeployment> {
@@ -72,12 +72,12 @@ export class PreviewKeeper implements PreviewHost {
     const state = await this.state();
     await this.touch(state.live);
     const entry = state.live ? await this.deps.store.get<PreviewEntry | null>(`${ENTRY}${branch}`) : null;
-    if (entry) return { status: "ready", url: entry.url, commitId: entry.commitId };
+    if (entry && (entry.gated || !this.deps.gated)) return { status: "ready", url: entry.url, commitId: entry.commitId };
     const building = await this.deps.store.get<Building | null>(`${BUILDING}${branch}`);
     const now = this.deps.clock.now();
     if (building && !building.error && now - building.since < BUILD_STALE_MS) return { status: "building", since: building.since };
     if (building?.error) return { status: "failed", error: building.error };
-    const head = await this.deps.repos.resolveRef(this.deps.canonical, branch);
+    const head = entry ? true : await this.deps.repos.resolveRef(this.deps.canonical, branch);
     return head ? { status: "rebuild" } : { status: "missing" };
   }
 

@@ -58,6 +58,9 @@ describe("preview paths", () => {
     const go = previewResponse(ready, { key: "add-todo", path: "/todos", asState: false, now: 0 });
     expect(go.status).toBe(302);
     expect(go.headers.get("location")).toBe("https://add-todo.example.workers.dev/todos");
+    const entered = previewResponse(ready, { key: "add-todo", path: "/todos", asState: false, now: 0, enter: "https://add-todo.example.workers.dev/__chef/enter?t=x&to=%2Ftodos" });
+    expect(entered.headers.get("location")).toBe("https://add-todo.example.workers.dev/__chef/enter?t=x&to=%2Ftodos");
+    expect(entered.headers.get("referrer-policy")).toBe("no-referrer");
     expect(await previewResponse(ready, { key: "add-todo", path: "/todos", asState: true, now: 0 }).json()).toEqual(ready);
     const building = { status: "building" as const, since: 1000 };
     expect(await previewResponse(building, { key: "add-todo", path: "", asState: true, now: 5000 }).json()).toEqual({ status: "building", since: 1000, elapsedMs: 4000 });
