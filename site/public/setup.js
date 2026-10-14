@@ -4,6 +4,10 @@ const show = (name) => views.forEach((view) => ($(view).hidden = view !== name))
 let accounts = [];
 let polling = null;
 let stick = true;
+let org = null;
+let canLeave = false;
+
+const label = (o) => (o.personal ? "Personal" : o.name);
 
 function el(tag, props, ...children) {
   const node = document.createElement(tag);
@@ -47,16 +51,72 @@ function renderAccounts() {
   refreshForm();
 }
 
+async function switchTo(orgId, button) {
+  button.disabled = true;
+  $("switch-error").textContent = "";
+  const response = await fetch("/site/api/orgs/switch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ orgId }) }).catch(() => null);
+  if (response?.ok) return location.assign("/");
+  const body = response ? await response.json().catch(() => ({})) : {};
+  button.disabled = false;
+  $("switch-error").textContent = body.error ?? "Could not switch. Check your connection and try again.";
+  $("org-menu").open = true;
+}
+
+function renderOrgs(orgs) {
+  $("org-menu-name").textContent = label(org);
+  $("org-list").replaceChildren(
+    ...orgs.map((o) => {
+      const current = o.id === org.id;
+      const item = el(
+        "button",
+        { type: "button", className: "org-item", disabled: current, title: current ? "You are setting up this one" : `Open ${label(o)}` },
+        el("span", { className: "org-check", textContent: current ? "✓" : "" }),
+        el("span", { className: "org-name", textContent: label(o) }),
+        el("span", { className: o.ready ? "org-state" : "org-state todo", textContent: o.ready ? "Ready" : "Not set up" }),
+      );
+      if (!current) item.addEventListener("click", () => switchTo(o.id, item));
+      return item;
+    }),
+  );
+  $("org-menu").hidden = false;
+}
+
+function renderLeave(orgs) {
+  const name = label(org);
+  const back = orgs.find((o) => o.ready && o.id !== org.id) ?? null;
+  $("later-text").textContent = `Not now? ${name} stays in your organizations, marked Not set up, so you can finish setting it up any time.`;
+  $("back").hidden = !back;
+  if (back) {
+    $("back").textContent = `Go back to ${label(back)}`;
+    $("back").onclick = () => switchTo(back.id, $("back"));
+  }
+  $("later").hidden = false;
+  const owner = !org.personal && org.role === "owner";
+  $("delete-org").hidden = !owner;
+  $("delete-text").textContent = `Don't need ${name}?`;
+  $("delete-link").textContent = `Delete ${name}`;
+  canLeave = true;
+  $("leave").hidden = false;
+}
+
+function setKicker(text) {
+  $("kicker").textContent = text;
+  $("kicker").hidden = !text;
+}
+
 function renderInstall(install) {
   show("installing");
+  if (org) setKicker(label(org));
+  $("leave").hidden = !(canLeave && install.status === "failed");
   for (const item of document.querySelectorAll("#steps li")) item.dataset.state = install.steps?.[item.dataset.step] ?? "waiting";
   const log = $("log");
   log.textContent = (install.log ?? []).join("\n");
   if (stick) log.scrollTop = log.scrollHeight;
   $("install-error").textContent = install.error ?? "";
+  if (org && !org.personal) $("install-title").textContent = `Setting up chef for ${org.name}`;
   if (install.update) $("install-title").textContent = "Updating chef";
   if (install.status === "done") {
-    $("install-title").textContent = "chef is ready";
+    $("install-title").textContent = org && !org.personal ? `chef is ready for ${org.name}` : "chef is ready";
     $("install-sub").textContent = "Your chef engine is running in your Cloudflare account. Cloudflare access for this setup has been handed back.";
     $("open").hidden = false;
     if (install.steps?.token === "skipped") {
@@ -90,16 +150,26 @@ async function load() {
   const response = await fetch("/site/api/me", { cache: "no-store" }).catch(() => null);
   if (response?.status === 401) return location.assign("/");
   const me = response?.ok ? await response.json() : { canSetUp: false };
+  org = me.org ?? null;
+  const orgs = me.orgs ?? [];
+  if (org) {
+    renderOrgs(orgs);
+    if (!me.engine) renderLeave(orgs);
+  }
   if (me.install) {
     renderInstall(me.install);
     if (me.install.status === "running") polling = setInterval(poll, 2000);
     return;
   }
   if (me.engine) return location.assign("/");
-  if (me.org && !me.org.personal) $("choose-title").textContent = `Set up chef for ${me.org.name}`;
-  $("delete-org").hidden = !(me.org && !me.org.personal && me.org.role === "owner");
-  if (me.org?.role === "member") {
-    $("ask-owner-sub").textContent = `chef isn't set up for ${me.org.name} yet. Ask an owner or admin of the organization to set it up, then open chef again.`;
+  if (org) setKicker(`${label(org)} · not set up yet`);
+  if (org && !org.personal) {
+    $("choose-title").textContent = $("signed-out-title").textContent = `Set up chef for ${org.name}`;
+    $("choose-sub").textContent = `Choose the Cloudflare account ${org.name} runs on. Its projects, keys and previews stay there, and you use chef right here.`;
+    $("signed-out-sub").textContent = `${org.name} is created. Next, sign in with Cloudflare and choose the Cloudflare account ${org.name} runs on. chef uses that access only while it sets up, then hands it back.`;
+  }
+  if (org?.role === "member") {
+    $("ask-owner-sub").textContent = `chef isn't set up for ${org.name} yet. Ask an owner or admin of the organization to set it up, then open chef again.`;
     return show("ask-owner");
   }
   if (!me.canSetUp) return show("signed-out");
@@ -122,6 +192,14 @@ $("choose").addEventListener("submit", async (event) => {
   }
   renderInstall(body);
   polling = setInterval(poll, 2000);
+});
+
+document.addEventListener("click", (event) => {
+  if (!$("org-menu").contains(event.target)) $("org-menu").open = false;
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") $("org-menu").open = false;
 });
 
 $("open").addEventListener("click", async () => {

@@ -14,6 +14,10 @@ export interface OrgSummary {
   readonly plan: OrgPlan;
 }
 
+export interface OrgEntry extends OrgSummary {
+  readonly ready: boolean;
+}
+
 export type Action = "use" | "setup" | "rename" | "members" | "manage";
 
 const ALLOWED: Readonly<Record<Action, readonly Role[]>> = {
