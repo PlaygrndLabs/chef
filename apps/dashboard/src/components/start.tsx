@@ -15,20 +15,22 @@ const SettingsDialog = preloadable(() => import("@/components/settings-dialog").
 
 function StartSidebar(props: { readonly app: AppSettings; readonly onSettings: (section?: string) => void; readonly onNew: (() => void) | null }) {
   return (
-    <div className="flex h-full flex-col gap-3 bg-sidebar px-2.5 py-3 text-sidebar-foreground">
-      <div className="flex h-7 items-center px-1.5">
-        <a href="/" aria-label="All projects" title="All projects">
-          <Wordmark />
-        </a>
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 px-2.5 py-3">
+        <div className="flex h-7 items-center px-0.5">
+          <a href="/" aria-label="All projects" title="All projects">
+            <Wordmark />
+          </a>
+        </div>
+        {props.onNew ? (
+          <Button className="h-9" onClick={props.onNew} id="start-new-project">
+            <Plus />
+            New project
+          </Button>
+        ) : null}
+        <p className="flex-1 px-1.5 text-xs text-muted-foreground">{props.onNew ? "Open a project to see its features and builds here." : null}</p>
       </div>
-      {props.onNew ? (
-        <Button className="h-9" onClick={props.onNew} id="start-new-project">
-          <Plus />
-          New project
-        </Button>
-      ) : null}
-      <p className="flex-1 px-1.5 text-xs text-muted-foreground">{props.onNew ? "Open a project to see its features and builds here." : null}</p>
-      <div className="flex items-center gap-1 border-t pt-2.5">
+      <div className="shrink-0 dash-t">
         <AppMenu app={props.app} onSettings={props.onSettings} />
       </div>
     </div>
