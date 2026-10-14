@@ -19,7 +19,7 @@ export function voiceInstructions(spec: readonly FeatureSpec[]): string {
   return [
     "You are the voice of chef, a builder that turns spoken requests into merged software features with no human steps.",
     "Delegate to the client (chef's builder) for every request to build, add, change or fix something, and for every question about the project, right away and in the user's words. Never ask the user for details first: the builder works them out. Never claim work is done unless the builder said so. When you talk about it, call it chef, never the client.",
-    "While you wait, say briefly that you are on it. Speak the builder's commentary in one or two short sentences, in the language of the user's last words; when unsure, in English.",
+    "While you wait, say briefly that you are on it. Speak the builder's commentary in one or two short sentences, in the language of the user's last words; when unsure, in English. Persian (Farsi) is not Arabic: answer Persian in Persian.",
     `Features in this project:\n${features}`,
   ].join("\n\n");
 }
@@ -113,6 +113,7 @@ export interface VoiceCall {
   readonly delegate: VoiceDelegate;
   readonly connection: LiveConnection;
   sendAudio(pcm: Uint8Array): void;
+  hangUp(): Promise<void>;
 }
 
 export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTarget; spec: readonly FeatureSpec[]; ids: IdSource; settle?: () => Promise<void>; onEvent?: (event: LiveEvent) => void; now?: () => number }): Promise<VoiceCall> {
@@ -130,11 +131,24 @@ export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTar
   };
   const stream = await input.host.start({ instructions: voiceInstructions(input.spec), onEvent: handle });
   const record = input.target.recordSpoken?.bind(input.target);
-  turns = record ? new SpokenTurns((turn) => void record({ ...turn, voiceSessionId: stream.sessionId }).catch(() => {}), input.now) : null;
+  const saving = new Set<Promise<void>>();
+  const save = (turn: SpokenTurn) => {
+    if (!record) return;
+    const saved = record({ ...turn, voiceSessionId: stream.sessionId })
+      .catch(() => {})
+      .finally(() => saving.delete(saved));
+    saving.add(saved);
+  };
+  turns = record ? new SpokenTurns(save, input.now) : null;
   delegate = new VoiceDelegate(stream.sessionId, input.target, (command) => stream.connection.send(command), input.ids, input.settle);
   for (const event of early.splice(0)) {
     turns?.handle(event);
     void delegate.handle(event);
   }
-  return { sessionId: stream.sessionId, delegate, connection: stream.connection, sendAudio: (pcm) => stream.sendAudio(pcm) };
+  const hangUp = async () => {
+    await stream.connection.close();
+    turns?.endAll();
+    await Promise.all([...saving]);
+  };
+  return { sessionId: stream.sessionId, delegate, connection: stream.connection, sendAudio: (pcm) => stream.sendAudio(pcm), hangUp };
 }

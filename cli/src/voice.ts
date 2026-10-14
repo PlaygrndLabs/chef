@@ -133,7 +133,7 @@ export async function runVoice(options: { readonly say: string; readonly live: b
     await call.delegate.idle();
     await until(() => chefSaid.length > 0, 15_000);
     await new Promise((resolve) => setTimeout(resolve, 4000));
-    await call.connection.close();
+    await call.hangUp();
     const request = call.delegate.requests[0];
     heard = request?.prompt ?? null;
     result = request?.result ?? null;
