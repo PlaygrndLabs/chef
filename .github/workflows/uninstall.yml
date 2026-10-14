@@ -2,9 +2,6 @@ name: uninstall
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/project-thread-pflnbh]
-    paths: [.github/workflows/uninstall.yml, site/src/uninstall.ts, site/scripts/uninstall-check.ts]
 
 permissions:
   contents: read

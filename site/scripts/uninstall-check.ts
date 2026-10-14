@@ -48,8 +48,8 @@ async function snapshot(): Promise<Set<string>> {
   add("container", await list("/containers/applications"), (r: { name?: string }) => r.name);
   add("index", await list("/vectorize/v2/indexes"), (r: { name?: string }) => r.name);
   add("token", await list("/tokens?per_page=50"), (r: { name?: string }) => r.name);
-  const namespaces = (await list<{ name?: string }>("/artifacts/namespaces")) ?? [];
-  for (const ns of namespaces) if (ns.name) add("repo", await list(`/artifacts/namespaces/${encodeURIComponent(ns.name)}/repos?per_page=100`), (r: { name?: string }) => `${ns.name}/${r.name}`);
+  const namespaces = new Set([engine, ...((await list<{ name?: string }>("/artifacts/namespaces")) ?? []).flatMap((ns) => (ns.name ? [ns.name] : []))]);
+  for (const name of namespaces) add("repo", await list(`/artifacts/namespaces/${encodeURIComponent(name)}/repos?per_page=100`), (r: { name?: string }) => `${name}/${r.name}`);
   return out;
 }
 
