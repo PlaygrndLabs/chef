@@ -62,7 +62,7 @@ jobs:
       - name: Send the prompt and follow its sessions while tailing the Worker
         working-directory: workers
         run: |
-          npx wrangler tail chef --format json > "$RUNNER_TEMP/tail.jsonl" 2> "$RUNNER_TEMP/tail.err" &
+          npx wrangler tail chef-dev --format json > "$RUNNER_TEMP/tail.jsonl" 2> "$RUNNER_TEMP/tail.err" &
           sleep 15
           bash ../.github/scripts/follow.sh
       - name: Worker logs
