@@ -298,13 +298,13 @@ export function leftovers(found: Found): string[] {
   ].map((what) => `${what} is still there`);
 }
 
-export function summary(found: Found): string[] {
+export function summary(found: Found, engine: string): string[] {
   const lines: string[] = [];
   if (found.engine) lines.push(`chef's engine ${found.engine.name}`);
   for (const app of found.apps) lines.push(`the app ${app.name} with its previews`);
   for (const name of found.workflows) lines.push(`the workflow ${name}`);
   for (const app of found.containers) lines.push(`the sandboxes ${app.name}`);
-  for (const repo of found.repos) lines.push(`the repo ${repo}`);
+  for (const repo of found.repos) lines.push(`the repo ${engine}/${repo}`);
   for (const index of found.indexes) lines.push(`the memory index ${index}`);
   for (const token of found.tokens) lines.push(`the previews token "${token.name}"`);
   for (const image of found.images) lines.push(`the sandbox image ${image.repo}:${image.ref}`);
