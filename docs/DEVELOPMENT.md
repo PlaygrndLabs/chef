@@ -4,7 +4,6 @@
 
 ```
 spec/        chef's own feature map
-site/        chef.playgrndlabs.com: landing page, Sign in with Cloudflare, setup on the person's account, proxy to their engine
 core/        spec, router, state machine, orchestrator, merge, ports and fakes
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, guidance, GitHub, the CopilotKit agent
 workers/     the engine, the chef Worker: project and session Durable Objects, coder sandbox, sync workflow (configured by the root wrangler.jsonc)
@@ -21,7 +20,7 @@ Requires Node 22.18 or later, pnpm 10 and git.
 
 ```
 pnpm install
-pnpm run deploy [--name n] [--dry-run]               # build and deploy the engine to Cloudflare; the site's installer and the deploy workflow run the same script
+pnpm run deploy [--name n] [--dry-run]               # build and deploy the engine to Cloudflare; the deploy workflow runs the same script
 pnpm run verify                                      # typecheck, lint, spec lint, dashboard build, unit and e2e tests (the browser test needs Chromium: pnpm --filter @chef/cli exec playwright install chromium)
 node --import tsx cli/src/bin.ts serve               # dashboard and CopilotKit chat at http://127.0.0.1:8787, after pnpm build
 node --import tsx cli/src/bin.ts demo                # one feature through every state with real tsc, tests and proof
@@ -37,7 +36,7 @@ node --import tsx cli/src/bin.ts demo --live         # one feature with the real
 
 ## Checking on Cloudflare
 
-CI deploys the engine and the site after every green run on `main`. The `cloud` workflow sends one prompt to a deployed engine and follows it to the end, and the `ui` workflow drives a real build in the dashboard with Playwright and uploads the screenshots. Both need the deployment's Cloudflare and model provider secrets.
+CI deploys the engine after every green run on `main`. The `cloud` workflow sends one prompt to a deployed engine and follows it to the end, and the `ui` workflow drives a real build in the dashboard with Playwright and uploads the screenshots. Both need the deployment's Cloudflare and model provider secrets.
 
 ## Model provider for the CLI
 

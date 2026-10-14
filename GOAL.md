@@ -8,7 +8,7 @@ chef is an AI app builder that runs on a person's own Cloudflare account: they d
 
 ## What chef is
 
-- **Hosted entry, the person's own engine.** People start at chef.playgrndlabs.com (the `site/` Worker), press Sign in with Cloudflare and pick an account; chef installs its engine (the chef Worker, `workers/`) on that account. Agents, sandboxes, repositories, keys and previews all run there. chef runs on Cloudflare only.
+- **The person's own engine.** chef deploys its engine (the chef Worker, `workers/`) on the person's Cloudflare account with `chef deploy` or the Deploy to Cloudflare button. Agents, sandboxes, repositories, keys and previews all run there. chef runs on Cloudflare only.
 - **The spec is the memory, git is the state, chat is just input.**
 - **One chat, many sessions.** The project page has the feature tree on the left, session tabs in the middle (each opens on its preview), and the main chat on the right, the only place a person asks for work. The chat keeps a running summary of older messages, like a project's main thread.
 - **Every feature is a session.** A feature is one spec entry with one live preview. The router splits a request into independent parts that build in parallel, and a part that adds a capability becomes a child feature under the one it builds on. A session is a Durable Object plus its own Artifacts fork named `<project>--<feature>--<session>`.
@@ -41,7 +41,6 @@ chef is an AI app builder that runs on a person's own Cloudflare account: they d
 TypeScript everywhere, pnpm workspaces, Wrangler, Workers, Durable Objects (Agents SDK), Workflows, Cloudflare Containers and Sandbox, the Artifacts Workers binding, Vectorize, Workers AI, `@typesafe-ai/sdk`, the Claude Agent SDK, CopilotKit, React with shadcn/ui for the app, and zod at every edge. GitHub Actions runs typecheck, lint, unit tests and the fake end-to-end suite on every push, and deploys after green CI on `main`.
 
 ```
-site/        chef.playgrndlabs.com: landing, Sign in with Cloudflare, setup on the person's account, proxy to their engine
 workers/     the engine: ProjectAgent and SessionAgent Durable Objects, coder sandbox, sync workflow, HTTP API
 core/        spec, router, session state machine, orchestrator, merge gate, ports and fakes (no I/O)
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, CopilotKit agent, GitHub
@@ -54,11 +53,11 @@ spec/        chef's own feature map
 
 ## Where it stands
 
-Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then chef gained the hosted site with Sign in with Cloudflare, the tree, tabs and chat project page, request splitting into child features, parallel role lanes, per-project live addresses, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default.
+Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then chef gained the tree, tabs and chat project page, request splitting into child features, parallel role lanes, per-project live addresses, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default.
 
 ## Definition of done
 
-- A new person goes from chef.playgrndlabs.com to a merged feature at their project's live address, with no step outside chef beyond signing in, choosing a Cloudflare account and adding a model key.
+- A new person goes from deploying chef on their Cloudflare account to a merged feature at their project's live address, with no step outside chef beyond the deploy and adding a model key.
 - Several features requested in one message build in parallel and all reach `main` with tests, review and proof.
 - Steps a person takes per merged feature, measured by the dashboard, are zero.
 

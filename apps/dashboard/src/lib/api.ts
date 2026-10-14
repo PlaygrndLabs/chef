@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+export async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -40,155 +40,7 @@ export interface SettingsView {
   readonly password: Source;
 }
 
-export type OrgRole = "owner" | "admin" | "member";
-
-export interface OrgSummary {
-  readonly id: string;
-  readonly name: string;
-  readonly role: OrgRole;
-  readonly personal: boolean;
-  readonly plan: "free";
-}
-
-export interface OrgEntry extends OrgSummary {
-  readonly ready: boolean;
-}
-
-export interface OrgView extends OrgSummary {
-  readonly engine: string | null;
-  readonly members: number;
-}
-
-export interface OrgMember {
-  readonly userId: string;
-  readonly email: string | null;
-  readonly role: OrgRole;
-  readonly joinedAt: number;
-}
-
-export interface OrgInvite {
-  readonly email: string;
-  readonly role: OrgRole;
-  readonly createdAt: number;
-}
-
-export interface OrgPeople {
-  readonly members: readonly OrgMember[];
-  readonly invites: readonly OrgInvite[];
-}
-
-export type ProjectLevel = "view" | "edit" | "manage";
-
-export interface ProjectSharing {
-  readonly name: string;
-  readonly visibility: "private" | "org";
-  readonly orgLevel: ProjectLevel;
-  readonly createdBy: string | null;
-  readonly people: readonly { readonly userId: string; readonly email: string | null; readonly level: ProjectLevel }[];
-}
-
-export interface ProjectAccess {
-  readonly you: ProjectLevel;
-  readonly sharing?: ProjectSharing;
-  readonly members?: readonly OrgMember[];
-}
-
-export interface UpdateOffer {
-  readonly running: boolean;
-  readonly canUpdate: boolean;
-  readonly ask: boolean;
-}
-
-export interface AppMode {
-  readonly engine: string | null;
-  readonly account?: string | null;
-  readonly org?: OrgView | null;
-  readonly orgs?: readonly OrgEntry[];
-  readonly update?: UpdateOffer | null;
-}
-
-export type UpdateStepId = "account" | "image" | "token" | "deploy";
-
-export interface UpdateRun {
-  readonly status: "idle" | "running" | "done" | "failed";
-  readonly steps: Readonly<Record<UpdateStepId, "waiting" | "running" | "done" | "failed" | "skipped">>;
-  readonly log: readonly string[];
-  readonly error: string | null;
-}
-
-export interface UpdateState {
-  readonly running: boolean;
-  readonly install: UpdateRun | null;
-}
-
-const CLOUD: AppMode = { engine: null };
-const json = (method: string, body: unknown): RequestInit => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-
-export const ON_SITE = typeof document !== "undefined" && document.querySelector('meta[name="chef-host"]')?.getAttribute("content") === "site";
-
-function reconnecting(on: boolean) {
-  const splash = typeof document === "undefined" ? null : document.getElementById("splash");
-  if (!splash) return;
-  const shown = splash.querySelector("[data-reconnecting]");
-  if (!on) return shown?.remove();
-  if (shown) return;
-  const note = document.createElement("p");
-  note.dataset["reconnecting"] = "";
-  note.textContent = "Reconnecting to chef…";
-  note.style.cssText = "position:absolute;top:calc(50% + 40px);left:0;right:0;margin:0;text-align:center;font:13px system-ui,sans-serif;opacity:.6";
-  splash.append(note);
-}
-
-async function appMode(): Promise<AppMode> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      const mode = await call<AppMode>("/api/app");
-      if (!ON_SITE || mode.account !== undefined) {
-        reconnecting(false);
-        return mode;
-      }
-    } catch (e) {
-      if (ON_SITE && e instanceof ApiError && e.status === 401) {
-        location.assign("/");
-        return new Promise<AppMode>(() => undefined);
-      }
-      if (!ON_SITE && attempt >= 3) return CLOUD;
-    }
-    if (ON_SITE) reconnecting(true);
-    await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 700, 5000)));
-  }
-}
-
-export const appApi = {
-  get: () => appMode(),
-};
-
-export const updateApi = {
-  state: () => call<UpdateState>("/site/api/update"),
-  start: () => call<UpdateState>("/site/api/update", json("POST", {})),
-  later: () => call<{ readonly ok: true }>("/site/api/update/later", json("POST", {})),
-  finish: () => call<{ readonly ok: true }>("/site/api/install", { method: "DELETE" }),
-};
-
-export const orgApi = {
-  create: (name: string) => call<{ readonly org: OrgSummary }>("/site/api/orgs", json("POST", { name })),
-  use: (orgId: string) => call<{ readonly org: OrgSummary }>("/site/api/orgs/switch", json("POST", { orgId })),
-  rename: (name: string) => call<{ readonly org: OrgView }>("/site/api/org", json("PATCH", { name })),
-  people: () => call<OrgPeople>("/site/api/org/members"),
-  invite: (email: string, role: OrgRole) => call<OrgPeople & { readonly status: "added" | "invited" }>("/site/api/org/members", json("POST", { email, role })),
-  setRole: (userId: string, role: OrgRole) => call<{ readonly members: readonly OrgMember[] }>(`/site/api/org/members/${userId}`, json("PATCH", { role })),
-  remove: (userId: string) => call<{ readonly members: readonly OrgMember[] }>(`/site/api/org/members/${userId}`, { method: "DELETE" }),
-  cancelInvite: (email: string) => call<{ readonly invites: readonly OrgInvite[] }>(`/site/api/org/invites/${encodeURIComponent(email)}`, { method: "DELETE" }),
-};
-
-export function sharingApi(project: string) {
-  const base = `/site/api/projects/${project}/access`;
-  return {
-    get: () => call<ProjectAccess>(base),
-    share: (visibility: ProjectSharing["visibility"], orgLevel: ProjectLevel) => call<ProjectAccess>(base, json("PUT", { visibility, orgLevel })),
-    setLevel: (userId: string, level: ProjectLevel | null) => call<ProjectAccess>(`${base}/${userId}`, level ? json("PUT", { level }) : { method: "DELETE" }),
-  };
-}
+export const json = (method: string, body: unknown): RequestInit => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 export type SettingsUpdate = Readonly<Record<string, unknown>>;
 
@@ -209,7 +61,6 @@ export function agentsApi(project: string | null) {
 export interface ProjectEntry {
   readonly name: string;
   readonly createdAt: number;
-  readonly access?: ProjectLevel;
 }
 
 export interface NewProject {

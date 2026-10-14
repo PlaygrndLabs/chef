@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Shown } from "@/components/loading";
 import { MainView, ProjectWorkspace } from "@/components/project-workspace";
 import { SessionView } from "@/components/session-tabs";
-import { UpdateProgress, UpdatePrompt } from "@/components/update";
+import { host } from "@/host";
 import { boot } from "@/lib/boot";
 import { preloadable } from "@/lib/lazy";
 import { pickProject, rememberProject, useProjects } from "@/lib/projects";
@@ -62,12 +62,13 @@ function ConnectedApp({ initial }: { readonly initial: readonly string[] | null 
   return <ProjectWorkspace key={project} selection={selection} select={select} projects={projects} onCreated={opened} />;
 }
 
-function Updating() {
+function Locked() {
   const [selection, select] = useSelection();
   const none = useCallback(() => undefined, []);
+  const Content = host.Locked;
   return (
     <Suspense fallback={null}>
-      <Start projects={[]} selection={selection} select={select} onOpen={none} onCreated={none} updating={<UpdateProgress />} />
+      <Start projects={[]} selection={selection} select={select} onOpen={none} onCreated={none} locked={Content ? <Content /> : null} />
       <Shown />
     </Suspense>
   );
@@ -75,12 +76,13 @@ function Updating() {
 
 export function App() {
   const start = use(boot());
-  const [updating, setUpdating] = useState(start.update?.running === true);
-  if (updating) return <Updating />;
+  const [locked, setLocked] = useState(start.locked);
+  if (locked) return <Locked />;
+  const Overlay = host.Overlay;
   return (
     <>
       <ConnectedApp initial={start.projects} />
-      {start.update?.ask ? <UpdatePrompt onStarted={() => setUpdating(true)} /> : null}
+      {Overlay ? <Overlay onLocked={() => setLocked(true)} /> : null}
     </>
   );
 }

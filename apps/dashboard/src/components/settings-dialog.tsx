@@ -10,13 +10,11 @@ import { SecretField } from "@/components/secret-field";
 import { Actions, FromDeployment, MODEL_CHOICES, ProviderForm, useBusy, VOICE_CHOICES, type Save } from "@/components/provider-form";
 import { SharedInstructionsForm } from "@/components/guidance";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
-import { githubApi, orgApi, settingsApi, sharedEnvApi, type GitHubView, type OrgView, type SettingsView } from "@/lib/api";
+import { githubApi, settingsApi, sharedEnvApi, type GitHubView, type SettingsView } from "@/lib/api";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
-import { orgLabel, PLAN_LABEL, useAppMode } from "@/lib/account";
-import { MembersSection } from "@/components/people";
 import { UsageSection } from "@/components/usage";
-import { LockedWhileUpdating } from "@/components/update";
+import { host } from "@/host";
 
 function ModelsForm(props: { readonly settings: SettingsView; readonly save: Save }) {
   const { models, attempts } = props.settings;
@@ -127,90 +125,6 @@ function PasswordForm(props: { readonly settings: SettingsView; readonly save: S
   );
 }
 
-function AccountSection(props: { readonly account: string | null }) {
-  return (
-    <Group title="Account" note="You signed in with Cloudflare. chef works in your Cloudflare account, and this site keeps only its address. Sign out from the menu at the bottom left.">
-      <p className="text-xs text-muted-foreground" data-current="account">
-        {props.account ? `Signed in as ${props.account}` : "Signed in with Cloudflare"}
-      </p>
-    </Group>
-  );
-}
-
-const ROLE_LABEL = { owner: "an owner", admin: "an admin", member: "a member" } as const;
-
-function OrgSection(props: { readonly org: OrgView }) {
-  const [name, setName] = useState(props.org.name);
-  const [fresh, setFresh] = useState("");
-  const [busy, setBusy] = useState(false);
-  const act = async (work: () => Promise<unknown>, after: () => void) => {
-    setBusy(true);
-    try {
-      await work();
-      after();
-    } catch (e) {
-      toast.error("Could not save", { description: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setBusy(false);
-    }
-  };
-  const note = props.org.personal
-    ? "Your own workspace. Its chef, projects and Cloudflare account are yours alone. Switch workspaces from the menu at the bottom left."
-    : `This organization owns its chef, its projects and the Cloudflare account it runs on. You are ${ROLE_LABEL[props.org.role]} of it. Switch workspaces from the menu at the bottom left.`;
-  return (
-    <Group title="Workspace" note={note}>
-      {props.org.personal || props.org.role === "member" ? (
-        <p className="text-sm" data-current="org">
-          {orgLabel(props.org)} · {PLAN_LABEL[props.org.plan]}
-        </p>
-      ) : (
-        <form
-          className="grid gap-2.5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void act(() => orgApi.rename(name), () => toast.success("Organization renamed"));
-          }}
-        >
-          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Organization name" maxLength={60} required data-current="org" />
-          <Actions busy={busy} />
-        </form>
-      )}
-      <form
-        id="new-org"
-        className="flex items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void act(() => orgApi.create(fresh), () => location.assign("/setup"));
-        }}
-      >
-        <Input value={fresh} onChange={(e) => setFresh(e.target.value)} placeholder="New organization name" aria-label="New organization name" maxLength={60} required />
-        <Button type="submit" size="sm" variant="outline" disabled={busy}>
-          Create organization
-        </Button>
-      </form>
-    </Group>
-  );
-}
-
-function RemoveSection(props: { readonly org: OrgView }) {
-  if (props.org.role !== "owner" || (props.org.personal && !props.org.engine)) return null;
-  const title = props.org.personal ? "Uninstall chef" : "Delete organization";
-  const note = props.org.personal
-    ? "Removes chef and all its projects, live apps and previews from your Cloudflare account. Personal and your account stay, so you can set chef up again."
-    : "Removes chef and all its projects, live apps and previews from the Cloudflare account this organization uses, then deletes the organization for everyone in it. People keep their own accounts.";
-  return (
-    <Group title={title} note={note}>
-      <div>
-        <Button asChild size="sm" variant="destructive">
-          <a href="/remove" data-action="remove-org">
-            {title}…
-          </a>
-        </Button>
-      </div>
-    </Group>
-  );
-}
-
 function ThemeChoice() {
   const { theme, setTheme } = useTheme();
   return (
@@ -295,8 +209,6 @@ export function SettingsDialog(props: {
 }) {
   const { settings, onChange, nav } = props;
   const missing = missingSettings(settings);
-  const mode = useAppMode();
-  const hosted = mode?.account !== undefined;
   const save: Save = async (update, done = "Saved") => {
     try {
       onChange(await settingsApi.save(update));
@@ -320,17 +232,14 @@ export function SettingsDialog(props: {
       id: "general",
       label: "General",
       icon: SlidersHorizontal,
-      note: hosted ? "How chef looks, your account and your workspace." : "How chef looks and who can open it.",
+      note: host.generalNote ?? "How chef looks and who can open it.",
       render: () => (
         <>
           <Group title="Theme">
             <ThemeChoice />
           </Group>
-          {hosted ? <AccountSection account={mode?.account ?? null} /> : null}
-          {hosted && mode?.org ? <OrgSection org={mode.org} /> : null}
-          {hosted && mode?.org && !mode.org.personal ? <MembersSection org={mode.org} /> : null}
-          {hosted && mode?.org && !props.locked ? <RemoveSection org={mode.org} /> : null}
-          {settings && !hosted ? (
+          {host.General ? <host.General locked={props.locked === true} /> : null}
+          {settings && !host.General ? (
             <Group title="Password" note="Changing it signs out every other browser and script.">
               <PasswordForm settings={settings} save={save} />
             </Group>
@@ -343,7 +252,7 @@ export function SettingsDialog(props: {
       label: "Usage",
       icon: Wallet,
       note: "What chef spends on models this month, and the budgets that pause work when they are reached.",
-      render: () => <UsageSection org={hosted ? (mode?.org ?? null) : null} />,
+      render: () => <UsageSection />,
     },
     {
       id: "models",
@@ -410,7 +319,7 @@ export function SettingsDialog(props: {
   ];
   const sections = all
     .filter((s) => props.available || !needsSettings.has(s.id))
-    .map((s) => (props.locked && s.id !== "general" ? { ...s, fill: false, attention: false, render: () => <LockedWhileUpdating /> } : s));
+    .map((s) => (props.locked && s.id !== "general" ? { ...s, fill: false, attention: false, render: () => (host.LockedSection ? <host.LockedSection /> : null) } : s));
   return (
     <SettingsShell
       open={props.open}
