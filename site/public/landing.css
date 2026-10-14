@@ -61,7 +61,7 @@ main { overflow-x: clip; }
 .crumbs { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 20px; font: 12px/1.4 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-foreground); }
 .landing .hero h1 { font-size: clamp(40px, 5.4vw, 66px); line-height: 1.02; letter-spacing: -0.04em; margin: 0 0 24px; max-width: none; }
 .landing .hero .lead { font-size: 18px; color: var(--ink-2); max-width: 480px; margin: 0 0 36px; }
-.hero .actions { justify-content: flex-start; }
+.hero .actions { justify-content: flex-start; align-items: center; gap: 8px; }
 .hero .fine { font: 12px/1.5 var(--mono); color: var(--muted-foreground); margin-top: 20px; }
 .hero .banner { margin: 0 0 24px; }
 .stage { width: 100%; aspect-ratio: 560 / 420; }
@@ -69,6 +69,12 @@ main { overflow-x: clip; }
 .landing .btn { font-weight: 500; }
 .landing .btn-pill { background: transparent; border-color: var(--line); }
 .landing .btn-pill:hover { border-color: var(--brand); color: var(--brand); }
+.landing .btn-go { height: 54px; padding: 0 26px; font-size: 17px; box-shadow: 4px 4px 0 color-mix(in oklch, var(--primary) 22%, transparent); transition: background 0.15s, box-shadow 0.15s, transform 0.15s; }
+.landing .btn-go:hover:not(:disabled) { opacity: 1; background: color-mix(in oklch, var(--primary) 86%, black); box-shadow: 2px 2px 0 color-mix(in oklch, var(--primary) 30%, transparent); transform: translate(2px, 2px); }
+.landing .btn-go .arrow { transition: transform 0.15s; }
+.landing .btn-go:hover .arrow { transform: translateX(3px); }
+.landing .btn-quiet { height: 54px; background: transparent; border-color: transparent; color: var(--ink-2); padding: 0 14px; }
+.landing .btn-quiet:hover { color: var(--brand); }
 
 .story-inner { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; }
 .story-head { padding-top: 120px; }
@@ -126,6 +132,7 @@ main { overflow-x: clip; }
 
 @media (prefers-reduced-motion: reduce) {
   .reveal { opacity: 1; transform: none; transition: none; }
+  .landing .btn-go, .landing .btn-go .arrow { transition: none; }
   .step { transition: none; }
 }
 
