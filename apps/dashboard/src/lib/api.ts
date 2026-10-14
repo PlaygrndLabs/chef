@@ -37,12 +37,39 @@ export interface SettingsView {
   readonly cloudflare: { readonly accountId: string; readonly keyHint: string; readonly source: Source } | null;
   readonly models: { readonly planner: string; readonly reviewer: string; readonly coder: string; readonly voice: string; readonly source: Source };
   readonly attempts: { readonly value: number; readonly source: Source };
-  readonly password: Source;
+  readonly password: Source | "none";
 }
 
 export const json = (method: string, body: unknown): RequestInit => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 export type SettingsUpdate = Readonly<Record<string, unknown>>;
+
+export interface ApiKeyView {
+  readonly id: string;
+  readonly prefix: string;
+  readonly kind: "controller" | "key";
+  readonly name: string;
+  readonly scopes: readonly string[];
+  readonly source: Source;
+  readonly createdAt: number | null;
+  readonly expiresAt: number | null;
+  readonly lastUsedAt: number | null;
+}
+
+export interface NewApiKey {
+  readonly name: string;
+  readonly kind: "controller" | "key";
+  readonly expiresInDays: number | null;
+}
+
+export const keysApi = {
+  list: () => call<{ readonly keys: readonly ApiKeyView[] }>("/api/keys").then((view) => view.keys),
+  create: (key: NewApiKey) => call<{ readonly key: ApiKeyView; readonly token: string }>("/api/keys", post(key)),
+  revoke: async (id: string) => {
+    const response = await fetch(`/api/keys/${id}`, { method: "DELETE" });
+    if (!response.ok) throw new ApiError(((await response.json().catch(() => ({}))) as { error?: string }).error ?? `${response.status} ${response.statusText}`, response.status);
+  },
+};
 
 export const settingsApi = {
   get: () => call<SettingsView>("/api/settings"),

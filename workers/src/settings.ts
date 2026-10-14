@@ -5,11 +5,16 @@ import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import type { SharedInstructions } from "@chef/adapters/guidance";
 import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type SaveResult, type StoredAgents } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
-import { deploymentPassword, hashPassword, passwordProblem, sessionCookie, type Credential, type StoredPassword } from "./access.ts";
+import { deploymentPassword, hashPassword, homeOrigin, passwordProblem, sessionCookie, type Access, type Caller, type Credential, type StoredPassword } from "./access.ts";
+import { deploymentGrant, deploymentKey, mintGrant, readGrantRequest, viewGrant, type Grant, type GrantView } from "./grants.ts";
 import { DurableStore } from "./do-store.ts";
 
 const SETTINGS = "providers";
 const PASSWORD = "password";
+const SEALED = "access/sealed";
+const GRANT = "access/grant/";
+const USED = "access/used/";
+const TOUCH_MS = 60_000;
 const PROJECTS = "projects";
 const GITHUB_APP = "github/app";
 const GITHUB_LINKS = "github/links";
@@ -40,9 +45,37 @@ export class Settings extends DurableObject<Env> {
     return (await this.ctx.storage.get<StoredPassword>(PASSWORD)) ?? null;
   }
 
+  async sealed(): Promise<boolean> {
+    return (await this.ctx.storage.get<boolean>(SEALED)) === true;
+  }
+
+  async grant(id: string): Promise<Grant | null> {
+    return (await this.ctx.storage.get<Grant>(`${GRANT}${id}`)) ?? null;
+  }
+
+  async grants(): Promise<{ readonly grants: Grant[]; readonly used: Record<string, number> }> {
+    const grants = [...(await this.ctx.storage.list<Grant>({ prefix: GRANT })).values()];
+    const used = Object.fromEntries([...(await this.ctx.storage.list<number>({ prefix: USED })).entries()].map(([key, at]) => [key.slice(USED.length), at]));
+    return { grants, used };
+  }
+
+  async addGrant(grant: Grant): Promise<void> {
+    await this.ctx.storage.put({ [`${GRANT}${grant.id}`]: grant, [SEALED]: true });
+  }
+
+  async removeGrant(id: string): Promise<boolean> {
+    const existed = await this.ctx.storage.delete(`${GRANT}${id}`);
+    await this.ctx.storage.delete(`${USED}${id}`);
+    return existed;
+  }
+
+  async touchGrant(id: string, at: number): Promise<void> {
+    await this.ctx.storage.put({ [`${USED}${id}`]: at, [SEALED]: true });
+  }
+
   async claimPassword(password: StoredPassword): Promise<boolean> {
     if (await this.ctx.storage.get(PASSWORD)) return false;
-    await this.ctx.storage.put(PASSWORD, password);
+    await this.ctx.storage.put({ [PASSWORD]: password, [SEALED]: true });
     return true;
   }
 
@@ -176,12 +209,61 @@ export async function credential(env: Env): Promise<Credential | null> {
   return stored ? { kind: "app", ...stored } : null;
 }
 
-export function claimPassword(env: Env): (password: StoredPassword) => Promise<boolean> {
-  return (password) => settingsStub(env).claimPassword(password);
+const touched = new Map<string, number>();
+
+export function access(env: Env, waitUntil: (work: Promise<unknown>) => void): Access {
+  const settings = settingsStub(env);
+  return {
+    password: () => credential(env),
+    deploymentKey: deploymentKey(env),
+    sealed: () => settings.sealed(),
+    grant: (id) => settings.grant(id),
+    claim: (password) => settings.claimPassword(password),
+    used: (grant) => {
+      const now = Date.now();
+      if (now - (touched.get(grant.id) ?? 0) < TOUCH_MS) return;
+      touched.set(grant.id, now);
+      waitUntil(settings.touchGrant(grant.id, now).catch(() => undefined));
+    },
+    home: homeOrigin(env),
+  };
+}
+
+async function listGrants(env: Env): Promise<GrantView[]> {
+  const { grants, used } = await settingsStub(env).grants();
+  const key = deploymentKey(env);
+  const fromDeployment = key ? [await deploymentGrant(key)] : [];
+  return [...fromDeployment.map((grant) => viewGrant(grant, "deployment", used[grant.id] ?? null)), ...grants.sort((a, b) => a.createdAt - b.createdAt).map((grant) => viewGrant(grant, "app", used[grant.id] ?? null))];
+}
+
+export async function keysRequest(request: Request, env: Env, caller: Caller): Promise<Response> {
+  const url = new URL(request.url);
+  const id = /^\/api\/keys\/([a-z0-9]{12})$/.exec(url.pathname)?.[1] ?? null;
+  if (url.pathname === "/api/keys" && request.method === "GET") return Response.json({ keys: await listGrants(env) });
+  if (url.pathname === "/api/keys" && request.method === "POST") {
+    const now = Date.now();
+    const input = readGrantRequest(await request.json().catch(() => null), now);
+    if (typeof input === "string") return Response.json({ error: input }, { status: 400 });
+    if (input.kind === "controller" && caller.kind === "grant" && caller.grant.kind !== "controller") return Response.json({ error: "an API key can make other API keys, not keys for a managing app" }, { status: 403 });
+    const { grant, token } = await mintGrant(input, now);
+    await settingsStub(env).addGrant(grant);
+    return Response.json({ key: viewGrant(grant, "app", null), token }, { status: 201 });
+  }
+  if (id && request.method === "DELETE") {
+    const key = deploymentKey(env);
+    if (key && (await deploymentGrant(key)).id === id) return Response.json({ error: "this key comes from the deployment's CHEF_API_KEY secret: replace or remove it there" }, { status: 409 });
+    const settings = settingsStub(env);
+    const grant = await settings.grant(id);
+    if (!grant) return Response.json({ error: "no such key" }, { status: 404 });
+    if (grant.kind === "controller" && caller.kind === "grant" && caller.grant.kind !== "controller") return Response.json({ error: "an API key cannot revoke the key of a managing app" }, { status: 403 });
+    await settings.removeGrant(id);
+    return new Response(null, { status: 204 });
+  }
+  return Response.json({ error: "method not allowed" }, { status: 405 });
 }
 
 async function view(env: Env, saved: AppSettings) {
-  return { ...describeSettings(saved, env), password: deploymentPassword(env) ? "deployment" : "app" };
+  return { ...describeSettings(saved, env), password: deploymentPassword(env) ? "deployment" : (await settingsStub(env).password()) ? "app" : "none" };
 }
 
 export async function settingsRequest(request: Request, env: Env): Promise<Response> {

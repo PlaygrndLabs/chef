@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { newToken } from "@chef/core/access";
 import { REPO_ROOT } from "./world.ts";
 
 export const BASE_NAME = "chef";
@@ -99,6 +101,7 @@ export interface DeployOptions {
   readonly name?: string;
   readonly image?: string;
   readonly dryRun?: boolean;
+  readonly apiKey?: boolean;
   readonly passthrough?: readonly string[];
   readonly run?: Runner;
   readonly log?: (line: string) => void;
@@ -108,6 +111,17 @@ export interface Deployed {
   readonly code: number;
   readonly url: string | null;
   readonly config: string;
+  readonly apiKey: string | null;
+}
+
+export function withSecret(args: readonly string[], name: string, value: string, dir: string): string[] {
+  const at = args.findIndex((arg) => arg === "--secrets-file" || arg.startsWith("--secrets-file="));
+  const given = at < 0 ? null : args[at]?.startsWith("--secrets-file=") ? (args[at] as string).slice("--secrets-file=".length) : (args[at + 1] ?? null);
+  const secrets = given ? (JSON.parse(readFileSync(given, "utf8")) as Record<string, string>) : {};
+  const file = join(dir, "secrets.json");
+  writeFileSync(file, JSON.stringify({ ...secrets, [name]: value }), { mode: 0o600 });
+  const rest = at < 0 ? [...args] : [...args.slice(0, at), ...args.slice(at + (args[at]?.includes("=") ? 1 : 2))];
+  return [...rest, "--secrets-file", file];
 }
 
 export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
@@ -126,14 +140,22 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
   }
   const index = (list(parseJsonc(readFileSync(config, "utf8"))["vectorize"])[0]?.["index_name"] as string | undefined) ?? null;
   if (index && !options.dryRun) await ensureMemoryIndex(run, index, log);
-  const args = ["deploy", "--config", config, ...(options.dryRun ? ["--dry-run", "--outdir", join(REPO_ROOT, "dist", "worker")] : []), ...(options.passthrough ?? [])];
+  const apiKey = options.apiKey && !options.dryRun ? newToken().token : null;
+  const secretsDir = apiKey ? mkdtempSync(join(tmpdir(), "chef-deploy-")) : null;
+  const passthrough = apiKey && secretsDir ? withSecret(options.passthrough ?? [], "CHEF_API_KEY", apiKey, secretsDir) : [...(options.passthrough ?? [])];
+  const args = ["deploy", "--config", config, ...(options.dryRun ? ["--dry-run", "--outdir", join(REPO_ROOT, "dist", "worker")] : []), ...passthrough];
   mkdirSync(join(REPO_ROOT, "dist"), { recursive: true });
-  let result = await run(args, { echo: true });
-  if (result.code !== 0 && !options.dryRun && result.output.includes("could not finish applying")) {
-    log(`finishing the sandbox container settings`);
+  let result: Run;
+  try {
     result = await run(args, { echo: true });
+    if (result.code !== 0 && !options.dryRun && result.output.includes("could not finish applying")) {
+      log(`finishing the sandbox container settings`);
+      result = await run(args, { echo: true });
+    }
+  } finally {
+    if (secretsDir) rmSync(secretsDir, { recursive: true, force: true });
   }
   const url = /https:\/\/[a-z0-9.-]+\.workers\.dev/.exec(result.output)?.[0] ?? null;
-  if (result.code === 0 && url) log(`\nchef is live at ${url}\nOpen it in a browser.`);
-  return { code: result.code, url, config };
+  if (result.code === 0 && url) log(`\nchef is live at ${url}\n${apiKey ? "It answers the new API key, which replaces any key an earlier deploy made." : "Open it in a browser."}`);
+  return { code: result.code, url, config, apiKey: result.code === 0 ? apiKey : null };
 }

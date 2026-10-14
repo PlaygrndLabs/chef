@@ -245,17 +245,23 @@ async function serveCommand(args: readonly string[]): Promise<number> {
 async function deployCommand(args: readonly string[]): Promise<number> {
   const name = option(args, "name");
   const image = option(args, "image");
+  const keyFile = option(args, "api-key-file");
   const passthrough: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
-    if (arg === "deploy" || arg === "--dry-run" || arg === "--") continue;
-    if (arg === "--name" || arg === "--image") {
+    if (arg === "deploy" || arg === "--dry-run" || arg === "--api-key" || arg === "--") continue;
+    if (arg === "--name" || arg === "--image" || arg === "--api-key-file") {
       i++;
       continue;
     }
     passthrough.push(arg);
   }
-  const result = await deploy({ ...(name ? { name } : {}), ...(image ? { image } : {}), dryRun: args.includes("--dry-run"), passthrough });
+  const apiKey = args.includes("--api-key") || keyFile !== undefined;
+  const result = await deploy({ ...(name ? { name } : {}), ...(image ? { image } : {}), dryRun: args.includes("--dry-run"), apiKey, passthrough });
+  if (result.apiKey && keyFile) {
+    writeFileSync(keyFile, `${result.apiKey}\n`, { mode: 0o600 });
+    process.stderr.write(`wrote the API key to ${keyFile}\n`);
+  } else if (result.apiKey) process.stdout.write(`\nAPI key, shown only now: ${result.apiKey}\n`);
   return result.code;
 }
 
@@ -296,7 +302,7 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "serve") return serveCommand(args);
   if (command === "tour") return tourCommand(args);
   if (command === "deploy") return deployCommand(args);
-  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef deploy [--name n] [--image ref] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef deploy [--name n] [--image ref] [--api-key | --api-key-file path] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--prompt text] [--minutes n] [--every s] [--out dir]\n");
   return 2;
 }
 

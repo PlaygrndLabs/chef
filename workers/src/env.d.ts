@@ -9,6 +9,7 @@ interface Env {
   readonly CF_ACCOUNT_ID?: string;
   readonly CF_API_TOKEN?: string;
   readonly CHEF_PASSWORD?: string;
-  readonly CHEF_SITE?: string;
+  readonly CHEF_API_KEY?: string;
+  readonly CHEF_HOME?: string;
   readonly REVIEWER_LORA?: string;
 }

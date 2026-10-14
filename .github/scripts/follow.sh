@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -u
-auth="authorization: Bearer $CHEF_PASSWORD"
+auth=$(bash "$(dirname "$0")/sign-in.sh" "$CHEF_URL") || exit 1
 api="$CHEF_URL/api/projects/$PROJECT"
 put_env() {
   body=$(printf '%s\n' $1 | jq -Rn '[inputs | select(length > 0) | capture("^(?<k>[A-Z][A-Z0-9_]*)=(?<v>.*)$")] | {set: (map({key: .k, value: {value: .v, secret: true}}) | from_entries)}')

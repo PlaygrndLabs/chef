@@ -36,4 +36,5 @@ export interface Host {
   readonly useUsage?: () => HostUsage | null;
   readonly useProjectLevel?: (project: string) => ProjectLevel | null;
   readonly projectSections?: (project: string) => readonly SettingsSection[];
+  readonly hiddenSections?: readonly string[];
 }

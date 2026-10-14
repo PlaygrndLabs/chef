@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { deploy, ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, withImage, type Runner } from "../../src/deploy.ts";
+import { deploy, ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, withImage, withSecret, type Runner } from "../../src/deploy.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const base = parseJsonc(readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8"));
@@ -65,5 +66,35 @@ describe("deploy", () => {
     expect(deploys).toHaveLength(2);
     expect(deploys[1]).toEqual(deploys[0]);
     expect(result).toMatchObject({ code: 0, url: "https://chef-dev.example.workers.dev" });
+  });
+
+  it("adds one secret to the secrets file a deploy was given, or to a new one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "chef-test-"));
+    const given = join(dir, "given.json");
+    writeFileSync(given, JSON.stringify({ CF_ACCOUNT_ID: "acct" }));
+    for (const args of [["--secrets-file", given, "--keep-vars"], [`--secrets-file=${given}`, "--keep-vars"]]) {
+      const out = withSecret(args, "CHEF_API_KEY", "chef_k", mkdtempSync(join(tmpdir(), "chef-test-")));
+      expect(out.slice(0, 2)).toEqual(["--keep-vars", "--secrets-file"]);
+      expect(JSON.parse(readFileSync(out[2] as string, "utf8"))).toEqual({ CF_ACCOUNT_ID: "acct", CHEF_API_KEY: "chef_k" });
+    }
+    const fresh = withSecret([], "CHEF_API_KEY", "chef_k", dir);
+    expect(JSON.parse(readFileSync(fresh[1] as string, "utf8"))).toEqual({ CHEF_API_KEY: "chef_k" });
+  });
+
+  it("makes a new API key for a managing app when asked, sends it as a secret and hands it back only after a deploy that worked", async () => {
+    const sent: Record<string, string>[] = [];
+    const runner =
+      (code: number): Runner =>
+      async (args) => {
+        const at = args.indexOf("--secrets-file");
+        if (args[0] === "deploy" && at >= 0) sent.push(JSON.parse(readFileSync(args[at + 1] as string, "utf8")) as Record<string, string>);
+        return { code, output: "https://chef-dev.example.workers.dev" };
+      };
+    const done = await deploy({ name: "chef-dev", apiKey: true, run: runner(0), log: () => {} });
+    expect(done.apiKey).toMatch(/^chef_[a-z0-9]{12}_[A-Za-z0-9_-]{43}$/);
+    expect(sent[0]).toEqual({ CHEF_API_KEY: done.apiKey });
+    expect((await deploy({ name: "chef-dev", apiKey: true, run: runner(1), log: () => {} })).apiKey).toBeNull();
+    expect((await deploy({ name: "chef-dev", run: runner(0), log: () => {} })).apiKey).toBeNull();
+    expect(sent).toHaveLength(2);
   });
 });
