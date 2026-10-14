@@ -26,7 +26,7 @@ export function tokensOf(text: string): number {
 }
 
 export function renderTurn(turn: ChatTurn): string {
-  return `Person: ${turn.prompt}\nchef: ${turn.reply.slice(0, REPLY_CHARS)}`;
+  return `Person: ${turn.prompt}\nChef: ${turn.reply.slice(0, REPLY_CHARS)}`;
 }
 
 export function readChatMemory(stored: unknown): ChatMemory {

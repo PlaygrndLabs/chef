@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-# chef: an AI app builder that runs on your Cloudflare account
+# Chef: an AI app builder that runs on your Cloudflare account
 
 [![CI](https://github.com/PlaygrndLabs/chef/actions/workflows/ci.yml/badge.svg)](https://github.com/PlaygrndLabs/chef/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
