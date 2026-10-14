@@ -32,174 +32,98 @@
 </header>
 
 <main>
-  <section class="hero frame">
+  <section class="hero">
     <canvas class="field" data-app aria-hidden="true"></canvas>
-    <div class="hero-copy">
-      <p class="banner" id="notice" role="status" hidden></p>
-      <p class="crumbs"><span class="brand-text">Open source</span><span class="sep">/</span><span>Runs on your Cloudflare account</span></p>
-      <h1>Build apps with AI, on your own Cloudflare.</h1>
-      <p class="lead">Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass.</p>
-      <div class="actions">
-        <a class="btn btn-primary btn-lg" href="/auth/start">Get started</a>
-        <a class="btn btn-pill btn-lg" href="#how">See how it works</a>
+    <div class="inner hero-inner">
+      <div class="hero-copy">
+        <p class="banner" id="notice" role="status" hidden></p>
+        <p class="crumbs"><span class="brand-text">Open source</span><span class="sep">/</span><span>Runs on your Cloudflare</span><span class="sep">/</span><span>Git on Cloudflare Artifacts</span></p>
+        <h1>Build apps with AI, on your own Cloudflare.</h1>
+        <p class="lead">Tell chef what you want. It plans the work, builds every feature in its own sandbox with a live preview, and ships it once the checks pass.</p>
+        <div class="actions">
+          <a class="btn btn-primary btn-lg" href="/auth/start">Get started</a>
+          <a class="btn btn-pill btn-lg" href="#how">See how it works</a>
+        </div>
+        <p class="fine">Free and open source. Needs a Cloudflare account on the Workers Paid plan.</p>
       </div>
-      <p class="fine">Free and open source. Needs a Cloudflare account on the Workers Paid plan.</p>
-    </div>
-    <div class="stage" aria-hidden="true"></div>
-  </section>
-
-  <section id="how" class="frame center">
-    <div class="intro">
-      <h2>How it works</h2>
-      <p class="sub">No terminal, no Docker and nothing to install. chef sets up its engine in your Cloudflare account, and you use it right here.</p>
-    </div>
-    <div class="cells">
-      <div class="cell reveal">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6 19z"/></svg>
-        <h3>Sign in with Cloudflare</h3>
-        <p>Cloudflare shows exactly what chef asks for, and you pick the account it can use.</p>
-      </div>
-      <div class="cell reveal">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 17.5h7M17.5 14v7"/></svg>
-        <h3>Set it up</h3>
-        <p>chef adds its engine to that account: the agents, sandboxes, previews and your projects.</p>
-      </div>
-      <div class="cell reveal">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>
-        <h3>Start building</h3>
-        <p>Describe what you want and watch each feature come together with its own live preview.</p>
-      </div>
+      <div class="stage" aria-hidden="true"></div>
     </div>
   </section>
 
-  <section id="features" class="frame">
-    <div class="intro left">
-      <h2>What chef takes off your plate.</h2>
-      <p class="sub">You describe the outcome. chef handles the busywork that usually comes with building software.</p>
+  <section id="how" class="story">
+    <div class="inner story-head">
+      <p class="kicker">How a build goes</p>
+      <h2>One ask in. A live app out.</h2>
     </div>
-    <div class="bento">
-      <article class="tile wide dark reveal">
-        <div class="tile-copy">
-          <h3>Sessions run themselves</h3>
-          <p>Each request becomes a session that chef starts, tracks, keeps up to date and closes for you. Run many at once and none blocks another.</p>
+    <div class="inner story-inner">
+      <div class="story-steps">
+        <ol>
+          <li class="step" data-step="ask"><span class="num">01</span><div><h3>Ask</h3><p>Say what you want in plain words. chef turns it into a spec and writes the tests before any code.</p></div></li>
+          <li class="step" data-step="tree"><span class="num">02</span><div><h3>Split</h3><p>chef breaks the ask into features and adds each one to your project's feature tree. Every feature gets its own session with its own copy of the code in Cloudflare Artifacts, so several features are built at the same time.</p></div></li>
+          <li class="step" data-step="build"><span class="num">03</span><div><h3>Build</h3><p>Each session builds in its own sandbox with a live preview link. Previews sleep when idle and wake on the next click.</p></div></li>
+          <li class="step" data-step="check"><span class="num">04</span><div><h3>Check</h3><p>Tests, type checks and an AI review must pass. Then chef merges the work into your main code for you, so you never deal with branches or merge conflicts.</p></div></li>
+          <li class="step" data-step="live"><span class="num">05</span><div><h3>Live</h3><p>The latest version of your app is online at its own address. Connect GitHub only if you also want a copy of the code there.</p></div></li>
+        </ol>
+      </div>
+      <div class="story-view">
+        <div class="term">
+          <p class="term-bar"><span data-story-label>01 ask</span><span>todo-app</span></p>
+          <canvas data-story aria-hidden="true"></canvas>
         </div>
-        <div class="mock sessions" aria-hidden="true">
-          <div class="mock-head"><span>todo app</span><span class="muted">4 sessions</span></div>
-          <div class="row"><i class="dot run"></i>Edit items<span class="tag">building</span></div>
-          <div class="row"><i class="dot run"></i>Delete items<span class="tag">checking</span></div>
-          <div class="row"><i class="dot ok"></i>Dark mode<span class="tag ok">merged</span></div>
-          <div class="row"><i class="dot ok"></i>Todo list<span class="tag ok">merged</span></div>
-        </div>
-      </article>
-      <article class="tile reveal">
-        <div class="mock flow" aria-hidden="true">
-          <div class="node"><b>Session finished</b><span>Edit items</span></div>
-          <div class="node right"><b>Synced with main</b><span>no conflicts</span></div>
-          <div class="node"><b>Checks passed</b><span>tests, types, review</span></div>
-          <div class="node right"><b>Merged</b><span>main</span></div>
-        </div>
-        <div class="tile-copy">
-          <h3>No git chores</h3>
-          <p>No branches, merges, rebases or conflicts to handle. chef keeps every session in sync with main and merges finished work for you.</p>
-        </div>
-      </article>
-      <article class="tile reveal">
-        <div class="mock browser" aria-hidden="true">
-          <div class="bar"><i></i><i></i><i></i><span>edit-items.preview</span></div>
-          <div class="page"><div class="line w60"></div><div class="line w80"></div><div class="check"><i></i>Buy milk</div><div class="check done"><i></i>Ship chef</div><div class="line w40"></div></div>
-        </div>
-        <div class="tile-copy">
-          <h3>A preview for everything</h3>
-          <p>Every change builds in its own isolated sandbox with a live link. Previews sleep when idle and wake on the next click.</p>
-        </div>
-      </article>
-      <article class="tile reveal">
-        <div class="mock checks" aria-hidden="true">
-          <div class="mock-head"><span>Before merge</span><span class="muted">3 of 3</span></div>
-          <div class="row"><i class="tick"></i>Tests</div>
-          <div class="row"><i class="tick"></i>Typecheck</div>
-          <div class="row"><i class="tick"></i>AI review</div>
-        </div>
-        <div class="tile-copy">
-          <h3>Checked before it ships</h3>
-          <p>Tests, typecheck and an AI review must pass before anything reaches main.</p>
-        </div>
-      </article>
-      <article class="tile reveal">
-        <div class="mock keys" aria-hidden="true">
-          <div class="mock-head"><span>Keys</span><span class="muted">your account</span></div>
-          <div class="row"><code>ANTHROPIC_API_KEY</code><span class="secret">••••••••</span></div>
-          <div class="row"><code>STRIPE_KEY</code><span class="secret">••••••••</span></div>
-        </div>
-        <div class="tile-copy">
-          <h3>Your keys stay yours</h3>
-          <p>Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.</p>
-        </div>
-      </article>
-      <article class="tile wide full reveal">
-        <div class="mock live" aria-hidden="true">
-          <div class="row"><i class="dot ok"></i><code>todo.workers.dev</code><span class="tag ok">live</span></div>
-          <div class="row"><i class="dot"></i><code>github.com/you/todo</code><span class="tag">synced</span></div>
-        </div>
-        <div class="tile-copy">
-          <h3>Live, with GitHub when you want it</h3>
-          <p>Every project's main is online at its own address. Connect GitHub only if you want a repository kept in sync.</p>
-        </div>
-      </article>
+      </div>
     </div>
   </section>
 
-  <section id="pricing" class="frame">
-    <div class="split">
-      <div class="split-copy">
+  <section id="features" class="yours">
+    <div class="inner">
+      <h2 class="statement">Everything runs on Cloudflare, <span class="brand-text">in your own account.</span></h2>
+      <dl class="spec">
+        <div><dt>Nothing runs on your computer</dt><dd>No terminal, no Docker and nothing to install. Agents, sandboxes and previews run on Cloudflare's network, so your computer stays free and builds stay fast, even with many sessions running at once.</dd></div>
+        <div><dt>Git built for agents</dt><dd>Every project is a git repository in Cloudflare Artifacts, Cloudflare's git storage made for agents. Each session works on its own copy, only work that passes its checks reaches main, and any git client can clone it.</dd></div>
+        <div><dt>Your data stays with you</dt><dd>Code, previews, project memory and keys live in your Cloudflare account. chef's access to your account ends as soon as setup is done.</dd></div>
+        <div><dt>Bring your model</dt><dd>Use an Anthropic API key or any compatible provider. Keys never reach the browser or the sandbox.</dd></div>
+        <div><dt>Many projects</dt><dd>One chef runs all your projects, each with its own address, previews and settings.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section id="pricing" class="pricing">
+    <div class="inner pricing-inner">
+      <div>
         <p class="kicker">Pricing</p>
-        <h2>chef itself is</h2>
-        <p class="big">Free</p>
-        <p class="sub">Open source, with every feature and no seat or project limits. It runs on services you already pay for, billed to you directly.</p>
+        <p class="big">Free.</p>
+        <p class="sub">chef is open source, with every feature and no seat or project limits. You pay only for the services it runs on, billed to you directly.</p>
       </div>
-      <div class="split-art"><canvas class="ascii" data-ascii aria-hidden="true"></canvas></div>
-    </div>
-    <div class="cards3">
-      <div class="lift reveal">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="8.5" width="7" height="7"/></svg>
-        <h3>chef</h3>
-        <p><strong>Free.</strong> Every feature, no limits.</p>
-      </div>
-      <div class="lift reveal">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6 19z"/></svg>
-        <h3>Cloudflare Workers Paid</h3>
-        <p><strong>$5 a month</strong>, from Cloudflare. Runs the agents, sandboxes and previews, with a monthly allowance.</p>
-      </div>
-      <div class="lift reveal">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg>
-        <h3>Your model provider</h3>
-        <p><strong>Pay as you go.</strong> Use your Anthropic API key or any compatible provider.</p>
+      <div class="ledger" role="list" aria-label="What you pay">
+        <div class="line" role="listitem"><span>chef</span><i></i><b>$0</b></div>
+        <div class="line" role="listitem"><span>Cloudflare Workers Paid</span><i></i><b>$5 / month</b></div>
+        <p class="note">Paid to Cloudflare. Runs the agents, sandboxes and previews, with a monthly allowance.</p>
+        <div class="line" role="listitem"><span>Your model provider</span><i></i><b>pay as you go</b></div>
+        <p class="note">Your Anthropic API key or any compatible provider.</p>
+        <div class="line total" role="listitem"><span>Seats and project limits</span><i></i><b>none</b></div>
       </div>
     </div>
   </section>
 
-  <section id="faq" class="frame">
-    <div class="faq">
+  <section id="faq" class="faq">
+    <div class="inner faq-inner">
       <h2>Questions</h2>
       <div>
-        <details><summary>Where do my code and data live?</summary><p>In your Cloudflare account. Projects are git repositories in Cloudflare Artifacts, and your model keys, settings and previews stay with your chef engine there. GitHub sync is optional.</p></details>
-        <details><summary>What does this site keep?</summary><p>Your Cloudflare user id and email, when you joined and last signed in, and where your chef engine runs with the key this site uses to reach it. Nothing else.</p></details>
-        <details><summary>Does chef keep access to my Cloudflare account?</summary><p>No. The access you grant at sign-in is used only while chef sets up or updates its engine, and it is revoked right after. You can review or remove apps any time in Cloudflare under My Profile, Access Management.</p></details>
-        <details><summary>What does setup create in my account?</summary><p>A Worker named chef with its Durable Objects, a container image for its sandboxes, a Vectorize index for project memory, an Artifacts namespace for your repositories, and one API token limited to Workers scripts so chef can publish previews. Everything is yours to inspect or remove.</p></details>
+        <details><summary>Where do my code and data live?</summary><p>In your Cloudflare account. Projects are git repositories in Cloudflare Artifacts, and your model keys, settings and previews stay there too. GitHub sync is optional.</p></details>
+        <details><summary>What does this site keep?</summary><p>Your Cloudflare user id and email, when you joined and last signed in, and the address of chef in your account with the key this site uses to reach it. Nothing else.</p></details>
+        <details><summary>Does chef keep access to my Cloudflare account?</summary><p>No. The access you grant at sign-in is used only while chef installs or updates itself in your account, and it ends right after. You can review or remove apps any time in Cloudflare under My Profile, Access Management.</p></details>
+        <details><summary>What does setup create in my account?</summary><p>A chef Worker for your organization with its Durable Objects, a container image for its sandboxes, a Vectorize index for project memory, an Artifacts namespace for your repositories, and one API token limited to Workers scripts so chef can publish previews. Everything is yours to inspect or remove.</p></details>
         <details><summary>Which Cloudflare plan do I need?</summary><p>Workers Paid, because chef uses Containers and Artifacts. If your account is on the free plan, the setup page links you to the upgrade.</p></details>
       </div>
     </div>
   </section>
 
-  <section class="cta-wrap">
-    <div class="cta-box">
-      <canvas class="dots" data-dots aria-hidden="true"></canvas>
-      <div class="cta-copy">
-        <p class="kicker">Get started</p>
-        <h2>Your next app, one sign-in away.</h2>
-        <p class="sub">Sign in with Cloudflare, pick an account and start building.</p>
-        <a class="btn btn-primary btn-lg" href="/auth/start">Get started</a>
-      </div>
+  <section class="cta">
+    <canvas class="dots" data-dots aria-hidden="true"></canvas>
+    <div class="inner cta-copy">
+      <h2>Your next app is one ask away.</h2>
+      <p class="sub">Sign in with Cloudflare, pick an account and start building.</p>
+      <a class="btn btn-primary btn-lg" href="/auth/start">Get started</a>
     </div>
   </section>
 </main>
