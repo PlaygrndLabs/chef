@@ -912,7 +912,7 @@ let picking = 0;
 const pickStep = () => {
   picking = 0;
   if (!steps.length) return;
-  const line = innerHeight * 0.55;
+  const line = window.innerHeight * 0.55;
   let current = steps[0];
   for (const step of steps) if (step.getBoundingClientRect().top <= line) current = step;
   showStep(current.dataset.step);
@@ -920,8 +920,8 @@ const pickStep = () => {
 const queuePick = () => {
   if (!picking) picking = requestAnimationFrame(pickStep);
 };
-addEventListener("scroll", queuePick, { passive: true });
-addEventListener("resize", queuePick);
+window.addEventListener("scroll", queuePick, { passive: true });
+window.addEventListener("resize", queuePick);
 pickStep();
 
 const scenes = { city, app, dots, story };
