@@ -115,7 +115,7 @@ dialog.signin h2 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-s
 .consent.stacked .cfc-rule.inset { margin: 0 16px; }
 .consent.stacked .note { position: relative; display: block; margin: 4px 0 0 72px; font-size: 16px; text-align: left; }
 .consent.stacked .note.must { margin: 18px 16px 16px; padding-left: 0; }
-.consent.stacked .cfc-head { font-size: 14px; }
+.consent.stacked .cfc-head { flex-wrap: wrap; gap: 2px 12px; font-size: 14px; }
 .consent.stacked .cfc-sensitive { gap: 8px; font-size: 14px; }
 .consent.stacked .cfc-sensitive .count { font-size: 13px; }
 .consent.stacked .cfc-label { letter-spacing: 0.03em; }
