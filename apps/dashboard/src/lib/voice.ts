@@ -158,7 +158,7 @@ export async function startTalk(options: { readonly project: string; readonly on
   socket = open;
   open.binaryType = "arraybuffer";
   capture.port.addEventListener("message", (message: MessageEvent<ArrayBuffer>) => {
-    if (!muted && open.readyState === WebSocket.OPEN) open.send(message.data);
+    if (open.readyState === WebSocket.OPEN) open.send(message.data);
   });
   capture.port.start();
   const started = new Promise<string>((resolve, reject) => {
