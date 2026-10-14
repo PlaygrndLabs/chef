@@ -46,10 +46,13 @@ export function isTestFile(path: string): boolean {
 }
 
 export function isPage(route: Route): boolean {
-  return route.method === "GET" && route.path !== "/" && !route.path.includes(":") && route.path !== "/api" && !route.path.startsWith("/api/");
+  const { method, path } = route;
+  if (method !== "GET" || path === "/" || path.includes(":") || path === "/api" || path.startsWith("/api/")) return false;
+  return !/\.[A-Za-z0-9]+$/.test(path.split("/").pop() ?? "");
 }
 
-export function pagesFor(routes: readonly Route[], featureId: string | null): Route[] {
-  const own = featureId ? `/${featureId}` : null;
-  return routes.filter(isPage).sort((a, b) => Number(own !== null && b.path.startsWith(own)) - Number(own !== null && a.path.startsWith(own)) || a.path.length - b.path.length);
+export function pagesFor(routes: readonly Route[], featureId: string | null, entry: Route | null = null): Route[] {
+  const own = (path: string) => featureId !== null && (path === `/${featureId}` || path.startsWith(`/${featureId}/`));
+  const rank = (route: Route) => (entry && route.method === entry.method && route.path === entry.path ? 0 : own(route.path) ? 1 : 2);
+  return routes.filter(isPage).sort((a, b) => rank(a) - rank(b) || a.path.length - b.path.length);
 }

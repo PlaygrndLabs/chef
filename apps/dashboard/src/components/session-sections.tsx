@@ -12,7 +12,7 @@ import { ago, duration, previewHost, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
-import { entryRoute, isPage, pagesFor, routesIn, type Route } from "@/lib/routes";
+import { entryRoute, pagesFor, routesIn, type Route } from "@/lib/routes";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -43,15 +43,14 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, link, commitId, routes, featureId, live }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly routes: readonly Route[]; readonly featureId: string | null; readonly live: boolean }) {
+function PreviewTab({ url, link, commitId, routes, featureId, entry, live }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly routes: readonly Route[]; readonly featureId: string | null; readonly entry: Route | null; readonly live: boolean }) {
   const [nonce, setNonce] = useState(0);
   const [chosen, setPath] = useState<string | null>(null);
-  const pages = pagesFor(routes, featureId);
+  const pages = pagesFor(routes, featureId, entry);
   const path = chosen ?? pages[0]?.path ?? "/";
   if (!url) return <Empty>The preview appears after chef's first step.</Empty>;
   const base = link ?? url;
   const href = path === "/" ? base : link ? `${link}?path=${encodeURIComponent(path)}` : `${url.replace(/\/$/, "")}${path}`;
-  const others = routes.filter((r) => !isPage(r) && r.path !== "/");
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex h-9 items-center gap-2 rounded-xl border px-3">
@@ -69,18 +68,13 @@ function PreviewTab({ url, link, commitId, routes, featureId, live }: { readonly
           </a>
         </Button>
       </div>
-      {pages.length || others.length ? (
+      {pages.length ? (
         <div className="flex flex-wrap items-center gap-1" data-routes>
           <span className="mr-1 text-xs text-muted-foreground">Pages</span>
           {["/", ...pages.map((r) => r.path)].map((p) => (
             <button key={p} type="button" onClick={() => setPath(p)} className={cn("h-6 rounded-md border px-1.5 font-mono text-[11px] hover:bg-muted", p === path && "border-foreground/40 bg-muted")}>
               {p}
             </button>
-          ))}
-          {others.map((r) => (
-            <span key={`${r.method} ${r.path}`} className="h-6 rounded-md border border-dashed px-1.5 font-mono text-[11px] leading-6 text-muted-foreground" title="An API route that the page and the tests call.">
-              {r.method} {r.path}
-            </span>
           ))}
         </div>
       ) : null}
@@ -340,7 +334,7 @@ export function SessionPreview({ feature, node }: { readonly feature: FeatureNod
   const found = routesIn(changes.data?.files ?? []);
   const entry = entryRoute(feature.spec?.entrypoint);
   const routes = entry && !found.some((r) => r.method === entry.method && r.path === entry.path) ? [entry, ...found] : found;
-  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} featureId={feature.id} live={live !== null} />;
+  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} routes={routes} featureId={feature.id} entry={entry} live={live !== null} />;
 }
 
 export function LiveApp() {
@@ -354,7 +348,7 @@ export function LiveApp() {
         <span className="font-mono text-xs text-muted-foreground">main {short(live?.commitId ?? data.spec?.commitId) || ""}</span>
       </div>
       {live?.url ? (
-        <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} routes={routes} featureId={null} live />
+        <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} routes={routes} featureId={null} entry={null} live />
       ) : (
         <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
       )}
