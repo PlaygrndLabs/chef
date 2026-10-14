@@ -1,0 +1,79 @@
+name: remove
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: Exact Worker names to remove, separated by spaces (their workflows, Durable Objects and containers go with them)
+        required: true
+      indexes:
+        description: Exact Vectorize index names to remove, separated by spaces
+        required: false
+        default: ""
+      namespace:
+        description: Artifacts namespace whose repos to remove
+        required: false
+        default: ""
+      confirm:
+        description: Type delete to remove; leave empty to only list what would be removed
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKERS: ${{ inputs.workers }}
+      INDEXES: ${{ inputs.indexes }}
+      NAMESPACE: ${{ inputs.namespace }}
+      DELETE: ${{ inputs.confirm == 'delete' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Remove the named resources
+        working-directory: workers
+        run: |
+          set -euo pipefail
+          for name in $WORKERS $INDEXES $NAMESPACE; do
+            case "$name" in chef-dev|chef-dev-*|chef-site|chef-site-*|chef-gateway|sub2api|sub2api-*|design-studio*|websims*) echo "refusing to remove $name"; exit 1;; esac
+          done
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
+          get() { curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1"; }
+          del() { curl -sS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1" | jq -c '{success, errors}'; }
+          act() { if [ "$DELETE" = "true" ]; then echo "deleting $1"; else echo "would delete $1"; fi; [ "$DELETE" = "true" ]; }
+
+          names=$(jq -nc --arg w "$WORKERS" '$w | split(" ") | map(select(. != ""))')
+          existing=$(get "workers/scripts" | jq -c '[.result[].id]')
+          ids=$(get "workers/workers?per_page=100" | jq -c '[.result[] | {key: .name, value: .id}] | from_entries')
+          workflows=$(get "workflows?per_page=100" | jq -r --argjson names "$names" '.result[] | select(.script_name as $s | $names | index($s)) | .name')
+          namespaces=$(get "workers/durable_objects/namespaces?per_page=1000" | jq -c --argjson names "$names" '[.result[] | select((.script // "") as $s | $names | index($s)) | .id]')
+          containers=$(get "containers/applications" | jq -r --argjson ns "$namespaces" '.result[] | select((.durable_objects.namespace_id // "") as $id | $ns | index($id)) | "\(.id) \(.name)"')
+          repos=""
+          if [ -n "$NAMESPACE" ]; then
+            npx wrangler artifacts repos list --namespace "$NAMESPACE" --json > repos.json || true
+            cat repos.json
+            repos=$(jq -r '(if type == "array" then . else (.repos // .result // []) end)[] | .name // empty' repos.json || true)
+          fi
+
+          for name in $workflows; do act "workflow $name" && del "workflows/$name"; done
+          for name in $WORKERS; do
+            id=$(jq -r --arg n "$name" '.[$n] // empty' <<< "$ids")
+            if [ -z "$id" ] && ! jq -e --arg n "$name" 'index($n)' <<< "$existing" > /dev/null; then echo "worker $name not found"; continue; fi
+            act "worker $name" || continue
+            if jq -e --arg n "$name" 'index($n)' <<< "$existing" > /dev/null; then del "workers/scripts/$name?force=true"; fi
+            if [ -n "$id" ]; then del "workers/workers/$id"; fi
+          done
+          while read -r id name; do [ -n "${id:-}" ] || continue; act "container application $name" && del "containers/applications/$id"; done <<< "$containers"
+          for name in $INDEXES; do act "vectorize index $name" && del "vectorize/v2/indexes/$name"; done
+          for name in $repos; do act "artifacts repo $NAMESPACE/$name" && npx wrangler artifacts repos delete "$name" --namespace "$NAMESPACE" --force; done
+          echo "done (delete=$DELETE)"
