@@ -17,7 +17,7 @@ function stat(label, value) {
 
 function orgRow(org, latest) {
   const who = el("td", {}, el("div", {}, org.name, org.personal ? badge("personal") : null), el("div", { className: "muted small", textContent: `${org.owner ?? "No owner"} · ${org.members} ${org.members === 1 ? "member" : "members"}` }));
-  const chef = el("td", {}, org.engine ? el("a", { href: org.engine, target: "_blank", rel: "noopener", textContent: new URL(org.engine).host }) : el("span", { className: "muted", textContent: "None" }));
+  const chef = el("td", {}, org.engine ? el("span", { textContent: new URL(org.engine).host }) : el("span", { className: "muted", textContent: "None" }));
   if (org.accountId) chef.append(el("div", { className: "muted small", textContent: `Account ${org.accountId}` }));
   if (org.version) chef.append(el("div", { className: "muted small" }, `Version ${org.version}`, latest && org.version !== latest ? badge("update on next sign-in", "warn") : null));
   const [label, kind] = SETUP[org.install] ?? SETUP.idle;

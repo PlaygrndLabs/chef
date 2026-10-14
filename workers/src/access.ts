@@ -10,6 +10,15 @@ export function deploymentPassword(env: { readonly CHEF_PASSWORD?: string }): st
   return password && password !== EXAMPLE_PASSWORD ? password : null;
 }
 
+export function siteOrigin(env: { readonly CHEF_SITE?: string }): string | null {
+  try {
+    const url = new URL(env.CHEF_SITE?.trim() ?? "");
+    return url.protocol === "https:" || url.protocol === "http:" ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface StoredPassword {
   readonly salt: string;
   readonly hash: string;
@@ -96,9 +105,14 @@ export function passwordProblem(password: string, confirm: string | null = passw
   return null;
 }
 
-export async function guard(request: Request, credential: Credential | null, claim: (password: StoredPassword) => Promise<boolean>): Promise<Response | null> {
+export async function guard(request: Request, credential: Credential | null, claim: (password: StoredPassword) => Promise<boolean>, site: string | null = null): Promise<Response | null> {
   const url = new URL(request.url);
   const api = url.pathname.startsWith("/api/") || url.pathname.startsWith("/agents/");
+  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  if (site) {
+    if (credential && (await matches(bearer, credential))) return null;
+    return api ? Response.json({ error: `open chef at ${site}` }, { status: 401 }) : new Response(null, { status: 302, headers: { location: site, "cache-control": "no-store" } });
+  }
   if (!credential) {
     if (url.pathname === "/setup" && request.method === "POST") {
       const form = await request.formData();
@@ -116,7 +130,6 @@ export async function guard(request: Request, credential: Credential | null, cla
     if (!(await matches(String(form.get("password") ?? ""), credential))) return loginPage(true);
     return new Response(null, { status: 303, headers: { location: "/", "set-cookie": await sessionCookie(credential) } });
   }
-  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   if (same(cookie(request, COOKIE) ?? "", await sessionToken(credential)) || (await matches(bearer, credential))) return null;
   return api ? Response.json({ error: "sign in first" }, { status: 401 }) : loginPage(false);
 }

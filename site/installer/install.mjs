@@ -124,7 +124,7 @@ if (hasToken) {
 step("deploy", "running");
 const secretsDir = mkdtempSync(join(tmpdir(), "chef-secrets-"));
 const secretsFile = join(secretsDir, "secrets.json");
-writeFileSync(secretsFile, JSON.stringify({ CF_ACCOUNT_ID: id, ...(previewToken ? { CF_API_TOKEN: previewToken } : {}), ...(job.password ? { CHEF_PASSWORD: job.password } : {}) }), { mode: 0o600 });
+writeFileSync(secretsFile, JSON.stringify({ CF_ACCOUNT_ID: id, ...(previewToken ? { CF_API_TOKEN: previewToken } : {}), ...(job.password ? { CHEF_PASSWORD: job.password } : {}), ...(job.site ? { CHEF_SITE: job.site } : {}) }), { mode: 0o600 });
 const deployed = await run("node", ["--import", "tsx", "cli/src/bin.ts", "deploy", "--name", job.name, "--image", image, "--secrets-file", secretsFile], {
   env: { CLOUDFLARE_API_TOKEN: job.token, CLOUDFLARE_ACCOUNT_ID: id, CI: "true", WRANGLER_SEND_METRICS: "false" },
 });

@@ -17,5 +17,5 @@
       "images": { "installer": { "dockerfile": "./installer/Dockerfile", "build_context": ".." } }
     }
   ],
-  "vars": { "SANDBOX_IMAGE": "", "ENGINE_VERSION": "" }
+  "vars": { "SANDBOX_IMAGE": "", "ENGINE_VERSION": "", "SITE_URL": "https://chef.playgrndlabs.com" }
 }

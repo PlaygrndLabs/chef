@@ -13,6 +13,7 @@ export interface Env {
   readonly OAUTH_SCOPES?: string;
   readonly SANDBOX_IMAGE?: string;
   readonly ENGINE_VERSION?: string;
+  readonly SITE_URL?: string;
   readonly CF_ACCOUNT_ID?: string;
   readonly CF_API_TOKEN?: string;
 }
