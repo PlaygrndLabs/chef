@@ -8,7 +8,7 @@ import type { EventBus } from "../ports/event-bus.ts";
 import { chorePlan, choreId, withTestItem, type Plan, type Planner, type SplitPart, type WorkItem } from "../ports/planner.ts";
 import type { PreviewHost } from "../ports/preview-host.ts";
 import type { PushedEvent, RepoHost, RepoToken } from "../ports/repo-host.ts";
-import type { MemoryHit, MemoryIndex } from "../ports/memory-index.ts";
+import type { MemoryDoc, MemoryHit, MemoryIndex } from "../ports/memory-index.ts";
 import type { PickCandidate, Reviewer } from "../ports/reviewer.ts";
 import type { Clock, IdSource, KeyValueStore } from "../ports/runtime.ts";
 import { customAgent, outOfScope, scopeFor, type Profiles } from "../profiles/profile.ts";
@@ -1039,7 +1039,8 @@ export class Orchestrator {
   private async answer(question: string): Promise<{ text: string; sources: string[] }> {
     const hits = await this.deps.memory.query(question, 5);
     const sources = hits.map((h) => h.doc.path);
-    if (this.deps.planner.answer) return { text: await this.deps.planner.answer({ question, context: hits }), sources };
+    const builds = buildsDoc(await this.sessions());
+    if (this.deps.planner.answer) return { text: await this.deps.planner.answer({ question, context: builds ? [...hits, { doc: builds, score: 0 }] : hits }), sources };
     const text = hits.length ? hits.map((h) => `${h.doc.path}: ${(h.doc.text.split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? "").trim()}`).join("\n") : "Nothing in the project memory answers that yet.";
     return { text, sources };
   }
@@ -1597,4 +1598,16 @@ export function runnable(record: SessionRecord): boolean {
 
 function sameNames(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((name, i) => name === b[i]);
+}
+
+const BUILDS_SHOWN = 8;
+
+export function buildsDoc(sessions: readonly SessionRecord[]): MemoryDoc | null {
+  const recent = sessions.slice(-BUILDS_SHOWN);
+  if (!recent.length) return null;
+  const lines = recent.map((s) => {
+    const why = s.machine.state === "stuck" ? `: ${s.machine.reason}${s.machine.feedback ? `\n  What failed: ${s.machine.feedback.replace(/\s+/g, " ").slice(0, 800)}` : ""}` : "";
+    return `- ${s.featureId} (session ${s.id}, asked "${s.rootPrompt.slice(0, 120)}"): ${s.machine.state}${why}`;
+  });
+  return { path: "builds (current state)", kind: "note", feature: null, text: `Builds, oldest first:\n${lines.join("\n")}` };
 }
