@@ -24,6 +24,19 @@ describe("code rules", () => {
     expect(problems.map((p) => `${p.path}:${p.line}`)).toEqual(["features/a/index.ts:1", "shared/http.ts:1", "src/index.ts:1"]);
   });
 
+  it("lets a feature's tests build the whole app from the registry, but not its code", () => {
+    const problems = checkTree(
+      {
+        "features/a/a.test.ts": 'import { features } from "../../src/registry.gen.ts";\n',
+        "features/a/flow.ts": 'import { features } from "../../src/registry.gen.ts";\n',
+        "features/a/backend/api.ts": 'import { features } from "../../../src/registry.gen.ts";\n',
+        "features/a/b.test.ts": 'import { x } from "../../src/index.ts";\n',
+      },
+      ["import-boundaries"],
+    );
+    expect(problems.map((p) => p.path)).toEqual(["features/a/backend/api.ts", "features/a/b.test.ts"]);
+  });
+
   it("keeps file reads out of code that runs on Cloudflare", () => {
     const problems = checkTree(
       {
