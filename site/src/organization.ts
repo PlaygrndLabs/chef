@@ -63,6 +63,7 @@ interface MemberRow extends Record<string, SqlStorageValue> {
 
 const META = "meta";
 const ENGINE = "engine";
+const REMOVING = "removing";
 
 export class Organization extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -182,6 +183,33 @@ export class Organization extends DurableObject<Env> {
 
   async setEngine(engine: Engine): Promise<void> {
     await this.ctx.storage.put(ENGINE, engine);
+  }
+
+  async removing(): Promise<boolean> {
+    return (await this.ctx.storage.get<boolean>(REMOVING)) === true;
+  }
+
+  async setRemoving(on: boolean): Promise<void> {
+    if (on) await this.ctx.storage.put(REMOVING, true);
+    else await this.ctx.storage.delete(REMOVING);
+  }
+
+  async reset(): Promise<void> {
+    await this.ctx.storage.delete(ENGINE);
+    await this.ctx.storage.delete(REMOVING);
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("DELETE FROM project_people");
+      this.ctx.storage.sql.exec("DELETE FROM projects");
+    });
+  }
+
+  async erase(): Promise<void> {
+    for (const key of [META, ENGINE, REMOVING]) await this.ctx.storage.delete(key);
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("DELETE FROM project_people");
+      this.ctx.storage.sql.exec("DELETE FROM projects");
+      this.ctx.storage.sql.exec("DELETE FROM members");
+    });
   }
 
   private isLastOwner(userId: string): boolean {

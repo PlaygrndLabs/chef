@@ -132,6 +132,41 @@ describe("organization", () => {
 });
 
 describe("engine names", () => {
+  it("deletes an organization for everyone in it but never anyone's Personal", () => {
+    const dir = directory();
+    const sam1 = dir.signIn(sam, false);
+    const kim = dir.signIn({ provider: "cloudflare", subject: "cf-kim", email: "kim@example.com" }, false);
+    const team = dir.createOrg(sam1.userId, "Acme");
+    dir.invite(team.id, "kim@example.com", "member", sam1.userId);
+    dir.invite(team.id, "lee@example.com", "admin", sam1.userId);
+    dir.use(kim.userId, team.id);
+    expect(dir.deleteOrg(sam1.org.id)).toBe(false);
+    expect(dir.deleteOrg(team.id)).toBe(true);
+    expect(dir.orgs(sam1.userId)).toEqual([sam1.org]);
+    expect(dir.orgs(kim.userId)).toEqual([kim.org]);
+    expect(dir.invites(team.id)).toEqual([]);
+    expect(dir.list().orgs.map((o) => o.id)).not.toContain(team.id);
+    expect(dir.signIn({ provider: "cloudflare", subject: "cf-kim", email: "kim@example.com" }, false).org).toEqual(kim.org);
+    expect(dir.home(sam1.userId)).toEqual(sam1.org);
+  });
+
+  it("forgets an organization's chef, projects and people when it is deleted or uninstalled", async () => {
+    const org = organization();
+    await org.setup({ id: "org_a", name: "Acme", personal: false }, { userId: "usr_a", email: "a@example.com", role: "owner" });
+    await org.setEngine({ name: "chef-acme-x7k2", url: "https://e", accountId: "acc", secret: "s", version: "v" });
+    org.claimProject("usr_a", "shop");
+    await org.setRemoving(true);
+    expect(await org.removing()).toBe(true);
+    await org.reset();
+    expect(await org.engine()).toBeNull();
+    expect(await org.removing()).toBe(false);
+    expect(org.sharing("shop").people).toEqual([]);
+    expect(await org.access("usr_a")).toMatchObject({ role: "owner", engine: null });
+    await org.erase();
+    expect(await org.access("usr_a")).toBeNull();
+    expect(await org.view("usr_a")).toBeNull();
+  });
+
   it("gives each organization's chef its own Worker name on a shared Cloudflare account", () => {
     const rolls = [0, 0, 0, 0, 0.99, 0.99, 0.99, 0.99];
     const random = () => rolls.shift() ?? 0.5;
