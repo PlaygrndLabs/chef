@@ -1,17 +1,17 @@
-import { AppWindowMac, BookOpen, Bot, Check, ChevronsUpDown, Cpu, KeyRound, ListTree, LogOut, Monitor, Moon, Plus, Settings, Sun } from "lucide-react";
-import { toast } from "sonner";
+import { AppWindowMac, BookOpen, Bot, Check, ChevronsUpDown, Cpu, KeyRound, ListTree, Monitor, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/status";
 import { FeatureTree, useDropTarget } from "@/components/feature-tree";
-import { orgLabel, PLAN_LABEL, useAppMode } from "@/lib/account";
-import { orgApi } from "@/lib/api";
+import { host } from "@/host";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { LIVE_TAB } from "@/lib/tabs";
 import { useWorkspace, type AppSettings } from "@/lib/workspace";
 import { Mark, Wordmark } from "@/components/logo";
+
+const useAccount = host.useAccount ?? (() => null);
 
 const CONNECTION = { live: ["ok", "Live"], polling: ["run", "Reconnecting, updates every few seconds"], connecting: ["idle", "Connecting"], offline: ["bad", "Offline"] } as const;
 
@@ -47,46 +47,25 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
   const needs = app.available ? missingSettings(app.settings) : [];
   const missing = needs.length > 0;
   const need = needs[0] === "models" ? "Add a model key in Settings" : "Add a previews token in Settings";
-  const mode = useAppMode();
-  const org = mode && mode.account !== undefined ? (mode.org ?? null) : null;
-  const switchTo = async (orgId: string) => {
-    try {
-      await orgApi.use(orgId);
-      location.assign("/");
-    } catch (e) {
-      toast.error("Could not switch", { description: e instanceof Error ? e.message : String(e) });
-    }
-  };
+  const account = useAccount();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" id="app-menu" className="flex h-12 w-full min-w-0 items-center gap-2 px-3 text-left outline-none hover:bg-sidebar-accent focus-visible:bg-sidebar-accent data-[state=open]:bg-sidebar-accent" aria-label="chef menu" title={org ? "Workspaces, settings and help" : "Settings for every project, theme and help"}>
+        <button type="button" id="app-menu" className="flex h-12 w-full min-w-0 items-center gap-2 px-3 text-left outline-none hover:bg-sidebar-accent focus-visible:bg-sidebar-accent data-[state=open]:bg-sidebar-accent" aria-label="chef menu" title={account ? "Account, settings and help" : "Settings for every project, theme and help"}>
           <Mark className="size-6" />
           <span className="grid min-w-0 flex-1 leading-tight">
-            <span className="truncate text-xs font-medium" data-current="workspace">{org ? orgLabel(org) : "Settings"}</span>
-            <span className="truncate text-[11px] text-muted-foreground">{missing ? need : org ? (mode?.account ?? "Signed in with Cloudflare") : "For every project"}</span>
+            <span className="truncate text-xs font-medium" data-current="workspace">{account ? account.title : "Settings"}</span>
+            <span className="truncate text-[11px] text-muted-foreground">{missing ? need : account ? account.subtitle : "For every project"}</span>
           </span>
           {missing ? <span className="size-1.5 shrink-0 bg-bad" aria-label={need} title={need} /> : null}
           <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-60">
-        <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">{org ? (mode?.account ?? "Signed in with Cloudflare") : location.host}</DropdownMenuLabel>
-        {org ? (
+        <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">{account ? account.heading : location.host}</DropdownMenuLabel>
+        {host.MenuItems ? (
           <>
-            {(mode?.orgs ?? []).map((o) => (
-              <DropdownMenuItem key={o.id} data-org={o.id} onClick={() => (o.id === org.id ? undefined : void switchTo(o.id))}>
-                <span className="min-w-0 flex-1 truncate">{orgLabel(o)}</span>
-                <span className={cn("text-xs", o.ready ? "text-muted-foreground" : "text-warn")} title={o.ready ? undefined : "chef isn't set up for this organization yet. Open it to finish setting it up."}>
-                  {o.ready ? PLAN_LABEL[o.plan] : "Not set up"}
-                </span>
-                {o.id === org.id ? <Check /> : <span className="size-4" />}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuItem onClick={() => onSettings("general")}>
-              <Plus />
-              New organization
-            </DropdownMenuItem>
+            <host.MenuItems onSettings={onSettings} />
             <DropdownMenuSeparator />
           </>
         ) : null}
@@ -128,16 +107,7 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
             Help and docs
           </a>
         </DropdownMenuItem>
-        {org ? (
-          <form method="post" action="/auth/signout">
-            <DropdownMenuItem asChild>
-              <button type="submit" id="sign-out" className="w-full">
-                <LogOut />
-                Sign out
-              </button>
-            </DropdownMenuItem>
-          </form>
-        ) : null}
+        {host.MenuEnd ? <host.MenuEnd /> : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

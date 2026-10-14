@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Brain, FolderGit2, KeyRound, Route, ScanSearch, ScrollText, SlidersHorizontal, Users } from "lucide-react";
+import { Bot, BookOpen, Brain, FolderGit2, KeyRound, Route, ScanSearch, ScrollText, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import type { OutboundMode, SyncState } from "@chef/core";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,8 @@ import { EnvironmentForm } from "@/components/environment";
 import { MemoryForm, ProjectInstructionsForm } from "@/components/guidance";
 import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
-import { SharingSection } from "@/components/people";
 import { ProjectBudgetGroup } from "@/components/usage";
-import { useProjectAccess } from "@/lib/account";
+import { host } from "@/host";
 import { githubApi, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -254,7 +253,6 @@ export function ProjectSettingsDialog(props: {
 }) {
   const { open, project, api, nav } = props;
   const [settings, setSettings] = useState<ProjectSettingsView | null>(null);
-  const shared = useProjectAccess(project);
   useEffect(() => {
     if (open) api.settings().then(setSettings, (e: unknown) => toast.error("Could not load the project settings", { description: e instanceof Error ? e.message : String(e) }));
   }, [open, api]);
@@ -345,9 +343,7 @@ export function ProjectSettingsDialog(props: {
       note: "Keys and settings this project's app reads at runtime. Values set for all projects show here too; set one here to use a different value in this project. Previews get the values; agents only see the names.",
       render: () => <EnvironmentForm api={api} />,
     },
-    ...(shared.hosted
-      ? [{ id: "sharing", label: "Sharing", icon: Users, note: "Who in the organization can open this project and what they can do. New projects start private.", render: () => <SharingSection project={project} access={shared.access} onChange={shared.set} /> }]
-      : []),
+    ...(host.projectSections?.(project) ?? []),
   ];
   return (
     <SettingsShell

@@ -119,7 +119,7 @@ export function Start(props: {
   readonly select: (patch: Partial<Selection>) => void;
   readonly onOpen: (name: string) => void;
   readonly onCreated: (name: string) => void;
-  readonly updating?: ReactNode;
+  readonly locked?: ReactNode;
 }) {
   const { selection, select } = props;
   const app = useSettings();
@@ -128,7 +128,7 @@ export function Start(props: {
   const [sidebar, setSidebar] = useState(false);
   const any = props.projects.length > 0;
   const place = selection.settings?.scope === "app" ? selection.settings : null;
-  const locked = props.updating !== undefined;
+  const locked = props.locked !== undefined;
   const needsModel = !locked && app.available && missingSettings(app.settings).includes("models");
   const [onboarding] = useState(() => !any);
   const [stepped, setStepped] = useState(false);
@@ -164,7 +164,7 @@ export function Start(props: {
     : null;
   const side = <StartSidebar app={app} onSettings={openSettings} onNew={onNew} />;
   return (
-    <div className="flex h-dvh overflow-hidden" data-view={locked ? "updating" : needsModel ? "onboarding" : any ? "start" : "setup"}>
+    <div className="flex h-dvh overflow-hidden" data-view={locked ? "locked" : needsModel ? "onboarding" : any ? "start" : "setup"}>
       <aside className="hidden w-64 shrink-0 border-r lg:block" aria-label="chef">
         {side}
       </aside>
@@ -177,7 +177,7 @@ export function Start(props: {
         </div>
         <main className="min-h-0 flex-1 overflow-y-auto">
           {locked ? (
-            props.updating
+            props.locked
           ) : app.available && app.settings === null ? null : needsModel ? (
             <ConnectModel app={app} first={onboarding} />
           ) : any ? (
