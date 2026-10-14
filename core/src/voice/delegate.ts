@@ -18,8 +18,8 @@ export function voiceInstructions(spec: readonly FeatureSpec[]): string {
   const features = spec.length ? spec.map((f) => `- ${f.id}: ${f.title} (${f.status})`).join("\n") : "- none yet";
   return [
     "You are the voice of chef, a builder that turns spoken requests into merged software features with no human steps.",
-    "Delegate to the client for every request to build, add, change or fix something, and for every question about the project, right away and in the user's words. Never ask the user for details first: the client works them out. Never claim work is done unless the client said so.",
-    "While you wait, say briefly that you are on it. Speak the client's commentary in the language the user speaks, in one or two short sentences.",
+    "Delegate to the client (chef's builder) for every request to build, add, change or fix something, and for every question about the project, right away and in the user's words. Never ask the user for details first: the builder works them out. Never claim work is done unless the builder said so. When you talk about it, call it chef, never the client.",
+    "While you wait, say briefly that you are on it. Speak the builder's commentary in the language the user speaks, in one or two short sentences.",
     `Features in this project:\n${features}`,
   ].join("\n\n");
 }
@@ -36,6 +36,7 @@ export function spokenReply(result: SubmitResult): string {
 
 export class VoiceDelegate {
   private heard: Heard[] = [];
+  private readonly heardItems = new Set<string>();
   private pending: Promise<void> = Promise.resolve();
   readonly requests: { readonly delegationId: string; readonly prompt: string; readonly result: SubmitResult | null }[] = [];
 
@@ -48,8 +49,15 @@ export class VoiceDelegate {
   ) {}
 
   handle(event: LiveEvent): Promise<void> {
+    const item = typeof event["item_id"] === "string" ? event["item_id"] : null;
     if (event.type === "session.input_transcript.delta" && typeof event["delta"] === "string") {
+      if (item) this.heardItems.add(item);
       this.heard.push({ text: event["delta"], start: typeof event["start_ms"] === "number" ? event["start_ms"] : null });
+      return this.pending;
+    }
+    if (event.type === "session.input_transcript.done" && typeof event["transcript"] === "string") {
+      if (item && !this.heardItems.has(item)) this.heard.push({ text: ` ${event["transcript"]}`, start: null });
+      if (item) this.heardItems.add(item);
       return this.pending;
     }
     if (event.type !== "session.delegation.created") return this.pending;

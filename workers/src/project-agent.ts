@@ -501,6 +501,7 @@ export class ProjectAgent extends Agent<Env> {
         settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
         onEvent: (event) => {
           send(event);
+          if (event.type === "error") console.error(`voice call on ${this.name} reported an error`, JSON.stringify(event["error"] ?? null));
           if (event.type === "session.closed") hangUp();
         },
       });
