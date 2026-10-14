@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { endpoint, RealtimeHost, REQUEST_TOOL, startRealtimeSession } from "../../src/realtime.ts";
 import type { SocketLike } from "../../src/gpt-live.ts";
 
@@ -59,6 +59,7 @@ describe("Realtime adapter for a custom provider", () => {
     socket.receive({ type: "conversation.item.input_audio_transcription.failed", item_id: "item_2", error: { message: "no audio" } });
     socket.receive({ type: "response.output_audio.delta", delta: "AAA=" });
     socket.receive({ type: "response.output_audio_transcript.delta", delta: "On it." });
+    socket.receive({ type: "response.output_audio_transcript.done", transcript: "On it." });
     socket.receive({ type: "response.function_call_arguments.done", name: REQUEST_TOOL, call_id: "call_1", arguments: JSON.stringify({ request: "Add a to-do list" }) });
     socket.receive({ type: "response.done" });
     expect(events.slice(1)).toEqual([
@@ -68,6 +69,7 @@ describe("Realtime adapter for a custom provider", () => {
       { type: "error", error: { message: 'transcribing what the user said failed: {"message":"no audio"}' } },
       { type: "session.output_audio.delta", delta: "AAA=" },
       { type: "session.output_transcript.delta", delta: "On it." },
+      { type: "session.output_transcript.done" },
       { type: "session.delegation.created", delegation: { id: "call_1", target: "client", request: "Add a to-do list" }, offset_ms: null },
     ]);
 
@@ -87,6 +89,28 @@ describe("Realtime adapter for a custom provider", () => {
       if (message["type"] === "session.update") s.receive({ type: "error", error: { message: "no realtime here" } });
     });
     await expect(startRealtimeSession({ baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", instructions: "hi", onEvent: () => {}, connect: async () => socket })).rejects.toThrow("no realtime here");
+  });
+});
+
+describe("closing a Realtime call", () => {
+  it("reports the call closed even when the provider never confirms the close", async () => {
+    vi.useFakeTimers();
+    try {
+      const socket = new FakeSocket((message, s) => {
+        if (message["type"] === "session.update" && !message["event_id"]) s.receive({ type: "session.created", session: { id: "sess_2" } });
+      });
+      socket.close = (code?: number) => {
+        socket.closedWith = code ?? 1000;
+      };
+      const events: Record<string, unknown>[] = [];
+      const stream = await startRealtimeSession({ baseUrl: "https://gateway.example/v1", apiKey: "k", instructions: "hi", onEvent: (event) => events.push(event), connect: async () => socket });
+      const closing = stream.connection.close();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await closing;
+      expect(events.filter((e) => e["type"] === "session.closed")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
