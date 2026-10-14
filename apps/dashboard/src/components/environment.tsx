@@ -34,7 +34,7 @@ function KindToggle(props: { readonly secret: boolean; readonly onChange: (secre
         { secret: true, label: "Secret" },
         { secret: false, label: "Plain" },
       ].map((k) => (
-        <button key={k.label} type="button" role="radio" aria-checked={props.secret === k.secret} onClick={() => props.onChange(k.secret)} className={cn("rounded px-2 py-1 text-xs", props.secret === k.secret ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+        <button key={k.label} type="button" role="radio" aria-checked={props.secret === k.secret} onClick={() => props.onChange(k.secret)} className={cn("px-2 py-1 text-xs", props.secret === k.secret ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}>
           {k.label}
         </button>
       ))}

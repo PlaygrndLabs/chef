@@ -66,8 +66,8 @@ function Bars({ name, answer, labels }: { readonly name: string; readonly answer
       {top.map(([choice, p]) => (
         <div key={choice} className="grid grid-cols-[9rem_1fr_3rem] items-center gap-2 text-xs">
           <span className={cn("truncate", choice === answer.choice && "font-medium")}>{labels?.[choice] ?? choice}</span>
-          <span className="h-1.5 overflow-hidden rounded-full bg-muted">
-            <span className={cn("block h-full rounded-full", choice === answer.choice ? "bg-foreground" : "bg-muted-foreground/40")} style={{ width: `${Math.round(p * 100)}%` }} />
+          <span className="h-1.5 overflow-hidden bg-muted">
+            <span className={cn("block h-full", choice === answer.choice ? "bg-foreground" : "bg-muted-foreground/40")} style={{ width: `${Math.round(p * 100)}%` }} />
           </span>
           <span className="text-right tabular-nums text-muted-foreground">{Math.round(p * 100)}%</span>
         </div>

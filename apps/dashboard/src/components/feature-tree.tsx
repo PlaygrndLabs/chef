@@ -161,7 +161,7 @@ function TitleField({ node }: { readonly node: TreeNode }) {
         if (e.key === "Enter") done();
         else if (e.key === "Escape") rename(null);
       }}
-      className="h-6 min-w-0 flex-1 rounded border border-ring bg-background px-1.5 text-sm outline-none"
+      className="h-6 min-w-0 flex-1 border border-ring bg-background px-1.5 text-sm outline-none"
     />
   );
 }
@@ -173,7 +173,7 @@ function RowMenu({ node }: { readonly node: TreeNode }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" aria-label={`More for ${feature.title}`} className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100">
+        <button type="button" aria-label={`More for ${feature.title}`} className="grid size-6 shrink-0 place-items-center text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100">
           <MoreHorizontal className="size-3.5" />
         </button>
       </DropdownMenuTrigger>
@@ -232,7 +232,7 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
         style={{ paddingLeft: 4 + depth * INDENT }}
       >
         {node.children.length ? (
-          <button type="button" onClick={() => toggle(feature.id)} className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground" aria-label={open ? `Hide what is under ${feature.title}` : `Show what is under ${feature.title}`}>
+          <button type="button" onClick={() => toggle(feature.id)} className="grid size-5 shrink-0 place-items-center text-muted-foreground hover:text-foreground" aria-label={open ? `Hide what is under ${feature.title}` : `Show what is under ${feature.title}`}>
             <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
           </button>
         ) : (

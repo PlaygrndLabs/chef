@@ -110,7 +110,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
       <p className="max-w-md text-muted-foreground">Describe a feature in plain words. chef plans it, writes the tests and the code, checks it, and puts it live.</p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
         {EXAMPLES.map((e) => (
-          <button key={e} type="button" onClick={() => onExample(e)} className="rounded-full border px-3.5 py-1.5 text-sm hover:bg-muted">
+          <button key={e} type="button" onClick={() => onExample(e)} className="border px-3.5 py-1.5 text-sm hover:bg-muted">
             {e}
           </button>
         ))}
@@ -122,7 +122,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
           ["Try it live", "Every feature gets its own preview link."],
         ].map(([title, text], i) => (
           <li key={title} className="rounded-xl border p-4">
-            <span className="mb-2.5 grid size-6 place-items-center rounded-full bg-muted text-xs font-medium">{i + 1}</span>
+            <span className="mb-2.5 grid size-6 place-items-center bg-muted text-xs font-medium">{i + 1}</span>
             <span className="block font-medium">{title}</span>
             <span className="text-sm text-muted-foreground">{text}</span>
           </li>
