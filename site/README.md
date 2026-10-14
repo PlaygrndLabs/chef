@@ -9,6 +9,4 @@ The hosted chef at chef.playgrndlabs.com (also `chef-site.<subdomain>.workers.de
 5. The `Members` directory also lists every person and organization and how each setup went. People who can see the PlaygrndLabs account itself (the account in `CF_ACCOUNT_ID`) when they sign in are admins and see that list at `/admin`.
 6. The Cloudflare token is revoked as soon as setup ends. When a newer engine is out, it is updated the next time an owner or admin of the organization signs in.
 
-People who set chef up before organizations existed get their engine moved into their default organization on their next sign-in.
-
 The `site` workflow publishes the sandbox image, deploys this Worker after every green CI on `main`, attaches chef.playgrndlabs.com when that zone is in the same account, and creates the OAuth client once (scopes in `oauth-scopes.json`). It uses `SITE_CLOUDFLARE_API_TOKEN` and `SITE_CLOUDFLARE_ACCOUNT_ID` when set, so the site can live in the account that owns the domain, and the organization's Cloudflare secrets otherwise. The client is private until a verified domain makes it public.
