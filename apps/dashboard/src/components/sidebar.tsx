@@ -77,7 +77,9 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
             {(mode?.orgs ?? []).map((o) => (
               <DropdownMenuItem key={o.id} data-org={o.id} onClick={() => (o.id === org.id ? undefined : void switchTo(o.id))}>
                 <span className="min-w-0 flex-1 truncate">{orgLabel(o)}</span>
-                <span className="text-xs text-muted-foreground">{PLAN_LABEL[o.plan]}</span>
+                <span className={cn("text-xs", o.ready ? "text-muted-foreground" : "text-warn")} title={o.ready ? undefined : "chef isn't set up for this organization yet. Open it to finish setting it up."}>
+                  {o.ready ? PLAN_LABEL[o.plan] : "Not set up"}
+                </span>
                 {o.id === org.id ? <Check /> : <span className="size-4" />}
               </DropdownMenuItem>
             ))}

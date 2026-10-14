@@ -50,6 +50,10 @@ export interface OrgSummary {
   readonly plan: "free";
 }
 
+export interface OrgEntry extends OrgSummary {
+  readonly ready: boolean;
+}
+
 export interface OrgView extends OrgSummary {
   readonly engine: string | null;
   readonly members: number;
@@ -99,7 +103,7 @@ export interface AppMode {
   readonly engine: string | null;
   readonly account?: string | null;
   readonly org?: OrgView | null;
-  readonly orgs?: readonly OrgSummary[];
+  readonly orgs?: readonly OrgEntry[];
   readonly update?: UpdateOffer | null;
 }
 
