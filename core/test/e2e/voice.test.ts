@@ -68,5 +68,8 @@ describe("phase 5 voice front end on fakes", () => {
     await delegate.handle({ type: "session.input_transcript.delta", delta: "uh, can you add search", start_ms: 5000 });
     await delegate.handle({ type: "session.delegation.created", delegation: { id: "d4", target: "client", request: "Add search" } });
     expect(prompts.at(-1)).toBe("Add search");
+    await delegate.handle({ type: "session.input_transcript.done", item_id: "i5", transcript: "Show me the features." });
+    await delegate.handle({ type: "session.delegation.created", delegation: { id: "d5", target: "client" } });
+    expect(prompts.at(-1)).toBe("Show me the features.");
   });
 });
