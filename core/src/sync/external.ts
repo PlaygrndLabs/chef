@@ -160,7 +160,7 @@ export class ExternalSync {
     if (features.length === 0) return null;
     const lines = features.map((f) => `- ${f.title} (\`${f.id}\`)${this.options.previewLink ? `: [preview](${this.options.previewLink(f.id)})` : ""}`);
     const body = [`Chef built these features on Cloudflare and keeps this branch in sync with its main line.`, "", ...lines, "", `Merging this pull request brings them into \`${this.remote.branch}\`; Chef picks the merge up on its next sync.`].join("\n");
-    const pr = await this.remote.pullRequest({ head: this.options.syncBranch, title: features.length === 1 ? `chef: ${features[0]?.title}` : `chef: ${features.length} features`, body });
+    const pr = await this.remote.pullRequest({ head: this.options.syncBranch, title: features.length === 1 ? `Chef: ${features[0]?.title}` : `Chef: ${features.length} features`, body });
     await this.save({ pullRequest: pr });
     await this.ctx.emit({ type: "external.pull-request", url: pr.url, number: pr.number, branch: this.options.syncBranch, features: features.map((f) => f.id) });
     return pr.url;
@@ -200,7 +200,7 @@ export class ExternalSync {
       await this.remote.push({ repo: this.ctx.canonical, ref, commitId: commit.id, branch, force: true });
       const link = this.options.previewLink?.(session.featureId);
       const body = [`Chef built **${session.plan.feature.title}** and it passed Chef's gate.`, "", ...session.plan.feature.acceptance.map((c) => `- ${c.text}`), ...(link ? ["", `Preview: ${link}`] : [])].join("\n");
-      const pr = await this.remote.pullRequest({ head: branch, title: `chef: ${session.plan.feature.title}`, body });
+      const pr = await this.remote.pullRequest({ head: branch, title: `Chef: ${session.plan.feature.title}`, body });
       await this.ctx.emit({ type: "external.pull-request", url: pr.url, number: pr.number, branch, features: [session.featureId] });
       published[session.id] = session.merge.commitId;
       opened.push(pr.url);
