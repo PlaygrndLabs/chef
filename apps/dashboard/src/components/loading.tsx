@@ -52,17 +52,6 @@ export function ChatSkeleton() {
   );
 }
 
-export function PageSkeleton() {
-  return (
-    <div className="appear-late mx-auto flex max-w-3xl flex-col gap-4 px-4 py-8 sm:px-6" aria-busy="true" aria-label="Loading">
-      <Skeleton className="h-7 w-1/2" />
-      <Skeleton className="h-4 w-1/3" />
-      <Skeleton className="mt-4 h-24 w-full rounded-xl" />
-      <Rows count={3} />
-    </div>
-  );
-}
-
 export function PanelSkeleton() {
   return (
     <div className="appear-late flex h-full flex-col gap-3 p-3" aria-busy="true" aria-label="Loading">

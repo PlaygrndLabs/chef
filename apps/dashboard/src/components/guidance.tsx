@@ -233,6 +233,22 @@ export function MemoryForm(props: { readonly api: ProjectApi }) {
           </Group>
         );
       })}
+      <Group title={`Rules (${view.rules.length})`} note="Written when agents keep making the same fix in different features. Every later change is checked against them. Ask chef in the chat to change or drop one.">
+        {view.rules.length ? (
+          <ul className="grid divide-y" data-memory-group="rule">
+            {view.rules.map((rule) => (
+              <li key={rule.id} className="grid gap-0.5 px-1 py-2" data-rule={rule.id}>
+                <span className="text-sm">{rule.message}</span>
+                <span className="truncate font-mono text-[11px] text-muted-foreground">
+                  {rule.id} · {rule.files}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-muted-foreground">Nothing here yet.</p>
+        )}
+      </Group>
     </>
   );
 }

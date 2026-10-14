@@ -1,4 +1,4 @@
-import { MAX_INSTRUCTIONS_CHARS, memoryEntries, projectGuidance, type EditResult, type GuidanceEdit, type MemoryEntry, type Tree } from "@chef/core";
+import { learnedRules, MAX_INSTRUCTIONS_CHARS, memoryEntries, projectGuidance, type EditResult, type GuidanceEdit, type LearnedRule, type MemoryEntry, type Tree } from "@chef/core";
 
 export interface SharedInstructions {
   readonly text: string;
@@ -21,6 +21,7 @@ export interface InstructionsView {
 export interface MemoryView {
   readonly commitId: string | null;
   readonly entries: readonly MemoryEntry[];
+  readonly rules: readonly LearnedRule[];
 }
 
 const text = (value: unknown): value is string => typeof value === "string";
@@ -37,7 +38,7 @@ async function instructionsView(host: GuidanceHost): Promise<InstructionsView> {
 
 async function memoryView(host: GuidanceHost): Promise<MemoryView> {
   const { commitId, tree } = await host.main();
-  return { commitId, entries: memoryEntries(tree) };
+  return { commitId, entries: memoryEntries(tree), rules: learnedRules(tree) };
 }
 
 function failed(result: EditResult): Response | null {
