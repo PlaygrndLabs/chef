@@ -12,8 +12,6 @@ The engine is the chef Worker in the person's own account: the HTTP API, the pro
 
 Every deploy goes through `chef deploy` (`pnpm run deploy`, `cli/src/deploy.ts`), from the site's installer or from the `deploy` workflow. It reads the root `wrangler.jsonc`, creates the Vectorize index when it is missing, and runs `wrangler deploy`. With `--name`, it writes a copy of the config where the Artifacts namespace, Workflow, memory index and project Worker prefix carry that name, so several chefs can share an account.
 
-`cli/src/app.ts` (a local app that forwards to an engine) and `cli/src/engine` (an in-process engine with Docker sandboxes) are earlier ways to run chef from a computer. They are kept but no longer developed.
-
 ## Packages
 
 | Package | Role |

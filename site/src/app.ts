@@ -179,7 +179,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === "/api/app" && request.method === "GET" && session && org && member && (await access())) {
     const [view, current, orgs] = await Promise.all([member.view(session.orgId), org.view(session.userId), directory(env).orgs(session.userId)]);
-    return json({ mode: "cloud", place: "cloud", engine: url.origin, fixed: true, account: view.email, org: current, orgs, ...(view.admin ? { admin: true } : {}) });
+    return json({ engine: url.origin, account: view.email, org: current, orgs, ...(view.admin ? { admin: true } : {}) });
   }
 
   if (ENGINE_PATH.test(path)) {
