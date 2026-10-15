@@ -574,16 +574,34 @@ async function mainRun() {
     const label = (await chips.nth(i).innerText().catch(() => "")).toLowerCase();
     await point(chips.nth(i), { wait: 4000 });
     mark("main-chip", { i, label });
-    if (!label.includes("guest")) continue;
-    const inputs = frame.locator("input:not([type=hidden]):not([type=submit]), textarea");
-    const values = ["Nino", "Best cappuccino in town. See you tomorrow!"];
-    for (let j = 0; j < Math.min(await inputs.count(), 2); j++) {
-      if (await point(inputs.nth(j))) await inputs.nth(j).pressSequentially(values[j], { delay: 45 }).catch(() => undefined);
+    if (label.includes("order")) {
+      const select = frame.locator("select").first();
+      if (await select.count()) {
+        await point(select, { click: false, wait: 400 });
+        await select.selectOption({ index: 2 }).catch(() => undefined);
+        await pause(900);
+      }
+      const name = frame.locator("input:not([type=hidden]):not([type=submit]):not([type=radio])").first();
+      if (await point(name)) await name.pressSequentially("Sara", { delay: 110 }).catch(() => undefined);
+      await pause(600);
+      await point(frame.locator("button[type=submit], form button").first(), { wait: 4000 });
+      mark("main-ordered");
+      await shot("main-order");
+      await page.mouse.wheel(0, 500);
+      await pause(3000);
     }
-    await pause(600);
-    await point(frame.locator("button[type=submit], form button").first(), { wait: 3500 });
-    mark("main-signed");
-    await shot("main-guestbook");
+    if (label.includes("guest")) {
+      const name = frame.locator("input:not([type=hidden]):not([type=submit])").first();
+      if (await point(name)) await name.pressSequentially("Nino", { delay: 90 }).catch(() => undefined);
+      const note = frame.locator("textarea").first();
+      if (await point(note)) await note.pressSequentially("Best cappuccino in town. See you tomorrow!", { delay: 40 }).catch(() => undefined);
+      await pause(600);
+      await point(frame.locator("button[type=submit], form button").first(), { wait: 4000 });
+      mark("main-signed");
+      await shot("main-guestbook");
+      await page.mouse.wheel(0, 500);
+      await pause(3000);
+    }
   }
   await mainTab("History");
   mark("main-history");
