@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { envProblem, FeatureFrontmatter, renderTurn, withGuidance, type AnswerInput, type BuilderRole, type CompactInput, type FeatureSpec, type Plan, type PlanInput, type Planner, type SplitInput, type SplitPart, type Triage, type TriageInput, type WorkItem } from "@chef/core";
+import { envProblem, FeatureFrontmatter, renderTurn, withGuidance, type AnswerInput, type BuilderRole, type CompactInput, type FeatureSpec, type MapInput, type MappedFeatures, type Plan, type PlanInput, type Planner, type SplitInput, type SplitPart, type Triage, type TriageInput, type WorkItem } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
+import { cleanMapped, MappedSchema, mapPrompt } from "./feature-mapper.ts";
 
 const TriageSchema = z.object({
   intent: z.enum(["new_feature", "change_feature", "chore", "question"]),
@@ -75,7 +76,8 @@ export class LlmPlanner implements Planner {
       effort: "low",
       schema: SplitSchema,
       prompt: [
-        `Existing features (a feature with a parent sits under it in the feature tree):\n${JSON.stringify(features, null, 2)}`,
+        `Existing features (a feature with a parent sits under it in the feature list):\n${JSON.stringify(features, null, 2)}`,
+        ...mapOf(input.map),
         ...earlier(input.conversation),
         `Request:\n${input.prompt}\n\n${guess}`,
         [
@@ -102,7 +104,8 @@ export class LlmPlanner implements Planner {
         `Roles for code, fix and refactor items (pick the one that fits each item; "test" items use the test role):\n${builders.map((b) => `- ${b.role}: ${b.description}`).join("\n")}`,
         "Items of different roles run at the same time, each role on its own branch, and Chef merges them into the feature; items of one role run in order. When the feature has parts that can be built apart (its server routes, its page, its look), give each part to its role as a separate item, and write into every item the contract the parts share (route paths, JSON shapes, element ids and class names, file names) so no role has to wait for another. Name one role for each shared thing, such as the .ts module that holds the page's CSS: a file belongs to the role that writes it first, and only that role may change it. Use a single role when the parts cannot be built apart.",
         existing ? `Current spec entry:\n${JSON.stringify(existing, null, 2)}` : `Existing feature ids: ${input.spec.map((f) => f.id).join(", ") || "none"}`,
-        ...(parent ? [`This feature sits under ${parent.id} (${parent.title}) and adds to it. Give it its own id and folder. It may also change files in features/${parent.id}/ to wire itself in, for example a button on that feature's page.`] : []),
+        ...(parent ? [`This feature sits under ${parent.id} (${parent.title}) and adds to it. Give it its own id and folder. It may also change files in features/${parent.id}/ to wire itself in, for example a button on that feature's page.`] : input.parent ? [`This feature sits under ${input.parent} in the feature list and adds to it.`] : []),
+        ...mapOf(input.map),
         `Environment: when the feature talks to an outside service or needs a key or setting the person provides, list the environment variable names it reads in env, in capital snake case like STRIPE_SECRET_KEY, and reuse a name the project already has when it fits. The app reads them at runtime from context.env; their values never go in the code or the spec. Set in this project: ${input.env?.map((v) => v.name).join(", ") || "none"}.`,
         ...earlier(input.conversation),
         `Request:\n${input.prompt}`,
@@ -134,10 +137,19 @@ export class LlmPlanner implements Planner {
       system: this.system,
       effort: "low",
       schema: AnswerSchema,
-      prompt: `Project memory and the current builds:\n\n${context || "(empty)"}\n\nQuestion:\n${input.question}\n\nAnswer in a few sentences using only what is above, in the language of the question, and name the files you used. For why a build failed, explain its "What failed" in plain words. If nothing above answers it, say so.`,
+      prompt: `Project memory and the current builds:\n\n${context || "(empty)"}\n\n${input.map ? `The feature list (each feature's path says how to reach it from its parent; Start says how to spin up the project):\n${input.map}\n\n` : ""}Question:\n${input.question}\n\nAnswer in a few sentences using only what is above, in the language of the question, and name the files you used. For why a build failed, explain its "What failed" in plain words. If nothing above answers it, say so.`,
     });
     return result.answer;
   }
+
+  async mapFeatures(input: MapInput): Promise<MappedFeatures> {
+    const result = await structured(this.llm, { model: this.model, system: withGuidance(this.system, input.guidance), effort: "medium", schema: MappedSchema, prompt: mapPrompt(input) });
+    return cleanMapped(result);
+  }
+}
+
+function mapOf(map: string | undefined): string[] {
+  return map ? [`The project's feature list, each with its short name and state:\n${map}`] : [];
 }
 
 function earlier(conversation: string | undefined): string[] {

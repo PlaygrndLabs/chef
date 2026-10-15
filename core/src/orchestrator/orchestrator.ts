@@ -21,6 +21,7 @@ import type { PendingTurn, SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
+import { applyMapEdit, describeEntries, FEATURES_DIR, isMapRequest, mapAsSpec, mapChanges, placeMapped, readFeatureMap, renderMapOutline, type FeatureMap, type MapEdit, type MapEntry } from "../features/index.ts";
 import { arrange, arrangedSpec, arrangementProblem, markRemoved, placed, subtreeOf, type FeatureArrangement, type FeatureLayout, type KnownFeature } from "../spec/layout.ts";
 import { missingEnv, renderEnvironment, type EnvVar } from "../env/env.ts";
 import { Archiver, MainWriter, Mutex, PreviewPublisher } from "./capabilities.ts";
@@ -246,10 +247,14 @@ export class Orchestrator {
   }
 
   private async submitAs(prompt: string, attemptsWanted: number | undefined, by: string | null): Promise<SubmitResult> {
+    if (isMapRequest(prompt)) return this.mapRequest(prompt);
     const { tree } = await this.mainTree();
     const spec = arrangedSpec(readSpec(tree), await this.layout());
+    const map = readFeatureMap(tree);
+    const routing = [...spec, ...mapAsSpec(map, new Set(spec.map((f) => f.id)))];
+    const outline = map.features.length ? renderMapOutline(map) : "";
     const chat = renderConversation(await this.chatMemory());
-    const decision = await this.router.route(prompt, spec);
+    const decision = await this.router.route(prompt, routing);
     await this.emit({ type: "route.decided", prompt, decision });
     if (decision.intent === "question") {
       const answer = await this.answer(prompt);
@@ -259,8 +264,8 @@ export class Orchestrator {
     }
     const chore = decision.intent === "chore";
     const hotfix = decision.hotfix === true;
-    const parts = chore ? null : await this.router.split(prompt, spec, decision, chat);
-    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, parts.length > 1 ? part.prompt : prompt, chat)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat)];
+    const parts = chore ? null : await this.router.split(prompt, routing, decision, chat, outline);
+    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, parts.length > 1 ? part.prompt : prompt, chat, outline)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat, outline)];
     const attempts = chore || hotfix ? 1 : Math.max(1, Math.floor(attemptsWanted ?? this.specialization.attempts));
     const created: string[] = [];
     for (const [at, plan] of plans.entries()) {
@@ -293,14 +298,75 @@ export class Orchestrator {
     return { summary, turns: recent, summarized: (memory.summarized ?? 0) + older.length };
   }
 
-  private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], prompt: string, chat: string): Promise<Plan> {
+  private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], prompt: string, chat: string, map = ""): Promise<Plan> {
     if (part.kind === "change") {
       const existing = spec.find((f) => f.id === part.featureId);
-      const plan = await this.planFeature(prompt, { ...decision, intent: "change_feature", featureId: part.featureId, changeKind: part.changeKind }, spec, null, chat);
+      const plan = await this.planFeature(prompt, { ...decision, intent: "change_feature", featureId: part.featureId, changeKind: part.changeKind }, spec, null, chat, map);
       return withParent(plan, existing?.parent ?? null);
     }
-    const plan = await this.planFeature(prompt, { ...decision, intent: "new_feature", featureId: null, changeKind: null }, spec, part.parent, chat);
+    const plan = await this.planFeature(prompt, { ...decision, intent: "new_feature", featureId: null, changeKind: null }, spec, part.parent, chat, map);
     return withParent(plan, part.parent);
+  }
+
+  private async mapRequest(prompt: string): Promise<SubmitResult> {
+    const decision: RouteDecision = { intent: "question", featureId: null, changeKind: null, via: "rules", confidence: 1, reason: "map the project's current features" };
+    await this.emit({ type: "route.decided", prompt, decision });
+    let text: string;
+    try {
+      const { added } = await this.mapFeatures();
+      text = added.length ? `I explored the code and added ${added.length === 1 ? "1 feature" : `${added.length} features`} to the feature list, each with how to reach it:\n${describeEntries(added)}` : "The feature list already has every feature I could find in the code.";
+    } catch (error) {
+      text = `I could not map the features: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    const sources = [FEATURES_DIR];
+    await this.emit({ type: "question.answered", prompt, answer: text, sources });
+    await this.remember(prompt, text);
+    return { decision, sessionId: null, sessionIds: [], answer: { text, sources } };
+  }
+
+  async featureMap(): Promise<{ readonly commitId: string | null; readonly map: FeatureMap }> {
+    const { commitId, tree } = await this.mainTree();
+    return { commitId, map: readFeatureMap(tree) };
+  }
+
+  async mapFeatures(): Promise<{ readonly added: readonly MapEntry[]; readonly commitId: string | null }> {
+    if (!this.deps.planner.mapFeatures) throw new ControlError("the planner in use cannot explore code");
+    const { commitId, tree } = await this.mainTree();
+    if (!commitId) throw new ControlError("the project has no main branch yet");
+    const mapped = await this.deps.planner.mapFeatures({ project: this.config.name, tree, map: renderMapOutline(readFeatureMap(tree), { paths: true }), ...(await this.guidanceField()) });
+    const outcome = await this.mergeQueue.run(async () => {
+      const main = await this.mainTree();
+      if (!main.commitId) throw new ControlError("the project has no main branch yet");
+      const placed = placeMapped(readFeatureMap(main.tree), mapped);
+      const changes = mapChanges(placed);
+      if (Object.keys(changes).length === 0) return { added: [], commitId: null };
+      const message = `Feature list: map ${placed.entries.length === 1 ? "1 current feature" : `${placed.entries.length} current features`}`;
+      return { added: placed.entries, commitId: await this.commitMain(main.commitId, changes, message), message };
+    });
+    if (outcome.commitId && "message" in outcome) await this.emit({ type: "features.changed", commitId: outcome.commitId, message: outcome.message, ids: outcome.added.map((e) => e.id) });
+    return { added: outcome.added, commitId: outcome.commitId };
+  }
+
+  async editFeatureMap(edit: MapEdit): Promise<{ readonly commitId: string | null; readonly id: string | null }> {
+    const outcome = await this.mergeQueue.run(async () => {
+      const { commitId, tree } = await this.mainTree();
+      if (!commitId) throw new ControlError("the project has no main branch yet");
+      const result = applyMapEdit(tree, edit);
+      if (!result.ok) throw new ControlError(result.error);
+      if (Object.keys(result.changes).length === 0) return { commitId, id: result.id, message: "" };
+      return { commitId: await this.commitMain(commitId, result.changes, result.message), id: result.id, message: result.message };
+    });
+    if (outcome.message) await this.emit({ type: "features.changed", commitId: outcome.commitId, message: outcome.message, ids: outcome.id ? [outcome.id] : [] });
+    return { commitId: outcome.commitId, id: outcome.id };
+  }
+
+  private async commitMain(parent: string, changes: FileChanges, message: string): Promise<string> {
+    const token = await this.deps.repos.createToken(this.canonical, "write", this.ttl);
+    try {
+      return (await this.deps.repos.commit(token, { ref: "main", parent, changes, message, author: this.config.author })).id;
+    } finally {
+      await this.deps.repos.revokeToken(token);
+    }
   }
 
   private async createSessions(prompt: string, decision: RouteDecision, plan: Plan, attempts: number, options: { readonly chore: boolean; readonly hotfix: boolean; readonly ask: string | null; readonly by: string | null }): Promise<string[]> {
@@ -346,13 +412,15 @@ export class Orchestrator {
     return ids;
   }
 
-  private async planFeature(prompt: string, decision: RouteDecision, spec: readonly FeatureSpec[], parent: string | null = null, chat = ""): Promise<Plan> {
+  private async planFeature(prompt: string, decision: RouteDecision, spec: readonly FeatureSpec[], parent: string | null = null, chat = "", map = ""): Promise<Plan> {
     const roles = Object.values(this.config.profiles)
       .filter((p) => p.plannable)
       .map((p) => ({ role: p.role, description: p.description }));
     const intent = decision.intent === "change_feature" ? "change_feature" : "new_feature";
     const request = withoutCommand(prompt);
-    const planned = described(await this.deps.planner.plan({ prompt: request, intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), spec, roles, env: await this.environment(), ...(await this.guidanceField()) }), request);
+    const result = await this.deps.planner.plan({ prompt: request, intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), ...(map ? { map } : {}), spec, roles, env: await this.environment(), ...(await this.guidanceField()) });
+    const mappedOnly = decision.featureId && !spec.some((f) => f.id === decision.featureId) ? decision.featureId : null;
+    const planned = described(mappedOnly ? renamed(result, mappedOnly) : result, request);
     return this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
   }
 
@@ -1153,7 +1221,11 @@ export class Orchestrator {
     const hits = await this.deps.memory.query(question, 5);
     const sources = hits.map((h) => h.doc.path);
     const builds = buildsDoc(await this.sessions());
-    if (this.deps.planner.answer) return { text: await this.deps.planner.answer({ question, context: builds ? [...hits, { doc: builds, score: 0 }] : hits }), sources };
+    if (this.deps.planner.answer) {
+      const map = readFeatureMap((await this.mainTree()).tree);
+      const outline = map.features.length || map.start ? renderMapOutline(map, { paths: true }) : "";
+      return { text: await this.deps.planner.answer({ question, context: builds ? [...hits, { doc: builds, score: 0 }] : hits, ...(outline ? { map: outline } : {}) }), sources };
+    }
     const text = hits.length ? hits.map((h) => `${h.doc.path}: ${(h.doc.text.split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? "").trim()}`).join("\n") : "Nothing in the project memory answers that yet.";
     return { text, sources };
   }
@@ -1700,9 +1772,13 @@ function uniqueIds(plans: readonly Plan[]): Plan[] {
     let id = plan.feature.id;
     for (let n = 2; taken.has(id); n++) id = `${plan.feature.id.slice(0, 36)}-${n}`;
     taken.add(id);
-    if (id === plan.feature.id) return plan;
-    return { ...plan, feature: { ...plan.feature, id }, items: plan.items.map((item) => ({ ...item, id: item.id.replace(plan.feature.id, id), featureId: id })) };
+    return renamed(plan, id);
   });
+}
+
+function renamed(plan: Plan, id: string): Plan {
+  if (id === plan.feature.id) return plan;
+  return { ...plan, feature: { ...plan.feature, id }, items: plan.items.map((item) => ({ ...item, id: item.id.replace(plan.feature.id, id), featureId: id })) };
 }
 
 function partDecision(decision: RouteDecision, part: SplitPart, featureId: string): RouteDecision {

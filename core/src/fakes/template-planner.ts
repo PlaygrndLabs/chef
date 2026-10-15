@@ -1,4 +1,6 @@
-import type { CompactInput, Plan, PlanInput, Planner, SplitInput, SplitPart, Triage, TriageInput, WorkItem } from "../ports/planner.ts";
+import type { MappedFeatures } from "../features/mapping.ts";
+import type { CompactInput, MapInput, Plan, PlanInput, Planner, SplitInput, SplitPart, Triage, TriageInput, WorkItem } from "../ports/planner.ts";
+import { readSpec } from "../spec/lint.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
 import { slugify } from "../util/hash.ts";
 
@@ -17,6 +19,7 @@ export class TemplatePlanner implements Planner {
 
   readonly splitAsked: SplitInput[] = [];
   readonly compacted: CompactInput[] = [];
+  readonly mapAsked: MapInput[] = [];
 
   constructor(
     private readonly presets: ReadonlyMap<string, FeatureSpec> = new Map(),
@@ -100,5 +103,18 @@ export class TemplatePlanner implements Planner {
     const codeKind = !existing ? "code" : input.changeKind === "bug" ? "fix" : input.changeKind === "refactor" ? "refactor" : "code";
     add(codeKind, "backend", `${input.prompt}\n\nImplement ${feature.id} so that ${acceptance.join(", ")} pass.`);
     return { feature, specChanged, items, model: this.model };
+  }
+
+  async mapFeatures(input: MapInput): Promise<MappedFeatures> {
+    this.mapAsked.push(input);
+    const spec = readSpec(input.tree);
+    const folders = [...new Set(Object.keys(input.tree).flatMap((path) => /^features\/([a-z][a-z0-9-]*)\//.exec(path)?.[1] ?? []))];
+    return {
+      start: "Install the packages and start the app, then open it in a browser.",
+      features: folders.map((id) => {
+        const entry = spec.find((f) => f.id === id);
+        return { name: id, title: entry?.title ?? id, parent: entry?.parent ?? null, path: `Open ${entry?.entrypoint ?? `/${id}`}.` };
+      }),
+    };
   }
 }
