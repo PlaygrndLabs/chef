@@ -43,6 +43,7 @@ const APP_ROUTE = /^\/app\/[a-z][a-z0-9-]{1,30}\/([a-z0-9-]{1,40})\/?$/;
 const PROJECT_SETTINGS = "project/settings";
 const ORIGIN = "project/origin";
 const OVERVIEW = "project/overview";
+const FRESH = "project/fresh";
 const ENV = "project/env";
 const AGENTS = "project/agents/";
 const MAIN_APP = "project/main-app";
@@ -233,7 +234,7 @@ export class ProjectAgent extends Agent<Env> {
         if (existing) {
           await this.schedule(0, "runMainApp", undefined, { idempotent: true });
           if (external) await this.ensurePolling();
-          if ((await this.overview()).status === "none") await this.startReading();
+          if ((await this.overview()).status === "none" && !(await this.fresh())) await this.startReading();
           return { commitId: existing, created: false };
         }
         await this.schedule(5, "runMainApp", undefined, { idempotent: true });
@@ -245,12 +246,12 @@ export class ProjectAgent extends Agent<Env> {
           return { commitId: pulled.commitId, created: true, imported: true };
         }
         const commitId = await orchestrator.bootstrap(templateFiles, progress);
-        await this.startReading();
+        await this.ctx.storage.put(FRESH, true);
         return { commitId, created: true };
       });
     }
     if (action === "overview" && request.method === "GET") {
-      if ((await this.overview()).status === "none" && (await orchestrator.mainTree()).commitId) await this.startReading();
+      if ((await this.overview()).status === "none" && !(await this.fresh()) && (await orchestrator.mainTree()).commitId) await this.startReading();
       return Response.json(await this.overview());
     }
     if (action === "overview" && request.method === "POST") {
@@ -779,6 +780,10 @@ export class ProjectAgent extends Agent<Env> {
     const { orchestrator } = await this.build();
     const { tree } = await orchestrator.mainTree();
     return { ...state, overview: withChefSuggestions(state.overview, tree) };
+  }
+
+  private async fresh(): Promise<boolean> {
+    return (await this.ctx.storage.get<boolean>(FRESH)) === true;
   }
 
   private async startReading(): Promise<void> {
