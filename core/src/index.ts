@@ -1,6 +1,7 @@
 export * from "./git/tree.ts";
 export * from "./spec/index.ts";
 export * from "./features/index.ts";
+export * from "./app/compose.ts";
 export * from "./env/env.ts";
 export * from "./notes/notes.ts";
 export * from "./profiles/profile.ts";

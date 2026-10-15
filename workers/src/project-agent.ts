@@ -16,7 +16,7 @@ import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
-import { exploreProject, withMapSuggestion, type OverviewState } from "@chef/adapters/project-explorer";
+import { exploreProject, withChefSuggestions, type OverviewState } from "@chef/adapters/project-explorer";
 import { activityNote } from "@chef/adapters/projects";
 import { laneLayout, renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
@@ -766,7 +766,8 @@ export class ProjectAgent extends Agent<Env> {
     if (state.status === "reading" && Date.now() - state.since > READING_TIMEOUT_MS) return { status: "failed", at: Date.now(), error: "reading the code took too long; try again" };
     if (state.status !== "ready" || !(await this.projectSettings()).git) return state;
     const { orchestrator } = await this.build();
-    return { ...state, overview: withMapSuggestion(state.overview, (await orchestrator.mainTree()).tree) };
+    const { tree } = await orchestrator.mainTree();
+    return { ...state, overview: withChefSuggestions(state.overview, tree) };
   }
 
   private async startReading(): Promise<void> {
