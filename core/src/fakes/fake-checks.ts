@@ -60,8 +60,13 @@ export class FakeCheckRunner implements CheckRunner {
 
 export class FakeProofRunner implements ProofRunner {
   readonly proofs: ProofRecord[] = [];
+  private readonly injected: { feature: string; detail: string; times: number; repo: string | null }[] = [];
 
   constructor(private readonly clock: Clock) {}
+
+  failNext(feature: string, detail: string, times = 1, repo: string | null = null): void {
+    this.injected.push({ feature, detail, times, repo });
+  }
 
   async prove(input: { repo: string; feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord> {
     const flowPath = `features/${input.flow}/flow.ts`;
@@ -69,6 +74,11 @@ export class FakeProofRunner implements ProofRunner {
     const steps = flow
       ? [...flow.matchAll(/name:\s*"([^"]+)"/g)].map((m) => ({ name: m[1] as string, ok: true, detail: `fake drive of ${input.url}` }))
       : [{ name: "load flow", ok: false, detail: `${flowPath} does not exist` }];
+    const injected = this.injected.find((i) => i.feature === input.feature && i.times > 0 && (i.repo === null || i.repo === input.repo));
+    if (injected) {
+      injected.times--;
+      steps.push({ name: "drive", ok: false, detail: injected.detail });
+    }
     const proof: ProofRecord = { feature: input.feature, flow: input.flow, url: input.url, commitId: input.commitId, ok: steps.length > 0 && steps.every((s) => s.ok), steps, at: this.clock.now() };
     this.proofs.push(proof);
     return proof;

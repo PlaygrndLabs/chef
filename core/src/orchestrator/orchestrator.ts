@@ -1590,20 +1590,26 @@ export class Orchestrator {
     const proof = await this.deps.proofs.prove({ repo: record.fork, feature: record.featureId, flow, url: app.local, commitId: head.id, tree: head.tree });
     await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: PROOF_NAMESPACE, commitId: head.id, note: `${JSON.stringify(proof, null, 2)}\n` }));
     const stored = await this.deps.repos.readNote(record.fork, PROOF_NAMESPACE, head.id);
-    const ok = proof.ok && stored !== null;
-    return { name: "proof", ok, log: proof.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${s.name}: ${s.detail}`).join("\n") || "no proof steps" };
+    const merged = await this.proveMerged(record, head, app.local);
+    const ok = proof.ok && stored !== null && merged.every((p) => p.ok);
+    const own = proof.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${s.name}: ${s.detail}`).join("\n") || "no proof steps";
+    return { name: "proof", ok, log: merged.length ? `${own}\n\nMerged features proved again on this branch:\n${proofLines(merged)}` : own };
+  }
+
+  private async proveMerged(record: SessionRecord, head: Commit, url: string): Promise<ProofRecord[]> {
+    const live = readSpec(head.tree)
+      .filter((f) => f.status === "merged" && f.id !== record.featureId && head.tree[`features/${featureFlow(f)}/flow.ts`] !== undefined)
+      .slice(0, MERGED_PROOFS);
+    const proofs: ProofRecord[] = [];
+    for (const feature of live) proofs.push(await this.deps.proofs.prove({ repo: record.fork, feature: feature.id, flow: featureFlow(feature), url, commitId: head.id, tree: head.tree }));
+    return proofs;
   }
 
   private async choreProof(record: SessionRecord, head: Commit, url: string): Promise<CheckResult> {
-    const live = readSpec(head.tree)
-      .filter((f) => f.status === "merged" && head.tree[`features/${featureFlow(f)}/flow.ts`] !== undefined)
-      .slice(0, CHORE_PROOFS);
-    const proofs: ProofRecord[] = [];
-    for (const feature of live) proofs.push(await this.deps.proofs.prove({ repo: record.fork, feature: feature.id, flow: featureFlow(feature), url, commitId: head.id, tree: head.tree }));
+    const proofs = await this.proveMerged(record, head, url);
     const ok = proofs.every((p) => p.ok);
     await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: PROOF_NAMESPACE, commitId: head.id, note: `${JSON.stringify({ chore: record.featureId, url, commitId: head.id, ok, proofs }, null, 2)}\n` }));
-    const log = proofs.flatMap((p) => p.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${p.feature} ${s.name}: ${s.detail}`)).join("\n");
-    return { name: "proof", ok, log: log || "no live features to prove yet" };
+    return { name: "proof", ok, log: proofLines(proofs) || "no live features to prove yet" };
   }
 
   private async adoptForkHead(record: SessionRecord): Promise<void> {
@@ -2015,7 +2021,7 @@ const CODER_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["test", "code", "fix
 
 const BUILD_KINDS: readonly WorkItem["kind"][] = ["code", "fix", "refactor", "chore"];
 
-const CHORE_PROOFS = 6;
+const MERGED_PROOFS = 6;
 
 const ADOPT_LIMIT = 20;
 
@@ -2064,6 +2070,10 @@ function scoreCases(test: CheckResult | undefined, names: readonly string[]): { 
   const expected = new Set(names);
   const passed = test.cases.filter((c) => c.ok && expected.has(c.name)).length;
   return { passed: Math.min(passed, names.length), total: names.length };
+}
+
+function proofLines(proofs: readonly ProofRecord[]): string {
+  return proofs.flatMap((p) => p.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${p.feature} ${s.name}: ${s.detail}`)).join("\n");
 }
 
 function formatChecks(checks: readonly CheckResult[]): string {
