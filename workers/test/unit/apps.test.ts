@@ -71,4 +71,14 @@ describe("app pages", () => {
     expect(await appPage({ status: "no-stack", target: "main" }).text()).toContain("compose file");
     expect(appPage({ status: "missing", target: "s9" }).status).toBe(404);
   });
+
+  it("answers an app's own API calls with JSON while the app is not ready", async () => {
+    const starting = appPage({ status: "starting", target: "s1", html: false });
+    expect(starting.status).toBe(503);
+    expect(await starting.json()).toEqual({ error: "Starting this app", status: "starting" });
+    const down = appPage({ status: "down", target: "s1", html: false, error: "connection refused" });
+    expect(down.status).toBe(502);
+    expect(await down.json()).toEqual({ error: "This app is not answering", status: "down", detail: "connection refused" });
+    expect(await appPage({ status: "down", target: "s1", error: "connection refused" }).text()).toContain("connection refused");
+  });
 });
