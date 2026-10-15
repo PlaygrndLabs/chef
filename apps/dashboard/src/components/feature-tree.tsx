@@ -490,7 +490,7 @@ export function FeatureTree({ children }: { readonly children?: React.ReactNode 
             <TopLevelDrop />
           </>
         ) : (
-          <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Each thing you ask for in the chat shows up here, and new parts sit under the feature they add to. For a project that already has code, ask Chef to map its current features.</p>
+          <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Each thing you ask for in the chat shows up here, and new parts sit under the feature they add to.{data.spec?.fresh ? "" : " For a project that already has code, ask Chef to map its current features."}</p>
         )}
         {data.loaded.spec && data.loaded.records ? (
           <button type="button" onClick={() => setAdding({ parent: null })} data-action="add-wish" className="mt-1 flex h-7 items-center gap-2 px-2 text-left text-xs text-muted-foreground hover:text-foreground">

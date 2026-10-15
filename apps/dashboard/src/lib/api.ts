@@ -347,6 +347,7 @@ export interface ProjectSpec {
   readonly map?: FeatureMap;
   readonly mainApp?: MainApp | null;
   readonly layout?: FeatureLayout;
+  readonly fresh?: boolean;
 }
 
 export interface ProjectBudget {
