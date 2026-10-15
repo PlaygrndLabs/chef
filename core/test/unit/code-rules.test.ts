@@ -64,6 +64,26 @@ describe("code rules", () => {
     expect(checkTree({ "features/a/a.ts": 'import { JSDOM } from "jsdom";\n' }, ["known-packages"])).toEqual([]);
   });
 
+  it("keeps a feature's tests from sharing one store", () => {
+    const shared = [
+      'import { MemoryStore } from "../../shared/storage.ts";',
+      "const store = new MemoryStore();",
+      'describe("books", () => {',
+      "  const inner = new MemoryStore();",
+      '  it("adds", () => { const own = new MemoryStore(); });',
+      "});",
+      "let fresh;",
+      "beforeEach(() => { fresh = new MemoryStore(); });",
+      "function call() { return new MemoryStore(); }",
+      'test("votes", async () => { const own = new MemoryStore(); });',
+    ].join("\n");
+    const tree = { "features/books/books.test.ts": shared, "features/books/index.ts": shared, "app/cli.test.ts": shared };
+    const problems = checkTree({ ...tree, "app/testing.ts": "" }, ["test-isolation"]);
+    expect(problems.map((p) => `${p.path}:${p.line}`)).toEqual(["features/books/books.test.ts:2", "features/books/books.test.ts:4"]);
+    expect(problems[0]?.message).toMatch(/testApp\(t, features\) from app\/testing\.ts/);
+    expect(checkTree(tree, ["test-isolation"])).toEqual([]);
+  });
+
   it("matches write scopes with exclusions", () => {
     const scope = ["features/x/**", "!features/x/**/*.test.ts"];
     expect(matchesScope("features/x/index.ts", scope)).toBe(true);

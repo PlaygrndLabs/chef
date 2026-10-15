@@ -3,7 +3,7 @@ import type { Tree } from "../git/tree.ts";
 import { projectRuleProblems } from "./project-rules.ts";
 
 export interface CodeProblem {
-  readonly rule: "no-comments" | "import-boundaries" | "known-packages" | "project-rules";
+  readonly rule: "no-comments" | "import-boundaries" | "known-packages" | "test-isolation" | "project-rules";
   readonly path: string;
   readonly line: number;
   readonly message: string;
@@ -140,18 +140,47 @@ export function findUnknownPackages(path: string, text: string, declared: Readon
   return problems;
 }
 
+const FEATURE_TEST = /^features\/[^/]+\/.*\.test\.ts$/;
+
+function sharedScope(node: ts.Node): boolean {
+  for (let current = node.parent; current; current = current.parent) {
+    if (!ts.isFunctionLike(current)) continue;
+    const call = current.parent;
+    if (!call || !ts.isCallExpression(call) || !call.arguments.includes(current as ts.Expression)) return false;
+    const callee = ts.isPropertyAccessExpression(call.expression) ? call.expression.expression : call.expression;
+    return ts.isIdentifier(callee) && (callee.text === "describe" || callee.text === "suite");
+  }
+  return true;
+}
+
+export function findSharedStores(path: string, text: string): CodeProblem[] {
+  if (!FEATURE_TEST.test(path) || !text.includes("MemoryStore")) return [];
+  const file = sourceOf(path, text);
+  const problems: CodeProblem[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "MemoryStore" && sharedScope(node)) {
+      problems.push({ rule: "test-isolation", path, line: lineOf(file, node.getStart()), message: "a store made outside a test is shared by every test after it; make the app inside each test with testApp(t, features) from app/testing.ts" });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return problems;
+}
+
 export type CodeRule = CodeProblem["rule"];
 
-export function checkTree(tree: Tree, rules: readonly CodeRule[] = ["no-comments", "import-boundaries", "known-packages", "project-rules"], ignore: (path: string) => boolean = () => false): CodeProblem[] {
+export function checkTree(tree: Tree, rules: readonly CodeRule[] = ["no-comments", "import-boundaries", "known-packages", "test-isolation", "project-rules"], ignore: (path: string) => boolean = () => false): CodeProblem[] {
   const problems: CodeProblem[] = [];
   const manifest = tree["package.json"];
   const declared = rules.includes("known-packages") && manifest !== undefined ? declaredPackages(manifest) : null;
+  const isolated = rules.includes("test-isolation") && tree["app/testing.ts"] !== undefined;
   if (rules.includes("project-rules")) problems.push(...projectRuleProblems(tree, Object.keys(tree).filter((p) => !ignore(p))).map((p) => ({ rule: p.rule, path: p.path, line: p.line, message: p.message })));
   for (const [path, text] of Object.entries(tree)) {
     if (!CODE_FILE.test(path) || ignore(path) || path.endsWith(".d.ts")) continue;
     if (rules.includes("no-comments")) problems.push(...findComments(path, text));
     if (rules.includes("import-boundaries")) problems.push(...findBoundaryViolations(path, text));
     if (declared) problems.push(...findUnknownPackages(path, text, declared));
+    if (isolated) problems.push(...findSharedStores(path, text));
   }
   return problems;
 }
