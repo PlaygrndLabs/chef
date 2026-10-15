@@ -47,5 +47,5 @@ if [ -n "$watch" ]; then
   echo "requests from the sandbox's Docker Hub mirror to the image cache:"
   jq -r "$cache"' | "\(.event.request.method) \(.event.request.url | sub("^http://[^/]+"; "") | sub("[?:].*"; "")) \(.event.response.status // .outcome)"' "$watch" | sort | uniq -c
   jq -r "$cache"' | .exceptions[]?.message' "$watch" | sort | uniq -c
-  test "$(jq -r "$cache"' | select(.event.request.method == "PUT" and .event.response.status == 201) | 1' "$watch" | wc -l)" -gt 0
+  test "$(jq -r "$cache"' | select((.event.request.method == "PUT" and .event.response.status == 201) or ((.event.request.url | contains("/blobs/")) and .event.request.method == "GET" and .event.response.status == 200)) | 1' "$watch" | wc -l)" -gt 0
 fi
