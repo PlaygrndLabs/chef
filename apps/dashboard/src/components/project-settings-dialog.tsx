@@ -238,6 +238,26 @@ function TriesForm(props: { readonly own: number | null; readonly shared: number
   );
 }
 
+const MERGE_CHOICES = [
+  { mode: "auto", label: "Automatic", note: "A build goes live as soon as it passes every check." },
+  { mode: "manual", label: "Manual", note: "A build waits after its checks pass until someone presses Merge." },
+] as const;
+
+function MergeForm(props: { readonly mode: "auto" | "manual"; readonly save: Save }) {
+  return (
+    <div className="grid gap-2" data-merge-mode={props.mode}>
+      <div role="radiogroup" aria-label="Merging" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+        {MERGE_CHOICES.map((c) => (
+          <button key={c.mode} type="button" role="radio" aria-checked={props.mode === c.mode} onClick={() => void props.save({ merge: c.mode }, c.mode === "auto" ? "Builds merge on their own" : "Builds wait for you to merge them")} className={cn("rounded-md px-2 py-1.5 text-xs", props.mode === c.mode ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">{MERGE_CHOICES.find((c) => c.mode === props.mode)?.note}</p>
+    </div>
+  );
+}
+
 export function ProjectSettingsDialog(props: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -283,6 +303,9 @@ export function ProjectSettingsDialog(props: {
             </Group>
             <Group title="Parallel tries" note="How many ways Chef builds each new feature at once in this project. Each try costs as much as a whole build.">
               <TriesForm key={`${settings.attempts ?? "shared"}`} own={settings.attempts ?? null} shared={props.sharedAttempts} save={save} />
+            </Group>
+            <Group title="Merging" note="Every build starts from main, takes in what lands on main while it works, and merges into main when it is done.">
+              <MergeForm mode={settings.merge ?? "auto"} save={save} />
             </Group>
             <ProjectBudgetGroup api={api} />
             <Group title="Previews" note="A preview starts when someone opens its link, and is removed from your Cloudflare account after it sits unused.">

@@ -384,8 +384,7 @@ export function HistoryView() {
 }
 
 export function BranchView({ node }: { readonly node: SessionNode }) {
-  const { api, features } = useWorkspace();
-  const titleOf = (id: string) => features.find((f) => f.id === id)?.title ?? id;
+  const { api } = useWorkspace();
   const tip = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
   const key = `${node.id}:${tip}:${node.state}`;
   const history = useFetch(() => api.sessionHistory(node.id), key, node.id);
@@ -398,22 +397,14 @@ export function BranchView({ node }: { readonly node: SessionNode }) {
         <>
           <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 truncate font-mono text-xs" data-branch-name>{branch?.branch ?? " "}</span>
-          {branch?.from ? (
-            <span className="font-mono text-xs text-muted-foreground" data-branch-from={branch.upstream?.feature ?? "main"}>
-              from {branch.upstream ? titleOf(branch.upstream.feature) : "main"} {short(branch.from)}
-            </span>
-          ) : null}
-          {branch?.merged ? (
-            <span className="font-mono text-xs text-ok" data-branch-into={node.into ?? "main"}>
-              {branch.into ? `in ${titleOf(branch.upstream?.feature ?? "")}` : "in main"} {short(branch.merged)}
-            </span>
-          ) : null}
+          {branch?.from ? <span className="font-mono text-xs text-muted-foreground" data-branch-from="main">from main {short(branch.from)}</span> : null}
+          {branch?.merged ? <span className="font-mono text-xs text-ok" data-branch-into="main">in main {short(branch.merged)}</span> : null}
         </>
       }
       commits={branch?.commits ?? null}
       error={history.error ? `Could not load this branch: ${history.error}` : null}
       empty="No commits on this branch yet."
-      summary={{ title: "All changes", note: branch?.upstream ? `compared with ${titleOf(branch.upstream.feature)} where it branched off` : merged ? "compared with main before it went live" : "compared with the live app", key, load: () => api.changes(node.id).then((c) => c.files) }}
+      summary={{ title: "All changes", note: merged ? "compared with main before it went live" : "compared with the live app", key, load: () => api.changes(node.id).then((c) => c.files) }}
       load={(id) => api.sessionCommit(node.id, id)}
     />
   );

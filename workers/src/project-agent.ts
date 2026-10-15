@@ -86,6 +86,7 @@ export class ProjectAgent extends Agent<Env> {
     const agents = { config: mergeAgentConfig(shared.config, own.config) };
     const fingerprint = JSON.stringify([settings, project.git, project.attempts, origin, app?.credentials.id ?? null, shared.version, own.version]);
     if (this.built?.fingerprint === fingerprint) return this.built;
+    this.built?.orchestrator.dispose();
     const env = this.env;
     const control = bindingControl(env.ARTIFACTS as unknown as ArtifactsBindingLike);
     const repos = new ArtifactsRepoHost(control);
@@ -132,6 +133,7 @@ export class ProjectAgent extends Agent<Env> {
         previewLink: (key) => `/preview/${this.name}/${key}`,
         environment: async () => envNames(await this.effectiveEnv()),
         instructions: async () => (await settingsStub(env).sharedInstructions())?.text ?? "",
+        merge: async () => (await this.projectSettings()).merge,
       },
     );
     const git = project.git;
@@ -269,6 +271,11 @@ export class ProjectAgent extends Agent<Env> {
         if (blocked) return Response.json({ error: blocked }, { status: 402 });
         const { guidance } = (await request.json().catch(() => ({}))) as { guidance?: string };
         const record = await orchestrator.retry(id, guidance ?? "");
+        await this.schedule(1, "drive");
+        return Response.json({ state: record.machine.state }, { status: 202 });
+      }
+      if (request.method === "POST" && action === "merge") {
+        const record = await orchestrator.approveMerge(id);
         await this.schedule(1, "drive");
         return Response.json({ state: record.machine.state }, { status: 202 });
       }

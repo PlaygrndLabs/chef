@@ -361,7 +361,7 @@ export class ArtifactsRepoHost implements RepoHost {
       return { status: "fast-forward", commitId: theirs };
     }
     if (ours === theirs || (await git.isDescendent({ fs: cached.fs, gitdir: GITDIR, oid: ours, ancestor: theirs, depth: -1 }))) return { status: "up-to-date", commitId: ours };
-    if (!input.noFastForward && (await git.isDescendent({ fs: cached.fs, gitdir: GITDIR, oid: theirs, ancestor: ours, depth: -1 }))) {
+    if (await git.isDescendent({ fs: cached.fs, gitdir: GITDIR, oid: theirs, ancestor: ours, depth: -1 })) {
       await this.push(cached, token, input.into, theirs, false, ours);
       await this.copyNotes(cached, token, input.from.repo, theirs);
       return { status: "fast-forward", commitId: theirs };

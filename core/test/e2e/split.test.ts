@@ -53,17 +53,13 @@ describe("splitting a request into features", () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]), splits });
     await w.orchestrator.bootstrap(templateTree());
     await w.orchestrator.run((await w.orchestrator.submit(TODO)).sessionId as string);
-    const change = (await w.orchestrator.submit("#todo-add Let people delete an item")).sessionId as string;
+    await w.orchestrator.submit("#todo-add Let people delete an item");
     expect(w.planner.splitAsked.map((s) => s.prompt)).toEqual([TODO]);
     const child = await w.orchestrator.submit("Let people delete an item");
     const record = await w.orchestrator.session(child.sessionId as string);
     expect(record.plan.feature.parent).toBe("todo-add");
     expect(record.ask).toBeUndefined();
-    await w.orchestrator.step(record.id);
-    expect((await w.orchestrator.session(record.id)).machine.state).toBe("queued");
-    await w.orchestrator.step(change);
     for (let i = 0; i < 3; i++) await w.orchestrator.step(record.id);
-    expect((await w.orchestrator.session(record.id)).upstream).toBe(change);
     const fork = await w.repos.readCommit(record.fork, (await w.orchestrator.session(record.id)).head as string);
     expect(readSpec(fork?.tree ?? {}).find((f) => f.id === record.featureId)?.parent).toBe("todo-add");
   });

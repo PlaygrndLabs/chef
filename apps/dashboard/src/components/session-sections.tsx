@@ -12,7 +12,7 @@ import { isActive } from "@/lib/events";
 import { ago, duration, previewHost, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
-import { type FeatureNode, nodeStatus, type SessionNode } from "@/lib/model";
+import type { FeatureNode, SessionNode } from "@/lib/model";
 import { addressPath, entryPage, frameReport, pageChips, step, visit, type AppPage, type Trail } from "@/lib/preview";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
@@ -44,7 +44,7 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, link, commitId, start, live, merged = false, done = false }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly start: string; readonly live: boolean; readonly merged?: boolean; readonly done?: boolean }) {
+function PreviewTab({ url, link, commitId, start, live, merged = false }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly start: string; readonly live: boolean; readonly merged?: boolean }) {
   const [trail, setTrail] = useState<Trail>({ entries: [start], index: 0 });
   const [load, setLoad] = useState({ path: start, count: 0 });
   const [pages, setPages] = useState<readonly AppPage[]>([]);
@@ -143,11 +143,9 @@ function PreviewTab({ url, link, commitId, start, live, merged = false, done = f
       <p className="text-xs text-muted-foreground">
         {live
           ? `This is the live app, at ${short(commitId)}. Everything Chef merges shows up here.`
-          : done
-            ? `This is the app as this session left it, at ${short(commitId)}. Its work is on the branch it was built on and goes live together with it. It sleeps when nobody opens it for a while and wakes up on the next visit.`
-            : merged
-              ? `This is the app as this session left it, at ${short(commitId)}. Its work is live now; the live app shows it together with everything else Chef merged. It sleeps when nobody opens it for a while and wakes up on the next visit.`
-              : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
+          : merged
+            ? `This is the app as this session left it, at ${short(commitId)}. Its work is live now; the live app shows it together with everything else Chef merged. It sleeps when nobody opens it for a while and wakes up on the next visit.`
+            : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
       </p>
     </div>
   );
@@ -370,7 +368,7 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
 
 export function SessionPreview({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
   const preview = node?.live?.preview ?? node?.record?.preview ?? feature.preview ?? null;
-  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} start={entryPage(feature.spec?.entrypoint) ?? "/"} live={false} merged={node?.state === "merged"} done={node ? nodeStatus(node) === "done" : false} />;
+  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} start={entryPage(feature.spec?.entrypoint) ?? "/"} live={false} merged={node?.state === "merged"} />;
 }
 
 export function LiveApp() {

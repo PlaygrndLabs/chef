@@ -7,7 +7,7 @@ import { ListSkeleton } from "@/components/loading";
 import { KindBadges, StatusDot } from "@/components/status";
 import { roleLabel, useAgents, workingRole } from "@/lib/agents";
 import { PLAIN_STATE, stateTone, type Tone } from "@/lib/format";
-import { featureTree, groupOf, heldBy, waitsForKey, type SessionNode, type TreeNode } from "@/lib/model";
+import { featureTree, groupOf, heldBy, waitsForKey, waitsForMerge, type SessionNode, type TreeNode } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -19,8 +19,8 @@ function toneOf(node: SessionNode): Tone {
 
 function stateText(node: SessionNode): string {
   if (waitsForKey(node)) return "Needs a key";
+  if (waitsForMerge(node)) return "Ready to merge";
   if (heldBy(node)) return "Waiting";
-  if (node.state === "merged" && node.into) return "Done";
   return PLAIN_STATE[node.state];
 }
 
@@ -60,7 +60,7 @@ function Builds({ node, depth }: { readonly node: TreeNode; readonly depth: numb
               onClick={() => openSession(s.id)}
               data-session={s.id}
               data-state={s.state}
-              data-group={groupOf(s.state, s.needs, s.budget)}
+              data-group={groupOf(s.state, s.needs, s.budget, s.ready)}
               className={cn("flex h-7 w-full items-center gap-2 rounded-md pr-2 text-left text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground", session?.id === s.id && "text-foreground")}
               style={{ paddingLeft: 8 + (depth + 1) * INDENT + 14 }}
             >

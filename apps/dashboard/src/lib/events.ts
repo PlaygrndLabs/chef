@@ -25,7 +25,7 @@ export type TimelineItem =
   | { readonly kind: "sync"; readonly at: number; readonly conflict: boolean; readonly paths: readonly string[]; readonly mainCommit: string }
   | { readonly kind: "recalled"; readonly at: number; readonly paths: readonly string[] }
   | { readonly kind: "stuck"; readonly at: number; readonly reason: string }
-  | { readonly kind: "merged"; readonly at: number; readonly commitId: string; readonly into?: string }
+  | { readonly kind: "merged"; readonly at: number; readonly commitId: string }
   | { readonly kind: "picked"; readonly at: number; readonly won: boolean; readonly winner: string; readonly reasons: readonly string[]; readonly candidates: readonly { readonly sessionId: string; readonly passed: number; readonly total: number }[] }
   | { readonly kind: "steered"; readonly at: number; readonly message: string }
   | { readonly kind: "needs"; readonly at: number; readonly names: readonly string[] }
@@ -62,6 +62,7 @@ export interface SessionLive {
   stuck: string | null;
   needs: readonly string[];
   budget: string | null;
+  ready: string | null;
   merged: string | null;
   recalled: readonly string[];
   agent: { readonly role: string; readonly model: string; readonly at: number } | null;
@@ -111,7 +112,7 @@ function sessionOf(state: ProjectLive, sessionId: string, featureId: string, at:
     existing.updatedAt = at;
     return existing;
   }
-  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, kind: "feature", hotfix: false, heldBy: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], budget: null, merged: null, recalled: [], agent: null, agents: [], lanes: [], timeline: [], createdAt: at, updatedAt: at };
+  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, kind: "feature", hotfix: false, heldBy: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], budget: null, ready: null, merged: null, recalled: [], agent: null, agents: [], lanes: [], timeline: [], createdAt: at, updatedAt: at };
   state.sessions[sessionId] = created;
   state.order.push(sessionId);
   return created;
@@ -154,8 +155,6 @@ export function summarize(event: ChefEvent): string {
       return event.ok ? `passed ${event.checks.length} checks` : `failed ${event.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}`;
     case "main.merged":
       return `main ${event.commitId.slice(0, 7)}`;
-    case "branch.merged":
-      return `into ${event.intoFeature} ${event.commitId.slice(0, 7)}`;
     case "live.updated":
       return event.status === "failed" ? `live app failed at ${event.commitId.slice(0, 7)}: ${event.error ?? ""}`.trim() : `live app ${event.status} ${event.commitId.slice(0, 7)}`;
     case "main.reverted":
@@ -190,6 +189,8 @@ export function summarize(event: ChefEvent): string {
       return `pull request #${event.number} from ${event.branch} (${event.features.length} features)`;
     case "session.steered":
       return event.message;
+    case "session.ready":
+      return event.commitId ? `ready to merge at ${event.commitId.slice(0, 7)}` : "merge approved";
     case "session.needs":
       return event.names.length ? `needs ${event.names.join(", ")}` : "has every key it needs";
     case "session.budget":
@@ -247,7 +248,13 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       s.state = event.to;
       s.reason = event.reason;
       if (event.to !== "stuck") s.stuck = null;
+      if (event.to !== "gating") s.ready = null;
       keep(s.timeline, { kind: "state", at, from: event.from, to: event.to, reason: event.reason }, TIMELINE_LIMIT);
+      return true;
+    }
+    case "session.ready": {
+      const s = sessionOf(state, event.sessionId, event.featureId, at);
+      s.ready = event.commitId;
       return true;
     }
     case "session.held": {
@@ -327,11 +334,6 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       s.merged = event.commitId;
       keep(state.merges, { featureId: event.featureId, sessionId: event.sessionId, commitId: event.commitId, at }, 500);
       keep(s.timeline, { kind: "merged", at, commitId: event.commitId }, TIMELINE_LIMIT);
-      return true;
-    }
-    case "branch.merged": {
-      const s = sessionOf(state, event.sessionId, event.featureId, at);
-      keep(s.timeline, { kind: "merged", at, commitId: event.commitId, into: event.intoFeature }, TIMELINE_LIMIT);
       return true;
     }
     case "main.reverted":

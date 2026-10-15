@@ -1,3 +1,4 @@
+import type { CheckResult } from "../ports/check-runner.ts";
 import type { Plan } from "../ports/planner.ts";
 import type { ReviewVerdict } from "../ports/reviewer.ts";
 import type { RouteDecision } from "../router/decision.ts";
@@ -29,9 +30,8 @@ export interface SessionRecord {
   verdict: (ReviewVerdict & { commitId: string }) | null;
   lastCodeItem: string | null;
   syncPending: boolean;
-  merge: { commitId: string; mainBefore: string; into?: string } | null;
-  upstream?: string | null;
-  upstreamBase?: string | null;
+  merge: { commitId: string; mainBefore: string } | null;
+  ready?: { commitId: string; checks: CheckResult[]; approved: boolean } | null;
   readonly attempt: { readonly group: string; readonly index: number; readonly of: number };
   readonly kind?: "feature" | "chore";
   readonly hotfix?: boolean;

@@ -247,6 +247,7 @@ export interface GitLinkView {
 export interface ProjectSettingsView {
   readonly previewIdleMinutes: number;
   readonly attempts?: number | null;
+  readonly merge?: "auto" | "manual";
   readonly git: GitLinkView | null;
 }
 
@@ -262,6 +263,7 @@ export interface GitLinkUpdate {
 export interface ProjectSettingsUpdate {
   readonly previewIdleMinutes?: number | null;
   readonly attempts?: number | null;
+  readonly merge?: "auto" | "manual";
   readonly git?: GitLinkUpdate | null;
 }
 
@@ -369,6 +371,7 @@ export function projectApi(project: string) {
     cloudflare: (id: string) => call<CloudflareView>(`${base}/sessions/${id}/cloudflare`),
     drop: (id: string, reason: string) => call<{ state: string }>(`${base}/sessions/${id}/drop`, post({ reason })),
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),
+    merge: (id: string) => call<{ state: string }>(`${base}/sessions/${id}/merge`, post({})),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
     route: (prompt: string) => call<RouteDecision>(`${base}/route`, post({ prompt })),

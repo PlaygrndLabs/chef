@@ -29,7 +29,6 @@ export type ChefEvent = Base &
     | { readonly type: "gate.result"; readonly sessionId: string; readonly featureId: string; readonly ok: boolean; readonly checks: readonly CheckResult[] }
     | { readonly type: "live.updated"; readonly status: LiveStatus; readonly commitId: string; readonly url: string | null; readonly error?: string }
     | { readonly type: "main.merged"; readonly sessionId: string; readonly featureId: string; readonly commitId: string }
-    | { readonly type: "branch.merged"; readonly sessionId: string; readonly featureId: string; readonly into: string; readonly intoFeature: string; readonly commitId: string }
     | { readonly type: "chat.context"; readonly used: number; readonly limit: number; readonly turns: number; readonly summarized: number }
     | { readonly type: "feature.arranged"; readonly featureId: string; readonly title: string | null; readonly parent: string | null }
     | { readonly type: "features.removed"; readonly featureIds: readonly string[]; readonly commitId: string | null }
@@ -46,6 +45,7 @@ export type ChefEvent = Base &
     | { readonly type: "external.pull-request"; readonly url: string; readonly number: number; readonly branch: string; readonly features: readonly string[] }
     | { readonly type: "session.stuck"; readonly sessionId: string; readonly featureId: string; readonly reason: string }
     | { readonly type: "session.steered"; readonly sessionId: string; readonly featureId: string; readonly message: string }
+    | { readonly type: "session.ready"; readonly sessionId: string; readonly featureId: string; readonly commitId: string | null }
     | { readonly type: "session.needs"; readonly sessionId: string; readonly featureId: string; readonly names: readonly string[] }
     | { readonly type: "session.budget"; readonly sessionId: string; readonly featureId: string; readonly reason: string | null }
     | { readonly type: "turn.rejected"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly rule: RejectionRule; readonly paths: readonly string[]; readonly lane?: string }

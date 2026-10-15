@@ -38,7 +38,6 @@ export interface MergeInput {
   readonly author: Author;
   readonly resolvers?: Readonly<Record<string, Resolver>>;
   readonly onConflict?: "fail" | "commit-markers";
-  readonly noFastForward?: boolean;
 }
 
 export interface PushedEvent {

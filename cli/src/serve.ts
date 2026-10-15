@@ -63,7 +63,7 @@ export async function serve(options: { readonly port: number; readonly project?:
   let shared: StoredEnv = {};
   let instructions: SharedInstructions | null = null;
   const cipher = await aesCipher(envKeyBytes(newEnvKey()));
-  const w = localWorld({ script: script(), presets: presets(), splits: splits(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), instructions: async () => instructions?.text ?? "", ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
+  const w = localWorld({ script: script(), presets: presets(), splits: splits(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), instructions: async () => instructions?.text ?? "", merge: async () => readProjectSettings(projectSettings).merge, ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
   await w.orchestrator.bootstrap(templateTree());
   const pump = new SessionPump();
   const drive = (): void => {
@@ -127,6 +127,11 @@ export async function serve(options: { readonly port: number; readonly project?:
       if (request.method === "POST" && sub === "drop") return Response.json({ state: (await w.orchestrator.drop(id, (await body())["reason"]?.trim() || undefined)).machine.state }, { status: 202 });
       if (request.method === "POST" && sub === "retry") {
         const record = await w.orchestrator.retry(id, (await body())["guidance"] ?? "");
+        drive();
+        return Response.json({ state: record.machine.state }, { status: 202 });
+      }
+      if (request.method === "POST" && sub === "merge") {
+        const record = await w.orchestrator.approveMerge(id);
         drive();
         return Response.json({ state: record.machine.state }, { status: 202 });
       }

@@ -68,7 +68,7 @@ describe("project event state", () => {
       ["backend", "ok", "Did its part", ""],
       ["frontend", "run", "Working on its part on its own branch", "Drawing the page"],
     ]);
-    const node = { id: "s1", featureId: "todo", state: "coding", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], budget: null, live: s, record: undefined, into: null } as const;
+    const node = { id: "s1", featureId: "todo", state: "coding", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], budget: null, ready: null, live: s, record: undefined } as const;
     const team = teamOf(node);
     expect(team.filter((m) => m.branch).map((m) => [m.role, m.state, m.branch])).toEqual([["backend", "done", "lane/backend"], ["frontend", "working", "lane/frontend"]]);
     const both = run([...events.slice(0, -2)]);
