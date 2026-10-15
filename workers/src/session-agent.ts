@@ -381,11 +381,12 @@ export class SessionAgent extends Agent<Env> {
     if (request.headers.get(APP_REQUEST_HEADER) !== "1") return super.fetch(request);
     const state = await this.appState();
     const container = this.ctx.container;
+    const html = (request.headers.get("accept") ?? "").includes("text/html");
     if (!container?.running || state?.status !== "running" || !state.port) {
       if (state && (state.status === "asleep" || state.status === "running")) this.ctx.waitUntil(this.wake(state));
-      if (state?.status === "failed") return appPage({ status: "failed", target: state.target, ...(state.error ? { error: state.error } : {}) });
-      if (state?.status === "no-stack") return appPage({ status: "no-stack", target: state.target });
-      return appPage({ status: state ? "starting" : "missing", target: state?.target ?? this.name });
+      if (state?.status === "failed") return appPage({ status: "failed", target: state.target, html, ...(state.error ? { error: state.error } : {}) });
+      if (state?.status === "no-stack") return appPage({ status: "no-stack", target: state.target, html });
+      return appPage({ status: state ? "starting" : "missing", target: state?.target ?? this.name, html });
     }
     if (Date.now() - this.visited > VISIT_NOTE_MS) {
       this.visited = Date.now();
@@ -395,7 +396,11 @@ export class SessionAgent extends Agent<Env> {
     const url = new URL(request.url);
     const headers = new Headers(request.headers);
     headers.delete(APP_REQUEST_HEADER);
-    return container.getTcpPort(state.port).fetch(new Request(`http://localhost:${state.port}${url.pathname}${url.search}`, new Request(request, { headers })));
+    try {
+      return await container.getTcpPort(state.port).fetch(new Request(`http://localhost:${state.port}${url.pathname}${url.search}`, new Request(request, { headers })));
+    } catch (error) {
+      return appPage({ status: "down", target: state.target, html, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   private async wake(state: AppState): Promise<void> {

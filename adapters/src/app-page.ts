@@ -5,15 +5,18 @@ const TEXT = {
   failed: { title: "This app could not start", detail: "" },
   "no-stack": { title: "This branch has no app to run", detail: "Chef starts a branch's app from a compose file (compose.yaml or docker-compose.yml) at the root of the code. Ask Chef to add one that runs the whole stack." },
   missing: { title: "No app here", detail: "This branch has no commit yet, or it is gone." },
+  down: { title: "This app is not answering", detail: "" },
 } as const;
 
-export function appPage(input: { readonly status: "starting" | "failed" | "no-stack" | "missing"; readonly target: string; readonly error?: string }): Response {
+export function appPage(input: { readonly status: "starting" | "failed" | "no-stack" | "missing" | "down"; readonly target: string; readonly error?: string; readonly html?: boolean }): Response {
+  const code = input.status === "missing" ? 404 : input.status === "down" ? 502 : 200;
+  if (input.html === false) return Response.json({ error: TEXT[input.status].title, status: input.status, ...(input.error ? { detail: input.error } : {}) }, { status: code === 200 ? 503 : code, headers: { "cache-control": "no-store", ...(input.status === "starting" ? { "retry-after": "4" } : {}) } });
   const escape = (text: string) => text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
   const { title } = TEXT[input.status];
-  const detail = input.status === "failed" ? `Chef tried to start it and got this error:<pre>${escape(input.error ?? "")}</pre><a href="?retry=1">Try again</a>` : TEXT[input.status].detail;
+  const detail = input.status === "failed" ? `Chef tried to start it and got this error:<pre>${escape(input.error ?? "")}</pre><a href="?retry=1">Try again</a>` : input.status === "down" ? `Its sandbox is running, but the app gave no answer:<pre>${escape(input.error ?? "")}</pre>` : TEXT[input.status].detail;
   const refresh = input.status === "starting" ? '<meta http-equiv="refresh" content="4">' : "";
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${refresh}<title>${title}</title><style>body{font:15px/1.5 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#fafafa;color:#18181b}main{max-width:32rem;padding:24px}h1{font-size:18px}pre{white-space:pre-wrap;background:#f4f4f5;padding:12px;border-radius:0;font-size:12px}@media (prefers-color-scheme:dark){body{background:#09090b;color:#fafafa}pre{background:#27272a}}</style></head><body><main><h1>${title}</h1><p>${detail}</p><p><small>${escape(input.target)}</small></p></main></body></html>`;
-  return new Response(html, { status: input.status === "missing" ? 404 : 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  return new Response(html, { status: code, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
 export function appPath(raw: string | null): string {
