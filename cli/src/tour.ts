@@ -11,6 +11,7 @@ export interface TourOptions {
   readonly minutes: number;
   readonly everySeconds: number;
   readonly remove?: boolean;
+  readonly removeExisting?: boolean;
   readonly out: string;
   readonly log: (line: string) => void;
 }
@@ -291,7 +292,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     }
     writeFileSync(join(options.out, "events.jsonl"), events.map((e) => JSON.stringify(e)).join("\n"));
     if (options.remove) {
-      if (report.projects.includes(project)) report.errors.push(`remove: ${project} was there before the tour, so the tour left it`);
+      if (report.projects.includes(project) && !(options.removeExisting && options.project)) report.errors.push(`remove: ${project} was there before the tour, so the tour left it`);
       else await removeInSettings(page, project, report, shot).catch((error: unknown) => void report.errors.push(`remove: ${error instanceof Error ? error.message : String(error)}`));
     }
     return report;
