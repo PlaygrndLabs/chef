@@ -36,6 +36,18 @@ describe("session machine", () => {
     expect(m.reason).toMatch(/attempt budget/);
   });
 
+  it("sends an app that does not start back to coding with its log, and ends stuck with that reason", () => {
+    const m = run([{ type: "start" }, { type: "planned", withTests: false }, { type: "app_failed", log: "Could not resolve ../page.ts" }]);
+    expect(m.state).toBe("coding");
+    expect(m.feedback).toContain("Could not resolve ../page.ts");
+    expect(m.usage.attempts).toBe(2);
+    const fromReview = run([{ type: "start" }, { type: "planned", withTests: false }, { type: "coded" }, { type: "app_failed", log: "web stopped" }]);
+    expect(fromReview.state).toBe("coding");
+    const stuck = run([{ type: "start" }, { type: "planned", withTests: false }, { type: "app_failed", log: "web stopped" }], { ...DEFAULT_BUDGET, maxAttempts: 1 });
+    expect(stuck.state).toBe("stuck");
+    expect(stuck.reason).toMatch(/attempt budget exhausted.*the app still does not start/);
+  });
+
   it("rejects transitions that do not exist", () => {
     expect(() => transition(initialMachine(0), { type: "coded" }, DEFAULT_BUDGET, 0)).toThrow(InvalidTransition);
   });

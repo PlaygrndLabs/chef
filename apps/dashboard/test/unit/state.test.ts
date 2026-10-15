@@ -152,7 +152,7 @@ describe("feature map", () => {
     expect(tree.map((n) => n.feature.id)).toEqual(["todo", "notes"]);
     expect(tree[0]?.children.map((n) => [n.feature.id, n.group])).toEqual([
       ["todo-edit", "working"],
-      ["todo-delete", "live"],
+      ["todo-delete", "merged"],
     ]);
     expect(featureTree([{ ...(nodes.find((n) => n.id === "todo") as (typeof nodes)[number]), parent: "todo-delete" }, ...nodes.filter((n) => n.id !== "todo")]).map((n) => n.feature.id).sort()).toEqual(["notes", "todo"]);
   });
@@ -177,7 +177,7 @@ describe("feature list from the feature map", () => {
 });
 
 describe("child builds merged into their parent", () => {
-  it("calls a child Done while its parent still builds, and Live once the parent reaches main", () => {
+  it("calls a child Done while its parent still builds, and Merged once the parent reaches main", () => {
     const record = (id: string, featureId: string, state: SessionRecord["machine"]["state"], into?: string) => ({ id, featureId, machine: { state }, attempt: null, parent: null, createdAt: 1, updatedAt: 1, plan: { feature: { id: featureId, title: featureId } }, ...(into ? { merge: { commitId: "m", mainBefore: "b", into } } : {}) }) as unknown as SessionRecord;
     const building = [record("s1", "notes", "coding"), record("s2", "tags", "merged", "s1")];
     const child = featureNodes(emptyProject(), building, []).find((f) => f.id === "tags");
@@ -232,7 +232,7 @@ describe("plain progress", () => {
       to("gating", "merged", "gate_passed"),
     ]);
     const texts = updates(items, "merged").map((u) => u.kind === "chef" ? u.text : u.text);
-    expect(texts).toEqual(["Wrote the code", "A reviewer asked for changes: missing test", "Fixed what the reviewer asked for (try 2)", "A reviewer approved the change", "Passed all 2 checks", "Went live"]);
+    expect(texts).toEqual(["Wrote the code", "A reviewer asked for changes: missing test", "Fixed what the reviewer asked for (try 2)", "A reviewer approved the change", "Passed all 2 checks", "Merged into main"]);
     expect(progress("merged", items)).toMatchObject({ stage: 4, done: true });
   });
 
@@ -262,7 +262,7 @@ describe("builds by status and how they relate", () => {
     ]);
     const nodes = sessionNodes(state, []);
     const groups = groupSessions(nodes);
-    expect(Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.map((n) => n.id)]))).toEqual({ "needs-you": ["s3"], working: ["s2"], live: ["s1"], stopped: ["s4"] });
+    expect(Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.map((n) => n.id)]))).toEqual({ "needs-you": ["s3"], working: ["s2"], merged: ["s1"], stopped: ["s4"] });
     const s2 = nodes.find((n) => n.id === "s2");
     if (!s2) throw new Error("no s2");
     const r = relationsOf(s2, nodes);

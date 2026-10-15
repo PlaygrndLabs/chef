@@ -1,7 +1,9 @@
 export const COMPOSE_FILES = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"] as const;
 
-export const COMPOSE_PROMPT =
-  "Add a compose.yaml at the root of the code that runs this project's whole stack with Docker: every service it needs (database, cache, workers and so on), built from the code or from official images, with the app's web page served in development mode on a published port, so Chef can run the app of every branch.";
+export const COMPOSE_TASK =
+  "Dockerize the project: add a compose.yaml at the root of the code that runs this project's whole stack with Docker, with every service it needs (database, cache, workers and so on) built from the code or from official images, and the app's web page served in development mode on a published port, so Chef can run the app of every branch. When a service builds from the code (`build:`), add the Dockerfile it builds from in the same change, so `docker compose up --build` starts the stack from a clean checkout. Change nothing else.";
+
+export const COMPOSE_PROMPT = `/chore ${COMPOSE_TASK}`;
 
 export const COMPOSE_SUGGESTION = {
   title: "Dockerize the project",

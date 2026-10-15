@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { AppWindowMac, X } from "lucide-react";
-import { Mark } from "@/components/logo";
 import { PanelSkeleton } from "@/components/loading";
 import { MapMarkIcon } from "@/components/map-mark";
 import { StatusDot } from "@/components/status";
@@ -27,36 +26,26 @@ function Tab({ id }: { readonly id: string }) {
         {id === MAIN_TAB ? <AppWindowMac className="size-3.5 shrink-0 text-muted-foreground" /> : node ? <StatusDot tone={waitsForKey(node) ? "bad" : stateTone(node.state)} /> : feature ? <MapMarkIcon mark={feature.mark} /> : <StatusDot tone="idle" />}
         <span className="truncate">{title}</span>
       </button>
-      <button type="button" onClick={() => closeTab(id)} aria-label={`Close ${title}`} className={cn("mr-1.5 grid size-5 shrink-0 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground", !active && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")}>
-        <X className="size-3.5" />
-      </button>
-    </div>
-  );
-}
-
-function Nothing() {
-  const { tabs } = useWorkspace();
-  return (
-    <div className="grid h-full place-items-center p-6 text-center" data-view="no-tab">
-      <div className="flex max-w-xs flex-col items-center gap-3 text-sm text-muted-foreground">
-        <Mark className="size-8 opacity-60" />
-        <p>{tabs.length ? "Pick an open tab or a feature in the list" : "Pick a feature in the list"} to see its running app, its messages and what changed.</p>
-      </div>
+      {id === MAIN_TAB ? (
+        <span className="w-2 shrink-0" />
+      ) : (
+        <button type="button" onClick={() => closeTab(id)} aria-label={`Close ${title}`} className={cn("mr-1.5 grid size-5 shrink-0 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground", !active && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")}>
+          <X className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }
 
 export function TabContent() {
   const { activeTab, feature, data } = useWorkspace();
-  if (activeTab === null) return <Nothing />;
-  if (!data.ready) return <PanelSkeleton />;
-  if (activeTab === MAIN_TAB)
+  if (activeTab === null || activeTab === MAIN_TAB)
     return (
       <Suspense fallback={<PanelSkeleton />}>
         <MainTabView />
       </Suspense>
     );
-  if (!feature) return <Missing />;
+  if (!feature) return data.ready ? <Missing /> : <PanelSkeleton />;
   if (feature.sessions.length === 0)
     return (
       <Suspense fallback={<PanelSkeleton />}>
@@ -82,19 +71,17 @@ export function SessionTabs({ onClose }: { readonly onClose?: () => void }) {
   const { tabs } = useWorkspace();
   return (
     <div className="flex h-full min-h-0 flex-col" id="sessions">
-      {tabs.length ? (
-        <div role="tablist" aria-label="Open features" className="flex h-11 shrink-0 items-stretch overflow-x-auto dash-b bg-sidebar">
-          {tabs.map((id) => (
-            <Tab key={id} id={id} />
-          ))}
-          <span className="flex-1" />
-          {onClose ? (
-            <button type="button" onClick={onClose} aria-label="Back to the chat" className="grid w-10 shrink-0 place-items-center text-muted-foreground hover:text-foreground">
-              <X className="size-4" />
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      <div role="tablist" aria-label="Open features" className="flex h-11 shrink-0 items-stretch overflow-x-auto dash-b bg-sidebar">
+        {tabs.map((id) => (
+          <Tab key={id} id={id} />
+        ))}
+        <span className="flex-1" />
+        {onClose ? (
+          <button type="button" onClick={onClose} aria-label="Back to the chat" className="grid w-10 shrink-0 place-items-center text-muted-foreground hover:text-foreground">
+            <X className="size-4" />
+          </button>
+        ) : null}
+      </div>
       <div className="min-h-0 flex-1">
         <TabContent />
       </div>

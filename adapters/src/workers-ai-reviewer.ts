@@ -19,6 +19,7 @@ export class WorkersAiReviewer implements Reviewer {
   }
 
   async review(input: ReviewInput): Promise<ReviewVerdict> {
+    if (input.ownStructure) return this.picker.review(input);
     const output = await this.ai.run(this.baseModel, { prompt: gemmaPrompt(reviewMessages(input)), raw: true, lora: this.lora, max_tokens: 48, temperature: 0 });
     const text = (output as { response?: unknown } | null)?.response;
     if (typeof text !== "string") throw new Error(`${this.model} returned no text`);

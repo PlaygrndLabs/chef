@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { laneLayout } from "../../../template/app/gen.ts";
 import type { ChefEvent } from "../../src/events/events.ts";
 import { RuleReviewer, TemplatePlanner, type Script } from "../../src/fakes/index.ts";
+import type { AppHost, AppRun } from "../../src/ports/app-host.ts";
 import type { CoderTurnInput } from "../../src/ports/coder.ts";
 import type { Plan, PlanInput } from "../../src/ports/planner.ts";
 import type { ReviewInput, ReviewVerdict } from "../../src/ports/reviewer.ts";
@@ -270,6 +271,32 @@ describe("roles working in parallel inside one feature", () => {
     const rework = w.coder.turns.filter((t) => t.lane).slice(2);
     expect(rework.map((t) => t.role)).toEqual(["frontend"]);
     expect(rework[0]?.prompt).toContain("Fix only the points about your own files");
+  });
+
+  it("sends an app that fails to build after the merge back to the role whose file broke it", async () => {
+    let failures = 0;
+    const apps: AppHost = {
+      async run(input): Promise<AppRun> {
+        if (failures-- > 0) return { status: "failed", url: null, local: null, commitId: input.commitId, error: `the app did not start: app logged an error: Could not resolve "./missing.ts" in ${PARTS.backend}:3` };
+        return { status: "running", url: null, local: `http://${input.target}.local.example`, commitId: input.commitId };
+      },
+    };
+    const { script } = laneScript((input, attempt) => {
+      if (input.role !== "backend") return null;
+      if (attempt === 1) failures = 1;
+      return { [PARTS.backend]: `${backendRoutes}${"\n".repeat(attempt - 1)}` };
+    });
+    const w = world({ script, deps: { apps, planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    const record = await w.orchestrator.run(sessionId as string);
+
+    expect(record.machine.state, record.machine.reason).toBe("merged");
+    const rework = w.coder.turns.filter((t) => t.lane).slice(2);
+    expect(rework.map((t) => t.role)).toEqual(["backend"]);
+    expect(rework[0]?.prompt).toContain('Could not resolve "./missing.ts"');
+    expect(ofType(w.bus.log, "lane.updated").filter((e) => e.status === "unchanged")).toEqual([]);
+    expect(ofType(w.bus.log, "review.verdict")).toHaveLength(1);
   });
 
   it("keeps one role's steps in order on one branch", async () => {

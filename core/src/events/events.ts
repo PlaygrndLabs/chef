@@ -16,6 +16,7 @@ export type ChefEvent = Base &
   (
     | { readonly type: "route.decided"; readonly prompt: string; readonly decision: RouteDecision }
     | { readonly type: "question.answered"; readonly prompt: string; readonly answer: string; readonly sources: readonly string[] }
+    | { readonly type: "route.failed"; readonly prompt: string; readonly error: string }
     | { readonly type: "session.created"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly reason: string; readonly attempt: { readonly group: string; readonly index: number; readonly of: number }; readonly parent: string | null; readonly kind?: "feature" | "chore"; readonly hotfix?: boolean }
     | { readonly type: "session.held"; readonly sessionId: string; readonly featureId: string; readonly by: string | null }
     | { readonly type: "session.state"; readonly sessionId: string; readonly featureId: string; readonly from: SessionState; readonly to: SessionState; readonly reason: string }

@@ -478,7 +478,7 @@ export function FeatureTree({ children }: { readonly children?: React.ReactNode 
     <ActionsContext.Provider value={actions}>
       {children}
       <nav id="features" aria-label="Features" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1.5 pb-2">
-        {!data.ready ? (
+        {!data.loaded.spec || !data.loaded.records ? (
           <ListSkeleton />
         ) : tree.length ? (
           <>
@@ -492,7 +492,7 @@ export function FeatureTree({ children }: { readonly children?: React.ReactNode 
         ) : (
           <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Each thing you ask for in the chat shows up here, and new parts sit under the feature they add to. For a project that already has code, ask Chef to map its current features.</p>
         )}
-        {data.ready ? (
+        {data.loaded.spec && data.loaded.records ? (
           <button type="button" onClick={() => setAdding({ parent: null })} data-action="add-wish" className="mt-1 flex h-7 items-center gap-2 px-2 text-left text-xs text-muted-foreground hover:text-foreground">
             <Plus className="size-3.5" />
             Add a wish

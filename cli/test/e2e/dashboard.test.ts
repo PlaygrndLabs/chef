@@ -8,7 +8,7 @@ import { REPO_ROOT } from "../../src/world.ts";
 const DIST = join(REPO_ROOT, "apps", "dashboard", "dist");
 
 describe("dashboard in a browser", () => {
-  it("starts with no projects, creates one, sends a chat message through CopilotKit, follows the feature until it goes live and opens it", async () => {
+  it("starts with no projects, creates one, sends a chat message through CopilotKit, follows the feature until it is merged and opens it", async () => {
     expect(existsSync(join(DIST, "index.html")), "run pnpm build first").toBe(true);
     const local = await serve({ port: 0, real: false, assets: DIST });
     const browser = await chromium.launch();
@@ -47,12 +47,15 @@ describe("dashboard in a browser", () => {
       await input.press("Enter");
       const card = page.locator('#chat [data-session="s1"][data-state="merged"]');
       await card.waitFor({ timeout: 60_000 });
-      expect(await card.innerText()).toContain("Live");
+      expect(await card.innerText()).toContain("Merged");
+      expect(await card.innerText()).toContain("merged into main");
       expect(await page.locator("#chat").innerText()).toContain("On it. This is a new feature.");
       await expect.poll(() => page.locator('#features [data-session="s1"]').getAttribute("data-state"), { timeout: 10_000 }).toBe("merged");
-      await page.locator('#features [data-feature="todo-add"][data-status="merged"][data-group="live"]').waitFor();
+      await page.locator('#features [data-feature="todo-add"][data-status="merged"][data-group="merged"]').waitFor();
       expect(await page.locator('#project-bar [data-chip="working"]').innerText()).toContain("Nothing running");
-      expect(await page.locator('[data-view="no-tab"]').count()).toBe(1);
+      expect(await page.locator('#sessions [data-view="main"]').count()).toBe(1);
+      expect(await page.locator('#sessions [data-tab=":main"]').getAttribute("aria-selected")).toBe("true");
+      expect(await page.locator('#sessions [aria-label="Close main"]').count()).toBe(0);
       await card.click();
       const feature = page.locator('[data-view="feature"][data-state="merged"]');
       await feature.waitFor({ timeout: 10_000 });
@@ -62,7 +65,7 @@ describe("dashboard in a browser", () => {
       await page.getByRole("tab", { name: "Messages" }).click();
       await feature.locator('[data-review="approved"]').waitFor();
       await feature.locator('[data-gate="passed"]').waitFor();
-      expect(await feature.innerText()).toContain("Went live");
+      expect(await feature.innerText()).toContain("Merged into main");
       expect(await feature.locator("textarea").count()).toBe(0);
       await page.getByRole("tab", { name: "Checks" }).click();
       await page.getByRole("tabpanel", { name: "Checks" }).locator('[data-check][data-ok="true"]').first().waitFor({ timeout: 10_000 });
@@ -107,7 +110,7 @@ describe("dashboard in a browser", () => {
       await page.locator('#features [data-feature="shout"]').click();
       await page.locator('[data-view="feature"][data-feature="shout"]').waitFor({ timeout: 10_000 });
       expect(await page.getByRole("tab", { name: "App", exact: true }).getAttribute("aria-selected")).toBe("true");
-      expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual(["todo-add", "shout"]);
+      expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual([":main", "todo-add", "shout"]);
       await page.locator("#sessions").getByRole("tabpanel", { name: "App" }).waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "Close Shout a phrase" }).click();
       await page.locator('[data-view="feature"][data-feature="todo-add"]').waitFor({ timeout: 10_000 });

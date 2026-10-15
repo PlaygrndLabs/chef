@@ -1,9 +1,10 @@
-import type { AppHost, AppRun, RepoHost } from "@chef/core";
+import { APP_START_SECONDS, type AppHost, type AppRun, type RepoHost } from "@chef/core";
 import type { AppJob, AppState } from "./session-agent.ts";
 
 type AppStub = { runApp(job: AppJob, readToken: string): Promise<AppState> };
 
 const TOKEN_SECONDS = 3600;
+const ANSWER_MS = (2 * (APP_START_SECONDS + 60) + 180) * 1000;
 
 export class SandboxAppHost implements AppHost {
   constructor(
@@ -24,7 +25,8 @@ export class SandboxAppHost implements AppHost {
     let state: AppState;
     try {
       const stub = this.sessions.get(this.sessions.idFromName(input.target)) as unknown as AppStub;
-      state = await stub.runApp({ target: input.target, project: this.options.project, remote: info.remote, ref: input.ref, commitId: input.commitId, env: await this.options.env(), idleMinutes: await this.options.idleMinutes() }, token.secret);
+      const job = { target: input.target, project: this.options.project, remote: info.remote, ref: input.ref, commitId: input.commitId, env: await this.options.env(), idleMinutes: await this.options.idleMinutes(), startSeconds: APP_START_SECONDS };
+      state = await answered(stub.runApp(job, token.secret), input);
     } finally {
       await this.repos.revokeToken(token);
     }
@@ -34,5 +36,17 @@ export class SandboxAppHost implements AppHost {
       return null;
     }) : null;
     return { status, url, local: status === "running" && state.port ? `http://127.0.0.1:${state.port}` : null, commitId: state.commitId, ...(state.error ? { error: state.error } : status === "failed" ? { error: "the app did not start" } : {}) };
+  }
+}
+
+async function answered(run: Promise<AppState>, input: { readonly target: string; readonly commitId: string }): Promise<AppState> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<AppState>((resolve) => {
+    timer = setTimeout(() => resolve({ status: "failed", target: input.target, project: "", commitId: input.commitId, port: null, idleMinutes: 0, at: Date.now(), error: `the sandbox did not report on the app within ${Math.round(ANSWER_MS / 60_000)} minutes` }), ANSWER_MS);
+  });
+  try {
+    return await Promise.race([run, late]);
+  } finally {
+    clearTimeout(timer);
   }
 }

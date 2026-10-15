@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Rocket, Share2, ShieldCheck, Trophy, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Share2, ShieldCheck, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -14,14 +14,14 @@ import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, stateTone } from "@/lib/format";
 import { currentSession, heldBy, isChore, relationsOf, nodeStatus, waitsForBudget, waitsForKey, waitsForMerge, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
-import { activity, plainReason, progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
+import { activity, plainReason, progress, STAGES, updates, whatFailed, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
 import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 import { ShareDialog } from "@/components/share-dialog";
 import { host } from "@/host";
 
-const ICONS: Readonly<Record<UpdateIcon, typeof Check>> = { plan: ListChecks, test: FlaskConical, code: Code2, review: MessageSquareText, check: ShieldCheck, live: Rocket, alert: AlertTriangle, stop: OctagonX, sync: GitMerge, pick: Trophy };
+const ICONS: Readonly<Record<UpdateIcon, typeof Check>> = { plan: ListChecks, test: FlaskConical, code: Code2, review: MessageSquareText, check: ShieldCheck, merged: GitMerge, alert: AlertTriangle, stop: OctagonX, sync: GitMerge, pick: Trophy };
 const TONE: Readonly<Record<UpdateTone, string>> = { ok: "text-ok", run: "text-run", bad: "text-bad", idle: "text-muted-foreground" };
 
 function Steps({ node }: { readonly node: SessionNode }) {
@@ -199,7 +199,8 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   const { api, data, focusComposer } = useWorkspace();
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const feedback = node.record?.machine.feedback;
+  const reason = plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "");
+  const failed = whatFailed({ feedback: node.record?.machine.feedback, history: node.record?.history, verdict: node.live?.verdict ?? node.record?.verdict });
   const retry = async () => {
     setBusy(true);
     try {
@@ -215,6 +216,17 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-bad/30 bg-bad/5 p-4" data-needs-you={node.id}>
       <div className="font-medium text-bad">Chef needs your help</div>
+      {reason ? (
+        <p className="text-sm" data-stuck-reason>
+          {reason}
+        </p>
+      ) : null}
+      {failed ? (
+        <section className="flex flex-col gap-1.5" data-what-failed>
+          <h4 className="kicker">What failed</h4>
+          <pre className="max-h-56 overflow-auto border border-dashed bg-background p-3 font-mono text-xs whitespace-pre-wrap">{failed}</pre>
+        </section>
+      ) : null}
       <p className="text-sm text-muted-foreground">
         Press Try again, tell Chef in the{" "}
         <button type="button" onClick={focusComposer} className="underline underline-offset-2 hover:text-foreground">
@@ -222,17 +234,6 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
         </button>{" "}
         what to do differently, or stop this build. Main and its app are not affected.
       </p>
-      {feedback ? (
-        <Collapsible>
-          <CollapsibleTrigger className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground">
-            What failed
-            <ChevronDown className="size-3" />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-background p-3 font-mono text-xs whitespace-pre-wrap">{feedback}</pre>
-          </CollapsibleContent>
-        </Collapsible>
-      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => void retry()} disabled={busy}>
           {busy ? <Loader2 className="animate-spin" /> : <RotateCcw />}
@@ -263,7 +264,7 @@ function StopDialog({ node, open, onOpenChange }: { readonly node: SessionNode; 
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Stop building this?</AlertDialogTitle>
-          <AlertDialogDescription>Chef stops working on it and nothing goes live. The work so far is kept, and you can start over later.</AlertDialogDescription>
+          <AlertDialogDescription>Chef stops working on it and nothing is merged. The work so far is kept, and you can start over later.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep going</AlertDialogCancel>
@@ -405,7 +406,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
   const active = node ? isActive(node.state) : false;
   const held = node ? heldBy(node) : null;
   const criteria = feature.spec?.acceptance ?? [];
-  const isLive = node ? node.state === "merged" : feature.status === "merged";
+  const isMerged = node ? node.state === "merged" : feature.status === "merged";
   useEffect(() => {
     if (active) end.current?.scrollIntoView({ block: "end" });
   }, [list.length, node?.id, active]);
@@ -417,7 +418,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
             <TryTabs node={node} />
             <Steps node={node} />
             <Team node={node} />
-            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)} It goes on when the budget is raised or next month starts.` : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : waitsForMerge(node) ? "Passed every check. Waiting for you to merge it into main." : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : p.now}</p>
+            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)} It goes on when the budget is raised or next month starts.` : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : waitsForMerge(node) ? "Passed every check. Waiting for you to merge it into main." : held ? `Passed review. Waiting for hotfix ${held} to be merged first.` : active ? activity(node.state, timeline, null) : p.now}</p>
           </div>
         </div>
       ) : null}
@@ -435,11 +436,11 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
           {node ? <Related node={node} /> : null}
           {criteria.length ? (
             <section className="flex flex-col gap-2.5" data-criteria>
-              <h2 className="kicker">{isLive ? "What it does" : "What it must do to go live"}</h2>
+              <h2 className="kicker">{isMerged ? "What it does" : "What it must do to be merged"}</h2>
               <ul className="flex flex-col gap-2">
                 {criteria.map((c) => (
                   <li key={c.id} className="flex gap-2.5">
-                    {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 border border-muted-foreground" />}
+                    {isMerged ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 border border-muted-foreground" />}
                     <span>{c.text}</span>
                   </li>
                 ))}

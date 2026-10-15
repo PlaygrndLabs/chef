@@ -17,6 +17,7 @@ const SplitSchema = z.object({
       kind: z.enum(["new", "change"]),
       prompt: z.string(),
       featureId: z.string().nullable(),
+      path: z.string().nullable(),
       changeKind: z.enum(["bug", "extend", "refactor"]).nullable(),
     }),
   ),
@@ -82,13 +83,13 @@ export class LlmPlanner implements Planner {
         `Request:\n${input.prompt}\n\n${guess}`,
         [
           "Split the request into the features it asks for. Each part is built by its own session, in parallel with the others, so parts must not depend on each other; if one part needs another part of this same request to exist first, keep them together as one part.",
-          'kind "new": a capability the product does not have yet. Put it under the existing feature it builds on by giving that feature\'s id in featureId (for example "delete items" goes under the todo list), or null when it stands on its own. Adding behavior to an existing feature is a new child feature.',
-          'kind "change": fixing, adjusting or refactoring what one existing feature already does. Give its id in featureId and the changeKind (bug, extend or refactor).',
+          'kind "new": a capability the product does not have yet. It goes under an existing feature only when using it takes that feature\'s steps first: the person reaches the parent and then does more there (for example "delete items" goes under the todo list: open the list, then press Delete on an item). Then give the parent\'s id in featureId and, in path, the steps that follow from where the parent leaves off. A part reached on its own, such as another page of the same app opened from its navigation or its own address, stands on its own with featureId and path null, even when it belongs to the same app, relates to an existing feature or is asked for right after it. For example the meetings page and the members page of a book club app are siblings of its reading list, not parts of it.',
+          'kind "change": fixing, adjusting or refactoring what one existing feature already does. Give its id in featureId and the changeKind (bug, extend or refactor), with path null.',
           "Write each part's prompt as a short, complete request in the person's words that makes sense on its own. Most requests are a single part; never split one capability into steps.",
         ].join("\n"),
       ].join("\n\n"),
     });
-    return result.parts.map((part): SplitPart => (part.kind === "change" && part.featureId ? { kind: "change", prompt: part.prompt, featureId: part.featureId, changeKind: part.changeKind ?? "extend" } : { kind: "new", prompt: part.prompt, parent: part.featureId }));
+    return result.parts.map((part): SplitPart => (part.kind === "change" && part.featureId ? { kind: "change", prompt: part.prompt, featureId: part.featureId, changeKind: part.changeKind ?? "extend" } : { kind: "new", prompt: part.prompt, parent: part.featureId, path: part.path }));
   }
 
   async plan(input: PlanInput): Promise<Plan> {
@@ -104,9 +105,9 @@ export class LlmPlanner implements Planner {
         `Roles for code, fix and refactor items (pick the one that fits each item; "test" items use the test role):\n${builders.map((b) => `- ${b.role}: ${b.description}`).join("\n")}`,
         "Items of different roles run at the same time, each role on its own branch, and Chef merges them into the feature; items of one role run in order. When the feature has parts that can be built apart (its server routes, its page, its look), give each part to its role as a separate item, and write into every item the contract the parts share (route paths, JSON shapes, element ids and class names, file names) so no role has to wait for another. Name one role for each shared thing, such as the .ts module that holds the page's CSS: a file belongs to the role that writes it first, and only that role may change it. Use a single role when the parts cannot be built apart.",
         existing ? `Current spec entry:\n${JSON.stringify(existing, null, 2)}` : `Existing feature ids: ${input.spec.map((f) => f.id).join(", ") || "none"}`,
-        ...(parent ? [`This feature sits under ${parent.id} (${parent.title}) and adds to it. Give it its own id and folder. It may also change files in features/${parent.id}/ to wire itself in, for example a button on that feature's page.`] : input.parent ? [`This feature sits under ${input.parent} in the feature list and adds to it.`] : []),
+        ...(parent ? [input.ownStructure ? `This feature sits under ${parent.id} (${parent.title}) and adds to it. Give it its own id, and wire it into the code where ${parent.id} already lives, for example a button on that feature's page.` : `This feature sits under ${parent.id} (${parent.title}) and adds to it. Give it its own id and folder. It may also change files in features/${parent.id}/ to wire itself in, for example a button on that feature's page.`] : input.parent ? [`This feature sits under ${input.parent} in the feature list and adds to it.`] : []),
         ...mapOf(input.map),
-        `Environment: when the feature talks to an outside service or needs a key or setting the person provides, list the environment variable names it reads in env, in capital snake case like STRIPE_SECRET_KEY, and reuse a name the project already has when it fits. The app reads them at runtime from context.env; their values never go in the code or the spec. Set in this project: ${input.env?.map((v) => v.name).join(", ") || "none"}.`,
+        `Environment: when the feature talks to an outside service or needs a key or setting the person provides, list the environment variable names it reads in env, in capital snake case like STRIPE_SECRET_KEY, and reuse a name the project already has when it fits. ${input.ownStructure ? "The app reads them at runtime from its environment" : "The app reads them at runtime from context.env"}; their values never go in the code or the spec. Set in this project: ${input.env?.map((v) => v.name).join(", ") || "none"}.`,
         ...earlier(input.conversation),
         `Request:\n${input.prompt}`,
         "Write the full spec entry for this feature, including a body of a few sentences that describes it, and the work items.",

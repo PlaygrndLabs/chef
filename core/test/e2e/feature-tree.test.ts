@@ -9,8 +9,8 @@ const SPLITS = new Map([
   [
     EDIT_AND_DELETE,
     [
-      { kind: "new", prompt: "Let people delete an item from the todo list", parent: "todo-add" },
-      { kind: "new", prompt: "Let people edit an item in the todo list", parent: "todo-add" },
+      { kind: "new", prompt: "Let people delete an item from the todo list", parent: "todo-add", path: "Press Delete next to an item." },
+      { kind: "new", prompt: "Let people edit an item in the todo list", parent: "todo-add", path: "Press Edit next to an item." },
     ] as const,
   ],
 ]);
