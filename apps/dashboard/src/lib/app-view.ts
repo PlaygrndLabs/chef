@@ -34,6 +34,10 @@ export function frameReport(data: unknown): FrameReport | null {
   return { path, title: typeof title === "string" ? title : "", pages: valid };
 }
 
+export function builtPage(wanted: string | null, report: FrameReport, start: string): string | null {
+  return wanted && report.path === start && report.pages.some((p) => p.path === wanted) ? wanted : null;
+}
+
 export function addressPath(input: string): string {
   const text = input.trim();
   if (/^https?:\/\//i.test(text)) {
