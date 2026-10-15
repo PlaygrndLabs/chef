@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
-import type { ProjectEntry } from "@chef/adapters/projects";
+import type { ProjectActivity, ProjectEntry } from "@chef/adapters/projects";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import type { SharedInstructions } from "@chef/adapters/guidance";
 import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type SaveResult, type StoredAgents } from "@chef/core";
@@ -17,6 +17,7 @@ const GRANT = "access/grant/";
 const USED = "access/used/";
 const TOUCH_MS = 60_000;
 const PROJECTS = "projects";
+const ACTIVITY = "projects/activity/";
 const GITHUB_APP = "github/app";
 const GITHUB_LINKS = "github/links";
 const GITHUB_PENDING = "github/pending";
@@ -95,8 +96,18 @@ export class Settings extends DurableObject<Env> {
     return true;
   }
 
+  async activity(): Promise<Record<string, ProjectActivity>> {
+    const entries = await this.ctx.storage.list<ProjectActivity>({ prefix: ACTIVITY });
+    return Object.fromEntries([...entries].map(([key, value]) => [key.slice(ACTIVITY.length), value]));
+  }
+
+  async noteProjectActivity(name: string, activity: ProjectActivity): Promise<void> {
+    await this.ctx.storage.put(`${ACTIVITY}${name}`, activity);
+  }
+
   async forgetProject(name: string): Promise<void> {
     await this.ctx.storage.put(PROJECTS, (await this.projects()).filter((p) => p.name !== name));
+    await this.ctx.storage.delete(`${ACTIVITY}${name}`);
     await this.linkRepository(name, null);
     await this.updateCaps({ projects: { [name]: null } });
     for (const grant of (await this.grants()).grants) if (grant.kind === "share" && targetOf(grant)?.project === name) await this.removeGrant(grant.id);

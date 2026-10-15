@@ -34,11 +34,12 @@ describe("dashboard in a browser", () => {
       await page.locator("#home-link").click();
       const start = page.locator('[data-view="start"]');
       await start.waitFor({ timeout: 10_000 });
-      expect(await start.locator('[data-project="shop"]').innerText()).toContain("Last opened");
+      expect(await start.locator('#recent-projects [data-project="shop"]').innerText()).toMatch(/Opened/i);
+      await start.locator('#sidebar-projects [data-project="shop"]').waitFor();
       await start.locator("#start-new-project").click();
       await page.locator('[data-dialog="new-project"]').waitFor();
       await page.keyboard.press("Escape");
-      await start.locator('[data-project="shop"]').click();
+      await start.locator('#recent-projects [data-project="shop"]').click();
       await page.locator("#chat textarea").waitFor();
       expect(new URL(page.url()).searchParams.get("project")).toBe("shop");
       const input = page.locator("#chat textarea");
