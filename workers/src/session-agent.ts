@@ -135,7 +135,7 @@ export class SessionAgent extends Agent<Env> {
   private busy = 0;
   private following: string | null = null;
   private visited = 0;
-  private appRun: Promise<AppState> | null = null;
+  private appRun: { readonly commitId: string; readonly run: Promise<AppState> } | null = null;
 
   async status(): Promise<SandboxStatus> {
     return { running: this.ctx.container?.running ?? false, exit: this.exit };
@@ -288,9 +288,19 @@ export class SessionAgent extends Agent<Env> {
   }
 
   async runApp(job: AppJob, readToken: string): Promise<AppState> {
-    if (this.appRun) return this.appRun;
-    this.appRun = this.startApp(job, readToken).finally(() => (this.appRun = null));
-    return this.appRun;
+    const current = this.appRun;
+    if (current?.commitId === job.commitId) return current.run;
+    const before = current ? current.run.catch(() => undefined) : Promise.resolve();
+    const entry: { readonly commitId: string; readonly run: Promise<AppState> } = {
+      commitId: job.commitId,
+      run: before
+        .then(async (): Promise<AppState> => (this.appRun === entry ? this.startApp(job, readToken) : ((await this.ctx.storage.get<AppState>(APP)) ?? this.startApp(job, readToken))))
+        .finally(() => {
+          if (this.appRun === entry) this.appRun = null;
+        }),
+    };
+    this.appRun = entry;
+    return entry.run;
   }
 
   private async startApp(job: AppJob, readToken: string): Promise<AppState> {

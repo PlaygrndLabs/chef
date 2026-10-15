@@ -142,7 +142,7 @@ describe("phase 3 specialization on fakes", () => {
     expect(w.coder.turns.filter((t) => t.role === "backend").map((t) => t.attempt)).toEqual(expect.arrayContaining([{ index: 1, of: 2 }, { index: 2, of: 2 }]));
     const main = await w.orchestrator.mainTree();
     expect(main.tree[INDEX_PATH]).toBe(todo[INDEX_PATH]);
-    expect(w.apps.runs.filter((r) => r.target === second).at(-1)?.commitId).toBe(byId.get(second)?.head);
+    expect(w.apps.runs.filter((r) => r.target === second).at(-1)?.commitId).toBe(byId.get(second)?.commits.at(-2));
   });
 
   it("reverts one merge later without undoing an unrelated merge after it", async () => {
