@@ -66,6 +66,17 @@ describe("llm endpoint", () => {
     expect(JSON.stringify(seen[0]?.body["messages"])).toContain("- features/todo/**");
   });
 
+  it("reviews a change that rewrites a big lockfile without its contents", async () => {
+    const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false });
+    const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl), "reviewer-model", "Review the diff.", 1000);
+    const feature = { id: "todo-due", title: "Due", status: "building" as const, entrypoint: "GET /", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: "shows" }], body: "b" };
+    const verdict = await reviewer.review({ feature, diff: { "src/app.js": "due()", "package-lock.json": "x".repeat(5000) }, checksLog: "" });
+    expect(verdict).toMatchObject({ approve: true });
+    const prompt = JSON.stringify(seen[0]?.body["messages"]);
+    expect(prompt).toContain("package-lock.json (lockfile the package manager wrote, 5000 characters, not shown)");
+    expect(prompt).not.toContain("xxxxxxxxxx");
+  });
+
   it("asks for a configured endpoint", () => {
     expect(() => llmFromEnv({})).toThrow(/ANTHROPIC_API_KEY/);
     expect(() => llmFromEnv({ LLM_BASE_URL: "https://llm.example" })).toThrow(/LLM_API_KEY/);

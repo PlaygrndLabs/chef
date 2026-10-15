@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { withGuidance, type FileChanges, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
+import { isLockfile, withGuidance, type FileChanges, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
 const VerdictSchema = z.object({ approve: z.boolean(), reasons: z.array(z.string()), retest: z.boolean() });
@@ -54,7 +54,7 @@ function renderScope(scope: readonly string[] | undefined): string {
 
 function renderDiff(diff: FileChanges): string {
   return Object.entries(diff)
-    .map(([path, content]) => (content === null ? `--- deleted ${path}` : `--- ${path}\n${content}`))
+    .map(([path, content]) => (content === null ? `--- deleted ${path}` : isLockfile(path) ? `--- ${path} (lockfile the package manager wrote, ${content.length} characters, not shown)` : `--- ${path}\n${content}`))
     .join("\n\n")
     .trim();
 }
