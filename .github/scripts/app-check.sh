@@ -30,8 +30,13 @@ echo "opening main's app through its enter link answered $answer"
 test "$answer" = 200
 if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${NAME:-}" ]; then
   api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/durable_objects/namespaces"
-  ns=$(curl -fsS -H "authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?per_page=1000" | jq -r --arg s "$NAME" '.result[] | select(.script == $s and .class == "ImageLayers") | .id')
-  kept=$(curl -fsS -H "authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$ns/objects?limit=10000" | jq '[.result[] | select(.hasStoredData)] | length')
-  echo "the image cache holds $kept layers and manifests"
+  namespaces=$(curl -fsS -H "authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?per_page=1000")
+  stored() {
+    ns=$(echo "$namespaces" | jq -r --arg s "$NAME" --arg c "$1" '.result[] | select(.script == $s and .class == $c) | .id')
+    curl -fsS -H "authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$ns/objects?limit=10000" | jq '[.result[] | select(.hasStoredData)] | length'
+  }
+  sessions=$(stored SessionAgent)
+  kept=$(stored ImageLayers)
+  echo "sandboxes with stored state: $sessions; the image cache holds $kept layers and manifests"
   test "$kept" -gt 0
 fi
