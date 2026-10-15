@@ -466,3 +466,14 @@ const ACTIVE: ReadonlySet<SessionState> = new Set(["queued", "planning", "testin
 export function isActive(state: SessionState): boolean {
   return ACTIVE.has(state);
 }
+
+export function routeAnswers(live: Pick<ProjectLive, "routes" | "answers">): (string | null)[] {
+  const taken = new Set<number>();
+  return live.routes.map((route) => {
+    if (route.decision.intent !== "question") return null;
+    const at = live.answers.findIndex((answer, i) => !taken.has(i) && answer.prompt === route.prompt && answer.at >= route.at);
+    if (at < 0) return null;
+    taken.add(at);
+    return live.answers[at]?.answer ?? null;
+  });
+}

@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/status";
 import { nodeStatus, waitsForBudget, waitsForKey, waitsForMerge, type FeatureStatus, type SessionNode } from "@/lib/model";
 import { activity, stripFeatureTag } from "@/lib/progress";
-import { isActive } from "@/lib/events";
+import { isActive, routeAnswers } from "@/lib/events";
+import { useNow } from "@/lib/live";
 import { sendError } from "@/lib/send";
 import type { OverviewState, Suggestion } from "@/lib/api";
 import { useOverview } from "@/lib/overview";
@@ -118,13 +119,20 @@ function replyFor(decision: RouteDecision, title: string | null, attempts: numbe
   return `On it. This is a new feature.${hotfix || parallel}`;
 }
 
-function Reply({ text, sessions }: { readonly text: string; readonly sessions: readonly SessionNode[] }) {
+function Reply({ text, sessions, waiting = false }: { readonly text: string; readonly sessions: readonly SessionNode[]; readonly waiting?: boolean }) {
   const shown = onePerFeature(sessions);
   return (
     <div className="flex gap-3">
       <Avatar />
       <div className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5">
-        {text ? <p className="text-sm whitespace-pre-wrap">{text}</p> : null}
+        {waiting ? (
+          <p className="flex items-center gap-3 text-sm text-muted-foreground" data-answer="waiting">
+            Looking into it
+            <Loader2 className="size-4 animate-spin" />
+          </p>
+        ) : text ? (
+          <p className="text-sm whitespace-pre-wrap">{text}</p>
+        ) : null}
         {shown.map((s) => (
           <FeatureCard key={s.id} node={s} />
         ))}
@@ -238,6 +246,7 @@ function OverviewMessage(props: { readonly state: OverviewState; readonly starte
 }
 
 const VOICE_MATCH_MS = 120_000;
+const ANSWER_WAIT_MS = 10 * 60_000;
 
 interface SaidTurn {
   readonly key: string;
@@ -295,16 +304,18 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   useSent();
   const messages = agent.messages as unknown as readonly ChatMessage[];
   const routes = data.live.routes;
+  const answers = routeAnswers(data.live);
+  const now = useNow(10_000);
 
   const history = routes.map((route, index, list) => {
         const next = list[index + 1]?.at ?? Number.POSITIVE_INFINITY;
         const own = sessions.filter((s) => s.record?.rootPrompt === route.prompt && (s.version ?? 1) === 1 && s.createdAt >= route.at - 2000 && s.createdAt < next);
         const title = features.find((f) => f.id === (own[0]?.featureId ?? route.decision.featureId))?.title ?? null;
-        const stored = data.live.answers.find((a) => a.prompt === route.prompt && a.at >= route.at && a.at < next)?.answer ?? "";
-        const answer = route.decision.intent === "question" ? stored || answerFor(messages, route.prompt) : "";
+        const question = route.decision.intent === "question";
+        const answer = question ? answers[index] || answerFor(messages, route.prompt) : "";
         const parts = new Set(own.map((s) => s.featureId)).size;
         const voiced = data.live.voice.some((v) => v.prompt === route.prompt && v.at >= route.at && v.at - route.at < VOICE_MATCH_MS);
-        return { ...route, sessions: own, voiced, reply: answer || replyFor(route.decision, title, parts > 1 ? own.length / parts : own.length, parts) };
+        return { ...route, sessions: own, voiced, waiting: question && !answer && now - route.at < ANSWER_WAIT_MS, reply: answer || replyFor(route.decision, title, parts > 1 ? own.length / parts : own.length, parts) };
       });
   const said = spokenTurns(data.live.spoken, talk, selection.project);
   const timeline = [...history.map((item) => ({ at: item.at, item, turn: null })), ...said.map((turn) => ({ at: turn.at, item: null, turn }))].sort((a, b) => a.at - b.at);
@@ -395,7 +406,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
                 ) : item ? (
                   <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
                     <You>{stripFeatureTag(item.prompt).text}</You>
-                    <Reply text={item.reply} sessions={item.sessions} />
+                    <Reply text={item.reply} sessions={item.sessions} waiting={item.waiting} />
                   </div>
                 ) : null,
               )}
