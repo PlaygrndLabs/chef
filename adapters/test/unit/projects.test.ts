@@ -151,4 +151,14 @@ describe("deleting a project", () => {
     expect(((await response.json()) as { error: string }).error).toContain("Cloudflare said no");
     expect(projects.list.map((p) => p.name)).toEqual(["shop", "blog"]);
   });
+
+  it("asks to try again when the project still runs the version before deleting existed", async () => {
+    const projects = listed();
+    const response = await removeProjectRequest(del("shop", { confirm: "shop" }), "shop", projects, async () => {
+      throw new TypeError('The RPC receiver does not implement the method "removeProject".');
+    });
+    expect(response.status).toBe(503);
+    expect(((await response.json()) as { error: string }).error).toBe("Chef was just updated and shop is still finishing on the previous version. Nothing was deleted; try again in a minute.");
+    expect(projects.list.map((p) => p.name)).toEqual(["shop", "blog"]);
+  });
 });
