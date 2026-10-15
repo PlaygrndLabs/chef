@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { deploy, ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, withImage, withSecret, type Runner } from "../../src/deploy.ts";
+import { deploy, ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, refusedToken, TOKEN_HELP, withImage, withSecret, type Runner } from "../../src/deploy.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const base = parseJsonc(readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8"));
@@ -25,6 +25,29 @@ describe("deploy", () => {
       vars: { PROJECT_WORKER_PREFIX: "trial-", CODER_MODEL: (base["vars"] as Record<string, string>)["CODER_MODEL"] },
     });
     expect(copy["durable_objects"]).toEqual(base["durable_objects"]);
+  });
+
+  it("gives a Worker the Deploy to Cloudflare button renamed its own resource names, keeping a memory index the person named", () => {
+    const renamed = { ...base, name: "my-chef" };
+    expect(instanceConfig(renamed, "my-chef")).toMatchObject({
+      name: "my-chef",
+      artifacts: [{ namespace: "my-chef" }],
+      workflows: [{ name: "my-chef-upstream-sync" }],
+      vectorize: [{ index_name: "my-chef-memory" }],
+      vars: { PROJECT_WORKER_PREFIX: "my-chef-" },
+    });
+    const named = { ...renamed, vectorize: [{ binding: "MEMORY", index_name: "notes" }] };
+    expect(instanceConfig(named, "my-chef")).toMatchObject({ vectorize: [{ index_name: "notes" }] });
+  });
+
+  it("says which token permissions to add when Cloudflare refuses the deploy's token", async () => {
+    expect(refusedToken("✘ [ERROR] Unauthorized")).toBe(true);
+    expect(refusedToken("Authentication error [code: 10000]")).toBe(true);
+    expect(refusedToken("Build failed with 1 error")).toBe(false);
+    const log: string[] = [];
+    const run: Runner = async (args) => ({ code: args[0] === "deploy" ? 1 : 0, output: args[0] === "deploy" ? "POST /containers/applications: Unauthorized" : "" });
+    await deploy({ name: "chef-dev", run, log: (line) => log.push(line) });
+    expect(log.at(-1)).toContain(TOKEN_HELP);
   });
 
   it("points every sandbox image at a prebuilt one, so a deploy needs no Docker", () => {

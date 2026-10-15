@@ -14,6 +14,8 @@
 
 <p align="center"><strong><a href="https://chef.playgrndlabs.com">Sign in with Cloudflare and start building →</a></strong></p>
 
+<p align="center">Or deploy Chef to your Cloudflare account from this repo:<br><br><a href="https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"></a></p>
+
 ## Why Chef
 
 AI can write code fast. Everything around the code is still slow: starting and tracking agent sessions, juggling branches and merge conflicts, setting up an environment to try each change, and checking that nothing broke before it ships.
@@ -30,6 +32,24 @@ Chef takes that work off your plate, so you spend your time on what to build, no
 - **Your keys stay yours.** Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.
 - **Or use your subscription.** Have a Claude subscription but no API key? [sub2api](https://github.com/PlaygrndLabs/sub2api) turns it into your own API on Cloudflare, so you can make an API key on your subscription and use it in Chef.
 - **GitHub when you want it.** Projects live in your Cloudflare account. Connect GitHub only if you want a repo kept in sync.
+
+## Deploy to Cloudflare
+
+You need a Cloudflare account on the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/), which includes Containers.
+
+1. Press **Deploy to Cloudflare** above. Cloudflare copies Chef into a new repository on your GitHub or GitLab account and builds it there.
+2. Set `CHEF_PASSWORD`, the password you sign in with. `openssl rand -base64 24` makes a good one.
+3. Give the build's API token what Chef needs. The token Cloudflare makes for builds can edit Workers but not Chef's sandboxes, so the first build stops and says so. Open your Worker's **Settings > Builds** to see the token's name, add **Containers**, **Artifacts** and **Vectorize** (Edit) to it under **My Profile > API Tokens**, then retry the build.
+4. Open `https://<worker name>.<your subdomain>.workers.dev`, sign in, and add your model provider and Cloudflare account in Settings.
+
+Your copy deploys again on every push to its `main`. To update it:
+
+```bash
+git pull https://github.com/PlaygrndLabs/chef main
+git push
+```
+
+If git refuses because the histories are unrelated, add `--allow-unrelated-histories` to the pull once.
 
 ## Under the hood
 
