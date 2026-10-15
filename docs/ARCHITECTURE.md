@@ -19,7 +19,7 @@ Every deploy goes through `chef deploy` (`pnpm run deploy`, `cli/src/deploy.ts`)
 | `workers` | The engine, the Chef Worker: `ProjectAgent` and `SessionAgent` Durable Objects, the coder sandbox, the `upstream-sync` Workflow, the HTTP API. |
 | `template` | The vertical-slice template every project Chef builds starts from, with its own `app` CLI (`gen`, `drive`, `proof`). |
 | `cli` | `chef` CLI: spec lint, code rules, routing, `chef deploy`, the local demo with real checks, benchmarks, the Jev spike, and `chef serve` (the dashboard on the in-memory world, used by the browser tests). |
-| `apps/dashboard` | Dashboard served by the Chef Worker (React, built with Vite into `dist/`): the feature tree on the left (main on top, which opens a main tab with main's running app, the release candidate, and a History of `main`: its commits, each commit's files and their diffs, like a desktop git client; child features under their parent, working ones first; rename, move and delete in place), the features opened as tabs in the middle, each opening on its running app with its messages, changes (the session's own branch: its commits and their diffs, and all its changes against where it branched off), checks and details one click away, and on the right the CopilotKit chat, the only place a person asks for work. A site that runs engines for others can build the same dashboard with its own `src/host/` folder, which adds account, menu and settings parts through the `Host` interface in `src/lib/host.ts`; Chef's own `src/host/` adds nothing. |
+| `apps/dashboard` | Dashboard served by the Chef Worker (React, built with Vite into `dist/`): the feature list on the left (main on top, which opens a main tab with main's running app, the release candidate, and a History of `main`: its commits, each commit's files and their diffs, like a desktop git client; child features under their parent, working ones first; rename, move and delete in place), the features opened as tabs in the middle, each opening on its running app with its messages, changes (the session's own branch: its commits and their diffs, and all its changes against where it branched off), checks and details one click away, and on the right the CopilotKit chat, the only place a person asks for work. A site that runs engines for others can build the same dashboard with its own `src/host/` folder, which adds account, menu and settings parts through the `Host` interface in `src/lib/host.ts`; Chef's own `src/host/` adds nothing. |
 | `agents` | Specialist profiles with write scopes. |
 
 ## Ports
@@ -45,7 +45,7 @@ The planner and reviewer call Claude through `adapters/src/anthropic.ts` with st
 ## Flow of one prompt
 
 1. **Route** (`core/src/router/router.ts`). Rules first (`/new`, `@feature` mentions, English questions). Then Jev answers three typed choice questions (intent, feature, change kind); its answer is used only above per-action confidence thresholds. Otherwise the planner triages.
-2. **Split** (`Router.split`). For a new feature or a change the router did not settle by rules, the planner splits the request into independent parts, one session each, built in parallel. A part that adds a capability is a new feature; it names the existing feature it builds on as its `parent` (spec field), sits under it in the dashboard's feature tree and may also change that parent's folder. A fix or refactor of one feature stays a new build of that feature. `#feature`, `/new`, `/chore` and `/hotfix` requests are never split.
+2. **Split** (`Router.split`). For a new feature or a change the router did not settle by rules, the planner splits the request into independent parts, one session each, built in parallel. A part that adds a capability is a new feature; it names the existing feature it builds on as its `parent` (spec field), sits under it in the dashboard's feature list and may also change that parent's folder. A fix or refactor of one feature stays a new build of that feature. `#feature`, `/new`, `/chore` and `/hotfix` requests are never split.
 3. **Plan**. The planner returns the feature spec and work items. Existing acceptance criteria are never dropped, and a spec change is always the first item.
 4. **Session**. The orchestrator forks canonical `main` into `<project>--<feature>--<session>` and drives the state machine in `core/src/session/machine.ts`:
    `queued → planning → testing → coding → reviewing → gating → merged | stuck | dropped`.
@@ -125,6 +125,16 @@ The project's code always lives on Artifacts, and every session and gate works t
   - `pull-request` (the default): the sync branch, plus one pull request that Chef keeps up to date. It lists the features merged on Chef but not yet on the repository's main branch, with a link to main's running app.
   - `feature-pull-requests`: the sync branch, plus one branch (`<sync branch>-<feature>`) and pull request per merged feature. Each is the feature's own diff applied on the repository's main branch.
 - **Access.** A link through Connect GitHub stores only the installation id. A link by URL takes a token that can push branches and open pull requests; it is stored in the project's Durable Object, and only its last four characters come back to the dashboard.
+
+## Feature list
+
+Features are first-class. Each project's feature list is a feature map kept in its repository under `.chef/features/` (`core/src/features`): one folder per feature named by its short name (unique in the project, the `featureId` sessions use), sub-features in sub-folders. A feature needs only a title; its session, branch, sandbox and running app may not exist.
+
+- `SPECS.md`: frontmatter `title` and `state` (`current` when the code on that branch has it, `wish` when it is wanted and not built); the body may describe it.
+- `PATH.md`: the steps from the parent feature's state to this feature's state. `.chef/features/PATH.md` says how to spin up the project. The whole way to a feature is the root file, then each ancestor's, then its own, so B sits under A when reaching B takes A's steps and more.
+- "Map the current features" (a chat suggestion for every imported project without a map, the `/map` command, or a request like "map the existing features") makes the planner model explore `main` (`adapters/src/feature-mapper.ts`: the file list plus the README, manifests, routes, pages and other source, within a size budget) and return features with parents and paths. `placeMapped` puts each under its parent by short name, skips ones already listed, and Chef commits the new folders to `main` under the merge lock, so they reach a linked repository through the usual outbound sync. A project without `.chef/features` simply has an empty map.
+- People change the map from the feature list (`POST /api/projects/:name/feature-map` with an add, update, move, remove or start edit), each change one commit on `main`.
+- The router sees mapped features alongside the spec, so `#<short name>` and plain requests reach them, and the planner gets the map outline when it splits, plans and answers. Its prompt (`agents/planner.md`) explains the map with Chef's own feature list as the example.
 
 ## Memory
 
@@ -227,6 +237,9 @@ Served by the Chef Worker (`workers/src/index.ts`):
 | `GET`/`PUT /api/instructions` | Instructions shared by every project, with a `previous` check against overwriting a newer save |
 | `GET`/`PUT /api/projects/:name/instructions` | The project's goal (`GOAL.md`) and instructions (`AGENTS.md`), committed to `main` |
 | `GET`/`POST`/`PUT /api/projects/:name/memory` | Lists the project's memory documents, adds a note, or edits or removes one |
+| `GET /api/projects/:name/feature-map` | The feature map on `main`: how to start the project and every feature with its parent, title, state and path |
+| `POST /api/projects/:name/feature-map` | Changes the map with one commit on `main`: `{ kind: "add", parent, title, state?, path?, specs? }` (a wish unless `state` says otherwise), `{ kind: "update", id, … }`, `{ kind: "move", id, parent }`, `{ kind: "remove", id }` or `{ kind: "start", path }` |
+| `POST /api/projects/:name/feature-map/map` | Explores `main` and adds the features the code already has; returns what it added |
 | `GET /api/projects/:name/spec` | The feature map, with main's running app (`mainApp`: its state, commit and address) |
 | `POST /api/projects/:name/main-app` | Starts main's app again |
 | `GET /api/projects/:name/history?limit=n` | The newest commits on `main` (50 by default, at most 500), each with its turn note when Chef made it |

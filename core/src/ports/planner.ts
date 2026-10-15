@@ -2,6 +2,8 @@ import type { ChatTurn } from "../router/conversation.ts";
 import type { ChangeKind, RouteIntent } from "../router/decision.ts";
 import type { FeatureSpec } from "../spec/schema.ts";
 import type { EnvVar } from "../env/env.ts";
+import type { Tree } from "../git/tree.ts";
+import type { MappedFeatures } from "../features/mapping.ts";
 import type { MemoryHit } from "./memory-index.ts";
 
 export type WorkKind = "spec_change" | "test" | "code" | "fix" | "refactor" | "chore" | "conflict";
@@ -38,6 +40,7 @@ export interface SplitInput {
   readonly spec: readonly FeatureSpec[];
   readonly decision: { readonly intent: "new_feature" | "change_feature"; readonly featureId: string | null; readonly changeKind: ChangeKind | null };
   readonly conversation?: string;
+  readonly map?: string;
 }
 
 export type SplitPart =
@@ -60,6 +63,7 @@ export interface PlanInput {
   readonly roles?: readonly BuilderRole[];
   readonly conversation?: string;
   readonly guidance?: string;
+  readonly map?: string;
 }
 
 export interface Plan {
@@ -72,6 +76,14 @@ export interface Plan {
 export interface AnswerInput {
   readonly question: string;
   readonly context: readonly MemoryHit[];
+  readonly map?: string;
+}
+
+export interface MapInput {
+  readonly project: string;
+  readonly tree: Tree;
+  readonly map: string;
+  readonly guidance?: string;
 }
 
 export interface Planner {
@@ -81,6 +93,7 @@ export interface Planner {
   split?(input: SplitInput): Promise<readonly SplitPart[]>;
   answer?(input: AnswerInput): Promise<string>;
   compact?(input: CompactInput): Promise<string>;
+  mapFeatures?(input: MapInput): Promise<MappedFeatures>;
 }
 
 const FILLER = new Set(["a", "an", "the", "to", "of", "and", "or", "for", "in", "on", "with", "our", "my", "all", "please", "chore", "hotfix"]);

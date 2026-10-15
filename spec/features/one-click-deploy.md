@@ -9,7 +9,7 @@ acceptance:
   - id: AC2
     text: The deploy creates the memory index when it is missing and needs no other manual Cloudflare setup
   - id: AC3
-    text: A named deploy gets its own Artifacts namespace, Workflow, memory index and preview Workers, so several chefs can share an account
+    text: A named deploy gets its own Artifacts namespace, Workflow, memory index and app router, so several chefs can share an account
   - id: AC4
     text: An example CHEF_PASSWORD is never accepted as the password
 ---

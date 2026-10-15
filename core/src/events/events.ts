@@ -31,6 +31,7 @@ export type ChefEvent = Base &
     | { readonly type: "main.merged"; readonly sessionId: string; readonly featureId: string; readonly commitId: string }
     | { readonly type: "chat.context"; readonly used: number; readonly limit: number; readonly turns: number; readonly summarized: number }
     | { readonly type: "feature.arranged"; readonly featureId: string; readonly title: string | null; readonly parent: string | null }
+    | { readonly type: "features.changed"; readonly commitId: string; readonly message: string; readonly ids: readonly string[] }
     | { readonly type: "features.removed"; readonly featureIds: readonly string[]; readonly commitId: string | null }
     | { readonly type: "main.reverted"; readonly featureId: string; readonly revertedCommit: string; readonly commitId: string; readonly log: string }
     | { readonly type: "sync.merged"; readonly sessionId: string; readonly featureId: string; readonly commitId: string; readonly mainCommit: string }

@@ -1,5 +1,6 @@
 export * from "./git/tree.ts";
 export * from "./spec/index.ts";
+export * from "./features/index.ts";
 export * from "./env/env.ts";
 export * from "./notes/notes.ts";
 export * from "./profiles/profile.ts";
@@ -19,6 +20,7 @@ export { TurnRunning } from "./ports/coder.ts";
 export * from "./orchestrator/capabilities.ts";
 export * from "./orchestrator/orchestrator.ts";
 export * from "./orchestrator/feature-request.ts";
+export * from "./orchestrator/feature-map-request.ts";
 export * from "./orchestrator/history-request.ts";
 export * from "./orchestrator/pump.ts";
 export * from "./sync/external.ts";

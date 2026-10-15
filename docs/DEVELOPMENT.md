@@ -7,7 +7,7 @@ spec/        Chef's own feature map
 core/        spec, router, state machine, orchestrator, merge, ports and fakes
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, guidance, GitHub, the CopilotKit agent
 workers/     the engine, the Chef Worker: project and session Durable Objects, coder sandbox, sync workflow (configured by the root wrangler.jsonc)
-apps/        dashboard: feature tree, session tabs that open on each branch's running app, and the CopilotKit project chat
+apps/        dashboard: feature list, session tabs that open on each branch's running app, and the CopilotKit project chat
 agents/      default role profiles with write scopes
 template/    the template every project Chef builds starts from
 cli/         Chef CLI: spec lint, deploy script (`chef deploy`), benchmarks, the test server, local check runners

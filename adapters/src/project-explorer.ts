@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hasFeatureMap, MAP_SUGGESTION } from "@chef/core";
 import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
 export const OverviewSchema = z.object({
@@ -55,10 +56,15 @@ export function digest(tree: Readonly<Record<string, string>>): { readonly paths
   return { paths: paths.slice(0, MAX_PATHS), files };
 }
 
-const SYSTEM = `You are chef, an agent that builds software features on its own. Someone just brought an existing project into chef, and you are reading it for the first time, the way a new teammate would.
+const SYSTEM = `You are Chef, an agent that builds software features on its own. Someone just brought an existing project into Chef, and you are reading it for the first time, the way a new teammate would.
 Write for the project's owner in plain words. No jargon they did not use, no file paths unless they help.`;
 
-export async function exploreProject(llm: LlmEndpoint, input: { readonly name: string; readonly tree: Readonly<Record<string, string>>; readonly model?: string }): Promise<Overview> {
+export function withMapSuggestion(overview: Overview, tree: Readonly<Record<string, string>>): Overview {
+  if (hasFeatureMap(tree) || overview.suggestions.some((s) => s.prompt === MAP_SUGGESTION.prompt)) return overview;
+  return { ...overview, suggestions: [{ ...MAP_SUGGESTION }, ...overview.suggestions] };
+}
+
+export async function exploreProject(llm: LlmEndpoint, input: { readonly name: string; readonly tree: Readonly<Record<string, string>>; readonly model?: string; readonly imported?: boolean }): Promise<Overview> {
   const { paths, files } = digest(input.tree);
   const prompt = [
     `Project: ${input.name}`,

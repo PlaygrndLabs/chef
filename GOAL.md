@@ -10,7 +10,8 @@ Chef is an AI app builder that runs on a person's own Cloudflare account: they d
 
 - **The person's own engine.** Chef deploys its engine (the Chef Worker, `workers/`) on the person's Cloudflare account with `chef deploy` or the Deploy to Cloudflare button. Agents, sandboxes, repositories, keys and running apps all run there. Chef runs on Cloudflare only.
 - **The spec is the memory, git is the state, chat is just input.**
-- **One chat, many sessions.** The project page has the feature tree on the left, session tabs in the middle (each opens on its running app), and the main chat on the right, the only place a person asks for work. The main row on top opens main's running app and the History of `main`, with every commit's changed files and diffs. Each session's Changes tab shows its own branch: every session starts from `main`, takes in what lands on `main` while it works, and merges into `main` when it is done, on its own or when someone presses Merge, as the project's settings say.
+- **One chat, many sessions.** The project page has the feature list on the left, session tabs in the middle (each opens on its running app), and the main chat on the right, the only place a person asks for work. The main row on top opens main's running app and the History of `main`, with every commit's changed files and diffs. Each session's Changes tab shows its own branch: every session starts from `main`, takes in what lands on `main` while it works, and merges into `main` when it is done, on its own or when someone presses Merge, as the project's settings say.
+- **Features are first-class.** A project's feature list is a feature map in its repository (`.chef/features/`): each feature has a title, a state (current or wish) and the steps to reach it from its parent, and needs no session to exist. Chef can explore an imported project and fill the map with the features it already has.
 - **Every feature is a session.** A feature is one spec entry with one running app. The router splits a request into independent parts that build in parallel, and a part that adds a capability becomes a child feature under the one it builds on. A session is a Durable Object plus its own Artifacts fork named `<project>--<feature>--<session>`.
 - **Roles work side by side.** When a plan has build steps for several roles (frontend, backend, designer and others), each role works on its own `lane/<role>` branch in its own sandbox, and Chef merges the lanes after each round.
 - **Every turn is a commit.** Each accepted agent turn is one commit with the prompt, run id, model, role and spec revision in git notes under `refs/notes/chef`.
@@ -53,7 +54,7 @@ spec/        Chef's own feature map
 
 ## Where it stands
 
-Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the tree, tabs and chat project page, request splitting into child features, parallel role lanes, a running app per branch, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default.
+Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the feature list, tabs and chat project page, request splitting into child features, parallel role lanes, a running app per branch, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default.
 
 ## Definition of done
 
