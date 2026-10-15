@@ -245,7 +245,10 @@ export class ProjectAgent extends Agent<Env> {
         return { commitId, created: true };
       });
     }
-    if (action === "overview" && request.method === "GET") return Response.json(await this.overview());
+    if (action === "overview" && request.method === "GET") {
+      if ((await this.overview()).status === "none" && (await orchestrator.mainTree()).commitId) await this.startReading();
+      return Response.json(await this.overview());
+    }
     if (action === "overview" && request.method === "POST") {
       if ((await this.overview()).status !== "reading") await this.startReading();
       return Response.json(await this.overview(), { status: 202 });
@@ -699,8 +702,8 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   async syncExternal(): Promise<void> {
-    const { external } = await this.build();
-    if (!external) return;
+    const { external, orchestrator } = await this.build();
+    if (!external || !(await orchestrator.mainTree()).commitId) return;
     try {
       const pulled = await external.pull();
       if (pulled.status === "merged" || pulled.status === "resolved") await this.schedule(1, "drive");
