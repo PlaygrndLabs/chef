@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from "react";
-import { AppWindow, Bot, ChevronRight, Clock, CornerDownRight, FlaskConical, GitMerge, KeyRound, ListChecks, MessageSquareText, MoreHorizontal, OctagonX, Palette, Pencil, Rocket, Server, ShieldCheck, Sprout, Trash2, TriangleAlert, type LucideIcon } from "lucide-react";
+import { ChevronRight, CornerDownRight, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -22,42 +22,6 @@ function stateText(node: SessionNode): string {
   if (waitsForMerge(node)) return "Ready to merge";
   if (heldBy(node)) return "Waiting";
   return PLAIN_STATE[node.state];
-}
-
-const ROLE_ICON: Readonly<Record<string, LucideIcon>> = {
-  planner: ListChecks,
-  test: FlaskConical,
-  backend: Server,
-  frontend: AppWindow,
-  designer: Palette,
-  reviewer: MessageSquareText,
-  "conflict-resolver": GitMerge,
-  gardener: Sprout,
-};
-
-function stateIcon(node: SessionNode): LucideIcon {
-  if (waitsForKey(node)) return KeyRound;
-  if (waitsForMerge(node)) return GitMerge;
-  if (heldBy(node) || node.state === "queued") return Clock;
-  if (node.state === "merged") return Rocket;
-  if (node.state === "stuck") return TriangleAlert;
-  if (node.state === "dropped") return OctagonX;
-  if (node.state === "gating") return ShieldCheck;
-  return Bot;
-}
-
-function Activity({ node, tone }: { readonly node: SessionNode; readonly tone: Tone }) {
-  const { selection } = useWorkspace();
-  const agents = useAgents(selection.project);
-  const role = workingRole(node);
-  const Icon = role ? (ROLE_ICON[role] ?? Bot) : stateIcon(node);
-  return (
-    <span className={cn("flex h-4 min-w-0 items-center gap-1.5 pl-4 text-[11px] text-muted-foreground", tone === "bad" && "text-bad")} {...(role ? { "data-working-role": role } : {})}>
-      <Icon className={cn("size-3 shrink-0", role && "text-run")} aria-hidden="true" />
-      <span className="min-w-0 truncate">{role ? roleLabel(role, agents) : stateText(node)}</span>
-      <KindBadges node={node} />
-    </span>
-  );
 }
 
 function readClosed(project: string): Set<string> {
@@ -244,14 +208,25 @@ function RowMenu({ node }: { readonly node: TreeNode }) {
 }
 
 function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonly depth: number; readonly closed: ReadonlySet<string>; readonly toggle: (id: string) => void }) {
-  const { feature: active, openFeature } = useWorkspace();
+  const { selection, feature: active, openFeature } = useWorkspace();
   const { renaming, rename, askDelete, setDragging } = useActions();
+  const agents = useAgents(selection.project);
   const drop = useDropTarget(node.feature.id);
   const { feature, session } = node;
   const open = !closed.has(feature.id);
   const current = active?.id === feature.id;
   const tone = toneOf(session);
+  const role = workingRole(session);
+  const doing = role ? roleLabel(role, agents) : stateText(session);
   const single = feature.sessions.length === 1;
+  const dot = (
+    <>
+      <StatusDot tone={tone} />
+      <span className="sr-only" {...(role ? { "data-working-role": role } : {})}>
+        {doing}
+      </span>
+    </>
+  );
   return (
     <li role="treeitem" aria-expanded={node.children.length ? open : undefined} aria-selected={current}>
       <div
@@ -263,7 +238,7 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
           setDragging(feature.id);
         }}
         onDragEnd={() => setDragging(null)}
-        className={cn("group relative flex items-start py-1 hover:bg-sidebar-accent", current && "bg-sidebar-accent", drop.active && "bg-sidebar-accent ring-1 ring-ring ring-inset")}
+        className={cn("group relative flex h-8 items-center hover:bg-sidebar-accent", current && "bg-sidebar-accent", drop.active && "bg-sidebar-accent ring-1 ring-ring ring-inset")}
         style={{ paddingLeft: 4 + depth * INDENT }}
       >
         {node.children.length ? (
@@ -274,12 +249,9 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
           <span className="size-5 shrink-0" />
         )}
         {renaming === feature.id ? (
-          <div className="flex min-w-0 flex-1 flex-col pr-2 pl-1">
-            <span className="flex h-5 items-center gap-2">
-              <StatusDot tone={tone} />
-              <TitleField node={node} />
-            </span>
-            <Activity node={session} tone={tone} />
+          <div className="flex h-full min-w-0 flex-1 items-center gap-2 pr-2 pl-1">
+            {dot}
+            <TitleField node={node} />
           </div>
         ) : (
           <>
@@ -302,16 +274,14 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
               data-state={session.state}
               {...(single ? { "data-session": session.id } : {})}
               aria-current={current ? "page" : undefined}
-              title={feature.title}
-              className="flex min-w-0 flex-1 flex-col pr-2 pl-1 text-left"
+              title={`${feature.title} · ${doing}`}
+              className="flex h-full min-w-0 flex-1 items-center gap-2 pr-2 pl-1 text-left text-sm"
             >
-              <span className="flex h-5 min-w-0 items-center gap-2 text-sm">
-                <StatusDot tone={tone} />
-                <span className="min-w-0 truncate">{feature.title}</span>
-              </span>
-              <Activity node={session} tone={tone} />
+              {dot}
+              <span className="min-w-0 truncate">{feature.title}</span>
+              <KindBadges node={session} />
             </button>
-            <span className={cn("absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-data-[state=open]:opacity-100", current ? "bg-sidebar-accent" : "group-hover:bg-sidebar-accent")}>
+            <span className={cn("absolute top-1.5 right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-data-[state=open]:opacity-100", current ? "bg-sidebar-accent" : "group-hover:bg-sidebar-accent")}>
               <RowMenu node={node} />
             </span>
           </>
