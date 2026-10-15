@@ -37,7 +37,7 @@ jobs:
           case "$PREFIX" in chef-dev) ;; ""|chef|chef-*) echo "refusing prefix '$PREFIX'"; exit 1;; esac
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
           get() { curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1"; }
-          del() { curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1" | jq -c '{success, errors}'; }
+          del() { curl -sS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1" | jq -c '{success, errors}'; }
           match() { jq -r --arg p "$PREFIX" '.[] | select(. == $p or startswith($p + "-"))'; }
           act() { if [ "$DELETE" = "true" ]; then echo "deleting $1"; else echo "would delete $1"; fi; [ "$DELETE" = "true" ]; }
 
