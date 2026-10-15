@@ -141,6 +141,8 @@ export interface SessionHistory {
   readonly from: string | null;
   readonly head: string | null;
   readonly merged: string | null;
+  readonly upstream: { readonly session: string; readonly feature: string; readonly branch: string } | null;
+  readonly into: string | null;
   readonly commits: readonly HistoryEntry[];
 }
 
@@ -262,8 +264,11 @@ export class Orchestrator {
     }
     const chore = decision.intent === "chore";
     const hotfix = decision.hotfix === true;
-    const parts = chore ? null : await this.router.split(prompt, routing, decision, chat, outline);
-    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, parts.length > 1 ? part.prompt : prompt, chat, outline)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat, outline)];
+    const known = new Set(routing.map((f) => f.id));
+    const building = (await this.sessions()).filter((s) => !isTerminal(s.machine.state) && !known.has(s.featureId)).map((s) => s.plan.feature);
+    const withBuilding = [...routing, ...building.filter((f, i) => building.findIndex((g) => g.id === f.id) === i)];
+    const parts = chore ? null : await this.router.split(prompt, withBuilding, decision, chat, outline);
+    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, withBuilding, parts.length > 1 ? part.prompt : prompt, chat, outline)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat, outline)];
     const attempts = chore || hotfix ? 1 : Math.max(1, Math.floor(attemptsWanted ?? this.specialization.attempts));
     const created: string[] = [];
     for (const [at, plan] of plans.entries()) {
@@ -296,9 +301,9 @@ export class Orchestrator {
     return { summary, turns: recent, summarized: (memory.summarized ?? 0) + older.length };
   }
 
-  private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], prompt: string, chat: string, map = ""): Promise<Plan> {
+  private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], known: readonly FeatureSpec[], prompt: string, chat: string, map = ""): Promise<Plan> {
     if (part.kind === "change") {
-      const existing = spec.find((f) => f.id === part.featureId);
+      const existing = known.find((f) => f.id === part.featureId);
       const plan = await this.planFeature(prompt, { ...decision, intent: "change_feature", featureId: part.featureId, changeKind: part.changeKind }, spec, null, chat, map);
       return withParent(plan, existing?.parent ?? null);
     }
@@ -550,7 +555,7 @@ export class Orchestrator {
     const ids = record.commits.slice(-limit).reverse();
     return Promise.all(
       ids.map(async (commitId) => {
-        const repo = this.repoOf(record);
+        const repo = await this.repoOf(record);
         const commit = await this.deps.repos.readCommit(repo, commitId);
         const note = parseNote(await this.deps.repos.readNote(repo, NOTES_NAMESPACE, commitId));
         return { commitId, message: commit?.message ?? "", timestamp: commit?.timestamp ?? null, note: note ? { role: note.role, kind: note.kind, prompt: note.prompt, model: note.model, paths: note.paths } : null };
@@ -560,10 +565,11 @@ export class Orchestrator {
 
   async changes(id: string, maxChars = 100_000): Promise<SessionChanges> {
     const record = await this.session(id);
-    const from = record.merge?.mainBefore ?? record.baseMain;
+    const from = record.merge?.mainBefore ?? (record.upstream ? (record.upstreamBase ?? null) : record.baseMain);
     if (!record.head || !from) return { base: from, head: record.head, files: [] };
-    const head = await this.commitOf(this.repoOf(record), record.head);
-    const base = await this.commitOf(this.canonical, from);
+    const repo = await this.repoOf(record);
+    const head = await this.commitOf(repo, record.head);
+    const base = await this.commitOf(record.upstream || record.merge?.into ? repo : this.canonical, from);
     const clip = (text: string | undefined) => (text === undefined ? null : text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text);
     const files = changedPaths(diffTrees(base.tree, head.tree)).map((path) => ({ path, before: clip(base.tree[path]), after: clip(head.tree[path]) }));
     return { base: base.id, head: head.id, files };
@@ -582,13 +588,16 @@ export class Orchestrator {
 
   async sessionHistory(id: string): Promise<SessionHistory> {
     const record = await this.session(id);
-    const repo = this.repoOf(record);
+    const repo = await this.repoOf(record);
     const commits = (await Promise.all([...record.commits].reverse().map((c) => this.deps.repos.readCommit(repo, c)))).filter((c): c is Commit => c !== null);
+    const upstream = record.upstream ? await this.session(record.upstream).catch(() => null) : null;
     return {
       branch: record.fork,
-      from: commits.at(-1)?.parents[0] ?? record.baseMain,
+      from: commits.at(-1)?.parents[0] ?? record.upstreamBase ?? record.baseMain,
       head: record.head,
       merged: record.merge?.commitId ?? null,
+      upstream: upstream ? { session: upstream.id, feature: upstream.featureId, branch: upstream.fork } : null,
+      into: record.merge?.into ?? null,
       commits: await Promise.all(commits.map((c) => this.historyEntry(c, repo))),
     };
   }
@@ -596,7 +605,7 @@ export class Orchestrator {
   async sessionCommit(id: string, commitId: string, maxChars = 100_000): Promise<CommitChanges | null> {
     const record = await this.session(id);
     if (!record.commits.includes(commitId)) return null;
-    return this.changesIn(this.repoOf(record), commitId, maxChars);
+    return this.changesIn(await this.repoOf(record), commitId, maxChars);
   }
 
   private async changesIn(repo: string, id: string, maxChars: number): Promise<CommitChanges | null> {
@@ -649,11 +658,12 @@ export class Orchestrator {
       if (await this.waitForBudget(record)) return await this.save(record);
       try {
         if (record.head && record.machine.state !== "queued") await this.adoptForkHead(record);
-        if (record.syncPending && record.head && record.machine.state !== "queued") {
+        if (record.syncPending && record.head && record.machine.state !== "queued" && !record.upstream) {
           record.syncPending = false;
           const synced = await this.syncFromMain(record);
           if (synced === "conflict") return await this.save(record);
         }
+        if (record.upstream && record.head && record.machine.state !== "queued" && (await this.followUpstream(record)) === "conflict") return await this.save(record);
         await (this.deps.spend ? this.deps.spend.scope(record.requestedBy ?? null, () => this.advance(record)) : this.advance(record));
         if (await this.deps.store.get<number | null>(`retry/${id}`)) await this.deps.store.put(`retry/${id}`, null);
       } catch (error) {
@@ -691,10 +701,62 @@ export class Orchestrator {
   }
 
   private async startSession(record: SessionRecord): Promise<void> {
-    await this.deps.repos.fork(this.canonical, record.fork);
+    const found = await this.upstreamOf(record);
+    if (found === "wait") return;
+    const upstream = found ? await this.branchFrom(found, record) : null;
+    if (!upstream) await this.deps.repos.fork(this.canonical, record.fork);
     record.head = await this.deps.repos.resolveRef(record.fork, "main");
-    record.baseMain = record.head;
+    record.baseMain = upstream ? upstream.baseMain : record.head;
+    record.upstream = upstream?.id ?? null;
+    record.upstreamBase = upstream ? record.head : null;
     await this.apply(record, { type: "start" });
+  }
+
+  private async branchFrom(upstream: SessionRecord, record: SessionRecord): Promise<SessionRecord | null> {
+    try {
+      await this.deps.repos.fork(upstream.fork, record.fork);
+      return upstream;
+    } catch (error) {
+      if (isTerminal((await this.session(upstream.id)).machine.state)) return null;
+      throw error;
+    }
+  }
+
+  private async upstreamOf(record: SessionRecord): Promise<SessionRecord | "wait" | null> {
+    const parent = record.plan.feature.parent;
+    if (!parent || parent === record.featureId || record.kind === "chore") return null;
+    const open = (await this.sessions()).filter((s) => s.featureId === parent && s.id !== record.id && !isTerminal(s.machine.state));
+    if (open.length !== 1) return null;
+    const [only] = open as [SessionRecord];
+    return only.head ? only : "wait";
+  }
+
+  private async activeUpstream(record: SessionRecord): Promise<SessionRecord | "dropped" | "stuck" | null> {
+    let id = record.upstream ?? null;
+    for (let depth = 0; id && depth < 20; depth++) {
+      const upstream = await this.session(id).catch(() => null);
+      if (!upstream) return null;
+      if (upstream.machine.state === "dropped") return "dropped";
+      if (upstream.machine.state === "stuck") return "stuck";
+      if (upstream.machine.state !== "merged") return upstream;
+      id = upstream.merge?.into ?? null;
+    }
+    return null;
+  }
+
+  private async followUpstream(record: SessionRecord): Promise<"synced" | "up-to-date" | "conflict"> {
+    const upstream = await this.activeUpstream(record);
+    if (upstream === "dropped" || upstream === "stuck") return "up-to-date";
+    if (upstream === null) {
+      record.upstream = null;
+      record.upstreamBase = null;
+      return this.syncFromMain(record);
+    }
+    if (upstream.id !== record.upstream) {
+      record.upstream = upstream.id;
+      record.upstreamBase = null;
+    }
+    return this.syncFromUpstream(record, upstream);
   }
 
   private async planning(record: SessionRecord): Promise<void> {
@@ -974,13 +1036,27 @@ export class Orchestrator {
         return;
       }
     }
-    const outcome = await this.gate(record);
+    const upstream = await this.activeUpstream(record);
+    if (upstream === "dropped") return await this.apply(record, { type: "fail", reason: "The build this one branched from was stopped, so its work has nowhere to go. Start it over to build it on main." });
+    if (upstream === "stuck") {
+      const by = record.upstream ?? null;
+      if ((record.heldBy ?? null) !== by) {
+        record.heldBy = by;
+        await this.emit({ type: "session.held", sessionId: record.id, featureId: record.featureId, by });
+      }
+      return;
+    }
+    const outcome = upstream ? await this.gateInto(record, upstream) : await this.gate(record);
     if (outcome.requeue) return;
     record.ready = null;
     await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: outcome.ok, checks: outcome.checks });
     if (record.machine.state !== "gating") return;
     if (outcome.ok) {
       await this.apply(record, { type: "gate_passed" });
+      if (record.merge?.into && upstream) {
+        await this.emit({ type: "branch.merged", sessionId: record.id, featureId: record.featureId, into: record.merge.into, intoFeature: upstream.featureId, commitId: record.merge.commitId });
+        return;
+      }
       await this.emit({ type: "main.merged", sessionId: record.id, featureId: record.featureId, commitId: outcome.reverted?.commitId ?? (record.baseMain as string) });
       if (outcome.reverted) await this.reopen(record, outcome.reverted.revertId, outcome.reverted.log);
     } else {
@@ -1007,6 +1083,69 @@ export class Orchestrator {
     record.heldBy = hotfix;
     await this.emit({ type: "session.held", sessionId: record.id, featureId: record.featureId, by: hotfix });
     return hotfix !== null;
+  }
+
+  private async gateInto(record: SessionRecord, upstream: SessionRecord): Promise<GateOutcome> {
+    const synced = await this.syncFromUpstream(record, upstream);
+    if (synced === "conflict") return { ok: false, checks: [], requeue: true };
+    const head = await this.commitOf(record.fork, record.head);
+    const checks = record.ready?.commitId === head.id ? record.ready.checks : await this.gateChecks(record, head);
+    if (checks.some((c) => !c.ok)) return { ok: false, checks };
+    return this.mergeQueue.run(async () => {
+      if (this.running.has(upstream.id)) return { ok: false, checks, requeue: true };
+      this.running.add(upstream.id);
+      try {
+        const parent = await this.session(upstream.id);
+        const before = await this.deps.repos.resolveRef(parent.fork, "main");
+        if (isTerminal(parent.machine.state) || Object.keys(parent.turns ?? {}).length > 0 || !before || before !== parent.head) {
+          record.ready = { commitId: head.id, checks, approved: true };
+          return { ok: false, checks, requeue: true };
+        }
+        if (before !== record.upstreamBase) {
+          record.ready = { commitId: head.id, checks, approved: true };
+          return { ok: false, checks, requeue: true };
+        }
+        await this.markMerged(record);
+        const outcome = await this.withToken(parent.fork, (token) => this.deps.repos.merge(token, { into: "main", from: { repo: record.fork, ref: "main" }, message: `Merge ${record.featureId} (${record.id}) into ${parent.featureId}`, author: this.config.author, resolvers: this.resolvers, noFastForward: true }));
+        if (outcome.status !== "merged") return { ok: false, checks, requeue: true };
+        await this.withToken(parent.fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "merge", workItem: null, prompt: `Merge ${record.featureId} into ${parent.featureId}`, runId: this.deps.ids.next("run"), model: "chef-sync", paths: [] })) }));
+        parent.head = outcome.commitId;
+        parent.commits.push(outcome.commitId);
+        await this.save(parent);
+        await this.runApp(parent);
+        await this.save(parent);
+        record.merge = { commitId: outcome.commitId, mainBefore: before, into: parent.id };
+        return { ok: true, checks };
+      } finally {
+        this.running.delete(upstream.id);
+      }
+    });
+  }
+
+  private async syncFromUpstream(record: SessionRecord, upstream: SessionRecord): Promise<"synced" | "up-to-date" | "conflict"> {
+    const head = await this.deps.repos.resolveRef(upstream.fork, "main");
+    if (!head || head === record.upstreamBase) return "up-to-date";
+    const outcome = await this.withToken(record.fork, (token) =>
+      this.deps.repos.merge(token, { into: "main", from: { repo: upstream.fork, ref: "main" }, message: `Merge ${upstream.featureId} into ${record.fork}`, author: this.config.author, resolvers: this.resolvers, onConflict: "commit-markers" }),
+    );
+    if (outcome.status === "conflict") throw new Error(`merge of ${upstream.fork} into ${record.fork} failed on ${outcome.paths.join(", ")}`);
+    record.upstreamBase = head;
+    record.baseMain = upstream.baseMain;
+    if (outcome.status === "up-to-date") return "up-to-date";
+    record.head = outcome.commitId;
+    if (outcome.status === "merged" || outcome.status === "conflicted") {
+      const paths = outcome.status === "conflicted" ? outcome.paths : [];
+      record.commits.push(outcome.commitId);
+      await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Merge ${upstream.featureId} ${head}`, runId: this.deps.ids.next("run"), model: "chef-sync", paths })) }));
+    }
+    if (outcome.status === "conflicted") {
+      await this.emit({ type: "sync.conflict", sessionId: record.id, featureId: record.featureId, paths: outcome.paths, mainCommit: head });
+      await this.apply(record, { type: "conflict", paths: outcome.paths });
+      return "conflict";
+    }
+    await this.emit({ type: "sync.merged", sessionId: record.id, featureId: record.featureId, commitId: outcome.commitId, mainCommit: head });
+    await this.runApp(record);
+    return "synced";
   }
 
   async gate(record: SessionRecord): Promise<GateOutcome> {
@@ -1731,8 +1870,12 @@ export class Orchestrator {
     }
   }
 
-  private repoOf(record: SessionRecord): string {
-    return record.forkDeleted ? this.canonical : record.fork;
+  private async repoOf(record: SessionRecord, depth = 0): Promise<string> {
+    if (!record.forkDeleted) return record.fork;
+    const into = record.merge?.into;
+    if (!into || depth > 20) return this.canonical;
+    const upstream = await this.session(into).catch(() => null);
+    return upstream ? this.repoOf(upstream, depth + 1) : this.canonical;
   }
 
   private async emit(event: DistributiveOmit<ChefEvent, "project" | "at">): Promise<void> {
