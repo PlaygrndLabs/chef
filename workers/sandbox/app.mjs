@@ -9,8 +9,10 @@ const emit = (event) => process.stdout.write(`${JSON.stringify({ type: "chef.app
 const COMPOSE_FILES = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
 const dockerEnv = { ...process.env, COMPOSE_BAKE: "false", DOCKER_BUILDKIT: "1" };
 
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, "g");
+
 function tail(text, lines = 30) {
-  return String(text ?? "").replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").trim().split("\n").slice(-lines).join("\n");
+  return String(text ?? "").replace(ANSI, "").trim().split("\n").slice(-lines).join("\n");
 }
 
 function run(argv, options = {}) {
@@ -93,7 +95,7 @@ export function appPort(config) {
 
 async function answers(port) {
   try {
-    await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(3000), redirect: "manual" });
+    await fetch(`http://127.0.0.1:${port}/`, { signal: globalThis.AbortSignal.timeout(3000), redirect: "manual" });
     return true;
   } catch {
     return false;

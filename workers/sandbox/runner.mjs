@@ -24,9 +24,15 @@ function clone(target) {
   }
 }
 
-execFileSync("rm", ["-rf", dir]);
-clone(dir);
-git("checkout", "--quiet", job.commitId);
+if (existsSync(join(dir, ".git"))) {
+  git("fetch", "--quiet", "--no-tags", job.remote, job.ref);
+  git("reset", "--quiet", "--hard", job.commitId);
+  git("clean", "--quiet", "-fd");
+} else {
+  execFileSync("rm", ["-rf", dir]);
+  clone(dir);
+  git("checkout", "--quiet", job.commitId);
+}
 git("config", "user.email", "ma.karimi76@gmail.com");
 git("config", "user.name", "chef");
 const modules = process.env.CHEF_NODE_MODULES ?? "/opt/chef/template/node_modules";
