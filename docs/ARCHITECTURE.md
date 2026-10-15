@@ -168,6 +168,8 @@ Sessions reach the app through CopilotKit. The Chef Worker hosts the CopilotKit 
 
 `chef serve` runs the same runtime and dashboard on a computer against the local world (fake coder, real or fake checks).
 
+The start page shows what changed lately. Each `ProjectAgent` listens to its own events and keeps one line about the latest change people care about (work started, a feature merged into `main`, a feature waiting on a key, a change undone, commits pulled from the linked repository) in the `Settings` object (`noteProjectActivity`, `activityNote` in `adapters/src/projects.ts`). `GET /api/projects` returns it with each project as `updatedAt` and `note`. The dashboard's start page lists every project in the sidebar and shows the six most recent in the middle, by the later of that change and when this browser last opened the project.
+
 ## Learning
 
 Every session leaves a labelled record: the change the reviewer approved, and what happened to it afterwards.

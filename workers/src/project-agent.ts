@@ -10,13 +10,14 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
+import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type PlainEnvVar, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
 import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
+import { activityNote } from "@chef/adapters/projects";
 import { laneLayout, renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
@@ -58,6 +59,7 @@ const READING_TIMEOUT_MS = 10 * 60_000;
 const POLL_SECONDS = 300;
 const BUSY_SWEEP_SECONDS = 600;
 const DEPLOY_WAIT_SECONDS = 120;
+const NOTE_REPEAT_MS = 10 * 60_000;
 
 const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
 
@@ -75,6 +77,7 @@ export class ProjectAgent extends Agent<Env> {
   private readonly engineIds = new EngineIdCache();
   private deploying = false;
   private deployAgain = false;
+  private lastNote: { readonly note: string; readonly at: number } | null = null;
 
   private async build() {
     const settings = await currentSettings(this.env);
@@ -142,8 +145,19 @@ export class ProjectAgent extends Agent<Env> {
     const installation = git?.installation;
     const tokenSource = app && installation !== undefined ? () => app.installationToken(installation) : undefined;
     const external = git ? orchestrator.external(new GitRemote({ url: git.url, branch: git.branch, token: git.token, ...(tokenSource ? { tokenSource } : {}) }, control), { mode: git.mode, syncBranch: git.syncBranch, ...(origin ? { previewLink: (key: string) => `${origin}/preview/${this.name}/${key}` } : {}) }) : null;
+    bus.subscribe((event) => void this.noteActivity(event, orchestrator).catch((error) => console.error(`noting ${this.name}'s activity failed`, error)));
     this.built = { orchestrator, bus, repos, keeper, space, live, external, settings, fingerprint };
     return this.built;
+  }
+
+  private async noteActivity(event: ChefEvent, orchestrator: Orchestrator): Promise<void> {
+    if (activityNote(event, null) === null) return;
+    const sessionId = "sessionId" in event ? event.sessionId : null;
+    const title = sessionId ? await orchestrator.session(sessionId).then((s) => s.plan.feature.title, () => null) : null;
+    const note = activityNote(event, title);
+    if (note === null || (note === this.lastNote?.note && event.at - this.lastNote.at < NOTE_REPEAT_MS)) return;
+    this.lastNote = { note, at: event.at };
+    await settingsStub(this.env).noteProjectActivity(this.name, { at: event.at, note });
   }
 
   override async alarm(): Promise<void> {
