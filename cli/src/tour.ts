@@ -35,11 +35,11 @@ export interface TourReport {
   featureRoute?: number;
   removed?: { readonly project: string; readonly listed: boolean; readonly ms: number };
   readonly sent: { readonly prompt: string; readonly answered: boolean; readonly retried: boolean }[];
-  readonly previewLoads: { readonly name: string; readonly loadedMs: number | null; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
+  readonly appLoads: { readonly name: string; readonly loadedMs: number | null; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
 }
 
 const SETTLE_MS = 15_000;
-const PREVIEW_LOAD_MS = 120_000;
+const APP_LOAD_MS = 120_000;
 const ROUTE_PROMPT = "Add a way to mark items as done";
 
 async function signIn(page: Page, url: string, password: string | undefined): Promise<void> {
@@ -116,7 +116,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
   const { chromium } = await import("playwright");
   mkdirSync(options.out, { recursive: true });
   const base = options.url.replace(/\/$/, "");
-  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, previewLoads: [], sent: [] };
+  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, appLoads: [], sent: [] };
   const browser: Browser = await chromium.launch();
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
@@ -154,7 +154,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       const timeline: { ms: number; phase: string; steps: string }[] = [];
       let loadedMs: number | null = null;
       let last = "";
-      while (Date.now() - started < PREVIEW_LOAD_MS) {
+      while (Date.now() - started < APP_LOAD_MS) {
         const phase = (await page.locator("[data-app-load]").first().getAttribute("data-app-load", { timeout: 100 }).catch(() => null)) ?? "none";
         const steps = (await page.locator("[data-app-load] [data-step]").allInnerTexts().catch(() => [] as string[])).map((step) => step.replace(/\s+/g, " ").trim()).join(" / ");
         if (`${phase}|${steps}` !== last) {
@@ -170,7 +170,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         } else loadedMs = null;
         await page.waitForTimeout(200);
       }
-      report.previewLoads.push({ name, loadedMs, timeline });
+      report.appLoads.push({ name, loadedMs, timeline });
       options.log(`${name}: ${loadedMs === null ? "did not load" : `loaded after ${loadedMs} ms`}; ${timeline.map((t) => `${t.ms}ms ${t.phase}`).join(", ")}`);
       await shot(`${name}-loaded`);
     };
