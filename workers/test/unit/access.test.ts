@@ -95,7 +95,7 @@ describe("API keys", () => {
   it("lets the deployment's key in as an app that manages Chef, on every path", async () => {
     const { token } = newToken();
     const gate = access({ deploymentKey: token });
-    for (const path of ["/api/projects", "/preview/demo/abc", "/agents/project/demo", "/"]) {
+    for (const path of ["/api/projects", "/app/demo/abc", "/agents/project/demo", "/"]) {
       const caller = await guard(at(path, bearer(token)), gate);
       expect(caller).toMatchObject({ kind: "grant", grant: { kind: "controller", name: "Set at install", scopes: ["*"] } });
     }

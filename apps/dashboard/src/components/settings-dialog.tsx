@@ -229,7 +229,7 @@ export function SettingsDialog(props: {
     </Group>
   ) : null;
   const agents = (section: AgentSection, before?: ReactNode) => () => <AgentsSection project={null} section={section} item={props.item} nav={nav} before={before} />;
-  const needsSettings = new Set(["models", "previews"]);
+  const needsSettings = new Set(["models", "apps"]);
   const all: SettingsSection[] = [
     {
       id: "general",
@@ -300,15 +300,15 @@ export function SettingsDialog(props: {
       id: "environment",
       label: "Environment",
       icon: KeyRound,
-      note: "Keys and settings every project's app gets at runtime. A project can set its own value for any of them. Previews get the values; agents only see the names.",
+      note: "Keys and settings every project's app gets at runtime. A project can set its own value for any of them. Running apps get the values; agents only see the names.",
       render: () => <EnvironmentForm api={sharedEnvApi} />,
     },
     {
-      id: "previews",
-      label: "Previews",
+      id: "apps",
+      label: "Apps",
       icon: Cloud,
-      attention: missing.includes("previews"),
-      note: "Every feature gets a live preview on your Cloudflare account.",
+      attention: missing.includes("apps"),
+      note: "Each branch runs its app in its own sandbox on your Cloudflare account, and Chef's router gives every running app its own address.",
       render: () =>
         settings ? (
           <Group title="Cloudflare" note="The token needs permission to edit Workers.">

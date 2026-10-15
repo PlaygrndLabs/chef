@@ -3,13 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Step } from "@/components/step";
 import { useNow } from "@/lib/live";
-import { loadView, previewState, stateLink, type FrameLoad, type LoadView } from "@/lib/preview";
+import { appState, loadView, stateLink, type FrameLoad, type LoadView } from "@/lib/app-view";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 2000;
 const SHOW_AFTER_MS = 350;
 
-const fresh = (): FrameLoad => ({ started: Date.now(), checked: null, building: null, answered: null, loaded: null, error: null });
+const fresh = (): FrameLoad => ({ started: Date.now(), checked: null, starting: null, answered: null, loaded: null, error: null });
 
 const seconds = (ms: number) => `${(Math.max(0, ms) / 1000).toFixed(1)} s`;
 
@@ -23,18 +23,18 @@ export type StateFetch = (link: string, retry: boolean, signal: AbortSignal) => 
 
 const fetchState: StateFetch = (link, retry, signal) => fetch(stateLink(link, retry), { cache: "no-store", signal }).catch(() => null);
 
-export function usePreviewLoad(input: { readonly link: string | null; readonly url: string; readonly path: string; readonly count: number; readonly fetch?: StateFetch }) {
-  const { link, url, path, count } = input;
+export function useAppLoad(input: { readonly link: string; readonly path: string; readonly count: number; readonly missing?: string; readonly fetch?: StateFetch }) {
+  const { link, path, count } = input;
+  const missing = input.missing ?? "There is no app here yet. It starts after the first commit.";
   const ask = input.fetch ?? fetchState;
   const [load, setLoad] = useState<FrameLoad>(fresh);
-  const [appUrl, setAppUrl] = useState<string | null>(link ? null : url);
+  const [appUrl, setAppUrl] = useState<string | null>(null);
   const [enter, setEnter] = useState<string | null>(null);
   const retryNext = useRef(false);
   useEffect(() => {
     setLoad(fresh());
-    setAppUrl(link ? null : url);
+    setAppUrl(null);
     setEnter(null);
-    if (!link) return;
     const abort = new AbortController();
     const check = async () => {
       let again = retryNext.current;
@@ -43,25 +43,26 @@ export function usePreviewLoad(input: { readonly link: string | null; readonly u
         const response = await ask(link, again, abort.signal);
         if (abort.signal.aborted) return;
         again = false;
-        const state = previewState(response?.ok || response?.status === 404 ? await response.json().catch(() => null) : null);
+        const state = appState(response?.ok || response?.status === 404 ? await response.json().catch(() => null) : null);
         if (abort.signal.aborted) return;
         const at = Date.now();
         if (!state) return setLoad((l) => ({ ...l, error: "Chef did not answer. Check your connection and try again." }));
         if (state.status === "ready") {
-          setLoad((l) => ({ ...l, checked: l.checked ?? at, building: l.building ? { ...l.building, until: at } : null }));
+          setLoad((l) => ({ ...l, checked: l.checked ?? at, starting: l.starting ? { ...l.starting, until: at } : null }));
           setEnter(state.enter ?? null);
           return setAppUrl(state.url);
         }
-        if (state.status === "missing") return setLoad((l) => ({ ...l, error: "This feature has no preview yet." }));
-        if (state.status === "failed") return setLoad((l) => ({ ...l, checked: l.checked ?? at, building: l.building ?? { since: at, until: null }, error: state.error }));
-        setLoad((l) => ({ ...l, checked: l.checked ?? at, building: l.building ?? { since: at - state.elapsedMs, until: null } }));
+        if (state.status === "missing") return setLoad((l) => ({ ...l, error: missing }));
+        if (state.status === "no-stack") return setLoad((l) => ({ ...l, checked: l.checked ?? at, noStack: true }));
+        if (state.status === "failed") return setLoad((l) => ({ ...l, checked: l.checked ?? at, starting: l.starting ?? { since: at, until: null }, error: state.error }));
+        setLoad((l) => ({ ...l, checked: l.checked ?? at, starting: l.starting ?? { since: at - state.elapsedMs, until: null } }));
         await wait(POLL_MS, abort.signal);
         if (abort.signal.aborted) return;
       }
     };
     void check();
     return () => abort.abort();
-  }, [link, url, path, count, ask]);
+  }, [link, path, count, ask, missing]);
   useEffect(() => {
     if (!appUrl) return;
     const abort = new AbortController();
@@ -88,15 +89,15 @@ export function usePreviewLoad(input: { readonly link: string | null; readonly u
 }
 
 export function loadTone(load: FrameLoad): "run" | "ok" | "bad" {
-  return load.loaded !== null ? "ok" : load.error ? "bad" : "run";
+  return load.loaded !== null ? "ok" : load.error || load.noStack ? "bad" : "run";
 }
 
-export const PreviewFrame = forwardRef<HTMLIFrameElement, { readonly src: string | null; readonly title: string; readonly load: FrameLoad; readonly preview: boolean; readonly path: string; readonly onLoad: () => void; readonly onRetry: () => void }>(function PreviewFrame(props, ref) {
+export const AppFrame = forwardRef<HTMLIFrameElement, { readonly src: string | null; readonly title: string; readonly load: FrameLoad; readonly path: string; readonly onLoad: () => void; readonly onRetry: () => void }>(function AppFrame(props, ref) {
   const { load } = props;
   const busy = load.loaded === null;
   const now = useNow(busy ? 200 : 60_000);
-  const view = loadView(load, busy ? now : (load.loaded ?? now), { preview: props.preview, path: props.path });
-  const shown = busy && (now - load.started >= SHOW_AFTER_MS || load.building !== null || load.error !== null);
+  const view = loadView(load, busy ? now : (load.loaded ?? now), { path: props.path });
+  const shown = busy && (now - load.started >= SHOW_AFTER_MS || load.starting !== null || load.error !== null || load.noStack === true);
   return (
     <div className="relative flex min-h-[320px] w-full flex-1 flex-col">
       {props.src ? <iframe ref={ref} src={props.src} title={props.title} onLoad={props.onLoad} className="w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" /> : <div className="flex-1 rounded-xl border" />}
@@ -106,20 +107,20 @@ export const PreviewFrame = forwardRef<HTMLIFrameElement, { readonly src: string
 });
 
 function LoadPanel({ view, onRetry }: { readonly view: LoadView; readonly onRetry: () => void }) {
-  const failed = view.phase === "failed";
+  const failed = view.phase === "failed" || view.phase === "no-stack";
   return (
-    <div className="absolute inset-0 grid place-items-center overflow-auto rounded-xl border bg-background p-6" data-preview-load={view.phase} role="status" aria-live="polite">
+    <div className="absolute inset-0 grid place-items-center overflow-auto rounded-xl border bg-background p-6" data-app-load={view.phase} role="status" aria-live="polite">
       <div className="grid w-full max-w-sm gap-4">
         <div className="grid gap-1.5">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="kicker">{failed ? "Stopped" : "Loading"}</h3>
+            <h3 className="kicker">{view.phase === "no-stack" ? "No app" : failed ? "Stopped" : "Loading"}</h3>
             {failed ? null : <span className="font-mono text-xs text-muted-foreground tabular-nums">{view.percent}%</span>}
           </div>
           <Progress value={failed ? 100 : view.percent} className={cn(failed && "[&>[data-slot=progress-indicator]]:bg-bad")} aria-label={view.title} />
         </div>
         <div className="grid gap-1">
           <p className="text-sm font-medium">{view.title}</p>
-          <p className={cn("text-xs text-muted-foreground", failed && "break-words whitespace-pre-wrap text-bad")}>{view.detail}</p>
+          <p className={cn("text-xs text-muted-foreground", view.phase === "failed" && "break-words whitespace-pre-wrap text-bad")}>{view.detail}</p>
         </div>
         <ol className="grid gap-2">
           {view.steps.map((step) => (
@@ -131,7 +132,7 @@ function LoadPanel({ view, onRetry }: { readonly view: LoadView; readonly onRetr
         {failed || view.slow ? (
           <div>
             <Button type="button" size="sm" variant={failed ? "default" : "outline"} onClick={onRetry}>
-              {failed ? "Try again" : "Reload"}
+              {view.phase === "no-stack" ? "Check again" : failed ? "Try again" : "Reload"}
             </Button>
           </div>
         ) : null}

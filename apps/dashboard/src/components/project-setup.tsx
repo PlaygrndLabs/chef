@@ -313,7 +313,7 @@ export function NewProjectDialog(props: { readonly open: boolean; readonly onOpe
       <DialogContent className="sm:max-w-md" data-dialog="new-project">
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
-          <DialogDescription>Each project is its own app with its own features and previews. Start fresh or bring code you already have.</DialogDescription>
+          <DialogDescription>Each project is its own app with its own features, each running in its own sandbox. Start fresh or bring code you already have.</DialogDescription>
         </DialogHeader>
         {props.open ? (
           <NewProjectForm

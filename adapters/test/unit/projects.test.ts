@@ -34,7 +34,7 @@ describe("project list", () => {
     expect(activityNote({ ...base, type: "main.merged", sessionId: "s1", featureId: "checkout", commitId: "c1" }, "Checkout")).toBe("Merged Checkout into main");
     expect(activityNote({ ...base, type: "session.needs", sessionId: "s1", featureId: "checkout", names: ["STRIPE_KEY"] }, "Checkout")).toBe("Checkout needs STRIPE_KEY");
     expect(activityNote({ ...base, type: "main.reverted", featureId: "checkout", revertedCommit: "c1", commitId: "c2", log: "" }, null)).toBe("Undid a change on main");
-    expect(activityNote({ ...base, type: "live.updated", status: "ready", commitId: "c2", url: null }, "Checkout")).toBeNull();
+    expect(activityNote({ ...base, type: "main-app.updated", status: "running", commitId: "c2", url: null }, "Checkout")).toBeNull();
   });
 
   it("creates the project from the template and lists it", async () => {

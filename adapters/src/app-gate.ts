@@ -1,23 +1,18 @@
-import type { Tree } from "@chef/core";
-
-export const PREVIEW_KEY_VAR = "CHEF_PREVIEW_KEY";
-export const PREVIEW_PASS_HEADER = "x-chef-preview-pass";
-export const PREVIEW_ENTER_PATH = "/__chef/enter";
-export const PREVIEW_GATE_FILE = ".chef/preview-gate.mjs";
+export const APP_KEY_VAR = "CHEF_APP_KEY";
+export const APP_TARGET_VAR = "CHEF_TARGET";
+export const APP_ENTER_PATH = "/__chef/enter";
+export const APP_REQUEST_HEADER = "x-chef-app";
+export const ROUTER_MODULE = "router.mjs";
 
 const ENTER_SECONDS = 120;
-const PASS_SECONDS = 20 * 60;
 export const OWNER_COOKIE_SECONDS = 12 * 60 * 60;
 export const SHARE_COOKIE_SECONDS = 60 * 60;
 
-export type PassUse = "enter" | "pass" | "cookie";
-
 export interface PassClaim {
-  readonly use: PassUse;
+  readonly use: "enter" | "cookie";
   readonly host: string;
   readonly expiresAt: number;
   readonly cookieSeconds?: number;
-  readonly scope?: string;
 }
 
 function base64url(bytes: Uint8Array): string {
@@ -26,46 +21,30 @@ function base64url(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export function newPreviewKey(): string {
+export function newAppKey(): string {
   return base64url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-export async function signPreviewPass(key: string, claim: PassClaim): Promise<string> {
-  const payload = base64url(new TextEncoder().encode(JSON.stringify({ u: claim.use, h: claim.host, e: claim.expiresAt, ...(claim.cookieSeconds ? { c: claim.cookieSeconds } : {}), ...(claim.scope ? { s: claim.scope } : {}) })));
+export async function signAppPass(key: string, claim: PassClaim): Promise<string> {
+  const payload = base64url(new TextEncoder().encode(JSON.stringify({ u: claim.use, h: claim.host, e: claim.expiresAt, ...(claim.cookieSeconds ? { c: claim.cookieSeconds } : {}) })));
   const hmac = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return `${payload}.${base64url(new Uint8Array(await crypto.subtle.sign("HMAC", hmac, new TextEncoder().encode(payload))))}`;
 }
 
-export async function previewEntry(url: string, key: string, input: { readonly path: string; readonly now: number; readonly cookieSeconds?: number }): Promise<string> {
+export async function appEntry(url: string, key: string, input: { readonly path: string; readonly now: number; readonly cookieSeconds?: number }): Promise<string> {
   const origin = new URL(url);
-  const token = await signPreviewPass(key, { use: "enter", host: origin.hostname, expiresAt: input.now + ENTER_SECONDS * 1000, cookieSeconds: input.cookieSeconds ?? OWNER_COOKIE_SECONDS });
-  return `${origin.origin}${PREVIEW_ENTER_PATH}?t=${token}&to=${encodeURIComponent(input.path || "/")}`;
+  const token = await signAppPass(key, { use: "enter", host: origin.hostname, expiresAt: input.now + ENTER_SECONDS * 1000, cookieSeconds: input.cookieSeconds ?? OWNER_COOKIE_SECONDS });
+  return `${origin.origin}${APP_ENTER_PATH}?t=${token}&to=${encodeURIComponent(input.path || "/")}`;
 }
 
-export async function previewPass(url: string, key: string, now: number): Promise<{ readonly host: string; readonly token: string }> {
-  const host = new URL(url).hostname;
-  const scope = `proof-${base64url(crypto.getRandomValues(new Uint8Array(9)))}`;
-  return { host, token: await signPreviewPass(key, { use: "pass", host, expiresAt: now + PASS_SECONDS * 1000, scope }) };
+export function routerModule(): string {
+  return ROUTER;
 }
 
-export function previewMain(tree: Tree): string {
-  for (const file of ["wrangler.jsonc", "wrangler.json"]) {
-    const main = tree[file] === undefined ? null : /"main"\s*:\s*"([^"]+)"/.exec(tree[file] as string)?.[1];
-    if (main) return main;
-  }
-  return /^\s*main\s*=\s*"([^"]+)"/m.exec(tree["wrangler.toml"] ?? "")?.[1] ?? "src/index.ts";
-}
-
-export function gateModule(main: string): string {
-  const app = JSON.stringify(`../${main.replace(/^\.\//, "")}`);
-  return `import * as app from ${app};\nexport * from ${app};\n${GATE}`;
-}
-
-const GATE = String.raw`
-const KEY = "CHEF_PREVIEW_KEY";
-const PASS = "x-chef-preview-pass";
+const ROUTER = String.raw`
+const KEY = "CHEF_APP_KEY";
 const ENTER = "/__chef/enter";
-const COOKIE = "__Host-chef_preview";
+const COOKIE = "__Host-chef_app";
 const encoder = new TextEncoder();
 const keys = new Map();
 
@@ -126,12 +105,12 @@ function closed(request, status, title, detail) {
 
 async function gate(request, env, next) {
   const secret = env && env[KEY];
-  if (typeof secret !== "string" || secret.length < 32) return closed(request, 503, "This preview is not ready", "Chef has not finished setting up this preview. Open it again from Chef.");
+  if (typeof secret !== "string" || secret.length < 32) return closed(request, 503, "This app is not ready", "Chef has not finished setting up this address. Open the app again from Chef.");
   const url = new URL(request.url);
   const now = Date.now();
   if (url.pathname === ENTER) {
     const claim = await check(secret, url.searchParams.get("t"), "enter", url.hostname, now);
-    if (!claim) return closed(request, 401, "This link has expired", "Links into a preview work for a short time only. Open the preview again from Chef.");
+    if (!claim) return closed(request, 401, "This link has expired", "Links into an app work for a short time only. Open the app again from Chef.");
     const seconds = Math.min(86400, Math.max(60, typeof claim.c === "number" ? Math.floor(claim.c) : 3600));
     const value = await sign(secret, { u: "cookie", h: url.hostname, e: now + seconds * 1000 });
     const headers = new Headers({ location: safePath(url.searchParams.get("to")), "cache-control": "no-store", "referrer-policy": "no-referrer" });
@@ -139,53 +118,17 @@ async function gate(request, env, next) {
     return new Response(null, { status: 302, headers });
   }
   const jar = cookies(request);
-  const pass = request.headers.get(PASS);
-  const passed = pass ? await check(secret, pass, "pass", url.hostname, now) : null;
-  const allowed = passed || (await check(secret, jar.value, "cookie", url.hostname, now));
-  if (!allowed) return closed(request, 401, "Open this preview from Chef", "Previews are private. Open this one from its project in Chef, or from a link someone shared with you.");
+  if (!(await check(secret, jar.value, "cookie", url.hostname, now))) return closed(request, 401, "Open this app from Chef", "Apps Chef is building are private. Open this one from its project in Chef, or from a link someone shared with you.");
   const headers = new Headers(request.headers);
-  headers.delete(PASS);
   if (jar.rest) headers.set("cookie", jar.rest);
   else headers.delete("cookie");
-  return next(new Request(request, { headers }), passed && typeof passed.s === "string" ? passed.s : null);
+  headers.set("x-chef-app", "1");
+  return next(new Request(request, { headers }));
 }
 
-function hidden(env) {
-  if (!env || typeof env !== "object") return env;
-  const { [KEY]: _key, ...rest } = env;
-  return rest;
-}
-
-function scoped(env, scope) {
-  if (!scope || !env || typeof env !== "object") return env;
-  const out = {};
-  for (const [name, value] of Object.entries(env)) {
-    const objects = value && typeof value === "object" && typeof value.idFromName === "function" && typeof value.get === "function";
-    out[name] = objects
-      ? new Proxy(value, {
-          get(target, prop) {
-            if (prop === "idFromName" || prop === "getByName") return (key, ...rest) => target[prop](scope + ":" + key, ...rest);
-            const field = target[prop];
-            return typeof field === "function" ? field.bind(target) : field;
-          },
-        })
-      : value;
-  }
-  return out;
-}
-
-const missing = () => new Response("not found", { status: 404 });
-const inner = app.default;
-let gated;
-if (typeof inner === "function") {
-  gated = class extends inner {
-    fetch(request) {
-      return gate(request, this.env, (r) => (super.fetch ? super.fetch(r) : missing()));
-    }
-  };
-} else {
-  const handlers = inner && typeof inner === "object" ? inner : {};
-  gated = { ...handlers, fetch: (request, env, ctx) => gate(request, env, (r, scope) => (handlers.fetch ? handlers.fetch(r, scoped(hidden(env), scope), ctx) : missing())) };
-}
-export default gated;
+export default {
+  fetch(request, env) {
+    return gate(request, env, (forwarded) => env.SESSION.get(env.SESSION.idFromName(env.CHEF_TARGET)).fetch(forwarded));
+  },
+};
 `;

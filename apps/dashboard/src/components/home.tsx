@@ -150,7 +150,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
         {[
           ["Describe it", "Type or talk. One sentence is enough."],
           ["Chef builds it", "In its own sandbox, with tests and a review."],
-          ["Try it live", "Every feature gets its own preview link."],
+          ["Try it", "Every feature runs as its own app, with the whole stack."],
         ].map(([title, text], i) => (
           <li key={title} className="rounded-xl border p-4">
             <span className="mb-2.5 block font-mono text-xs text-brand">{String(i + 1).padStart(2, "0")}</span>

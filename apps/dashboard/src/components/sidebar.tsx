@@ -5,9 +5,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { StatusDot } from "@/components/status";
 import { FeatureTree, useDropTarget } from "@/components/feature-tree";
 import { host } from "@/host";
+import { APP_STATUS_LABEL, APP_TONE } from "@/lib/format";
 import { missingSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
-import { LIVE_TAB } from "@/lib/tabs";
+import { MAIN_TAB } from "@/lib/tabs";
 import { useWorkspace, type AppSettings } from "@/lib/workspace";
 import { Mark, Wordmark } from "@/components/logo";
 
@@ -46,7 +47,7 @@ export function AppMenu({ app, onSettings }: { readonly app: AppSettings; readon
   const { setTheme } = useTheme();
   const needs = app.available ? missingSettings(app.settings) : [];
   const missing = needs.length > 0;
-  const need = needs[0] === "models" ? "Add a model key in Settings" : "Add a previews token in Settings";
+  const need = needs[0] === "models" ? "Add a model key in Settings" : "Add a Cloudflare token in Settings";
   const account = useAccount();
   return (
     <DropdownMenu>
@@ -151,24 +152,24 @@ export function TreePane({ header = false }: { readonly header?: boolean }) {
 }
 
 function AppRow() {
-  const { selection, data, activeTab, openLive } = useWorkspace();
-  const live = data.spec?.live ?? null;
-  const active = activeTab === LIVE_TAB;
+  const { selection, data, activeTab, openMain } = useWorkspace();
+  const app = data.spec?.mainApp ?? null;
+  const active = activeTab === MAIN_TAB;
   const drop = useDropTarget(null);
   return (
     <div className="shrink-0 px-1.5 pt-1.5" {...drop.props}>
       <button
         type="button"
-        id="live-app-row"
-        onClick={openLive}
+        id="main-app-row"
+        onClick={openMain}
         aria-current={active ? "page" : undefined}
-        title={live?.url ? `Open main, live at ${new URL(live.url).host}` : "Open main"}
+        title={app ? `Open main and its app, the release candidate. Its app: ${APP_STATUS_LABEL[app.status].toLowerCase()}` : "Open main and its app, the release candidate"}
         className={cn("flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-sidebar-accent", active && "bg-sidebar-accent font-medium", drop.active && "bg-sidebar-accent ring-1 ring-ring ring-inset")}
       >
         <AppWindowMac className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate">{selection.project}</span>
         <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] font-normal text-muted-foreground">
-          {live?.url ? <span className="size-1.5 bg-ok" aria-label="Live" /> : null}
+          {app ? <StatusDot tone={APP_TONE[app.status]} className="size-1.5" /> : null}
           main
         </span>
       </button>

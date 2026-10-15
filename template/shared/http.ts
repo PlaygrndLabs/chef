@@ -61,7 +61,7 @@ function wantsPage(request: Request): boolean {
   return request.method === "GET" && (request.headers.get("accept") ?? "").includes("text/html");
 }
 
-export function previewBridge(features: readonly Feature[]): string {
+export function chefBridge(features: readonly Feature[]): string {
   const pages = JSON.stringify(pagesOf(features)).replace(/</g, "\\u003c");
   return `<script>(()=>{if(window.parent===window)return;const send=()=>parent.postMessage({chef:"page",path:location.pathname+location.search,title:document.title,pages:${pages}},"*");send();addEventListener("popstate",send);})();</script>`;
 }
@@ -78,7 +78,7 @@ async function withBridge(response: Response, bridge: string): Promise<Response>
 export function createApp(features: readonly Feature[], store: Store, env: Env = {}): (request: Request) => Promise<Response> {
   const routes = features.flatMap((feature) => feature.routes);
   const rootPage = routes.some((route) => route.method === "GET" && route.path === "/");
-  const bridge = previewBridge(features);
+  const bridge = chefBridge(features);
   const answer = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (url.pathname === "/" && !rootPage && request.method === "GET") return wantsPage(request) ? indexPage(features) : json({ ok: true, pages: pagesOf(features).map((page) => page.path) });

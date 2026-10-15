@@ -10,7 +10,7 @@ describe("writing the address bar", () => {
   });
 
   it("keeps the remaining settings, the path and the hash", () => {
-    expect(addressWith(new URLSearchParams({ project: "shop", panel: "preview" }), at("", "/app", "#top"))).toBe("/app?project=shop&panel=preview#top");
+    expect(addressWith(new URLSearchParams({ project: "shop", panel: "app" }), at("", "/app", "#top"))).toBe("/app?project=shop&panel=app#top");
   });
 
   it("matches the current address when nothing changed", () => {

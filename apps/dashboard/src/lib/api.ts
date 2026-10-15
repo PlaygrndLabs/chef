@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, LiveStatus, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionHistory, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionHistory, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -71,7 +71,7 @@ export const keysApi = {
   },
 };
 
-export type ShareKind = "session" | "preview";
+export type ShareKind = "session" | "app";
 
 export interface ShareView {
   readonly shareId: string;
@@ -92,8 +92,8 @@ export function sharesApi(project: string) {
       const response = await fetch(`/api/shares/${shareId}`, { method: "DELETE" });
       if (!response.ok) throw new ApiError(((await response.json().catch(() => ({}))) as { error?: string }).error ?? `${response.status} ${response.statusText}`, response.status);
     },
-    endPreviewLinks: async () => {
-      const response = await fetch(`/api/projects/${project}/preview-key`, { method: "POST" });
+    closeOpenApps: async () => {
+      const response = await fetch(`/api/projects/${project}/app-key`, { method: "POST" });
       if (!response.ok) throw new ApiError(((await response.json().catch(() => ({}))) as { error?: string }).error ?? `${response.status} ${response.statusText}`, response.status);
     },
   };
@@ -125,7 +125,7 @@ export function sharedApi(input: { readonly base: string; readonly headers?: Rea
     session: (project: string, id: string) => call<{ record: SessionRecord }>(`${base}/api/projects/${project}/sessions/${id}`, init()),
     turns: (project: string, id: string) => call<SessionTurn[]>(`${base}/api/projects/${project}/sessions/${id}/turns`, init()),
     changes: (project: string, id: string) => call<SessionChanges>(`${base}/api/projects/${project}/sessions/${id}/changes`, init()),
-    previewState: (link: string, retry: boolean) => fetch(`${base}${link}?state=1${retry ? "&retry=1" : ""}`, init()).catch(() => null),
+    appState: (link: string, retry: boolean) => fetch(`${base}${link}?state=1${retry ? "&retry=1" : ""}`, init()).catch(() => null),
   };
 }
 
@@ -254,7 +254,7 @@ export interface GitLinkView {
 }
 
 export interface ProjectSettingsView {
-  readonly previewIdleMinutes: number;
+  readonly appIdleMinutes: number;
   readonly attempts?: number | null;
   readonly merge?: "auto" | "manual";
   readonly git: GitLinkView | null;
@@ -270,7 +270,7 @@ export interface GitLinkUpdate {
 }
 
 export interface ProjectSettingsUpdate {
-  readonly previewIdleMinutes?: number | null;
+  readonly appIdleMinutes?: number | null;
   readonly attempts?: number | null;
   readonly merge?: "auto" | "manual";
   readonly git?: GitLinkUpdate | null;
@@ -333,8 +333,8 @@ export interface MemoryView {
   readonly rules: readonly LearnedRule[];
 }
 
-export interface LiveApp {
-  readonly status: LiveStatus;
+export interface MainApp {
+  readonly status: AppStatus;
   readonly commitId: string;
   readonly url: string | null;
   readonly error?: string;
@@ -344,7 +344,7 @@ export interface LiveApp {
 export interface ProjectSpec {
   readonly commitId: string | null;
   readonly features: readonly FeatureSpec[];
-  readonly live?: LiveApp | null;
+  readonly mainApp?: MainApp | null;
   readonly layout?: FeatureLayout;
 }
 
@@ -368,7 +368,7 @@ export function projectApi(project: string) {
   const base = `/api/projects/${project}`;
   return {
     spec: () => call<ProjectSpec>(`${base}/spec`),
-    redeployLive: () => call<{ ok: boolean }>(`${base}/live`, { method: "POST" }),
+    restartMainApp: () => call<{ ok: boolean }>(`${base}/main-app`, { method: "POST" }),
     arrange: (id: string, change: FeatureArrangement) => call<{ layout: FeatureLayout }>(`${base}/features/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(change) }),
     removeFeature: (id: string) => call<{ featureIds: string[]; commitId: string | null }>(`${base}/features/${id}`, { method: "DELETE" }),
     sessions: () => call<SessionRecord[]>(`${base}/sessions`),

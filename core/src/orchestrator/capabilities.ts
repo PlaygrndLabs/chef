@@ -1,25 +1,6 @@
 import { applyChanges, diffTrees, threeWayMerge, type Author, type FileChanges, type Resolver } from "../git/tree.ts";
 import type { MergeOutcome, RepoHost } from "../ports/repo-host.ts";
 
-export class PreviewPublisher {
-  constructor(
-    private readonly repos: RepoHost,
-    private readonly canonical: string,
-    private readonly ttlSeconds: number,
-  ) {}
-
-  async publish(featureId: string, commitId: string, fromRepo: string): Promise<string> {
-    const branch = `preview/${featureId}`;
-    const token = await this.repos.createToken(this.canonical, "write", this.ttlSeconds);
-    try {
-      await this.repos.pushRef(token, { ref: branch, commitId, fromRepo, force: true });
-    } finally {
-      await this.repos.revokeToken(token);
-    }
-    return branch;
-  }
-}
-
 export class Archiver {
   constructor(
     private readonly repos: RepoHost,

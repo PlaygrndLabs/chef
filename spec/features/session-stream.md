@@ -9,7 +9,7 @@ acceptance:
   - id: AC2
     text: Every session the message started streams as AG-UI events, coder text as messages, coder tools as tool calls and each state as a step
   - id: AC3
-    text: The shared state carries each session's preview, review, gate, merge commit and stuck reason, and the dashboard renders it as session cards
+    text: The shared state carries each session's running app, review, gate, merge commit and stuck reason, and the dashboard renders it as session cards
   - id: AC4
     text: The run finishes with a summary once every session has merged, got stuck or been dropped
   - id: AC5
