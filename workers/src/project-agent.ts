@@ -10,7 +10,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
+import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type PlainEnvVar, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -68,6 +68,7 @@ function role(profiles: Profiles, name: string) {
 }
 
 export class ProjectAgent extends Agent<Env> {
+  private readonly pump = new SessionPump((work) => this.keepAliveWhile(work));
   private readonly calls = new Map<string, Promise<VoiceCall | null>>();
   private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; space: CloudflareWorkerSpace | null; live: SandboxLiveHost | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
   private cipher: EnvCipher | null = null;
@@ -134,6 +135,7 @@ export class ProjectAgent extends Agent<Env> {
         previewLink: (key) => `/preview/${this.name}/${key}`,
         environment: async () => envNames(await this.effectiveEnv()),
         instructions: async () => (await settingsStub(env).sharedInstructions())?.text ?? "",
+        merge: async () => (await this.projectSettings()).merge,
       },
     );
     const git = project.git;
@@ -157,6 +159,8 @@ export class ProjectAgent extends Agent<Env> {
     const origin = request.headers.has(ORIGIN_HEADER) ? publicOrigin(request) : (homeOrigin(this.env) ?? url.origin);
     if ((await this.ctx.storage.get<string>(ORIGIN)) !== origin) await this.ctx.storage.put(ORIGIN, origin);
     const { orchestrator, bus, settings, external, space } = await this.build();
+    const sessionHistory = SESSION_HISTORY_ROUTE.exec(url.pathname);
+    if (sessionHistory && request.method === "GET") return sessionHistoryResponse(orchestrator, sessionHistory[1] as string, sessionHistory[2] ?? null);
     const session = SESSION_ROUTE.exec(url.pathname);
     if (session) return this.sessionRequest(request, session[1] as string, session[2] ?? null);
     const feature = FEATURE_ROUTE.exec(url.pathname);
@@ -186,6 +190,8 @@ export class ProjectAgent extends Agent<Env> {
       await this.schedule(0, "syncExternal");
       return Response.json({ ok: true }, { status: 202 });
     }
+    const history = HISTORY_ROUTE.exec(url.pathname);
+    if (history && request.method === "GET") return historyResponse(orchestrator, history[1] ?? null, url.searchParams.get("limit"));
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
       if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
@@ -313,6 +319,11 @@ export class ProjectAgent extends Agent<Env> {
         if (blocked) return Response.json({ error: blocked }, { status: 402 });
         const { guidance } = (await request.json().catch(() => ({}))) as { guidance?: string };
         const record = await orchestrator.retry(id, guidance ?? "");
+        await this.schedule(1, "drive");
+        return Response.json({ state: record.machine.state }, { status: 202 });
+      }
+      if (request.method === "POST" && action === "merge") {
+        const record = await orchestrator.approveMerge(id);
         await this.schedule(1, "drive");
         return Response.json({ state: record.machine.state }, { status: 202 });
       }
@@ -751,7 +762,7 @@ export class ProjectAgent extends Agent<Env> {
   async drive(): Promise<void> {
     const { orchestrator } = await this.build();
     await orchestrator.reclaim();
-    const sessions = await orchestrator.drain(1);
+    const sessions = await this.pump.kick(orchestrator, () => undefined);
     await this.pushExternal();
     if (sessions.some(runnable)) await this.schedule(1, "drive");
     if (sessions.some((s) => s.overBudget && !isTerminal(s.machine.state))) await this.schedule(nextMonth(Date.now()), "budgetChanged", undefined, { idempotent: true });

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
 export const SessionView = preloadable(() => import("@/components/session-view").then((m) => m.SessionView));
-export const LiveView = preloadable(() => import("@/components/session-sections").then((m) => m.LiveApp));
+export const LiveView = preloadable(() => import("@/components/main-tab").then((m) => m.MainTab));
 
 function Tab({ id }: { readonly id: string }) {
   const { features, activeTab, selectTab, closeTab } = useWorkspace();

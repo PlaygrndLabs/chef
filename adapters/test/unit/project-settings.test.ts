@@ -59,7 +59,11 @@ describe("project settings", () => {
     if (!linked.ok) throw new Error(linked.error);
     const cleared = applyProjectUpdate(linked.settings, { previewIdleMinutes: null, git: null }, secret);
     if (!cleared.ok) throw new Error(cleared.error);
-    expect(readProjectSettings(cleared.settings)).toEqual({ previewIdleMinutes: 60, attempts: null, git: null });
+    expect(readProjectSettings(cleared.settings)).toEqual({ previewIdleMinutes: 60, attempts: null, merge: "auto", git: null });
+    const manual = applyProjectUpdate(cleared.settings, { merge: "manual" }, secret);
+    if (!manual.ok) throw new Error(manual.error);
+    expect(viewProjectSettings(readProjectSettings(manual.settings)).merge).toBe("manual");
+    expect(applyProjectUpdate(cleared.settings, { merge: "sometimes" }, secret).ok).toBe(false);
     const tries = applyProjectUpdate(cleared.settings, { attempts: 3 }, secret);
     if (!tries.ok) throw new Error(tries.error);
     expect(readProjectSettings(tries.settings).attempts).toBe(3);

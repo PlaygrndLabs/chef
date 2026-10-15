@@ -16,6 +16,8 @@ export interface Commit {
   readonly timestamp: number;
 }
 
+export type CommitSummary = Omit<Commit, "tree">;
+
 export function applyChanges(tree: Tree, changes: FileChanges): Tree {
   const next = new Map(Object.entries(tree));
   for (const [path, content] of Object.entries(changes)) {
