@@ -28,3 +28,10 @@ answer=$(curl -sS -m 120 -L -c "$jar" -b "$jar" -o /dev/null -w '%{http_code}' "
 rm -f "$jar"
 echo "opening main's app through its enter link answered $answer"
 test "$answer" = 200
+if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${NAME:-}" ]; then
+  api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/durable_objects/namespaces"
+  ns=$(curl -fsS -H "authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?per_page=1000" | jq -r --arg s "$NAME" '.result[] | select(.script == $s and .class == "ImageLayers") | .id')
+  kept=$(curl -fsS -H "authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$ns/objects?limit=10000" | jq '[.result[] | select(.hasStoredData)] | length')
+  echo "the image cache holds $kept layers and manifests"
+  test "$kept" -gt 0
+fi
