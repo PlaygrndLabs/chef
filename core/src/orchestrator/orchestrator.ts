@@ -855,7 +855,7 @@ export class Orchestrator {
     const index = record.plan.items.indexOf(item);
     if (index >= record.cursor) record.cursor = index + 1;
     if (this.nextItem(record, BUILD_KINDS) || lanesBusy(record.lanes)) return;
-    await this.apply(record, { type: "coded" });
+    await this.coded(record);
   }
 
   private async waitForParentFeature(record: SessionRecord): Promise<boolean> {
@@ -872,7 +872,7 @@ export class Orchestrator {
     const leftover = (record.lanes ?? []).filter((lane) => lane.unmerged);
     if (leftover.length) {
       await this.mergeLanes(record, leftover);
-      if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(record.lanes)) await this.apply(record, { type: "coded" });
+      if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(record.lanes)) await this.coded(record);
       return true;
     }
     if (!record.lanes) {
@@ -926,7 +926,7 @@ export class Orchestrator {
       await this.save(record);
       throw failure;
     }
-    if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(lanes)) await this.apply(record, { type: "coded" });
+    if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(lanes)) await this.coded(record);
     return true;
   }
 
@@ -983,7 +983,25 @@ export class Orchestrator {
     await this.emit({ type: "lane.updated", sessionId: record.id, featureId: record.featureId, role: lane.role, branch: lane.branch, status, ...(commitId ? { commitId } : {}), ...(paths.length ? { paths } : {}) });
   }
 
+  private async coded(record: SessionRecord): Promise<void> {
+    if (await this.appStarts(record)) await this.apply(record, { type: "coded" });
+  }
+
+  private async appStarts(record: SessionRecord): Promise<boolean> {
+    const app = await this.appAtHead(record);
+    if (app?.status !== "failed" || app.commitId !== record.head) return true;
+    await this.apply(record, { type: "app_failed", log: app.error ?? "the app did not start" });
+    return false;
+  }
+
+  private async appAtHead(record: SessionRecord): Promise<SessionApp | null> {
+    await this.settleApp(record);
+    if (record.head && (record.app?.commitId !== record.head || record.app.status === "starting")) await this.runApp(record, true);
+    return record.app;
+  }
+
   private async reviewing(record: SessionRecord): Promise<void> {
+    if (!(await this.appStarts(record))) return;
     const head = await this.commitOf(record.fork, record.head);
     const base = await this.commitOf(this.canonical, record.baseMain);
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: "reviewer", kind: "review", model: this.deps.reviewer.model ?? "reviewer" });
@@ -2005,7 +2023,7 @@ export class Orchestrator {
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
-const RETRY_EVENTS: ReadonlySet<SessionEvent["type"]> = new Set(["review_rejected", "gate_failed", "turn_rejected", "reopened", "conflict"]);
+const RETRY_EVENTS: ReadonlySet<SessionEvent["type"]> = new Set(["review_rejected", "gate_failed", "app_failed", "turn_rejected", "reopened", "conflict"]);
 
 const SKIPPED_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["sync", "merge", "scaffold"]);
 

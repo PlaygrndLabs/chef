@@ -10,14 +10,22 @@ const COMPOSE_FILES = ["compose.yaml", "compose.yml", "docker-compose.yaml", "do
 const dockerEnv = { ...process.env, COMPOSE_BAKE: "false", DOCKER_BUILDKIT: "1" };
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, "g");
+const START_SECONDS = 600;
+const PORT_SECONDS = 240;
+const POLL_MS = 2000;
+const LOG_GRACE_MS = 10_000;
+const deadline = Date.now() + (job.startSeconds ?? START_SECONDS) * 1000;
+const BUILD_ERRORS = [/\[ERROR\]/, /\bbuild failed\b/i, /\bfailed to compile\b/i, /\bcompilation failed\b/i, /\berror during build\b/i];
 
 function tail(text, lines = 30) {
   return String(text ?? "").replace(ANSI, "").trim().split("\n").slice(-lines).join("\n");
 }
 
 function run(argv, options = {}) {
-  const result = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: options.timeoutMs ?? 900_000, cwd: options.cwd ?? dir, env: options.env ?? process.env });
-  return { code: result.status ?? 1, out: `${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? `\n${result.error.message}` : ""}` };
+  const timeout = options.bounded === false ? (options.timeoutMs ?? 900_000) : Math.max(1000, Math.min(options.timeoutMs ?? 900_000, deadline - Date.now()));
+  const result = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout, cwd: options.cwd ?? dir, env: options.env ?? process.env });
+  const timedOut = result.error?.code === "ETIMEDOUT";
+  return { code: result.status ?? 1, stdout: result.stdout ?? "", timedOut, out: `${result.stdout ?? ""}${result.stderr ?? ""}${timedOut ? `\nstopped after ${Math.round(timeout / 1000)} seconds` : result.error ? `\n${result.error.message}` : ""}` };
 }
 
 function fail(step, out) {
@@ -93,6 +101,54 @@ export function appPort(config) {
   return null;
 }
 
+export function appService(config) {
+  const services = Object.entries(config.services ?? {});
+  const labelled = services.find(([, service]) => Number.isInteger(Number(service.labels?.["chef.port"])) && Number(service.labels?.["chef.port"]) > 0);
+  if (labelled) return labelled[0];
+  return services.find(([, service]) => (service.ports ?? []).length > 0)?.[0] ?? null;
+}
+
+export function stackTrouble(containers, service) {
+  for (const container of containers) {
+    if (container.state === "restarting" || container.restarts >= 2) return { service: container.service, reason: `${container.service} keeps crashing and restarting` };
+    if (container.state !== "exited" && container.state !== "dead") continue;
+    if (container.exitCode !== 0) return { service: container.service, reason: `${container.service} stopped with exit code ${container.exitCode}` };
+    if (container.service === service) return { service: container.service, reason: `${container.service} stopped before it answered` };
+  }
+  return null;
+}
+
+export function buildError(logs) {
+  const lines = String(logs ?? "").replace(ANSI, "").split("\n");
+  return lines.find((line) => BUILD_ERRORS.some((pattern) => pattern.test(line)))?.trim() ?? null;
+}
+
+export function inspected(text) {
+  let list;
+  try {
+    list = JSON.parse(text.slice(text.indexOf("[")));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  return list.map((c) => ({ service: c.Config?.Labels?.["com.docker.compose.service"] ?? String(c.Name ?? "").replace(/^\//, ""), state: c.State?.Status ?? "unknown", exitCode: c.State?.ExitCode ?? 0, restarts: c.RestartCount ?? 0 }));
+}
+
+function compose(chefFile, ...args) {
+  return run(["docker", "compose", "-p", job.project, "--project-directory", dir, "-f", chefFile, ...args], { env: dockerEnv, timeoutMs: 30_000, bounded: false });
+}
+
+function containers(chefFile) {
+  const ids = compose(chefFile, "ps", "--all", "-q").stdout.split("\n").map((line) => line.trim()).filter((line) => /^[0-9a-f]{12,64}$/.test(line));
+  if (ids.length === 0) return [];
+  const found = run(["docker", "inspect", ...ids], { timeoutMs: 30_000, bounded: false });
+  return found.code === 0 ? inspected(found.stdout) : [];
+}
+
+function logsOf(chefFile, service, lines) {
+  return compose(chefFile, "logs", "--no-color", "--no-log-prefix", "--tail", String(lines), service).out;
+}
+
 async function answers(port) {
   try {
     await fetch(`http://127.0.0.1:${port}/`, { signal: globalThis.AbortSignal.timeout(3000), redirect: "manual" });
@@ -132,23 +188,38 @@ async function main() {
     for (const [key, value] of Object.entries(build.args ?? {})) if (value !== null && value !== undefined) args.push("--build-arg", `${key}=${value}`);
     args.push(build.context ?? dir);
     const built = run(args, { env: dockerEnv, timeoutMs: 1_500_000 });
-    if (built.code !== 0) fail(`building ${name}`, built.out);
+    if (built.code !== 0) fail(built.timedOut ? `building ${name} did not finish within ${job.startSeconds ?? START_SECONDS} seconds` : `building ${name}`, built.out);
     delete service.build;
     service.image = image;
     service.pull_policy = "never";
   }
   writeFileSync(chefFile, JSON.stringify(networked, null, 2));
   const up = run(["docker", "compose", "-p", job.project, "--project-directory", dir, "-f", chefFile, "up", "-d", "--remove-orphans"], { env: dockerEnv, timeoutMs: 1_500_000 });
-  if (up.code !== 0) fail("starting the app", up.out);
-  for (let waited = 0; waited < (job.waitSeconds ?? 300); waited += 2) {
+  if (up.code !== 0) fail(up.timedOut ? `starting the app did not finish within ${job.startSeconds ?? START_SECONDS} seconds` : "starting the app", up.out);
+  await waitForApp(port, chefFile, appService(networked), Object.keys(networked.services));
+}
+
+async function waitForApp(port, chefFile, service, services) {
+  const from = Date.now();
+  const until = Math.min(deadline, from + (job.waitSeconds ?? PORT_SECONDS) * 1000);
+  let suspect = null;
+  for (;;) {
     if (await answers(port)) {
       emit({ status: "running", port, commitId: job.commitId });
       return;
     }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const trouble = stackTrouble(containers(chefFile), service);
+    if (trouble) fail(`the app did not start: ${trouble.reason}`, logsOf(chefFile, trouble.service, 40));
+    for (const name of services) {
+      const error = buildError(logsOf(chefFile, name, 200));
+      if (!error) continue;
+      if (!suspect || suspect.error !== error) suspect = { error, since: Date.now() };
+      else if (Date.now() - suspect.since >= LOG_GRACE_MS) fail(`the app did not start: ${name} logged an error before it answered on port ${port}`, logsOf(chefFile, name, 40));
+      break;
+    }
+    if (Date.now() >= until) fail(`the app did not answer on port ${port} within ${Math.round((Date.now() - from) / 1000)} seconds`, compose(chefFile, "logs", "--no-color", "--tail", "40").out);
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
-  const logs = run(["docker", "compose", "-p", job.project, "-f", chefFile, "logs", "--no-color", "--tail", "40"], { env: dockerEnv });
-  fail(`the app did not answer on port ${port}`, logs.out);
 }
 
 if (process.argv[1]?.endsWith("app.mjs") && process.env.CHEF_JOB) await main();
