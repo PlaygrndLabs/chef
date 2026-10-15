@@ -40,6 +40,7 @@ describe("session branches form a tree", () => {
       expect(parentHead).not.toBe(mainBefore);
     }
 
+    for (let i = 0; i < 20 && (await w.orchestrator.session(notes)).machine.state !== "reviewing"; i++) await w.orchestrator.step(notes);
     const tagged = await w.orchestrator.run(tags);
     expect(tagged.machine.state).toBe("merged");
     expect(tagged.merge?.into).toBe(notes);
@@ -127,6 +128,29 @@ describe("session branches form a tree", () => {
     const main = await w.orchestrator.mainTree();
     expect(main.tree[MENU_PATH]).toContain('"tags",');
     expect(main.tree[MENU_PATH]).toContain('"notes",');
+  });
+
+  it("waits to code a child until its branch has the parent's feature, so regenerated files list both", async () => {
+    const w = await project();
+    const notes = (await w.orchestrator.submit(promptFor("notes"))).sessionId as string;
+    await w.orchestrator.step(notes);
+    await w.orchestrator.step(notes);
+    const [tags] = (await w.orchestrator.submit(PARTS)).sessionIds as [string];
+    for (let i = 0; i < 8; i++) await w.orchestrator.step(tags);
+    const waiting = await w.orchestrator.session(tags);
+    expect(waiting.upstream).toBe(notes);
+    expect(waiting.machine.state).toBe("coding");
+    expect(waiting.heldBy).toBe(notes);
+    expect(w.coder.turns.filter((t) => t.featureId === "tags" && t.role !== "test")).toHaveLength(0);
+
+    for (let i = 0; i < 20 && (await w.orchestrator.session(notes)).machine.state !== "reviewing"; i++) await w.orchestrator.step(notes);
+    for (let i = 0; i < 20 && (await w.orchestrator.session(tags)).machine.state === "coding"; i++) await w.orchestrator.step(tags);
+    const built = await w.orchestrator.session(tags);
+    expect(built.heldBy).toBeNull();
+    const registry = (await w.repos.readCommit(built.fork, built.head as string))?.tree["src/registry.gen.ts"] ?? "";
+    expect(registry).toContain("../features/notes/index.ts");
+    expect(registry).toContain("../features/tags/index.ts");
+    expect(w.bus.log.some((e) => e.type === "session.held" && e.sessionId === tags && e.by === notes)).toBe(true);
   });
 
   it("fails a child whose parent was stopped instead of merging it anywhere", async () => {

@@ -840,6 +840,7 @@ export class Orchestrator {
   }
 
   private async coding(record: SessionRecord): Promise<void> {
+    if (await this.waitForParentFeature(record)) return;
     const conflict = record.machine.reason === "conflict";
     if (!conflict && (await this.laneRound(record))) return;
     let item = this.nextItem(record, BUILD_KINDS);
@@ -855,6 +856,16 @@ export class Orchestrator {
     if (index >= record.cursor) record.cursor = index + 1;
     if (this.nextItem(record, BUILD_KINDS) || lanesBusy(record.lanes)) return;
     await this.apply(record, { type: "coded" });
+  }
+
+  private async waitForParentFeature(record: SessionRecord): Promise<boolean> {
+    const parent = record.plan.feature.parent;
+    const upstream = parent && record.upstream ? await this.activeUpstream(record) : null;
+    const by = upstream && typeof upstream !== "string" && !(await this.commitOf(record.fork, record.head)).tree[`features/${parent}/index.ts`] ? upstream.id : null;
+    if ((record.heldBy ?? null) === by) return by !== null;
+    record.heldBy = by;
+    await this.emit({ type: "session.held", sessionId: record.id, featureId: record.featureId, by });
+    return by !== null;
   }
 
   private async laneRound(record: SessionRecord): Promise<boolean> {
