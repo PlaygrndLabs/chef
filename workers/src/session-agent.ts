@@ -150,6 +150,7 @@ export class SessionAgent extends Agent<Env> {
   private readonly grants = new Map<number, Outbound>();
   private granted = 0;
   private lastGrant: Outbound | null = null;
+  private llmHost: string | null = null;
   private llmKey: string | null = null;
   private readonly intercepted = new Set<string>();
   private intercepting: Promise<void> = Promise.resolve();
@@ -189,7 +190,7 @@ export class SessionAgent extends Agent<Env> {
 
   async outboundAccess(): Promise<OutboundAccess | null> {
     const latest = [...this.grants.values()].at(-1) ?? this.lastGrant;
-    return latest ? { ...latest, llmKey: this.llmKey } : null;
+    return latest ? { ...latest, llmHost: this.llmHost, llmKey: this.llmKey } : null;
   }
 
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome> {
@@ -209,7 +210,12 @@ export class SessionAgent extends Agent<Env> {
     const turn = await this.ctx.storage.get<TurnState>(TURN);
     if (turn?.id !== id) return { status: "lost" };
     this.llmKey = llmKey;
-    return this.follow(turn, onEvent, FOLLOW_SECONDS);
+    const release = this.grant(turn.outbound);
+    try {
+      return await this.follow(turn, onEvent, FOLLOW_SECONDS);
+    } finally {
+      release();
+    }
   }
 
   private async launch(id: string, job: SandboxJob): Promise<TurnState> {
@@ -491,6 +497,7 @@ export class SessionAgent extends Agent<Env> {
     const id = ++this.granted;
     this.grants.set(id, outbound);
     this.lastGrant = outbound;
+    if (outbound.llmHost) this.llmHost = outbound.llmHost;
     return () => void this.grants.delete(id);
   }
 

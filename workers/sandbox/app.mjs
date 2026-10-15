@@ -15,7 +15,7 @@ const PORT_SECONDS = 240;
 const POLL_MS = 2000;
 const LOG_GRACE_MS = 10_000;
 const deadline = Date.now() + (job.startSeconds ?? START_SECONDS) * 1000;
-const BUILD_ERRORS = [/\[ERROR\]/, /\bbuild failed\b/i, /\bfailed to compile\b/i, /\bcompilation failed\b/i, /\berror during build\b/i];
+const BUILD_ERRORS = [/\[ERROR\]/, /\bbuild failed\b/i, /\bfailed to compile\b/i, /\bcompilation failed\b/i, /\berror during build\b/i, /\bapp crashed\b.*\bwaiting for file changes\b/i, /\bfailed running\b.*\bwaiting for file changes\b/i];
 
 function tail(text, lines = 30) {
   return String(text ?? "").replace(ANSI, "").trim().split("\n").slice(-lines).join("\n");

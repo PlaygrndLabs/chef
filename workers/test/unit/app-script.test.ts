@@ -43,6 +43,9 @@ describe("the sandbox app script", () => {
     expect(app.buildError(wrangler)).toBe('✘ [ERROR] Could not resolve "../page.ts"');
     expect(app.buildError("Failed to compile.\n./src/App.tsx")).toBe("Failed to compile.");
     expect(app.buildError("Ready on http://0.0.0.0:8787\n[wrangler:info] GET / 200 OK")).toBeNull();
+    expect(app.buildError("app-1  | Error: connect ECONNREFUSED 127.0.0.1:3306\napp-1  | [nodemon] app crashed - waiting for file changes before starting...")).toBe("app-1  | [nodemon] app crashed - waiting for file changes before starting...");
+    expect(app.buildError("Failed running 'src/index.js'. Waiting for file changes before restarting...")).toBe("Failed running 'src/index.js'. Waiting for file changes before restarting...");
+    expect(app.buildError("[nodemon] watching path(s): *.*\n[nodemon] starting `node src/index.js`")).toBeNull();
   });
 
   it("reads containers from docker inspect", () => {
