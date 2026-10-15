@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MAP_SUGGESTION, wasMapped } from "@chef/core";
+import { COMPOSE_SUGGESTION, FEATURES_DIR, hasComposeFile, MAP_SUGGESTION } from "@chef/core";
 import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
 export const OverviewSchema = z.object({
@@ -59,10 +59,12 @@ export function digest(tree: Readonly<Record<string, string>>): { readonly paths
 const SYSTEM = `You are Chef, an agent that builds software features on its own. Someone just brought an existing project into Chef, and you are reading it for the first time, the way a new teammate would.
 Write for the project's owner in plain words. No jargon they did not use, no file paths unless they help.`;
 
-export function withMapSuggestion(overview: Overview, tree: Readonly<Record<string, string>>): Overview {
-  if (wasMapped(tree) || overview.suggestions.some((s) => s.prompt === MAP_SUGGESTION.prompt)) return overview;
-  return { ...overview, suggestions: [{ ...MAP_SUGGESTION }, ...overview.suggestions] };
+export function withChefSuggestions(overview: Overview, tree: Readonly<Record<string, string>>): Overview {
+  const hasFeatures = Object.keys(tree).some((path) => path.startsWith(`${FEATURES_DIR}/`));
+  return { ...overview, suggestions: [...(hasFeatures ? [] : [{ ...MAP_SUGGESTION }]), ...(hasComposeFile(tree) ? [] : [{ ...COMPOSE_SUGGESTION }])] };
 }
+
+const ReadingSchema = OverviewSchema.omit({ suggestions: true });
 
 export async function exploreProject(llm: LlmEndpoint, input: { readonly name: string; readonly tree: Readonly<Record<string, string>>; readonly model?: string; readonly imported?: boolean }): Promise<Overview> {
   const { paths, files } = digest(input.tree);
@@ -74,9 +76,8 @@ export async function exploreProject(llm: LlmEndpoint, input: { readonly name: s
       "Write:",
       "- summary: two or three sentences on what this project is, who uses it, and how.",
       "- problems: up to four open problems or gaps you can see evidence for (a task list, TODOs, missing tests, half-built parts). Each one sentence. Leave it empty rather than guess.",
-      "- suggestions: exactly three things Chef could pick up now, most useful first. title: a few words, starting with a verb. why: one short sentence on why it matters. prompt: the request to give Chef, in plain words, specific enough to build without asking back.",
     ].join("\n"),
   ].join("\n\n");
-  const result = await structured(llm, { model: input.model ?? DEFAULT_MODEL, system: SYSTEM, effort: "medium", schema: OverviewSchema, prompt });
-  return { summary: result.summary.trim(), problems: result.problems.slice(0, 4), suggestions: result.suggestions.slice(0, 3) };
+  const result = await structured(llm, { model: input.model ?? DEFAULT_MODEL, system: SYSTEM, effort: "medium", schema: ReadingSchema, prompt });
+  return { summary: result.summary.trim(), problems: result.problems.slice(0, 4), suggestions: [] };
 }

@@ -13,6 +13,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 RUN cd /opt/chef/template && npm install --no-audit --no-fund && npx playwright install --with-deps --only-shell chromium && rm -rf /var/lib/apt/lists/*
 COPY lint.mjs /opt/chef/template/lint.mjs
 COPY lint /opt/chef/template/lint
-COPY runner.mjs checks.mjs app.mjs boot.sh trust.sh ./
+COPY runner.mjs checks.mjs app.mjs mirror.mjs boot.sh trust.sh ./
+COPY daemon.json /etc/docker/daemon.json
 RUN mkdir -p /workspace && chown node:node /workspace && git config --system --add safe.directory "*"
 CMD ["sh", "/opt/chef/boot.sh"]
