@@ -7,6 +7,7 @@ describe("transient errors", () => {
     expect(transient(new Error("Error: exec failed (the sandbox container stopped: its main process exited)"))).toBe(true);
     expect(transient(new Error("the sandbox container did not start: timed out"))).toBe(true);
     expect(transient(new Error("Durable Object reset because its code was updated."))).toBe(true);
+    expect(transient(new Error("Connection closed: this Durable Object instance is no longer active. Reconnect or retry the request."))).toBe(true);
   });
 
   it("retries git that the server dropped", () => {
