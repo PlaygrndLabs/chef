@@ -307,12 +307,25 @@ export class SessionAgent extends Agent<Env> {
     return { code: await process.exitCode, tail };
   }
 
-  private async ensureContainer(): Promise<Container> {
+  async devCheck(): Promise<{ code: number; out: string }> {
+    const container = await this.ensureContainer(true);
+    const process = await container.exec(["sh", "/opt/chef/devcheck.sh"], { env: { HOME: "/home/node", PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" });
+    const out = await new Response(process.stdout as ReadableStream<Uint8Array>).text();
+    return { code: await process.exitCode, out };
+  }
+
+  async devApp(request: Request): Promise<Response> {
+    const container = await this.ensureContainer(true);
+    const url = new URL(request.url);
+    return container.getTcpPort(8080).fetch(new Request(`http://localhost:8080${url.pathname.replace(/^\/api\/devcheck\/[a-z0-9-]+\/app/, "") || "/"}${url.search}`, request));
+  }
+
+  private async ensureContainer(internet = false): Promise<Container> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     if (container.running) return container;
     this.exit = null;
-    container.start({ image: container.images["coder"] as string, enableInternet: false, instance: SANDBOX_INSTANCE });
+    container.start({ image: container.images["coder"] as string, enableInternet: internet, instance: internet ? "standard-2" : SANDBOX_INSTANCE });
     container.monitor().then(
       () => (this.exit = "its main process exited"),
       (error: unknown) => (this.exit = String(error)),

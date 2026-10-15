@@ -53,6 +53,11 @@ export default {
     const root = PROJECT_ROOT.exec(url.pathname);
     if (root && request.method === "DELETE") return removeProjectRequest(request, root[1] as string, settingsStub(env), () => removeProject(env, root[1] as string));
     if (url.pathname === "/api/github" || url.pathname.startsWith("/api/github/")) return gitHubRequest(request, env);
+    const devcheck = /^\/api\/devcheck\/([a-z0-9-]+)(\/app(\/|$))?/.exec(url.pathname);
+    if (devcheck) {
+      const stub = await getAgentByName(env.SESSION, `devcheck-${devcheck[1]}`);
+      return devcheck[2] ? stub.devApp(request) : Response.json(await stub.devCheck());
+    }
     const copilotKit = COPILOTKIT.exec(url.pathname);
     if (copilotKit) return copilotKitHandler(request, env, copilotKit[1] as string);
     const project = projectOf(url.pathname);
