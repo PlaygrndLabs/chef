@@ -9,6 +9,7 @@ export interface TourOptions {
   readonly prompt?: string | undefined;
   readonly minutes: number;
   readonly everySeconds: number;
+  readonly remove?: boolean;
   readonly out: string;
   readonly log: (line: string) => void;
 }
@@ -32,6 +33,8 @@ export interface TourReport {
   readonly setup: string[];
   finished: boolean;
   featureRoute?: number;
+  removed?: { readonly project: string; readonly listed: boolean; readonly ms: number };
+  readonly sent: { readonly prompt: string; readonly answered: boolean; readonly retried: boolean }[];
   readonly previewLoads: { readonly name: string; readonly loadedMs: number | null; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
 }
 
@@ -48,6 +51,16 @@ async function signIn(page: Page, url: string, password: string | undefined): Pr
     await Promise.all([page.waitForNavigation(), page.locator('form[action="/login"] button').click()]);
     if (await field.count()) throw new Error("sign in failed: wrong CHEF_PASSWORD");
   }
+}
+
+async function answered(page: Page): Promise<"answered" | "failed" | "waiting"> {
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    if (await page.locator('[data-pending="failed"]').count()) return "failed";
+    if ((await page.locator("[data-pending]").count()) === 0) return "answered";
+    await page.waitForTimeout(1000);
+  }
+  return "waiting";
 }
 
 async function reveal(page: Page, selector: string): Promise<boolean> {
@@ -84,11 +97,26 @@ async function createInDialog(page: Page, project: string, report: TourReport, s
   await shotTaken;
 }
 
+async function removeInSettings(page: Page, project: string, report: TourReport, shot: (name: string) => Promise<void>): Promise<void> {
+  const started = Date.now();
+  await page.goto(`/?project=${project}&settings=project.general`);
+  await page.getByRole("button", { name: "Delete project" }).first().click();
+  const dialog = page.locator('[data-dialog="delete-project"]');
+  await dialog.getByLabel("Project name to delete").fill(project);
+  await shot(`delete-${project}`);
+  await dialog.getByRole("button", { name: "Delete project" }).click();
+  await page.waitForURL((url) => !url.searchParams.has("project"), { timeout: 10 * 60_000 });
+  await shot(`deleted-${project}`);
+  const listed = (await json<{ projects: { name: string }[] }>(page, "/api/projects")).projects.some((p) => p.name === project);
+  report.removed = { project, listed, ms: Date.now() - started };
+  if (listed) report.errors.push(`remove: ${project} is still listed after deleting it`);
+}
+
 export async function tour(options: TourOptions): Promise<TourReport> {
   const { chromium } = await import("playwright");
   mkdirSync(options.out, { recursive: true });
   const base = options.url.replace(/\/$/, "");
-  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, previewLoads: [] };
+  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, previewLoads: [], sent: [] };
   const browser: Browser = await chromium.launch();
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
@@ -184,12 +212,23 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         await shot(`settings-${scope}-${section}`);
       }
     }
-    if (options.prompt) {
+    const prompts = (options.prompt ?? "").split("\n").map((p) => p.trim()).filter(Boolean);
+    if (prompts.length > 0) {
       await go(`/?project=${project}`);
       const input = page.locator("#chat textarea");
-      await input.fill(options.prompt);
-      await input.press("Enter");
-      await shot("sent");
+      for (const [i, prompt] of prompts.entries()) {
+        await input.fill(prompt);
+        await input.press("Enter");
+        const outcome = await answered(page);
+        let retried = false;
+        if (outcome === "failed") {
+          await shot(`sent${i + 1}-failed`);
+          await page.locator("[data-retry]").first().click();
+          retried = true;
+        }
+        report.sent.push({ prompt, answered: (retried ? await answered(page) : outcome) === "answered", retried });
+        await shot(prompts.length > 1 ? `sent${i + 1}` : "sent");
+      }
     }
     const deadline = Date.now() + options.minutes * 60_000;
     let round = 0;
@@ -246,6 +285,10 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       after = page500.at(-1)?.seq ?? after + page500.length;
     }
     writeFileSync(join(options.out, "events.jsonl"), events.map((e) => JSON.stringify(e)).join("\n"));
+    if (options.remove) {
+      if (report.projects.includes(project)) report.errors.push(`remove: ${project} was there before the tour, so the tour left it`);
+      else await removeInSettings(page, project, report, shot).catch((error: unknown) => void report.errors.push(`remove: ${error instanceof Error ? error.message : String(error)}`));
+    }
     return report;
   } finally {
     writeFileSync(join(options.out, "report.json"), `${JSON.stringify(report, null, 2)}\n`);

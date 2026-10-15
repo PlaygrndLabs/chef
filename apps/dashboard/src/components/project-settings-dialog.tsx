@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Brain, FolderGit2, KeyRound, Route, ScanSearch, ScrollText, SlidersHorizontal } from "lucide-react";
+import { Bot, BookOpen, Brain, FolderGit2, KeyRound, Route, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { OutboundMode, SyncState } from "@chef/core";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GitHubPicker } from "@/components/github-picker";
@@ -11,7 +12,7 @@ import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/a
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
 import { ProjectBudgetGroup } from "@/components/usage";
 import { host } from "@/host";
-import { githubApi, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
+import { githubApi, projectsApi, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const MODES: readonly { readonly mode: OutboundMode; readonly label: string; readonly note: string; readonly pullRequests?: true }[] = [
@@ -258,6 +259,70 @@ function MergeForm(props: { readonly mode: "auto" | "manual"; readonly save: Sav
   );
 }
 
+function DeleteProjectGroup(props: { readonly project: string; readonly linked: string | null }) {
+  const { project } = props;
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await projectsApi.remove(project);
+      toast.success(`Deleted ${project}`);
+      location.replace("/");
+    } catch (e) {
+      toast.error(`Could not delete ${project}`, { description: e instanceof Error ? e.message : String(e) });
+      setBusy(false);
+    }
+  };
+  return (
+    <Group
+      title="Delete project"
+      note={`Removes ${project} from Chef, with its live app, previews, code, memory and keys on your Cloudflare account.${props.linked ? " The linked repository stays as it is." : ""}`}
+      action={
+        <Button type="button" size="sm" variant="destructive" onClick={() => setOpen(true)}>
+          <Trash2 />
+          Delete project
+        </Button>
+      }
+    >
+      <AlertDialog
+        open={open}
+        onOpenChange={(next) => {
+          if (busy) return;
+          setOpen(next);
+          setTyped("");
+        }}
+      >
+        <AlertDialogContent data-dialog="delete-project">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {project}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Chef stops all work on it and removes its live app, previews, code and memory from your Cloudflare account. This can't be undone.{props.linked ? ` ${props.linked} stays as it is.` : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Field label={`Type ${project} to confirm`}>
+            <Input value={typed} onChange={(e) => setTyped(e.target.value)} aria-label="Project name to delete" className="font-mono" autoComplete="off" disabled={busy} />
+          </Field>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={busy || typed.trim() !== project}
+              onClick={(e) => {
+                e.preventDefault();
+                void remove();
+              }}
+            >
+              {busy ? "Deleting…" : "Delete project"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Group>
+  );
+}
+
 export function ProjectSettingsDialog(props: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -268,7 +333,6 @@ export function ProjectSettingsDialog(props: {
   readonly item: string | null;
   readonly nav: AgentsNav & { readonly section: (section: string) => void };
   readonly sharedAttempts: number | null;
-  readonly onReadCode: () => void;
   readonly onEditShared: () => void;
 }) {
   const { open, project, api, nav } = props;
@@ -311,18 +375,7 @@ export function ProjectSettingsDialog(props: {
             <Group title="Previews" note="A preview starts when someone opens its link, and is removed from your Cloudflare account after it sits unused.">
               <PreviewsForm key={settings.previewIdleMinutes} minutes={settings.previewIdleMinutes} save={save} />
             </Group>
-            <Group
-              title="Read the code"
-              note="Chef reads the whole project and suggests what to build next."
-              action={
-                <Button type="button" size="sm" variant="outline" onClick={props.onReadCode}>
-                  <ScanSearch />
-                  Read and suggest
-                </Button>
-              }
-            >
-              {null}
-            </Group>
+            <DeleteProjectGroup project={project} linked={settings.git?.url ?? null} />
           </>
         ) : (
           loading()

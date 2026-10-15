@@ -8,13 +8,18 @@ on:
         required: false
         default: ""
       prompt:
-        description: Request to type into the chat; empty only looks around
+        description: Requests to type into the chat, one per line, each sent once the last one is answered; empty only looks around
         required: false
         default: ""
       minutes:
         description: How long to follow the work
         required: true
         default: "25"
+      delete:
+        description: Delete the project at the end through Project settings (only one this run created)
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -40,11 +45,13 @@ jobs:
           args=(--minutes "$MINUTES" --out results/tour)
           [ -n "$PROJECT" ] && args+=(--project "$PROJECT")
           [ -n "$PROMPT" ] && args+=(--prompt "$PROMPT")
+          [ "$DELETE" = "true" ] && args+=(--delete)
           node --import tsx cli/src/bin.ts tour "${args[@]}"
         env:
           PROJECT: ${{ inputs.project }}
           PROMPT: ${{ inputs.prompt }}
           MINUTES: ${{ inputs.minutes }}
+          DELETE: ${{ inputs.delete }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

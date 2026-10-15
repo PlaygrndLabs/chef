@@ -16,6 +16,11 @@ export interface ProjectRegistry {
   addProject(entry: ProjectEntry): Promise<boolean>;
 }
 
+export interface ProjectRemoval {
+  readonly removed: readonly string[];
+  readonly kept: readonly string[];
+}
+
 export type ProjectCall = (project: string, path: string, init: RequestInit) => Promise<Response>;
 
 async function failure(response: Response, fallback: string): Promise<SetupError> {
@@ -68,4 +73,19 @@ export async function projectsRequest(request: Request, registry: ProjectRegistr
     201,
     now,
   );
+}
+
+export async function removeProjectRequest(request: Request, name: string, registry: ProjectRegistry & { forgetProject(name: string): Promise<void> }, remove: () => Promise<ProjectRemoval>): Promise<Response> {
+  if (request.method !== "DELETE") return Response.json({ error: "method not allowed" }, { status: 405 });
+  const body = (await request.json().catch(() => null)) as { confirm?: unknown } | null;
+  if (!(await registry.projects()).some((p) => p.name === name)) return Response.json({ error: `there is no project named ${name}` }, { status: 404 });
+  if (body?.confirm !== name) return Response.json({ error: `type ${name} to delete the project` }, { status: 400 });
+  let removal: ProjectRemoval;
+  try {
+    removal = await remove();
+  } catch (error) {
+    return Response.json({ error: `deleting ${name} stopped: ${error instanceof Error ? error.message : String(error)}. Delete it again to finish.` }, { status: 502 });
+  }
+  await registry.forgetProject(name);
+  return Response.json({ name, ...removal });
 }

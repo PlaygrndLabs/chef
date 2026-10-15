@@ -197,6 +197,7 @@ export interface ChefAgentOptions {
 
 export class ChefAgent extends AbstractAgent {
   private readonly options: ChefAgentOptions;
+  private stop: (() => void) | null = null;
 
   constructor(options: ChefAgentOptions) {
     super({ description: "Chef: routes a request to a feature, runs its sessions and streams them until they merge" });
@@ -206,18 +207,36 @@ export class ChefAgent extends AbstractAgent {
   override clone(): ChefAgent {
     const copy = super.clone() as ChefAgent;
     (copy as unknown as { options: ChefAgentOptions }).options = this.options;
+    copy.stop = null;
     return copy;
+  }
+
+  override abortRun(): void {
+    this.stop?.();
   }
 
   run(input: RunAgentInput): Observable<BaseEvent> {
     return new Observable<BaseEvent>((subscriber) => {
       let cancelled = false;
+      let wake: (() => void) | null = null;
+      const cancel = () => {
+        cancelled = true;
+        wake?.();
+      };
+      this.stop = cancel;
       const emit = (events: readonly BaseEvent[]) => {
         for (const event of events) if (!cancelled) subscriber.next(event);
       };
       const { threadId, runId } = input;
       const ids = () => crypto.randomUUID();
-      const sleep = this.options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+      const nap = this.options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+      const sleep = (ms: number) =>
+        new Promise<void>((resolve) => {
+          wake = resolve;
+          void nap(ms).then(resolve);
+        }).finally(() => {
+          wake = null;
+        });
       const work = async () => {
         emit([{ type: EventType.RUN_STARTED, threadId, runId } as BaseEvent]);
         const prompt = lastUserText(input);
@@ -229,12 +248,14 @@ export class ChefAgent extends AbstractAgent {
         const link = this.options.link;
         let after = await link.cursor();
         const result = await link.submit(prompt);
+        if (cancelled) return;
         const stream = new SessionStream(prompt, result, ids);
         emit(textMessage(ids(), routeLine(result)));
         emit([{ type: EventType.STATE_SNAPSHOT, snapshot: stream.snapshot() } as BaseEvent]);
         const started = Date.now();
         while (!cancelled && result.sessionIds.length > 0 && !isFinished(stream.snapshot())) {
           const batch = await link.events(after);
+          if (cancelled) break;
           for (const entry of batch) {
             after = Math.max(after, entry.seq);
             emit(stream.push(entry.event));
@@ -253,12 +274,13 @@ export class ChefAgent extends AbstractAgent {
       work()
         .then(() => subscriber.complete())
         .catch((error: unknown) => {
-          subscriber.next({ type: EventType.RUN_ERROR, message: error instanceof Error ? error.message : String(error) } as BaseEvent);
+          if (!cancelled) subscriber.next({ type: EventType.RUN_ERROR, message: error instanceof Error ? error.message : String(error) } as BaseEvent);
           subscriber.complete();
+        })
+        .finally(() => {
+          if (this.stop === cancel) this.stop = null;
         });
-      return () => {
-        cancelled = true;
-      };
+      return cancel;
     });
   }
 }

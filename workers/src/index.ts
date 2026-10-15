@@ -2,7 +2,7 @@ import { getAgentByName, routeAgentRequest } from "agents";
 import { guard, trusted, type Caller } from "./access.ts";
 import { copilotKitHandler } from "./copilotkit.ts";
 import { gitHubRequest, gitHubWebhook } from "./github.ts";
-import { projectsRequest } from "@chef/adapters/projects";
+import { projectsRequest, removeProjectRequest } from "@chef/adapters/projects";
 import { agentsRequest } from "@chef/adapters/agents";
 import { sharedInstructionsRequest } from "@chef/adapters/guidance";
 import { loadProfiles } from "@chef/core";
@@ -18,6 +18,7 @@ export { Settings } from "./settings.ts";
 export { UpstreamSync } from "./upstream-sync.ts";
 
 const WEBHOOK = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/git\/webhook$/;
+const PROJECT_ROOT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})$/;
 const COPILOTKIT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/copilotkit(\/|$)/;
 
 export default {
@@ -49,6 +50,8 @@ export default {
       return agentsRequest(request, { store: agentStore(env), defaults: loadProfiles(agentFiles), models: settings.models, jev: settings.jev !== null }).catch(() => Response.json({ error: "Chef is finishing an update, so try again in a minute" }, { status: 503 }));
     }
     if (url.pathname === "/api/projects") return projectsRequest(request, settingsStub(env), (project, path, init) => projectStub(env, project, new Request(`${url.origin}/api/projects/${project}/${path}`, init)));
+    const root = PROJECT_ROOT.exec(url.pathname);
+    if (root && request.method === "DELETE") return removeProjectRequest(request, root[1] as string, settingsStub(env), () => removeProject(env, root[1] as string));
     if (url.pathname === "/api/github" || url.pathname.startsWith("/api/github/")) return gitHubRequest(request, env);
     const copilotKit = COPILOTKIT.exec(url.pathname);
     if (copilotKit) return copilotKitHandler(request, env, copilotKit[1] as string);
@@ -65,6 +68,13 @@ function shared(request: Request, caller: Caller): Request {
   const headers = new Headers(request.headers);
   headers.set(SHARE_HEADER, "1");
   return new Request(request, { headers });
+}
+
+async function removeProject(env: Env, name: string) {
+  const project = await getAgentByName(env.PROJECT, name);
+  const removal = await project.removeProject();
+  await project.destroy().catch(() => undefined);
+  return removal;
 }
 
 function projectStub(env: Env, project: string, request: Request): Promise<Response> {

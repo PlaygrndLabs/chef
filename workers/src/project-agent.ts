@@ -45,6 +45,7 @@ const ENV = "project/env";
 const AGENTS = "project/agents/";
 const LIVE = "project/live";
 const PREVIEW_KEY = "project/preview-key";
+const REMOVING = "project/removing";
 
 export interface LiveState {
   readonly status: LiveStatus;
@@ -56,6 +57,7 @@ export interface LiveState {
 const READING_TIMEOUT_MS = 10 * 60_000;
 const POLL_SECONDS = 300;
 const BUSY_SWEEP_SECONDS = 600;
+const DEPLOY_WAIT_SECONDS = 120;
 
 const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
 
@@ -144,8 +146,14 @@ export class ProjectAgent extends Agent<Env> {
     return this.built;
   }
 
+  override async alarm(): Promise<void> {
+    if (await this.ctx.storage.get<boolean>(REMOVING)) return;
+    await super.alarm();
+  }
+
   override async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method !== "GET" && (await this.ctx.storage.get<boolean>(REMOVING))) return Response.json({ error: `${this.name} is being deleted` }, { status: 409 });
     const action = url.pathname.split("/").filter(Boolean).at(-1);
     if (url.pathname.endsWith("/git/webhook")) return this.webhook(request);
     const origin = request.headers.has(ORIGIN_HEADER) ? publicOrigin(request) : (homeOrigin(this.env) ?? url.origin);
@@ -218,7 +226,9 @@ export class ProjectAgent extends Agent<Env> {
           await this.startReading();
           return { commitId: pulled.commitId, created: true, imported: true };
         }
-        return { commitId: await orchestrator.bootstrap(templateFiles, progress), created: true };
+        const commitId = await orchestrator.bootstrap(templateFiles, progress);
+        await this.startReading();
+        return { commitId, created: true };
       });
     }
     if (action === "overview" && request.method === "GET") return Response.json(await this.overview());
@@ -252,6 +262,44 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "GET" && action === "cursor") return Response.json({ seq: await bus.cursor() });
     if (request.method === "GET" && action === "events") return Response.json(await bus.since(Number(url.searchParams.get("after") ?? 0)));
     return Response.json({ error: "not found" }, { status: 404 });
+  }
+
+  async removeProject(): Promise<{ readonly removed: readonly string[]; readonly kept: readonly string[] }> {
+    await this.ctx.storage.put(REMOVING, true);
+    for (const schedule of await this.listSchedules()) await this.cancelSchedule(schedule.id);
+    const { orchestrator, repos, space } = await this.build();
+    const worker = `${this.env.PROJECT_WORKER_PREFIX}${this.name}`;
+    const sessions = await orchestrator.sessions();
+    const removed: string[] = [];
+    const kept: string[] = [];
+    const sandboxes = new Set([this.name, `live-${worker}`]);
+    for (const session of sessions) {
+      sandboxes.add(session.id);
+      for (const lane of session.lanes ?? []) sandboxes.add(sandboxName(session.id, lane.role));
+      sandboxes.add(`preview-${previewName(previewBranch(session.previewKey), worker)}`);
+    }
+    await Promise.all([...sandboxes].map((name) => (this.env.SESSION.get(this.env.SESSION.idFromName(name)) as unknown as { discard(): Promise<void> }).discard().catch(() => undefined)));
+    removed.push(`stopped the work of ${sessions.length === 1 ? "1 session" : `${sessions.length} sessions`}`);
+    for (let waited = 0; this.deploying && waited < DEPLOY_WAIT_SECONDS; waited++) await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (space) {
+      try {
+        if ((await space.removeWorker()) === "removed") removed.push(`removed the app ${worker} and its previews`);
+      } catch (error) {
+        if (!(error instanceof WorkerTakenError)) throw error;
+        kept.push(error.message);
+      }
+    }
+    const forgotten = await orchestrator.forgetMemory();
+    if (forgotten > 0) removed.push(`forgot ${forgotten === 1 ? "1 memory entry" : `${forgotten} memory entries`}`);
+    const forks = sessions.filter((session) => !session.forkDeleted).map((session) => session.fork);
+    for (const repo of [...forks, this.name]) {
+      if (!(await repos.info(repo))) continue;
+      await repos.deleteRepo(repo);
+      removed.push(`removed the code ${repo}`);
+    }
+    const git = (await this.projectSettings()).git;
+    if (git) kept.push(`the linked repository ${git.url} stays as it is`);
+    return { removed, kept };
   }
 
   private async sessionRequest(request: Request, id: string, action: string | null): Promise<Response> {
