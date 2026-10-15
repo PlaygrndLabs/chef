@@ -72,3 +72,25 @@ test("routes read keys and settings from context.env", async () => {
   assert.deepEqual(await (await createApp([weather], new MemoryStore(), { WEATHER_API_KEY: "test" })(new Request("http://app.test/api/weather"))).json(), { configured: true });
   assert.deepEqual(await (await createApp([weather], new MemoryStore())(new Request("http://app.test/api/weather"))).json(), { configured: false });
 });
+
+test("a browser opening a page no feature serves yet gets a friendly page that links the app's pages", async () => {
+  const app = createApp([notes], new MemoryStore());
+  const response = await app(new Request("http://app.test/reading-list", { headers: { accept: "text/html,application/xhtml+xml" } }));
+  assert.equal(response.status, 404);
+  assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+  const html = await response.text();
+  assert.match(html, /<title>This page isn&#39;t built yet<\/title>/);
+  assert.match(html, /<code>\/reading-list<\/code>/);
+  assert.match(html, /<a [^>]*href="\/"/);
+  assert.match(html, /<a [^>]*href="\/notes"/);
+  assert.match(html, /postMessage\(\{chef:"page"/);
+});
+
+test("API clients and unknown API paths still get a JSON 404", async () => {
+  const app = createApp([notes], new MemoryStore());
+  for (const request of [new Request("http://app.test/reading-list"), new Request("http://app.test/api/books", { headers: { accept: "text/html" } }), new Request("http://app.test/reading-list", { method: "POST", headers: { accept: "text/html" } })]) {
+    const response = await app(request);
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), { error: "not found" });
+  }
+});

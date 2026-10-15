@@ -1,4 +1,4 @@
-import { html, icon, page } from "./ui.ts";
+import { html, icon, page, type SafeHtml } from "./ui.ts";
 import type { Store } from "./storage.ts";
 
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -39,9 +39,13 @@ export function matchPath(pattern: string, pathname: string): Record<string, str
   return params;
 }
 
+function isApi(path: string): boolean {
+  return path === "/api" || path.startsWith("/api/");
+}
+
 export function isPage(route: Pick<Route, "method" | "path">): boolean {
   const { method, path } = route;
-  if (method !== "GET" || path === "/" || path.includes(":") || path === "/api" || path.startsWith("/api/")) return false;
+  if (method !== "GET" || path === "/" || path.includes(":") || isApi(path)) return false;
   return !/\.[A-Za-z0-9]+$/.test(path.split("/").pop() ?? "");
 }
 
@@ -49,12 +53,23 @@ export function pagesOf(features: readonly Feature[]): { readonly title: string;
   return features.flatMap((feature) => feature.routes.filter(isPage).map((route) => ({ title: feature.title, path: route.path })));
 }
 
+function pageList(pages: readonly { readonly title: string; readonly path: string }[]): SafeHtml {
+  return html`<ul class="list">${pages.map((p) => html`<li><a class="row grow" href="${p.path}" style="text-decoration:none">${icon("file")}<span class="grow strong">${p.title}</span><code>${p.path}</code>${icon("chevron-right", { class: "muted" })}</a></li>`)}</ul>`;
+}
+
 export function indexPage(features: readonly Feature[]): Response {
   const pages = pagesOf(features);
-  const body = pages.length
-    ? html`<ul class="list">${pages.map((p) => html`<li><a class="row grow" href="${p.path}" style="text-decoration:none">${icon("file")}<span class="grow strong">${p.title}</span><code>${p.path}</code>${icon("chevron-right", { class: "muted" })}</a></li>`)}</ul>`
-    : html`<div class="empty">${icon("sparkles")}<strong>No pages yet</strong><span>Pages show up here as features add them.</span></div>`;
+  const body = pages.length ? pageList(pages) : html`<div class="empty">${icon("sparkles")}<strong>No pages yet</strong><span>Pages show up here as features add them.</span></div>`;
   return page({ title: "App", body: html`<header class="page-header"><div><h1>App</h1><p>Every page in this app.</p></div></header>${body}` });
+}
+
+export function notBuiltPage(features: readonly Feature[], path: string): Response {
+  const pages = [{ title: "Home", path: "/" }, ...pagesOf(features)];
+  return page({
+    title: "This page isn't built yet",
+    status: 404,
+    body: html`<div class="empty">${icon("sparkles")}<strong>This page isn't built yet</strong><span>Nothing in this app answers <code>${path}</code> yet. It shows up here once a feature adds it.</span></div><section class="section"><h2>Pages in this app</h2>${pageList(pages)}</section>`,
+  });
 }
 
 function wantsPage(request: Request): boolean {
@@ -87,7 +102,7 @@ export function createApp(features: readonly Feature[], store: Store, env: Env =
       const params = matchPath(route.path, url.pathname);
       if (params) return route.handle(request, { store, params, env });
     }
-    return json({ error: "not found" }, 404);
+    return wantsPage(request) && !isApi(url.pathname) ? notBuiltPage(features, url.pathname) : json({ error: "not found" }, 404);
   };
   return async (request) => {
     const response = await answer(request);
