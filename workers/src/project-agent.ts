@@ -10,7 +10,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
+import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type PlainEnvVar, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -216,7 +216,7 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
       if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
-      return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await orchestrator.layout(), live: (await this.ctx.storage.get<LiveState>(LIVE)) ?? null });
+      return Response.json({ commitId: main.commitId, features: readSpec(main.tree), map: readFeatureMap(main.tree), layout: await orchestrator.layout(), live: (await this.ctx.storage.get<LiveState>(LIVE)) ?? null });
     }
     if (request.method === "POST" && action === "live") {
       if (!space) return Response.json({ error: NO_CLOUDFLARE }, { status: 409 });

@@ -13,7 +13,8 @@
     "./replay": "./src/events/replay.ts",
     "./setup": "./src/setup/progress.ts",
     "./chat": "./src/router/conversation.ts",
-    "./access": "./src/access/token.ts"
+    "./access": "./src/access/token.ts",
+    "./features": "./src/features/map.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

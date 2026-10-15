@@ -78,7 +78,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const data = useProject(project);
   const api = useMemo(() => projectApi(project), [project]);
   const sessions = useMemo(() => sessionNodes(data.live, data.records), [data.live, data.version, data.records]);
-  const features = useMemo(() => featureNodes(data.live, data.records, data.spec?.features ?? [], data.spec?.layout), [data.live, data.version, data.records, data.spec]);
+  const features = useMemo(() => featureNodes(data.live, data.records, data.spec?.features ?? [], data.spec?.layout, data.spec?.map ?? null), [data.live, data.version, data.records, data.spec]);
   const picked = selection.session ? (sessions.find((s) => s.id === selection.session) ?? null) : null;
   const featureId = selection.view === "feature" ? (selection.feature ?? picked?.featureId ?? null) : null;
   const feature = featureId ? (features.find((f) => f.id === featureId) ?? null) : null;
