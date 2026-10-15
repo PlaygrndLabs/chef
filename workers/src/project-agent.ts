@@ -10,13 +10,13 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
+import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type PlainEnvVar, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
 import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
-import { exploreProject, type OverviewState } from "@chef/adapters/project-explorer";
+import { exploreProject, withMapSuggestion, type OverviewState } from "@chef/adapters/project-explorer";
 import { activityNote } from "@chef/adapters/projects";
 import { laneLayout, renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
@@ -180,6 +180,13 @@ export class ProjectAgent extends Agent<Env> {
     const feature = FEATURE_ROUTE.exec(url.pathname);
     if (feature) {
       const { response, mainChanged } = await featureRequest(request, orchestrator, feature[1] as string);
+      if (mainChanged) await this.schedule(0, "deployLive", undefined, { idempotent: true });
+      return response;
+    }
+    const featureMap = FEATURE_MAP_ROUTE.exec(url.pathname);
+    if (featureMap) {
+      if (featureMap[1] && !settings.llm) return Response.json({ error: NO_LLM }, { status: 409 });
+      const { response, mainChanged } = await featureMapRequest(request, orchestrator, Boolean(featureMap[1]));
       if (mainChanged) await this.schedule(0, "deployLive", undefined, { idempotent: true });
       return response;
     }
@@ -752,7 +759,9 @@ export class ProjectAgent extends Agent<Env> {
   private async overview(): Promise<OverviewState> {
     const state = (await this.ctx.storage.get<OverviewState>(OVERVIEW)) ?? { status: "none" };
     if (state.status === "reading" && Date.now() - state.since > READING_TIMEOUT_MS) return { status: "failed", at: Date.now(), error: "reading the code took too long; try again" };
-    return state;
+    if (state.status !== "ready" || !(await this.projectSettings()).git) return state;
+    const { orchestrator } = await this.build();
+    return { ...state, overview: withMapSuggestion(state.overview, (await orchestrator.mainTree()).tree) };
   }
 
   private async startReading(): Promise<void> {
