@@ -29,7 +29,7 @@ describe("feature list as a feature map in a browser", () => {
       await page.locator('#features [data-feature="todo-add"][data-status="merged"]').waitFor({ timeout: 60_000 });
       await input.fill("/map");
       await input.press("Enter");
-      await page.locator("#chat", { hasText: "added 1 feature to the feature list" }).waitFor({ timeout: 30_000 });
+      await page.locator("#chat", { hasText: "already has every feature" }).waitFor({ timeout: 30_000 });
       await page.locator('#features [data-feature="todo-add"][data-mark="current"]').waitFor({ timeout: 10_000 });
 
       await page.locator('#features [data-feature="todo-add"]').hover();

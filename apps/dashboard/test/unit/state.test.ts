@@ -81,7 +81,7 @@ describe("project event state", () => {
       ["backend", "ok", "Did its part", ""],
       ["frontend", "run", "Working on its part on its own branch", "Drawing the page"],
     ]);
-    const node = { id: "s1", featureId: "todo", state: "coding", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], budget: null, ready: null, live: s, record: undefined } as const;
+    const node = { id: "s1", featureId: "todo", state: "coding", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], budget: null, ready: null, live: s, record: undefined, into: null } as const;
     const team = teamOf(node);
     expect(team.filter((m) => m.branch).map((m) => [m.role, m.state, m.branch])).toEqual([["backend", "done", "lane/backend"], ["frontend", "working", "lane/frontend"]]);
     const both = run([...events.slice(0, -2)]);
@@ -173,6 +173,20 @@ describe("feature list from the feature map", () => {
       ["share", "working"],
       ["archive", "wish"],
     ]);
+  });
+});
+
+describe("child builds merged into their parent", () => {
+  it("calls a child Done while its parent still builds, and Live once the parent reaches main", () => {
+    const record = (id: string, featureId: string, state: SessionRecord["machine"]["state"], into?: string) => ({ id, featureId, machine: { state }, attempt: null, parent: null, createdAt: 1, updatedAt: 1, plan: { feature: { id: featureId, title: featureId } }, ...(into ? { merge: { commitId: "m", mainBefore: "b", into } } : {}) }) as unknown as SessionRecord;
+    const building = [record("s1", "notes", "coding"), record("s2", "tags", "merged", "s1")];
+    const child = featureNodes(emptyProject(), building, []).find((f) => f.id === "tags");
+    expect(child?.status).toBe("done");
+    expect(child?.sessions[0]?.into).toBe("notes");
+    const live = [record("s1", "notes", "merged"), record("s2", "tags", "merged", "s1")];
+    expect(featureNodes(emptyProject(), live, []).find((f) => f.id === "tags")?.status).toBe("merged");
+    const items = run([{ type: "branch.merged", sessionId: "s2", featureId: "tags", into: "s1", intoFeature: "notes", commitId: "m1" }]).sessions["s2"]?.timeline ?? [];
+    expect(updates(items, "merged").map((u) => (u.kind === "chef" ? u.text : u.text))).toEqual(["Done, merged into its parent feature"]);
   });
 });
 

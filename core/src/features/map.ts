@@ -127,9 +127,8 @@ function byPath(a: string, b: string): number {
   return x.length - y.length;
 }
 
-export function hasFeatureMap(tree: Tree): boolean {
-  const prefix = `${FEATURES_DIR}/`;
-  return Object.keys(tree).some((file) => file.startsWith(prefix));
+export function wasMapped(tree: Tree): boolean {
+  return START_FILE in tree;
 }
 
 export function renderSpecs(entry: Pick<MapEntry, "title" | "state" | "specs">): string {
@@ -234,6 +233,17 @@ export function mapProblems(tree: Tree): string[] {
     if (!parsed.success) problems.push(`${featureDir(feature.id)}/${SPECS_FILE}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "frontmatter"}: ${i.message}`).join("; ")}`);
   }
   return problems;
+}
+
+export function mergedEntryChanges(tree: Tree, feature: { readonly id: string; readonly title: string; readonly parent?: string | undefined; readonly entrypoint?: string | undefined }): FileChanges {
+  const map = readFeatureMap(tree);
+  const existing = findByName(map, feature.id);
+  if (existing) return existing.state === "current" ? {} : { [`${featureDir(existing.id)}/${SPECS_FILE}`]: renderSpecs({ title: existing.title, state: "current", specs: existing.specs }) };
+  const under = feature.parent ? findByName(map, feature.parent)?.id : undefined;
+  const id = under ? `${under}/${feature.id}` : feature.id;
+  if (!isFeaturePath(id)) return {};
+  const entrypoint = feature.entrypoint?.trim();
+  return entryChanges({ id, title: feature.title, state: "current", path: entrypoint ? `Open ${entrypoint}.` : "" });
 }
 
 export function mapAsSpec(map: FeatureMap, known: ReadonlySet<string>): FeatureSpec[] {
