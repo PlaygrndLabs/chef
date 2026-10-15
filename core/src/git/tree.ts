@@ -167,39 +167,73 @@ function mergeLines(base: string, ours: string, theirs: string): string | null {
   return out.join("\n");
 }
 
+const MAX_EDITS = 2000;
+
 function hunks(base: readonly string[], next: readonly string[]): Hunk[] {
-  const n = base.length;
-  const m = next.length;
-  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--) {
-    const row = lcs[i] as number[];
-    const below = lcs[i + 1] as number[];
-    for (let j = m - 1; j >= 0; j--) {
-      row[j] = base[i] === next[j] ? (below[j + 1] as number) + 1 : Math.max(below[j] as number, row[j + 1] as number);
-    }
-  }
+  let head = 0;
+  while (head < base.length && head < next.length && base[head] === next[head]) head++;
+  let tail = 0;
+  while (tail < base.length - head && tail < next.length - head && base[base.length - 1 - tail] === next[next.length - 1 - tail]) tail++;
+  const a = base.slice(head, base.length - tail);
+  const b = next.slice(head, next.length - tail);
+  if (a.length === 0 && b.length === 0) return [];
+  const matches = matchedLines(a, b);
+  if (!matches) return [{ start: head, end: head + a.length, lines: b }];
   const result: Hunk[] = [];
   let i = 0;
   let j = 0;
-  let open: { start: number; lines: string[] } | null = null;
-  const close = (end: number) => {
-    if (open) result.push({ start: open.start, end, lines: open.lines });
-    open = null;
-  };
-  while (i < n || j < m) {
-    if (i < n && j < m && base[i] === next[j]) {
-      close(i);
-      i++;
-      j++;
-    } else if (j < m && (i >= n || (lcs[i]?.[j + 1] as number) >= (lcs[i + 1]?.[j] as number))) {
-      open ??= { start: i, lines: [] };
-      open.lines.push(next[j] as string);
-      j++;
-    } else {
-      open ??= { start: i, lines: [] };
-      i++;
+  for (const [x, y] of [...matches, [a.length, b.length] as const]) {
+    if (x > i || y > j) result.push({ start: head + i, end: head + x, lines: b.slice(j, y) });
+    i = x + 1;
+    j = y + 1;
+  }
+  return result;
+}
+
+function matchedLines(a: readonly string[], b: readonly string[]): (readonly [number, number])[] | null {
+  const n = a.length;
+  const m = b.length;
+  const limit = Math.min(n + m, MAX_EDITS);
+  const offset = limit + 1;
+  const v = new Int32Array(2 * offset + 1);
+  const trace: Int32Array[] = [];
+  for (let d = 0; d <= limit; d++) {
+    trace.push(v.slice(offset - d, offset + d + 1));
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && (v[offset + k - 1] as number) < (v[offset + k + 1] as number)) ? (v[offset + k + 1] as number) : (v[offset + k - 1] as number) + 1;
+      let y = x - k;
+      while (x < n && y < m && a[x] === b[y]) {
+        x++;
+        y++;
+      }
+      v[offset + k] = x;
+      if (x >= n && y >= m) return backtrack(a, b, trace, d);
     }
   }
-  close(i);
-  return result;
+  return null;
+}
+
+function backtrack(a: readonly string[], b: readonly string[], trace: readonly Int32Array[], edits: number): (readonly [number, number])[] {
+  const matches: (readonly [number, number])[] = [];
+  let x = a.length;
+  let y = b.length;
+  for (let d = edits; d >= 0; d--) {
+    const before = trace[d] as Int32Array;
+    const at = (k: number) => before[k + d] as number;
+    const k = x - y;
+    const down = d > 0 && (k === -d || (k !== d && at(k - 1) < at(k + 1)));
+    const previousK = d === 0 ? 0 : down ? k + 1 : k - 1;
+    const startX = d === 0 ? 0 : down ? at(previousK) : at(previousK) + 1;
+    const startY = startX - k;
+    while (x > startX && y > startY) {
+      x--;
+      y--;
+      matches.push([x, y]);
+    }
+    if (d > 0) {
+      x = at(previousK);
+      y = x - previousK;
+    }
+  }
+  return matches.reverse();
 }
