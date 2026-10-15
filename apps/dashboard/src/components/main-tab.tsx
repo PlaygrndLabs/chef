@@ -59,7 +59,7 @@ export function MainTab() {
           </TabsTrigger>
         </TabsList>
       </div>
-      <TabsContent value="app" className="flex min-h-0 flex-1 flex-col p-4">
+      <TabsContent value="app" className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         <MainApp />
       </TabsContent>
       <TabsContent value="history" className="flex min-h-0 flex-1 flex-col">

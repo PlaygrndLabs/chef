@@ -568,7 +568,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
           {node.state === "stuck" ? <NeedsYou node={node} /> : waitsForKey(node) ? <KeyPrompt names={node.needs} api={api} onSaved={data.refresh} /> : <MergePrompt node={node} />}
         </div>
       ) : null}
-      <TabsContent value="app" className="flex min-h-0 flex-1 flex-col p-4">
+      <TabsContent value="app" className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         <SessionApp feature={feature} node={node} />
       </TabsContent>
       <TabsContent value="messages" className="flex min-h-0 flex-1 flex-col">
