@@ -1,6 +1,7 @@
 import { readSetupStream, SETUP_STREAM, SetupError, setupResponse, type ChefEvent, type SetupProgress } from "@chef/core";
 
 const PROJECT_NAME = /^[a-z][a-z0-9-]{1,30}$/;
+const STALE_OBJECT = /does not implement the method/;
 
 export interface ProjectEntry {
   readonly name: string;
@@ -117,7 +118,9 @@ export async function removeProjectRequest(request: Request, name: string, regis
   try {
     removal = await remove();
   } catch (error) {
-    return Response.json({ error: `deleting ${name} stopped: ${error instanceof Error ? error.message : String(error)}. Delete it again to finish.` }, { status: 502 });
+    const message = error instanceof Error ? error.message : String(error);
+    if (STALE_OBJECT.test(message)) return Response.json({ error: `Chef was just updated and ${name} is still finishing on the previous version. Nothing was deleted; try again in a minute.` }, { status: 503 });
+    return Response.json({ error: `deleting ${name} stopped: ${message}. Delete it again to finish.` }, { status: 502 });
   }
   await registry.forgetProject(name);
   return Response.json({ name, ...removal });
