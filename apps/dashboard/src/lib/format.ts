@@ -52,7 +52,7 @@ export const PLAIN_STATE: Readonly<Record<SessionState, string>> = {
   coding: "Writing code",
   reviewing: "In review",
   gating: "Final checks",
-  merged: "Live",
+  merged: "Merged",
   stuck: "Needs you",
   dropped: "Stopped",
 };

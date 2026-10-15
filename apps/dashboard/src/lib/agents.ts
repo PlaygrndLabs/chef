@@ -175,7 +175,7 @@ export function laneSummary(node: SessionNode, role: string): LaneSummary | null
   if (!branch) return null;
   const halted = node.state === "stuck" || node.state === "dropped";
   const raw = live?.status ?? (record && record.done >= record.items.length ? "merged" : "waiting");
-  const status = node.state === "merged" ? "Its work went live with the feature" : halted && raw === "working" ? "Was working when Chef stopped" : (LANE_STATUS[raw] ?? raw);
+  const status = node.state === "merged" ? "Its work was merged with the feature" : halted && raw === "working" ? "Was working when Chef stopped" : (LANE_STATUS[raw] ?? raw);
   const of = record?.items.length ?? live?.items ?? 0;
   const commits = (node.live?.commits ?? []).filter((c) => c.role === role).length || (live?.commits ?? 0);
   return { branch, status, steps: of ? { done: Math.min(record?.done ?? 0, of), of } : null, commits, owns: record?.owns ?? [] };

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Rocket, Share2, ShieldCheck, Trophy, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Share2, ShieldCheck, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { ShareDialog } from "@/components/share-dialog";
 import { host } from "@/host";
 
-const ICONS: Readonly<Record<UpdateIcon, typeof Check>> = { plan: ListChecks, test: FlaskConical, code: Code2, review: MessageSquareText, check: ShieldCheck, live: Rocket, alert: AlertTriangle, stop: OctagonX, sync: GitMerge, pick: Trophy };
+const ICONS: Readonly<Record<UpdateIcon, typeof Check>> = { plan: ListChecks, test: FlaskConical, code: Code2, review: MessageSquareText, check: ShieldCheck, merged: GitMerge, alert: AlertTriangle, stop: OctagonX, sync: GitMerge, pick: Trophy };
 const TONE: Readonly<Record<UpdateTone, string>> = { ok: "text-ok", run: "text-run", bad: "text-bad", idle: "text-muted-foreground" };
 
 function Steps({ node }: { readonly node: SessionNode }) {
@@ -263,7 +263,7 @@ function StopDialog({ node, open, onOpenChange }: { readonly node: SessionNode; 
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Stop building this?</AlertDialogTitle>
-          <AlertDialogDescription>Chef stops working on it and nothing goes live. The work so far is kept, and you can start over later.</AlertDialogDescription>
+          <AlertDialogDescription>Chef stops working on it and nothing is merged. The work so far is kept, and you can start over later.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep going</AlertDialogCancel>
@@ -405,7 +405,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
   const active = node ? isActive(node.state) : false;
   const held = node ? heldBy(node) : null;
   const criteria = feature.spec?.acceptance ?? [];
-  const isLive = node ? node.state === "merged" : feature.status === "merged";
+  const isMerged = node ? node.state === "merged" : feature.status === "merged";
   useEffect(() => {
     if (active) end.current?.scrollIntoView({ block: "end" });
   }, [list.length, node?.id, active]);
@@ -417,7 +417,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
             <TryTabs node={node} />
             <Steps node={node} />
             <Team node={node} />
-            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)} It goes on when the budget is raised or next month starts.` : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : waitsForMerge(node) ? "Passed every check. Waiting for you to merge it into main." : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : p.now}</p>
+            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)} It goes on when the budget is raised or next month starts.` : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : waitsForMerge(node) ? "Passed every check. Waiting for you to merge it into main." : held ? `Passed review. Waiting for hotfix ${held} to be merged first.` : active ? activity(node.state, timeline, null) : p.now}</p>
           </div>
         </div>
       ) : null}
@@ -435,11 +435,11 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
           {node ? <Related node={node} /> : null}
           {criteria.length ? (
             <section className="flex flex-col gap-2.5" data-criteria>
-              <h2 className="kicker">{isLive ? "What it does" : "What it must do to go live"}</h2>
+              <h2 className="kicker">{isMerged ? "What it does" : "What it must do to be merged"}</h2>
               <ul className="flex flex-col gap-2">
                 {criteria.map((c) => (
                   <li key={c.id} className="flex gap-2.5">
-                    {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 border border-muted-foreground" />}
+                    {isMerged ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 border border-muted-foreground" />}
                     <span>{c.text}</span>
                   </li>
                 ))}

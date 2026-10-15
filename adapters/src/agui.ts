@@ -17,6 +17,7 @@ export interface SessionView {
   readonly review: string | null;
   readonly gate: string | null;
   readonly merged: string | null;
+  readonly into?: string;
   readonly stuck: string | null;
   readonly commits: number;
 }
@@ -100,6 +101,8 @@ export class SessionStream {
         return this.update(id, { gate: event.ok ? "passed" : `failed: ${event.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}` });
       case "main.merged":
         return this.update(id, { merged: event.commitId });
+      case "branch.merged":
+        return this.update(id, { merged: event.commitId, into: event.intoFeature });
       case "session.stuck":
         return this.update(id, { stuck: event.reason });
       default:
@@ -181,7 +184,7 @@ export function routeLine(result: SubmitResult): string {
 export function summaryLine(state: ChefState): string {
   return Object.values(state.sessions)
     .map((s) => {
-      if (s.state === "merged") return `${s.id} merged${s.merged ? ` as ${s.merged.slice(0, 12)}` : ""}${s.app ? `; app ${s.app}` : ""}.`;
+      if (s.state === "merged") return `${s.id} merged into ${s.into ?? "main"}${s.merged ? ` as ${s.merged.slice(0, 12)}` : ""}${s.app ? `; app ${s.app}` : ""}.`;
       if (s.state === "stuck") return `${s.id} is stuck: ${s.stuck ?? "no reason recorded"}.`;
       return `${s.id} was dropped.`;
     })

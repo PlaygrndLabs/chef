@@ -31,7 +31,7 @@ describe("CopilotKit runtime streams Chef sessions", () => {
       const text = frames.filter((f) => f.type === "TEXT_MESSAGE_CONTENT").map((f) => f["delta"]).join("");
       expect(text).toContain("Routed as new feature for todo-add");
       expect(text).toContain("editing features/todo-add/");
-      expect(text).toMatch(/merged as [0-9a-f]{12}/);
+      expect(text).toMatch(/merged into main as [0-9a-f]{12}/);
       expect(types).toContain("TOOL_CALL_START");
       const steps = frames.filter((f) => f.type === "STEP_STARTED").map((f) => String(f["stepName"]).split(":")[1]);
       expect(steps).toEqual(expect.arrayContaining(["testing", "coding", "reviewing", "gating", "merged"]));

@@ -240,7 +240,7 @@ function TriesForm(props: { readonly own: number | null; readonly shared: number
 }
 
 const MERGE_CHOICES = [
-  { mode: "auto", label: "Automatic", note: "A build goes live as soon as it passes every check." },
+  { mode: "auto", label: "Automatic", note: "A build is merged into main as soon as it passes every check." },
   { mode: "manual", label: "Manual", note: "A build waits after its checks pass until someone presses Merge." },
 ] as const;
 

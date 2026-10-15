@@ -23,8 +23,8 @@ describe("one role's lane", () => {
     expect(laneSummary(node("coding", {}, lanes), "frontend")).toMatchObject({ branch: "lane/frontend", status: "Waiting for its turn", steps: { done: 0, of: 1 }, owns: [] });
   });
 
-  it("says when the work went live or was cut off", () => {
-    expect(laneSummary(node("merged", {}, lanes), "backend")?.status).toBe("Its work went live with the feature");
+  it("says when the work was merged or was cut off", () => {
+    expect(laneSummary(node("merged", {}, lanes), "backend")?.status).toBe("Its work was merged with the feature");
     const stopped = node("stuck", { lanes: [{ role: "frontend", branch: "lane/frontend", items: 1, status: "working", commits: 0, at: 1 }] }, lanes);
     expect(laneSummary(stopped, "frontend")?.status).toBe("Was working when Chef stopped");
   });
