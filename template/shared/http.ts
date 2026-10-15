@@ -43,6 +43,35 @@ function isApi(path: string): boolean {
   return path === "/api" || path.startsWith("/api/");
 }
 
+function shape(path: string): string[] {
+  return path.split("/").filter(Boolean).map((part) => (part.startsWith(":") ? ":" : part));
+}
+
+function bySpecificity(a: Route, b: Route): number {
+  const x = shape(a.path);
+  const y = shape(b.path);
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    const left = x[i] === ":";
+    const right = y[i] === ":";
+    if (left !== right) return left ? 1 : -1;
+  }
+  return 0;
+}
+
+export function routeClashes(features: readonly Feature[]): string[] {
+  const seen = new Map<string, string>();
+  const clashes: string[] = [];
+  for (const feature of features) {
+    for (const route of feature.routes) {
+      const key = `${route.method} /${shape(route.path).join("/")}`;
+      const first = seen.get(key);
+      if (first === undefined) seen.set(key, feature.id);
+      else clashes.push(first === feature.id ? `${route.method} ${route.path} is served twice by ${feature.id}` : `${route.method} ${route.path} is served by both ${first} and ${feature.id}`);
+    }
+  }
+  return clashes;
+}
+
 export function isPage(route: Pick<Route, "method" | "path">): boolean {
   const { method, path } = route;
   if (method !== "GET" || path === "/" || path.includes(":") || isApi(path)) return false;
@@ -98,7 +127,9 @@ async function withBridge(response: Response, bridge: string): Promise<Response>
 }
 
 export function createApp(features: readonly Feature[], store: Store, env: Env = {}): (request: Request) => Promise<Response> {
-  const routes = features.flatMap((feature) => feature.routes);
+  const clashes = routeClashes(features);
+  if (clashes.length) throw new Error(`routes clash: ${clashes.join("; ")}. Give each route its own method and path`);
+  const routes = features.flatMap((feature) => feature.routes).sort(bySpecificity);
   const rootPage = routes.some((route) => route.method === "GET" && route.path === "/");
   const bridge = chefBridge(features);
   const answer = async (request: Request): Promise<Response> => {

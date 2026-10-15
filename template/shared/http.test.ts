@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createApp, json, type Feature } from "./http.ts";
+import { createApp, json, routeClashes, type Feature } from "./http.ts";
 import { MemoryStore } from "./storage.ts";
 
 const notes: Feature = {
@@ -123,4 +123,21 @@ test("a route that throws answers with what went wrong instead of an empty error
   const page = await app(new Request("http://app.test/broken", { headers: { accept: "text/html" } }));
   assert.equal(page.status, 500);
   assert.match(await page.text(), /role="alert".*The server failed while answering GET \/broken: storage is down/);
+});
+
+test("two routes on the same method and path cannot both be in the app", () => {
+  const guestbook: Feature = { id: "guestbook", title: "Guestbook", routes: [{ method: "POST", path: "/api/entries", handle: () => json({}) }, { method: "GET", path: "/api/entries/:id", handle: () => json({}) }] };
+  const order: Feature = { id: "order", title: "Order", routes: [{ method: "POST", path: "/api/entries/", handle: () => json({}) }, { method: "GET", path: "/api/entries/:key", handle: () => json({}) }, { method: "GET", path: "/api/entries", handle: () => json([]) }] };
+  assert.deepEqual(routeClashes([guestbook, order]), ["POST /api/entries/ is served by both guestbook and order", "GET /api/entries/:key is served by both guestbook and order"]);
+  assert.deepEqual(routeClashes([{ ...notes, routes: [...notes.routes, { method: "GET", path: "/notes", handle: () => json({}) }] }]), ["GET /notes is served twice by notes"]);
+  assert.deepEqual(routeClashes([notes, guestbook]), []);
+  assert.throws(() => createApp([guestbook, order], new MemoryStore()), /routes clash: POST \/api\/entries\/ is served by both guestbook and order/);
+});
+
+test("a route with a fixed path wins over a route with a parameter, whichever feature comes first", async () => {
+  const books: Feature = { id: "books", title: "Books", routes: [{ method: "GET", path: "/api/books/:id", handle: (_request, { params }) => json({ book: params["id"] }) }] };
+  const top: Feature = { id: "top-books", title: "Top books", routes: [{ method: "GET", path: "/api/books/top", handle: () => json({ top: true }) }] };
+  const app = createApp([books, top], new MemoryStore());
+  assert.deepEqual(await (await app(new Request("http://app.test/api/books/top"))).json(), { top: true });
+  assert.deepEqual(await (await app(new Request("http://app.test/api/books/7"))).json(), { book: "7" });
 });
