@@ -31,7 +31,7 @@ permissions:
 jobs:
   tour:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
       CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
@@ -44,22 +44,17 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @chef/cli exec playwright install --with-deps chromium
-      - name: Walk through the deployed app and take screenshots
-        run: |
-          args=(--minutes "$MINUTES" --out results/tour)
-          [ -n "$PROJECT" ] && args+=(--project "$PROJECT")
-          [ -n "$REPO" ] && args+=(--repo "$REPO")
-          [ -n "$PROMPT" ] && args+=(--prompt "$PROMPT")
-          [ "$DELETE" = "true" ] && args+=(--delete)
-          node --import tsx cli/src/bin.ts tour "${args[@]}"
+      - name: Record the demo video
+        working-directory: cli
+        run: node demo/record-fresh.mjs
         env:
           PROJECT: ${{ inputs.project }}
           REPO: ${{ inputs.repo }}
           PROMPT: ${{ inputs.prompt }}
           MINUTES: ${{ inputs.minutes }}
-          DELETE: ${{ inputs.delete }}
+          OUT: ../results/demo
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: tour
-          path: results/tour/
+          name: demo-fresh
+          path: results/demo/
