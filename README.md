@@ -14,6 +14,8 @@
 
 <p align="center"><strong><a href="https://chef.playgrndlabs.com">Sign in with Cloudflare and start building →</a></strong></p>
 
+<p align="center"><a href="https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"></a></p>
+
 ## Why Chef
 
 AI can write code fast. Everything around the code is still slow: starting and tracking agent sessions, juggling branches and merge conflicts, setting up an environment to try each change, and checking that nothing broke before it ships.
