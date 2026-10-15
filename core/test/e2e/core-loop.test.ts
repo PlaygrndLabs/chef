@@ -86,8 +86,8 @@ describe("phase 1 core loop on fakes", () => {
   it("marks a feature stuck when the attempt budget runs out, without blocking anything", async () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]), config: { budget: { maxAttempts: 2, maxTokens: 1e9, maxMillis: 1e12 } } });
     const initial = await w.orchestrator.bootstrap(templateTree());
-    w.checks.failNext("test", "still red", 10);
     const { sessionId } = await w.orchestrator.submit(PROMPT);
+    w.checks.failNext("test", "still red", 10, (await w.orchestrator.session(sessionId as string)).fork);
     const record = await w.orchestrator.run(sessionId as string);
     expect(record.machine.state).toBe("stuck");
     expect(record.machine.reason).toMatch(/attempt budget/);
