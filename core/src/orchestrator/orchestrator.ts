@@ -6,7 +6,7 @@ import type { Classifier } from "../ports/classifier.ts";
 import { TurnRunning, type Coder, type CoderEvent, type CoderTurnResult } from "../ports/coder.ts";
 import type { EventBus } from "../ports/event-bus.ts";
 import { chorePlan, choreId, withTestItem, type Plan, type Planner, type SplitPart, type WorkItem } from "../ports/planner.ts";
-import type { PreviewHost } from "../ports/preview-host.ts";
+import type { AppHost, AppRun } from "../ports/app-host.ts";
 import type { PushedEvent, RepoHost, RepoToken } from "../ports/repo-host.ts";
 import type { MemoryDoc, MemoryHit, MemoryIndex } from "../ports/memory-index.ts";
 import type { PickCandidate, Reviewer } from "../ports/reviewer.ts";
@@ -17,13 +17,13 @@ import { DEFAULT_ROUTER_CONFIG, Router, withoutCommand, type RouterConfig } from
 import { chatContext, needsCompacting, plainSummary, readChatMemory, renderConversation, splitForCompacting, type ChatMemory } from "../router/conversation.ts";
 import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type RejectionRule, type SessionEvent } from "../session/machine.ts";
 import { laneBrief, laneItem, laneOwner, lanesBusy, lanesNamedIn, planLanes, type Lane, type LaneLayoutFor, type LaneStatus } from "../session/lanes.ts";
-import type { PendingTurn, SessionRecord } from "../session/record.ts";
+import type { PendingTurn, SessionApp, SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
 import { arrange, arrangedSpec, arrangementProblem, markRemoved, placed, subtreeOf, type FeatureArrangement, type FeatureLayout, type KnownFeature } from "../spec/layout.ts";
 import { missingEnv, renderEnvironment, type EnvVar } from "../env/env.ts";
-import { Archiver, MainWriter, Mutex, PreviewPublisher } from "./capabilities.ts";
+import { Archiver, MainWriter, Mutex } from "./capabilities.ts";
 import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderLesson, renderRecall, MEMORY_DIR } from "../memory/memory.ts";
 import { applyGuidanceEdit, projectGuidance, renderGuidance, withGuidance, type EditResult, type GuidanceEdit } from "../guidance/guidance.ts";
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
@@ -40,7 +40,7 @@ export interface Deps {
   readonly classifier: Classifier;
   readonly planner: Planner;
   readonly reviewer: Reviewer;
-  readonly previews: PreviewHost;
+  readonly apps: AppHost;
   readonly checks: CheckRunner;
   readonly proofs: ProofRunner;
   readonly bus: EventBus;
@@ -72,7 +72,7 @@ export interface ProjectConfig {
   readonly budget?: Budget;
   readonly router?: RouterConfig;
   readonly tokenTtlSeconds?: number;
-  readonly previewLink?: (key: string) => string;
+  readonly appLink?: (sessionId: string) => string;
   readonly environment?: () => Promise<readonly EnvVar[]>;
   readonly instructions?: () => Promise<string>;
   readonly merge?: () => Promise<MergeMode>;
@@ -151,7 +151,6 @@ export interface CommitChanges {
 export class Orchestrator {
   readonly canonical: string;
   private readonly router: Router;
-  private readonly previews: PreviewPublisher;
   private readonly main: MainWriter;
   private readonly archiver: Archiver;
   private readonly mergeQueue = new Mutex();
@@ -171,7 +170,6 @@ export class Orchestrator {
     this.canonical = config.name;
     this.router = new Router({ classifier: deps.classifier, planner: deps.planner }, config.router ?? DEFAULT_ROUTER_CONFIG);
     this.ttl = config.tokenTtlSeconds ?? 900;
-    this.previews = new PreviewPublisher(deps.repos, this.canonical, this.ttl);
     this.main = new MainWriter(deps.repos, this.canonical, this.ttl);
     this.archiver = new Archiver(deps.repos, this.canonical, this.ttl);
     this.budget = config.budget ?? DEFAULT_BUDGET;
@@ -323,8 +321,8 @@ export class Orchestrator {
         head: null,
         baseMain: null,
         commits: [],
-        preview: null,
-        firstPreviewCommit: null,
+        app: null,
+        firstAppCommit: null,
         verdict: null,
         lastCodeItem: null,
         syncPending: false,
@@ -336,7 +334,6 @@ export class Orchestrator {
         ...(by ? { requestedBy: by } : {}),
         parent,
         history: [],
-        previewKey: attempts > 1 ? `${plan.feature.id}--${sessionId}` : plan.feature.id,
         createdAt: now,
         updatedAt: now,
       };
@@ -787,7 +784,7 @@ export class Orchestrator {
         await this.laneUpdate(record, lane, paths.length ? "conflict" : "merged", outcome.commitId, paths);
       }
     });
-    await this.publishPreview(record);
+    await this.runApp(record);
     if (conflicts.size > 0 && record.machine.state === "coding") await this.apply(record, { type: "conflict", paths: [...conflicts].sort(), between: (record.lanes ?? []).map((l) => l.role) });
   }
 
@@ -1266,10 +1263,6 @@ export class Orchestrator {
       await this.emit({ type: "attempt.picked", featureId: record.featureId, group: record.attempt.group, winner: verdict.sessionId, candidates: candidates.map((c) => ({ sessionId: c.sessionId, passed: c.crossTests.passed, total: c.crossTests.total })), reasons: verdict.reasons, model: verdict.model });
       return verdict.sessionId;
     });
-    if (winner === record.id && record.previewKey !== record.featureId) {
-      record.previewKey = record.featureId;
-      await this.publishPreview(record);
-    }
     return winner;
   }
 
@@ -1295,12 +1288,12 @@ export class Orchestrator {
   }
 
   private async proofCheck(record: SessionRecord, head: Commit): Promise<CheckResult> {
-    if (!record.preview || record.preview.commitId !== head.id) await this.publishPreview(record);
-    const preview = record.preview;
-    if (!preview) return { name: "proof", ok: false, log: "no preview deployment" };
-    if (record.kind === "chore") return this.choreProof(record, head, preview.url);
+    if (record.app?.status !== "running" || record.app.commitId !== head.id) await this.runApp(record);
+    const app = record.app;
+    if (app?.status !== "running" || !app.local) return { name: "proof", ok: false, log: appTrouble(app) };
+    if (record.kind === "chore") return this.choreProof(record, head, app.local);
     const flow = featureFlow(readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature);
-    const proof = await this.deps.proofs.prove({ repo: record.fork, feature: record.featureId, flow, url: preview.url, commitId: head.id, tree: head.tree });
+    const proof = await this.deps.proofs.prove({ repo: record.fork, feature: record.featureId, flow, url: app.local, commitId: head.id, tree: head.tree });
     await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: PROOF_NAMESPACE, commitId: head.id, note: `${JSON.stringify(proof, null, 2)}\n` }));
     const stored = await this.deps.repos.readNote(record.fork, PROOF_NAMESPACE, head.id);
     const ok = proof.ok && stored !== null;
@@ -1331,7 +1324,7 @@ export class Orchestrator {
     if (cursor !== record.head) return;
     record.head = forkHead;
     record.commits.push(...adopted.filter((id) => !record.commits.includes(id)));
-    await this.publishPreview(record);
+    await this.runApp(record);
   }
 
   private async syncFromMain(record: SessionRecord): Promise<"synced" | "up-to-date" | "conflict"> {
@@ -1355,7 +1348,7 @@ export class Orchestrator {
       return "conflict";
     }
     await this.emit({ type: "sync.merged", sessionId: record.id, featureId: record.featureId, commitId: outcome.commitId, mainCommit: mainHead });
-    await this.publishPreview(record);
+    await this.runApp(record);
     return "synced";
   }
 
@@ -1536,7 +1529,7 @@ export class Orchestrator {
       record.commits.push(commit.id);
       await this.emit({ type: "commit.created", sessionId: record.id, featureId: record.featureId, repo: record.fork, commitId: commit.id, role: turn.role, message: turn.message, ...(lane ? { lane: lane.role } : {}) });
     });
-    if (!lane) await this.publishPreview(record);
+    if (!lane) await this.runApp(record);
   }
 
   private note(record: SessionRecord, turn: { role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; paths: readonly string[] }): TurnNote {
@@ -1557,14 +1550,24 @@ export class Orchestrator {
     };
   }
 
-  private async publishPreview(record: SessionRecord): Promise<void> {
-    if (!record.head) return;
-    const branch = await this.previews.publish(record.previewKey, record.head, record.fork);
-    const deployment = await this.deps.previews.deploy({ repo: this.canonical, branch, commitId: record.head });
-    const link = this.config.previewLink?.(record.previewKey);
-    record.preview = { url: deployment.url, commitId: record.head, ...(link ? { link } : {}) };
-    record.firstPreviewCommit ??= record.head;
-    await this.emit({ type: "preview.updated", sessionId: record.id, featureId: record.featureId, url: deployment.url, commitId: record.head, ...(link ? { link } : {}) });
+  private async runApp(record: SessionRecord): Promise<void> {
+    const commitId = record.head;
+    if (!commitId) return;
+    await this.showApp(record, { status: "starting", url: record.app?.url ?? null, local: null, commitId });
+    let run: AppRun;
+    try {
+      run = await this.deps.apps.run({ target: record.id, repo: record.fork, ref: "main", commitId });
+    } catch (error) {
+      run = { status: "failed", url: record.app?.url ?? null, local: null, commitId, error: error instanceof Error ? error.message : String(error) };
+    }
+    await this.showApp(record, run);
+    if (run.status === "running") record.firstAppCommit ??= commitId;
+  }
+
+  private async showApp(record: SessionRecord, app: Omit<SessionApp, "link">): Promise<void> {
+    const link = this.config.appLink?.(record.id);
+    record.app = { ...app, ...(link ? { link } : {}) };
+    await this.emit({ type: "app.updated", sessionId: record.id, featureId: record.featureId, status: app.status, url: app.url, commitId: app.commitId, ...(app.error ? { error: app.error } : {}), ...(link ? { link } : {}) });
   }
 
   private onPush(event: PushedEvent): void {
@@ -1761,6 +1764,12 @@ export function transient(error: unknown): boolean {
 
 export function runnable(record: SessionRecord): boolean {
   return !isTerminal(record.machine.state) && !record.needs?.length && !record.overBudget && !(record.ready && !record.ready.approved);
+}
+
+function appTrouble(app: SessionApp | null): string {
+  if (app?.status === "no-stack") return "this branch has no compose file (compose.yaml or docker-compose.yml), so Chef cannot start its app to prove the feature";
+  if (app?.error) return `the app did not start: ${app.error}`;
+  return "the app is not running";
 }
 
 function sameNames(a: readonly string[], b: readonly string[]): boolean {

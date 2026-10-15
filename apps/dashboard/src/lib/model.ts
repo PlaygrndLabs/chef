@@ -1,5 +1,5 @@
 import type { FeatureLayout, FeatureSpec, SessionRecord, SessionState } from "@chef/core";
-import { isActive, type ProjectLive, type SessionLive } from "./events";
+import { isActive, type AppView, type ProjectLive, type SessionLive } from "./events";
 
 export type FeatureStatus = "building" | "ready" | "stuck" | "merged" | "proposed" | "dropped";
 
@@ -34,7 +34,7 @@ export interface FeatureNode {
   readonly onMain: boolean;
   readonly parent: string | null;
   readonly sessions: readonly SessionNode[];
-  readonly preview: { readonly url: string; readonly commitId: string; readonly link?: string | undefined; readonly sessionId: string } | null;
+  readonly app: (AppView & { readonly sessionId: string }) | null;
   readonly updatedAt: number;
 }
 
@@ -74,7 +74,7 @@ export function featureNodes(live: ProjectLive, records: readonly SessionRecord[
     const fromMain = spec.find((f) => f.id === id) ?? null;
     const planned = [...own].reverse().find((s) => s.record)?.record?.plan.feature ?? null;
     const feature = fromMain ?? planned;
-    const preview = live.previews[id] ?? null;
+    const app = live.apps[id] ?? null;
     nodes.push({
       id,
       title: place?.title ?? feature?.title ?? id,
@@ -84,7 +84,7 @@ export function featureNodes(live: ProjectLive, records: readonly SessionRecord[
       onMain: Boolean(fromMain),
       parent: place?.parent !== undefined ? place.parent : (feature?.parent ?? null),
       sessions: own,
-      preview,
+      app,
       updatedAt: Math.max(0, ...own.map((s) => s.updatedAt)),
     });
   }

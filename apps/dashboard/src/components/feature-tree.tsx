@@ -323,7 +323,7 @@ function DeleteDialog({ node, onOpenChange }: { readonly node: TreeNode | null; 
           <AlertDialogTitle>Delete {node?.feature.title}?</AlertDialogTitle>
           <AlertDialogDescription>
             {parts.length ? `Its ${parts.length === 1 ? "part" : `${parts.length} parts`} ${parts.map((p) => p.feature.title).join(", ")} ${parts.length === 1 ? "goes" : "go"} too. ` : ""}
-            {live ? "Chef stops any work on it and takes its code out of the live app." : "Chef stops the work on it."}
+            {live ? "Chef stops any work on it and takes its code out of main." : "Chef stops the work on it."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

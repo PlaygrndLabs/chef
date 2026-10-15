@@ -135,7 +135,7 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
     config = join(REPO_ROOT, `.wrangler.${name}.jsonc`);
     const instance = instanceConfig(base, name);
     writeFileSync(config, `${JSON.stringify(options.image ? withImage(instance, options.image) : instance, null, 2)}\n`);
-    if (name !== base["name"]) log(`deploying a separate chef named ${name}, with its own repos, memory and previews`);
+    if (name !== base["name"]) log(`deploying a separate chef named ${name}, with its own repos, memory and app router`);
     if (options.image) log(`using the prebuilt sandbox image ${options.image}`);
   }
   const index = (list(parseJsonc(readFileSync(config, "utf8"))["vectorize"])[0]?.["index_name"] as string | undefined) ?? null;

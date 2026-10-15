@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { loadProfiles, Orchestrator, type Deps, type FeatureSpec, type ProjectConfig, type SplitPart, type Tree } from "@chef/core";
-import { FakeCheckRunner, FakeProofRunner, KeywordClassifier, LexicalIndex, MemoryEventBus, MemoryPreviewHost, MemoryRepoHost, MemoryStore, RuleReviewer, ScriptedCoder, SequentialIds, TemplatePlanner, TickingClock, type Script } from "@chef/core/fakes";
+import { FakeCheckRunner, FakeProofRunner, KeywordClassifier, LexicalIndex, MemoryEventBus, MemoryAppHost, MemoryRepoHost, MemoryStore, RuleReviewer, ScriptedCoder, SequentialIds, TemplatePlanner, TickingClock, type Script } from "@chef/core/fakes";
 import { renderRegistry, renderStub, stubPath } from "@chef/template/gen";
 import { readTree } from "./fs.ts";
 import { LocalCheckRunner, LocalProofRunner } from "./local/runners.ts";
@@ -33,7 +33,7 @@ export function localWorld(options: LocalWorldOptions) {
   const repos = new MemoryRepoHost(clock);
   const bus = new MemoryEventBus();
   const coder = new ScriptedCoder(options.script);
-  const previews = new MemoryPreviewHost();
+  const apps = new MemoryAppHost();
   const nodeModules = join(REPO_ROOT, "template", "node_modules");
   const deps: Deps = {
     repos,
@@ -41,7 +41,7 @@ export function localWorld(options: LocalWorldOptions) {
     classifier: new KeywordClassifier(),
     planner: new TemplatePlanner(options.presets ?? new Map(), options.splits ?? new Map()),
     reviewer: new RuleReviewer(),
-    previews,
+    apps,
     checks: options.real ? new LocalCheckRunner(nodeModules) : new FakeCheckRunner(undefined, generated),
     proofs: options.real ? new LocalProofRunner(nodeModules, clock) : new FakeProofRunner(clock),
     bus,
@@ -52,5 +52,5 @@ export function localWorld(options: LocalWorldOptions) {
     ...options.deps,
   };
   const orchestrator = new Orchestrator(deps, { name: "demo", author: { name: "chef", email: "ma.karimi76@gmail.com" }, profiles: repoProfiles(), generated, ...options.config });
-  return { orchestrator, repos, bus, coder, previews, deps };
+  return { orchestrator, repos, bus, coder, apps, deps };
 }

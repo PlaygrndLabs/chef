@@ -84,13 +84,3 @@ jobs:
             test "$(curl -sS -o /dev/null -w '%{http_code}' -H "authorization: Bearer $CHEF_PASSWORD" "$url/api/projects")" = 401
             bash .github/scripts/share-check.sh "$url"
           fi
-      - name: Dev sandbox check
-        if: steps.creds.outputs.ready == 'true' && env.NAME == 'dind-check'
-        env:
-          CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
-        run: |
-          url=$(cat "$RUNNER_TEMP/url")
-          auth=$(bash .github/scripts/sign-in.sh "$url")
-          curl -sS -m 900 -X POST -H "$auth" "$url/api/devcheck/r$GITHUB_RUN_ID" | jq -r '.out, "exit \(.code)"' || true
-          curl -sS -m 60 -H "$auth" "$url/api/devcheck/r$GITHUB_RUN_ID/app/hello?x=1"; echo
-          curl -sS -m 300 -X POST -H "$auth" "$url/api/devcheck/r$GITHUB_RUN_ID" | jq -r '.out' | tail -5 || true

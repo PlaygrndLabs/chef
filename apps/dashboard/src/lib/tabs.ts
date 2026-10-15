@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-export const LIVE_TAB = ":live";
+export const MAIN_TAB = ":main";
 
 function read(key: string): string[] {
   try {

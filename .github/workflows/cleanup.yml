@@ -42,6 +42,7 @@ jobs:
           act() { if [ "$DELETE" = "true" ]; then echo "deleting $1"; else echo "would delete $1"; fi; [ "$DELETE" = "true" ]; }
 
           workers=$(get "workers/scripts" | jq '[.result[].id]' | match)
+          entities=$(get "workers/workers?per_page=100" | jq -r --arg p "$PREFIX" '.result[] | select(.name == $p or (.name | startswith($p + "-"))) | "\(.id) \(.name)"')
           workflows=$(get "workflows?per_page=100" | jq -r --arg p "$PREFIX" '.result[] | select(.script_name == $p or (.script_name | startswith($p + "-"))) | .name')
           namespaces=$(get "workers/durable_objects/namespaces?per_page=1000" | jq -c --arg p "$PREFIX" '[.result[] | select(.script == $p or ((.script // "") | startswith($p + "-"))) | .id]')
           containers=$(get "containers/applications" | jq -r --arg p "$PREFIX" --argjson ns "$namespaces" '.result[] | select((.name | startswith($p + "-")) or ((.durable_objects.namespace_id // "") as $id | $ns | index($id))) | "\(.id) \(.name)"')
@@ -50,6 +51,7 @@ jobs:
 
           for name in $workflows; do act "workflow $name" && del "workflows/$name"; done
           for name in $workers; do act "worker $name" && del "workers/scripts/$name?force=true"; done
+          while read -r id name; do [ -n "${id:-}" ] || continue; act "worker $name and its previews" && del "workers/workers/$id"; done <<< "$entities"
           while read -r id name; do [ -n "${id:-}" ] || continue; act "container application $name" && del "containers/applications/$id"; done <<< "$containers"
           for name in $indexes; do act "vectorize index $name" && del "vectorize/v2/indexes/$name"; done
           for name in $repos; do act "artifacts repo $PREFIX/$name" && npx wrangler artifacts repos delete "$name" --namespace "$PREFIX" --force; done

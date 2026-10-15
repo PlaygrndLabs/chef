@@ -1,5 +1,6 @@
 import { AlertTriangle, AppWindowMac, ExternalLink, GitCommitHorizontal, Loader2, Rocket, Undo2, Wifi, WifiOff } from "lucide-react";
 import { BarSkeleton } from "@/components/loading";
+import { appLink, MAIN_APP, NO_STACK } from "@/lib/app-view";
 import { ago, short } from "@/lib/format";
 import { useNow } from "@/lib/live";
 import { groupSessions } from "@/lib/model";
@@ -54,9 +55,9 @@ function StatusChips() {
         <Rocket className="size-3.5 text-ok" />
         {live} live
       </Chip>
-      <LiveAppChip now={now} />
+      <MainAppChip now={now} />
       {reverts ? (
-        <Chip id="reverts" label="Changes Chef took back because the live app broke" tone="text-bad">
+        <Chip id="reverts" label="Changes Chef took back because they broke main" tone="text-bad">
           <Undo2 className="size-3.5" />
           {reverts} taken back
         </Chip>
@@ -70,40 +71,48 @@ function StatusChips() {
   );
 }
 
-function LiveAppChip({ now }: { readonly now: number }) {
-  const { data, api } = useWorkspace();
-  const live = data.spec?.live ?? null;
+function MainAppChip({ now }: { readonly now: number }) {
+  const { data, api, selection } = useWorkspace();
+  const app = data.spec?.mainApp ?? null;
   const lastMerge = data.live.merges.at(-1);
-  if (live?.status === "deploying") {
+  if (app?.status === "starting") {
     return (
-      <Chip id="live-app" label={`Putting commit ${short(live.commitId)} on the live address`} tone="text-run">
+      <Chip id="main-app" label={`Starting main's app, the release candidate, at commit ${short(app.commitId)}`} tone="text-run">
         <Loader2 className="size-3.5 animate-spin" />
-        Updating the live app
+        Starting main's app
       </Chip>
     );
   }
-  if (live?.status === "failed") {
+  if (app?.status === "failed") {
     return (
-      <Chip id="live-app" label={`The live app could not be updated: ${live.error ?? "unknown error"}. Click to try again.`} tone="text-bad hover:text-bad" onClick={() => void api.redeployLive().catch(() => undefined)}>
+      <Chip id="main-app" label={`Main's app could not start: ${app.error ?? "unknown error"}. Click to try again.`} tone="text-bad hover:text-bad" onClick={() => void api.restartMainApp().catch(() => undefined)}>
         <AlertTriangle className="size-3.5" />
-        Live app not updated · try again
+        Main's app did not start · try again
       </Chip>
     );
   }
-  if (live?.url) {
+  if (app?.status === "no-stack") {
     return (
-      <a href={live.url} target="_blank" rel="noreferrer" data-chip="live-app" title={`Open the live app, at commit ${short(live.commitId)}, updated ${ago(live.at, now)}`} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground">
+      <Chip id="main-app" label={NO_STACK} tone="text-bad">
+        <AlertTriangle className="size-3.5" />
+        Main has no compose file
+      </Chip>
+    );
+  }
+  if (app?.status === "running") {
+    return (
+      <a href={appLink(selection.project, MAIN_APP)} target="_blank" rel="noreferrer" data-chip="main-app" title={`Open main's app, the release candidate, at commit ${short(app.commitId)}, started ${ago(app.at, now)}`} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground">
         <AppWindowMac className="size-3.5" />
-        <span className="font-mono">{new URL(live.url).host}</span>
+        <span className="font-mono">{app.url ? new URL(app.url).host : "main"}</span>
         <ExternalLink className="size-3" />
       </a>
     );
   }
   return (
-    <Chip id="main" label={lastMerge ? `The live app is at commit ${data.spec?.commitId ?? lastMerge.commitId}` : "The live app"}>
+    <Chip id="main" label={lastMerge ? `Main is at commit ${data.spec?.commitId ?? lastMerge.commitId}` : "Main"}>
       <GitCommitHorizontal className="size-3.5" />
       <span>
-        App <span className="font-mono">{short(data.spec?.commitId ?? lastMerge?.commitId) || "not created"}</span>
+        Main <span className="font-mono">{short(data.spec?.commitId ?? lastMerge?.commitId) || "not created"}</span>
         {lastMerge ? ` · updated ${ago(lastMerge.at, now)}` : ""}
       </span>
     </Chip>

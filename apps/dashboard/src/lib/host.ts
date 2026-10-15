@@ -27,7 +27,7 @@ export interface HostUsage {
 
 export interface HostShare {
   readonly project: string;
-  readonly kind: "session" | "preview";
+  readonly kind: "session" | "app";
   readonly id: string;
   readonly title: string;
   readonly onClose: () => void;

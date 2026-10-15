@@ -1,6 +1,8 @@
+import type { AppStatus } from "../ports/app-host.ts";
+
 export type CloudflareTone = "run" | "ok" | "bad" | "idle" | "gone";
 
-export type CloudflareKind = "repo" | "branch" | "container" | "preview" | "worker" | "durable-object" | "workflow" | "vectorize";
+export type CloudflareKind = "repo" | "branch" | "container" | "app" | "worker" | "durable-object" | "workflow" | "vectorize";
 
 export interface CloudflareFact {
   readonly label: string;
@@ -38,7 +40,7 @@ export interface CloudflareFacts {
   readonly accountId: string | null;
   readonly engine: string;
   readonly project: string;
-  readonly projectWorker: string;
+  readonly router: string;
   readonly projectObject: string;
   readonly namespaces: Readonly<Partial<Record<"ProjectAgent" | "SessionAgent", string>>>;
   readonly containerApp: { readonly name: string; readonly id: string | null };
@@ -52,9 +54,9 @@ export interface CloudflareFacts {
     readonly lanes: readonly { readonly role: string; readonly branch: string; readonly head: string | null }[];
   };
   readonly agents: { readonly sandbox: readonly string[]; readonly engine: readonly string[] };
-  readonly sandboxes: { readonly session: SandboxFacts; readonly lanes: Readonly<Record<string, SandboxFacts>>; readonly preview: SandboxFacts | null };
-  readonly preview: { readonly name: string; readonly branch: string; readonly url: string | null; readonly versionId: string | null; readonly commitId: string | null; readonly awake: boolean } | null;
-  readonly live: { readonly url: string | null; readonly commitId: string; readonly status: string } | null;
+  readonly sandboxes: { readonly session: SandboxFacts; readonly lanes: Readonly<Record<string, SandboxFacts>>; readonly main: SandboxFacts | null };
+  readonly app: { readonly name: string; readonly url: string | null; readonly status: AppStatus | null; readonly commitId: string | null } | null;
+  readonly mainApp: { readonly url: string | null; readonly commitId: string; readonly status: AppStatus } | null;
 }
 
 export function engineOf(prefix: string): string {
@@ -69,10 +71,10 @@ const unique = (list: readonly string[]) => [...new Set(list)];
 
 const short = (id: string | null | undefined) => (id ? id.slice(0, 12) : "none");
 
-function sandbox(facts: CloudflareFacts, key: string, title: string, box: SandboxFacts, roles: readonly string[], runs: string): CloudflareResource {
+function sandbox(facts: CloudflareFacts, key: string, title: string, box: SandboxFacts, roles: readonly string[], runs: string, group: CloudflareResource["group"] = "session"): CloudflareResource {
   return {
     key,
-    group: "session",
+    group,
     kind: "container",
     title,
     name: box.name,
@@ -130,44 +132,53 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
         dashboard: null,
       }),
     ),
-    sandbox(facts, "sandbox", "Sandbox container", facts.sandboxes.session, facts.agents.sandbox, facts.agents.sandbox.length ? "agent turns on main, then the final checks" : "the final checks"),
+    sandbox(facts, "sandbox", "Sandbox container", facts.sandboxes.session, facts.agents.sandbox, `${facts.agents.sandbox.length ? "agent turns on main, the final checks" : "the final checks"} and this build's running app`),
     ...s.lanes.flatMap((lane) => {
       const box = facts.sandboxes.lanes[lane.role];
       return box ? [sandbox(facts, `sandbox:${lane.role}`, "Role sandbox", box, [lane.role], `${lane.role} turns on ${lane.branch}`)] : [];
     }),
   ];
-  if (facts.preview) {
-    const p = facts.preview;
+  if (facts.app) {
+    const app = facts.app;
     resources.push({
-      key: "preview",
+      key: "app",
       group: "session",
-      kind: "preview",
-      title: "Worker preview",
-      name: p.name,
+      kind: "app",
+      title: "App address",
+      name: app.name,
       roles: [],
-      state: p.versionId ? (p.awake ? { tone: "ok", text: "Awake" } : { tone: "idle", text: "Asleep" }) : p.url ? { tone: "idle", text: "Asleep, rebuilds on the next visit" } : { tone: "idle", text: "Not built yet" },
+      state: appState(app.status),
       facts: [
-        { label: "Worker", value: facts.projectWorker },
-        { label: "Branch", value: `${facts.engine}/${facts.project} ${p.branch}` },
-        ...(p.versionId ? [{ label: "Version", value: p.versionId, copy: true }] : []),
-        ...(p.commitId ? [{ label: "Built from", value: short(p.commitId) }] : []),
-        ...(p.url ? [{ label: "URL", value: p.url, href: p.url }] : []),
+        { label: "Router", value: facts.router },
+        { label: "Forwards to", value: `the sandbox ${facts.sandboxes.session.name}` },
+        ...(app.commitId ? [{ label: "Running", value: short(app.commitId) }] : []),
+        ...(app.url ? [{ label: "URL", value: app.url, href: app.url }] : []),
       ],
-      dashboard: workerPage(facts.projectWorker, "/deployments"),
+      dashboard: workerPage(facts.router, "/deployments"),
     });
-    if (facts.sandboxes.preview) resources.push(sandbox(facts, "sandbox:preview", "Preview builder", facts.sandboxes.preview, [], "wrangler preview for this build"));
   }
+  if (facts.sandboxes.main) resources.push(sandbox(facts, "sandbox:main", "Main sandbox", facts.sandboxes.main, [], "the running app of main, the release candidate", "project"));
   resources.push(
     {
-      key: "project-worker",
+      key: "main-app",
+      group: "project",
+      kind: "app",
+      title: "App of main",
+      name: `${facts.project} main`,
+      roles: [],
+      state: appState(facts.mainApp?.status ?? null),
+      facts: [...(facts.mainApp?.commitId ? [{ label: "Main", value: short(facts.mainApp.commitId) }] : []), ...(facts.mainApp?.url ? [{ label: "URL", value: facts.mainApp.url, href: facts.mainApp.url }] : [])],
+      dashboard: null,
+    },
+    {
+      key: "router",
       group: "project",
       kind: "worker",
-      title: "Live app Worker",
-      name: facts.projectWorker,
+      title: "App router",
+      name: facts.router,
       roles: [],
-      state: !facts.live ? { tone: "idle", text: "Not deployed yet" } : facts.live.status === "failed" ? { tone: "bad", text: "Last deploy failed" } : facts.live.status === "deploying" ? { tone: "run", text: "Deploying" } : { tone: "ok", text: "Live" },
-      facts: [...(facts.live?.commitId ? [{ label: "Main", value: short(facts.live.commitId) }] : []), ...(facts.live?.url ? [{ label: "URL", value: facts.live.url, href: facts.live.url }] : [])],
-      dashboard: workerPage(facts.projectWorker),
+      facts: [{ label: "Does", value: "gives each branch's running app its own address and forwards visits to that branch's sandbox; your app itself never runs on Workers" }],
+      dashboard: workerPage(facts.router),
     },
     {
       key: "main",
@@ -227,6 +238,14 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
     },
   );
   return { accountId: facts.accountId, engine: facts.engine, resources };
+}
+
+function appState(status: AppStatus | null): NonNullable<CloudflareResource["state"]> {
+  if (status === "running") return { tone: "ok", text: "Running" };
+  if (status === "starting") return { tone: "run", text: "Starting" };
+  if (status === "failed") return { tone: "bad", text: "Could not start" };
+  if (status === "no-stack") return { tone: "idle", text: "No compose file" };
+  return { tone: "idle", text: "Not started yet" };
 }
 
 export function agentsOf(record: { readonly kind?: "feature" | "chore"; readonly plan: { readonly items: readonly { readonly id: string; readonly role: string }[] }; readonly lanes?: readonly { readonly items: readonly string[] }[] | null }): CloudflareFacts["agents"] {
