@@ -14,6 +14,7 @@ export const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
 
 const KINDS: readonly MemoryKind[] = ["lesson", "feature", "spec", "note"];
 const MAX_TOP_K = 50;
+const DELETE_BATCH = 500;
 
 export class VectorizeIndex implements MemoryIndex {
   constructor(
@@ -51,7 +52,7 @@ export class VectorizeIndex implements MemoryIndex {
   }
 
   async remove(paths: readonly string[]): Promise<void> {
-    if (paths.length) await this.index.deleteByIds(paths.map((p) => this.id(p)));
+    for (let i = 0; i < paths.length; i += DELETE_BATCH) await this.index.deleteByIds(paths.slice(i, i + DELETE_BATCH).map((p) => this.id(p)));
   }
 
   async query(text: string, limit: number, kinds?: readonly MemoryKind[]): Promise<MemoryHit[]> {
