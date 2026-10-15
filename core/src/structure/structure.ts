@@ -72,6 +72,11 @@ const SCRIPTS = ["typecheck", "lint", "test"] as const;
 const CHECK_ENV = { CI: "true", COREPACK_ENABLE_DOWNLOAD_PROMPT: "0" } as const;
 const INSTALL_TIMEOUT_MS = 600_000;
 const LOCKFILES = ["pnpm-lock.yaml", "yarn.lock", "package-lock.json", "npm-shrinkwrap.json"] as const;
+const LOCKFILE = /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|deno\.lock|Cargo\.lock|Gemfile\.lock|composer\.lock|poetry\.lock|uv\.lock|Pipfile\.lock|go\.sum|mix\.lock|pubspec\.lock|Podfile\.lock|flake\.lock)$/;
+
+export function isLockfile(path: string): boolean {
+  return LOCKFILE.test(path);
+}
 
 export function repoChecks(tree: Tree): RepoChecks {
   const manifest = tree["package.json"];
