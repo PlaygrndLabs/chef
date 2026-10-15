@@ -4,8 +4,19 @@ url=$1
 auth=$(bash "$(dirname "$0")/sign-in.sh" "$url")
 project="appcheck-$(date +%s | tail -c 6)"
 code() { curl -sS -o /dev/null -w '%{http_code}' "$@"; }
-remove() { curl -sS -o /dev/null -X DELETE -H "$auth" -H 'content-type: application/json' -d "{\"confirm\":\"$project\"}" "$url/api/projects/$project" || true; }
+tailer=""
+remove() {
+  [ -z "$tailer" ] || kill "$tailer" 2>/dev/null || true
+  curl -sS -o /dev/null -X DELETE -H "$auth" -H 'content-type: application/json' -d "{\"confirm\":\"$project\"}" "$url/api/projects/$project" || true
+}
 trap remove EXIT
+watch=""
+if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${NAME:-}" ]; then
+  watch=$(mktemp)
+  ./node_modules/.bin/wrangler tail "$NAME" --format json > "$watch" 2> /dev/null &
+  tailer=$!
+  sleep 10
+fi
 curl -fsS -m 600 -H "$auth" -H 'content-type: application/json' -d "{\"name\":\"$project\"}" -o /dev/null "$url/api/projects"
 echo "made $project from the template; waiting for main's app"
 state=""
@@ -28,15 +39,13 @@ answer=$(curl -sS -m 120 -L -c "$jar" -b "$jar" -o /dev/null -w '%{http_code}' "
 rm -f "$jar"
 echo "opening main's app through its enter link answered $answer"
 test "$answer" = 200
-if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${NAME:-}" ]; then
-  api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/durable_objects/namespaces"
-  namespaces=$(curl -fsS -H "authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?per_page=1000")
-  stored() {
-    ns=$(echo "$namespaces" | jq -r --arg s "$NAME" --arg c "$1" '.result[] | select(.script == $s and .class == $c) | .id')
-    curl -fsS -H "authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$ns/objects?limit=10000" | jq '[.result[] | select(.hasStoredData)] | length'
-  }
-  sessions=$(stored SessionAgent)
-  kept=$(stored ImageLayers)
-  echo "sandboxes with stored state: $sessions; the image cache holds $kept layers and manifests"
-  test "$kept" -gt 0
+if [ -n "$watch" ]; then
+  sleep 5
+  kill "$tailer" 2>/dev/null || true
+  tailer=""
+  cache='select((.event.request.url? // "") | contains("198.18.0.1"))'
+  echo "requests from the sandbox's Docker Hub mirror to the image cache:"
+  jq -r "$cache"' | "\(.event.request.method) \(.event.request.url | sub("^http://[^/]+"; "") | sub("[?:].*"; "")) \(.event.response.status // .outcome)"' "$watch" | sort | uniq -c
+  jq -r "$cache"' | .exceptions[]?.message' "$watch" | sort | uniq -c
+  test "$(jq -r "$cache"' | select(.event.request.method == "PUT" and .event.response.status == 201) | 1' "$watch" | wc -l)" -gt 0
 fi
