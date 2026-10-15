@@ -44,7 +44,7 @@ describe("reading an imported project", () => {
   it("suggests mapping the features without a feature map and dockerizing without a compose file, and nothing once both are there", () => {
     const overview = { summary: "s", problems: [], suggestions: [] };
     expect(withChefSuggestions(overview, tree).suggestions.map((s) => s.title)).toEqual([MAP_SUGGESTION.title, COMPOSE_SUGGESTION.title]);
-    expect(withChefSuggestions(overview, { ...tree, ".chef/features/PATH.md": "Open it" }).suggestions.map((s) => s.title)).toEqual([COMPOSE_SUGGESTION.title]);
+    expect(withChefSuggestions(overview, { ...tree, ".chef/features/canvas/SPECS.md": "---\ntitle: Canvas\n---\n" }).suggestions.map((s) => s.title)).toEqual([COMPOSE_SUGGESTION.title]);
     expect(withChefSuggestions(overview, { ...tree, ".chef/features/PATH.md": "Open it", "compose.yaml": "services: {}" }).suggestions).toEqual([]);
   });
 });

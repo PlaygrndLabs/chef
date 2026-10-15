@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { COMPOSE_SUGGESTION, hasComposeFile, MAP_SUGGESTION, wasMapped } from "@chef/core";
+import { COMPOSE_SUGGESTION, FEATURES_DIR, hasComposeFile, MAP_SUGGESTION } from "@chef/core";
 import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
 export const OverviewSchema = z.object({
@@ -60,7 +60,8 @@ const SYSTEM = `You are Chef, an agent that builds software features on its own.
 Write for the project's owner in plain words. No jargon they did not use, no file paths unless they help.`;
 
 export function withChefSuggestions(overview: Overview, tree: Readonly<Record<string, string>>): Overview {
-  return { ...overview, suggestions: [...(wasMapped(tree) ? [] : [{ ...MAP_SUGGESTION }]), ...(hasComposeFile(tree) ? [] : [{ ...COMPOSE_SUGGESTION }])] };
+  const hasFeatures = Object.keys(tree).some((path) => path.startsWith(`${FEATURES_DIR}/`));
+  return { ...overview, suggestions: [...(hasFeatures ? [] : [{ ...MAP_SUGGESTION }]), ...(hasComposeFile(tree) ? [] : [{ ...COMPOSE_SUGGESTION }])] };
 }
 
 const ReadingSchema = OverviewSchema.omit({ suggestions: true });
