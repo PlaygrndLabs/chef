@@ -14,8 +14,8 @@ import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
-import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
-import { gitHubRepo, GitRemote } from "@chef/adapters/external-git";
+import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, withLinkBranch, type ProjectSettings } from "@chef/adapters/project-settings";
+import { gitHubRepo, GitRemote, remoteBranch } from "@chef/adapters/external-git";
 import { exploreProject, withMapSuggestion, type OverviewState } from "@chef/adapters/project-explorer";
 import { activityNote } from "@chef/adapters/projects";
 import { laneLayout, renderRegistry, renderStub, stubPath } from "@chef/template/gen";
@@ -516,7 +516,9 @@ export class ProjectAgent extends Agent<Env> {
     const stored = await this.ctx.storage.get<Partial<ProjectSettings>>(PROJECT_SETTINGS);
     if (request.method === "GET") return Response.json(viewProjectSettings(readProjectSettings(stored)));
     if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
-    const body: unknown = await request.json().catch(() => null);
+    const branched = await withLinkBranch(stored, await request.json().catch(() => null), remoteBranch);
+    if (!branched.ok) return Response.json({ error: branched.error }, { status: 400 });
+    const body = branched.body;
     const viaApp = requestsGitHubApp(body);
     const repo = viaApp ? gitHubRepo(viaApp) : null;
     let installation: number | null = null;

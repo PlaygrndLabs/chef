@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings } from "../../src/project-settings.ts";
+import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, withLinkBranch } from "../../src/project-settings.ts";
+import type { BranchChoice } from "../../src/external-git.ts";
 
 const secret = () => "whsec";
 
@@ -72,5 +73,37 @@ describe("project settings", () => {
     const back = applyProjectUpdate(tries.settings, { attempts: null }, secret);
     if (!back.ok) throw new Error(back.error);
     expect(readProjectSettings(back.settings).attempts).toBeNull();
+  });
+});
+
+describe("the linked repository's main branch", () => {
+  const master = async (_link: { url: string; token: string | null }, wanted: string | null): Promise<BranchChoice> => (wanted === null || wanted === "master" ? { ok: true, branch: "master" } : { ok: false, error: `no branch ${wanted}` });
+
+  it("takes the repository's own main branch when none is named", async () => {
+    const seen: unknown[] = [];
+    const filled = await withLinkBranch(undefined, { git: { url: "https://git.example.com/acme/app/", token: "tok", mode: "branch" } }, async (link, wanted) => (seen.push({ link, wanted }), master(link, wanted)));
+    if (!filled.ok) throw new Error(filled.error);
+    expect(seen).toEqual([{ link: { url: "https://git.example.com/acme/app", token: "tok" }, wanted: null }]);
+    const linked = applyProjectUpdate(undefined, filled.body, secret);
+    if (!linked.ok) throw new Error(linked.error);
+    expect(linked.settings.git).toMatchObject({ branch: "master" });
+  });
+
+  it("refuses a branch the repository does not have and skips the check when nothing changed", async () => {
+    expect(await withLinkBranch(undefined, { git: { url: "https://git.example.com/acme/app", branch: "main" } }, master)).toEqual({ ok: false, error: "no branch main" });
+    const stored = { git: { url: "https://git.example.com/acme/app", branch: "trunk", token: "tok", mode: "branch" as const, syncBranch: "chef", webhookSecret: "s" } };
+    const never = async (): Promise<BranchChoice> => {
+      throw new Error("not called");
+    };
+    expect(await withLinkBranch(stored, { git: { url: "https://git.example.com/acme/app", branch: "trunk", mode: "off" } }, never)).toMatchObject({ ok: true });
+    expect(await withLinkBranch(undefined, { git: { url: "https://github.com/acme/app", github: true } }, never)).toMatchObject({ ok: true });
+    expect(await withLinkBranch(undefined, { appIdleMinutes: 30 }, never)).toMatchObject({ ok: true });
+  });
+
+  it("reuses the stored token for the same repository", async () => {
+    const stored = { git: { url: "https://git.example.com/acme/app", branch: "trunk", token: "kept", mode: "branch" as const, syncBranch: "chef", webhookSecret: "s" } };
+    let token: string | null = null;
+    await withLinkBranch(stored, { git: { url: "https://git.example.com/acme/app" } }, async (link, wanted) => ((token = link.token), master(link, wanted)));
+    expect(token).toBe("kept");
   });
 });

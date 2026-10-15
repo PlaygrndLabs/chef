@@ -1,8 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { gitHubRepo, GitRemote } from "../../src/external-git.ts";
+import { gitHubRepo, GitRemote, pickBranch } from "../../src/external-git.ts";
 import type { ArtifactsControl } from "../../src/artifacts.ts";
 
 const control = {} as ArtifactsControl;
+
+describe("the linked repository's main branch", () => {
+  const url = "https://git.example/a/b";
+  const refs = [{ ref: "HEAD", target: "refs/heads/master" }, { ref: "refs/heads/master" }, { ref: "refs/heads/dev" }];
+
+  it("uses the repository's default branch when none is named", () => {
+    expect(pickBranch(url, refs, null)).toEqual({ ok: true, branch: "master" });
+    expect(pickBranch(url, [{ ref: "refs/heads/trunk" }], null)).toEqual({ ok: true, branch: "trunk" });
+  });
+
+  it("keeps a named branch that exists and names the default when it does not", () => {
+    expect(pickBranch(url, refs, "dev")).toEqual({ ok: true, branch: "dev" });
+    expect(pickBranch(url, refs, "main")).toEqual({ ok: false, error: `${url} has no branch main; its main branch is master` });
+    expect(pickBranch(url, [], null)).toEqual({ ok: false, error: `${url} has no branches yet` });
+  });
+});
 
 describe("GitHub pull requests for the sync branch", () => {
   it("parses github.com repository URLs", () => {

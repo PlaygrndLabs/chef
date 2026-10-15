@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MERGE_MODES, OUTBOUND_MODES, type MergeMode, type OutboundMode } from "@chef/core";
-import { gitHubRepo } from "./external-git.ts";
+import { gitHubRepo, type BranchChoice } from "./external-git.ts";
 import { MAX_ATTEMPTS } from "./settings.ts";
 
 export interface GitLinkSettings {
@@ -71,6 +71,22 @@ export function viewProjectSettings(settings: ProjectSettings): ProjectSettingsV
   if (!git) return { appIdleMinutes: settings.appIdleMinutes, attempts: settings.attempts, merge: settings.merge, git: null };
   const { token, installation, ...rest } = git;
   return { appIdleMinutes: settings.appIdleMinutes, attempts: settings.attempts, merge: settings.merge, git: { ...rest, tokenHint: token ? (token.length > 8 ? `…${token.slice(-4)}` : "set") : null, pullRequests: gitHubRepo(git.url) !== null, github: installation !== undefined } };
+}
+
+export async function withLinkBranch(stored: Partial<ProjectSettings> | undefined, body: unknown, find: (link: { readonly url: string; readonly token: string | null }, wanted: string | null) => Promise<BranchChoice>): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
+  const git = (body as { git?: unknown } | null)?.git;
+  if (!git || typeof git !== "object" || Array.isArray(git)) return { ok: true, body };
+  const { url, branch, token, github } = git as { url?: unknown; branch?: unknown; token?: unknown; github?: unknown };
+  if (github === true || typeof url !== "string" || !URL.canParse(url.trim()) || !url.trim().startsWith("https://")) return { ok: true, body };
+  const link = url.trim().replace(/\/+$/, "");
+  const wanted = typeof branch === "string" && branch.trim() ? branch.trim() : null;
+  const previous = stored?.git ?? null;
+  const sameRepo = previous?.url === link;
+  if (wanted && sameRepo && previous?.branch === wanted) return { ok: true, body };
+  const key = typeof token === "string" && token.trim() ? token.trim() : sameRepo && previous?.installation === undefined ? (previous?.token ?? null) : null;
+  const found = await find({ url: link, token: key }, wanted);
+  if (!found.ok) return found;
+  return { ok: true, body: { ...(body as object), git: { ...git, branch: found.branch } } };
 }
 
 export function requestsGitHubApp(body: unknown): string | null {
