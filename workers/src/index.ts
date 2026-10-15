@@ -52,7 +52,7 @@ export default {
     if (url.pathname === "/api/projects") return projectsRequest(request, settingsStub(env), (project, path, init) => projectStub(env, project, new Request(`${url.origin}/api/projects/${project}/${path}`, init)));
     const root = PROJECT_ROOT.exec(url.pathname);
     if (root && request.method === "DELETE") return removeProjectRequest(request, root[1] as string, settingsStub(env), () => removeProject(env, root[1] as string));
-    if (url.pathname === "/api/github" || url.pathname.startsWith("/api/github/")) return gitHubRequest(request, env);
+    if (url.pathname === "/api/github" || url.pathname.startsWith("/api/github/")) return gitHubRequest(request, env, caller);
     const copilotKit = COPILOTKIT.exec(url.pathname);
     if (copilotKit) return copilotKitHandler(request, env, copilotKit[1] as string);
     const project = projectOf(url.pathname);

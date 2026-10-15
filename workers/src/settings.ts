@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
 import type { ProjectEntry } from "@chef/adapters/projects";
-import type { GitHubAppCredentials } from "@chef/adapters/github-app";
+import type { GitHubAppCredentials, GitHubBroker } from "@chef/adapters/github-app";
 import type { SharedInstructions } from "@chef/adapters/guidance";
 import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type SaveResult, type StoredAgents } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
@@ -18,6 +18,7 @@ const USED = "access/used/";
 const TOUCH_MS = 60_000;
 const PROJECTS = "projects";
 const GITHUB_APP = "github/app";
+const GITHUB_BROKER = "github/broker";
 const GITHUB_LINKS = "github/links";
 const GITHUB_PENDING = "github/pending";
 const ENV_KEY = "env/key";
@@ -133,6 +134,15 @@ export class Settings extends DurableObject<Env> {
   async saveGitHubApp(app: GitHubAppCredentials | null): Promise<void> {
     if (app) await this.ctx.storage.put(GITHUB_APP, app);
     else await this.ctx.storage.delete(GITHUB_APP);
+  }
+
+  async githubBroker(): Promise<GitHubBroker | null> {
+    return (await this.ctx.storage.get<GitHubBroker>(GITHUB_BROKER)) ?? null;
+  }
+
+  async saveGitHubBroker(broker: GitHubBroker | null): Promise<void> {
+    if (broker) await this.ctx.storage.put(GITHUB_BROKER, broker);
+    else await this.ctx.storage.delete(GITHUB_BROKER);
   }
 
   async beginConnect(pending: PendingConnect): Promise<void> {

@@ -85,7 +85,7 @@ export class ProjectAgent extends Agent<Env> {
       .catch(() => DEFAULT_STORED_AGENTS);
     const own = await this.agentSettings().current();
     const agents = { config: mergeAgentConfig(shared.config, own.config) };
-    const fingerprint = JSON.stringify([settings, project.git, project.attempts, origin, app?.credentials.id ?? null, shared.version, own.version]);
+    const fingerprint = JSON.stringify([settings, project.git, project.attempts, origin, app?.identity ?? null, shared.version, own.version]);
     if (this.built?.fingerprint === fingerprint) return this.built;
     this.built?.orchestrator.dispose();
     const env = this.env;

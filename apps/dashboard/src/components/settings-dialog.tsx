@@ -150,12 +150,15 @@ function GitHubSection(props: { readonly returnTo: string }) {
   if (!github) return <p className="text-xs text-muted-foreground">Checking GitHub…</p>;
   if (!github.app)
     return (
-      <Group title="Not connected" note="Connect once and every project can link a GitHub repository by picking it from a list. GitHub asks you to create Chef's own app for this deployment, then to pick the repositories it may use.">
+      <Group title="Not connected" note={github.shared ? "Connect once and every project can link a GitHub repository by picking it from a list. GitHub asks you where to install Chef's app and which repositories it may use, then brings you back." : "Connect once and every project can link a GitHub repository by picking it from a list. GitHub asks you to create Chef's own app for this deployment, then to pick the repositories it may use."}>
         <div className="grid gap-2" data-github="none">
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            GitHub organization that owns the repositories (leave empty for your own account)
-            <Input value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="your-org" aria-label="GitHub organization" autoComplete="off" />
-          </label>
+          {github.error ? <p className="text-xs text-bad">{github.error}</p> : null}
+          {github.shared ? null : (
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              GitHub organization that owns the repositories (leave empty for your own account)
+              <Input value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="your-org" aria-label="GitHub organization" autoComplete="off" />
+            </label>
+          )}
           <div className="flex justify-end">
             <Button type="button" size="sm" onClick={() => location.assign(githubApi.connectUrl(props.returnTo, organization.trim() || undefined))}>
               Connect GitHub
@@ -166,7 +169,7 @@ function GitHubSection(props: { readonly returnTo: string }) {
     );
   const app = github.app;
   return (
-    <Group title="Connected" note={`Chef uses its own GitHub app, ${app.name}, owned by ${app.owner}. Projects link a repository in Project settings > Repository.`}>
+    <Group title="Connected" note={`${github.shared ? `Chef uses the ${app.name} GitHub app` : `Chef uses its own GitHub app, ${app.name}`}${app.owner ? `, owned by ${app.owner}` : ""}. Projects link a repository in Project settings > Repository.`}>
       <div className="grid gap-2" data-github="connected">
         <p className="text-xs text-muted-foreground">{github.repositories.length === 1 ? "1 repository is" : `${github.repositories.length} repositories are`} shared with Chef.</p>
         <ul className="grid max-h-48 gap-px overflow-y-auto rounded-lg border p-1 text-xs">
@@ -183,11 +186,11 @@ function GitHubSection(props: { readonly returnTo: string }) {
             size="sm"
             variant="ghost"
             onClick={() => {
-              if (!confirm(`Forget ${app.name}? Projects linked through it stop syncing until you connect GitHub again. Delete the app in GitHub's developer settings too.`)) return;
-              githubApi.forget().then(setGitHub, (e: unknown) => toast.error("Could not forget the app", { description: e instanceof Error ? e.message : String(e) }));
+              if (!confirm(github.shared ? "Disconnect GitHub? Projects linked to its repositories stop syncing until you connect again." : `Forget ${app.name}? Projects linked through it stop syncing until you connect GitHub again. Delete the app in GitHub's developer settings too.`)) return;
+              githubApi.forget().then(setGitHub, (e: unknown) => toast.error("Could not disconnect GitHub", { description: e instanceof Error ? e.message : String(e) }));
             }}
           >
-            Use another account
+            {github.shared ? "Disconnect" : "Use another account"}
           </Button>
           <Button type="button" size="sm" variant="outline" onClick={() => location.assign(githubApi.connectUrl(props.returnTo))}>
             Add repositories on GitHub
