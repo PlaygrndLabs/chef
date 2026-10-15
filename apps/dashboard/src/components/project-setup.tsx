@@ -102,21 +102,22 @@ function SetupLog(props: { readonly run: Run; readonly open: boolean; readonly o
 function Progress(props: { readonly plan: Plan; readonly run: Run; readonly created: boolean; readonly onOpen: () => void; readonly onBack: () => void }) {
   const { plan, run, created } = props;
   const api = useMemo(() => projectApi(plan.name), [plan.name]);
-  const { state } = useOverview(created ? api : idle);
+  const reads = plan.repository !== null;
+  const { state } = useOverview(created && reads ? api : idle);
   const read: StepState = state?.status === "ready" ? "done" : state?.status === "failed" ? "failed" : created ? "run" : "wait";
   const [logOpen, setLogOpen] = useState(false);
   const [readSince, setReadSince] = useState<number | null>(null);
-  const busy = !run.error && (!created || read === "run");
+  const busy = !run.error && (!created || (reads && read === "run"));
   const now = useNow(busy ? 200 : 60_000);
   useEffect(() => {
-    if (created && (state?.status === "ready" || state?.status === "none")) props.onOpen();
-  }, [created, state?.status]);
+    if (created && (!reads || state?.status === "ready" || state?.status === "none")) props.onOpen();
+  }, [created, reads, state?.status]);
   useEffect(() => {
     if (run.error) setLogOpen(true);
   }, [run.error]);
   useEffect(() => {
-    if (created && readSince === null) setReadSince(Date.now());
-  }, [created, readSince]);
+    if (created && reads && readSince === null) setReadSince(Date.now());
+  }, [created, reads, readSince]);
   const fallback = plan.repository ? `Copy ${plan.repository} into Chef and link it` : `Create ${plan.name} from Chef's starter app`;
   const steps = stepsOf(run, created, fallback, now);
   const readEnd = state?.status === "ready" || state?.status === "failed" ? state.at : null;
@@ -138,7 +139,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
             {step.state === "failed" && run.error ? <span className="block text-xs text-bad">{run.error}</span> : null}
           </Step>
         ))}
-        {!run.error ? (
+        {reads && !run.error ? (
           <Step state={read} took={readSince === null ? null : readEnd !== null ? seconds(Math.max(0, readEnd - readSince)) : now - readSince >= 1000 ? seconds(now - readSince) : null}>
             Read the code and suggest first tasks
             {state?.status === "failed" ? <span className="block text-xs text-bad">{state.error}</span> : null}
@@ -155,7 +156,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
         </div>
       ) : created ? (
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">{read === "failed" ? "You can still open the project and ask Chef to read it again later." : "Chef keeps reading if you open the project now."}</p>
+          <p className="text-xs text-muted-foreground">{!reads ? "" : read === "failed" ? "You can still open the project and ask Chef to read it again later." : "Chef keeps reading if you open the project now."}</p>
           <Button type="button" size="sm" variant={read === "failed" ? "default" : "outline"} onClick={props.onOpen}>
             Open {plan.name}
           </Button>
