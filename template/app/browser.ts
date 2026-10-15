@@ -3,6 +3,7 @@ import { createApp, type Env, type Feature } from "../shared/http.ts";
 import { MemoryStore, type Store } from "../shared/storage.ts";
 
 export const ORIGIN = "http://app.test";
+export const STEP_TIMEOUT_MS = 5000;
 
 export interface OpenPage {
   readonly page: Page;
@@ -20,6 +21,7 @@ function browser(): Promise<Browser> {
 export async function openPage(features: readonly Feature[], path: string, store: Store = new MemoryStore(), env: Env = {}): Promise<OpenPage> {
   const app = createApp(features, store, env);
   const context = await (await browser()).newContext({ baseURL: ORIGIN });
+  context.setDefaultTimeout(STEP_TIMEOUT_MS);
   await context.route("**/*", async (route) => {
     const request = route.request();
     if (!request.url().startsWith(ORIGIN)) return route.abort();

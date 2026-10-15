@@ -51,6 +51,7 @@ export interface Deps {
   readonly store: KeyValueStore;
   readonly memory: MemoryIndex;
   readonly spend?: SpendGate;
+  readonly background?: (work: () => Promise<void>) => void;
 }
 
 export type Generators = Readonly<Record<string, (tree: Tree) => string>>;
@@ -690,6 +691,7 @@ export class Orchestrator {
       if (isTerminal(record.machine.state)) return;
       if (await this.waitForBudget(record)) return await this.save(record);
       try {
+        await this.settleApp(record);
         if (record.head && record.machine.state !== "queued") await this.adoptForkHead(record);
         if (record.syncPending && record.head && record.machine.state !== "queued" && !record.upstream) {
           record.syncPending = false;
@@ -1347,7 +1349,7 @@ export class Orchestrator {
     const current = readSpec(head.tree).find((f) => f.id === record.featureId);
     const listed = record.kind === "chore" ? {} : mergedEntryChanges(head.tree, arrangedSpec([current ?? record.plan.feature], await this.layout())[0] ?? record.plan.feature);
     if (!current || current.status === "merged") {
-      if (Object.keys(listed).length) await this.commitTurn(record, { changes: listed, role: "gardener", kind: "spec_change", workItem: null, prompt: `Mark ${record.featureId} current in the feature list`, model: "chef-gardener", runId: this.deps.ids.next("run"), message: `features: mark ${record.featureId} current` });
+      if (Object.keys(listed).length) await this.commitTurn(record, { changes: listed, role: "gardener", kind: "spec_change", workItem: null, prompt: `Mark ${record.featureId} current in the feature list`, model: "chef-gardener", runId: this.deps.ids.next("run"), message: `features: mark ${record.featureId} current` }, undefined, false);
       return;
     }
     const updated: FeatureSpec = { ...current, status: "merged" };
@@ -1373,7 +1375,7 @@ export class Orchestrator {
       model: "chef-gardener",
       runId: this.deps.ids.next("run"),
       message: `spec: mark ${record.featureId} merged`,
-    });
+    }, undefined, false);
     await this.emit({ type: "memory.recorded", featureId: record.featureId, path: memoryPath, kind: "feature" });
     for (const { rule, sessions } of mined) await this.emit({ type: "lint.rule.added", sessionId: record.id, featureId: record.featureId, ruleId: rule.id, message: rule.message, sessions, evidence: rule.evidence });
   }
@@ -1554,7 +1556,7 @@ export class Orchestrator {
   }
 
   private async proofCheck(record: SessionRecord, head: Commit): Promise<CheckResult> {
-    if (record.app?.status !== "running" || record.app.commitId !== head.id) await this.runApp(record);
+    if (record.app?.status !== "running" || record.app.commitId !== head.id) await this.runApp(record, true);
     const app = record.app;
     if (app?.status !== "running" || !app.local) return { name: "proof", ok: false, log: appTrouble(app) };
     if (record.kind === "chore") return this.choreProof(record, head, app.local);
@@ -1785,7 +1787,7 @@ export class Orchestrator {
     return { paths: tests, detail: `Passing without an implementation:\n${passing.map((n) => `- ${n}`).join("\n")}`, passing };
   }
 
-  private async commitTurn(record: SessionRecord, turn: { changes: FileChanges; role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; message: string }, lane?: Lane): Promise<void> {
+  private async commitTurn(record: SessionRecord, turn: { changes: FileChanges; role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; message: string }, lane?: Lane, app = true): Promise<void> {
     await this.withToken(record.fork, async (token) => {
       const commit = await this.deps.repos.commit(token, { ref: lane?.branch ?? "main", parent: lane ? lane.head : record.head, changes: turn.changes, message: turn.message, author: this.config.author });
       const note = this.note(record, { ...turn, paths: changedPaths(turn.changes) });
@@ -1795,7 +1797,7 @@ export class Orchestrator {
       record.commits.push(commit.id);
       await this.emit({ type: "commit.created", sessionId: record.id, featureId: record.featureId, repo: record.fork, commitId: commit.id, role: turn.role, message: turn.message, ...(lane ? { lane: lane.role } : {}) });
     });
-    if (!lane) await this.runApp(record);
+    if (!lane && app) await this.runApp(record);
   }
 
   private note(record: SessionRecord, turn: { role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; paths: readonly string[] }): TurnNote {
@@ -1816,18 +1818,44 @@ export class Orchestrator {
     };
   }
 
-  private async runApp(record: SessionRecord): Promise<void> {
+  private async runApp(record: SessionRecord, wait = false): Promise<void> {
     const commitId = record.head;
     if (!commitId) return;
-    await this.showApp(record, { status: "starting", url: record.app?.url ?? null, local: null, commitId });
-    let run: AppRun;
-    try {
-      run = await this.deps.apps.run({ target: record.id, repo: record.fork, ref: "main", commitId });
-    } catch (error) {
-      run = { status: "failed", url: record.app?.url ?? null, local: null, commitId, error: error instanceof Error ? error.message : String(error) };
+    const url = record.app?.url ?? null;
+    await this.showApp(record, { status: "starting", url, local: null, commitId });
+    await this.deps.store.put(`app/${record.id}/wanted`, commitId);
+    const background = this.deps.background;
+    if (wait || !background) {
+      const run = await this.startApp(record.id, record.fork, commitId, url);
+      await this.showApp(record, run);
+      if (run.status === "running") record.firstAppCommit ??= commitId;
+      return;
     }
-    await this.showApp(record, run);
-    if (run.status === "running") record.firstAppCommit ??= commitId;
+    const { id, featureId } = record;
+    background(async () => {
+      const run = await this.startApp(id, record.fork, commitId, url);
+      if ((await this.deps.store.get<string | null>(`app/${id}/wanted`)) !== commitId) return;
+      await this.deps.store.put(`app/${id}`, run);
+      const link = this.config.appLink?.(id);
+      await this.emit({ type: "app.updated", sessionId: id, featureId, status: run.status, url: run.url, commitId: run.commitId, ...(run.error ? { error: run.error } : {}), ...(link ? { link } : {}) });
+    });
+  }
+
+  private async startApp(target: string, repo: string, commitId: string, url: string | null): Promise<AppRun> {
+    try {
+      return await this.deps.apps.run({ target, repo, ref: "main", commitId });
+    } catch (error) {
+      return { status: "failed", url, local: null, commitId, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  private async settleApp(record: SessionRecord): Promise<void> {
+    if (record.app?.status !== "starting") return;
+    const run = await this.deps.store.get<AppRun | null>(`app/${record.id}`);
+    if (!run || run.commitId !== record.app.commitId) return;
+    const link = this.config.appLink?.(record.id);
+    record.app = { ...run, ...(link ? { link } : {}) };
+    if (run.status === "running") record.firstAppCommit ??= run.commitId;
   }
 
   private async showApp(record: SessionRecord, app: Omit<SessionApp, "link">): Promise<void> {

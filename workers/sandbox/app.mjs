@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const job = process.env.CHEF_JOB ? JSON.parse(Buffer.from(process.env.CHEF_JOB, "base64").toString("utf8")) : {};
 const home = join(process.env.CHEF_WORKSPACE ?? "/workspace", job.target ?? "none");
-const dir = join(home, "repo");
+const dir = join(home, "app");
 const emit = (event) => process.stdout.write(`${JSON.stringify({ type: "chef.app", ...event })}\n`);
 const COMPOSE_FILES = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
 const dockerEnv = { ...process.env, COMPOSE_BAKE: "false", DOCKER_BUILDKIT: "1" };
