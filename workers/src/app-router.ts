@@ -43,7 +43,7 @@ export class AppRouter {
     await this.ensure();
     const name = appName(input.label, this.router);
     const path = `${this.workerPath()}/previews/${encodeURIComponent(name)}`;
-    const preview = (await this.api<PreviewInfo>("GET", path, undefined, true)) ?? (await this.api<PreviewInfo>("POST", `${this.workerPath()}/previews`, { name }));
+    const preview = (await this.api<PreviewInfo>("GET", path, undefined, true)) ?? (await this.createPreview(name, path));
     const form = new FormData();
     form.set(
       "metadata",
@@ -69,6 +69,15 @@ export class AppRouter {
 
   async remove(labels: readonly string[]): Promise<void> {
     for (const label of labels) await this.api("DELETE", `${this.workerPath()}/previews/${encodeURIComponent(appName(label, this.router))}`, undefined, true);
+  }
+
+  private async createPreview(name: string, path: string): Promise<PreviewInfo | null> {
+    try {
+      return await this.api<PreviewInfo>("POST", `${this.workerPath()}/previews`, { name });
+    } catch (error) {
+      if (!/100338|already exists/.test(String(error))) throw error;
+      return this.api<PreviewInfo>("GET", path, undefined, true);
+    }
   }
 
   private async ensure(): Promise<void> {
