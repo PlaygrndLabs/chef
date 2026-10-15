@@ -29,6 +29,7 @@ import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderL
 import { applyGuidanceEdit, projectGuidance, renderGuidance, withGuidance, type EditResult, type GuidanceEdit } from "../guidance/guidance.ts";
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
 import { projectRuleProblems, renderRule, rulePath } from "../checks/project-rules.ts";
+import { failuresOf, newFailuresOnly, type MainFailures } from "../checks/baseline.ts";
 import { hashHex } from "../util/hash.ts";
 import type { ExternalRemote } from "../ports/external-git.ts";
 import { ExternalSync, type ExternalSyncOptions } from "../sync/external.ts";
@@ -165,6 +166,7 @@ export class Orchestrator {
   private readonly unsubscribe: () => void;
   private readonly running = new Set<string>();
   private readonly syncAfterRun = new Set<string>();
+  private readonly mainFailures = new Map<string, Promise<MainFailures>>();
 
   constructor(
     private readonly deps: Deps,
@@ -557,7 +559,7 @@ export class Orchestrator {
       const token = await this.deps.repos.createToken(this.canonical, "write", this.ttl);
       try {
         const commit = await this.deps.repos.commit(token, { ref: "main", parent: head, changes, message: `Remove ${featureIds.join(", ")}`, author: this.config.author });
-        const verified = await this.verifyMain(commit.id);
+        const verified = await this.verifyMain(commit.id, head);
         if (verified.ok) return { commitId: commit.id, reverted: false };
         await this.revertLocked(featureId, commit.id, head, verified.log, [`Delete ${featureId}`]);
         return { commitId: commit.id, reverted: true };
@@ -1096,8 +1098,22 @@ export class Orchestrator {
     }
   }
 
+  private failingOnMain(commitId: string): Promise<MainFailures> {
+    const known = this.mainFailures.get(commitId);
+    if (known) return known;
+    const found = this.commitOf(this.canonical, commitId).then(async (commit) => failuresOf(await this.deps.checks.run({ repo: this.canonical, commitId, tree: commit.tree })));
+    found.catch(() => this.mainFailures.delete(commitId));
+    this.mainFailures.set(commitId, found);
+    return found;
+  }
+
+  private async newFailures(results: readonly CheckResult[], mainCommit: string | null): Promise<CheckResult[]> {
+    if (!mainCommit || results.every((r) => r.ok)) return [...results];
+    return newFailuresOnly(results, await this.failingOnMain(mainCommit));
+  }
+
   private async gateChecks(record: SessionRecord, head: Commit): Promise<CheckResult[]> {
-    const checks: CheckResult[] = [...(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }))];
+    const checks: CheckResult[] = await this.newFailures(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }), record.baseMain);
     checks.push(await this.scopeCheck(record));
     if (this.specialization.lockTests) checks.push(await this.lockedCheck(record));
     checks.push(await this.verdictCheck(record));
@@ -1211,7 +1227,7 @@ export class Orchestrator {
       }
       record.baseMain = outcome.commitId;
       record.merge = { commitId: outcome.commitId, mainBefore: mainHead };
-      const verified = await this.verifyMain(outcome.commitId);
+      const verified = await this.verifyMain(outcome.commitId, mainHead);
       if (verified.ok) {
         await this.syncMemory();
         return { ok: true, checks };
@@ -1222,9 +1238,9 @@ export class Orchestrator {
     });
   }
 
-  private async verifyMain(commitId: string): Promise<{ ok: boolean; log: string }> {
+  private async verifyMain(commitId: string, mainBefore: string): Promise<{ ok: boolean; log: string }> {
     const commit = await this.commitOf(this.canonical, commitId);
-    const results = await this.deps.checks.run({ repo: this.canonical, commitId, tree: commit.tree });
+    const results = await this.newFailures(await this.deps.checks.run({ repo: this.canonical, commitId, tree: commit.tree }), mainBefore);
     const map = featureMapProblems(commit.tree);
     const failed = [...results, { name: "feature-map", ok: map.length === 0, log: map.join("\n") || "feature map matches the code" }].filter((c) => !c.ok);
     return { ok: failed.length === 0, log: failed.length ? `main went red after merging ${commitId.slice(0, 12)}\n\n${formatChecks(failed)}` : "main green" };

@@ -44,6 +44,18 @@ describe("chores and hotfixes", () => {
     expect(proof.proofs.map((p: { feature: string }) => p.feature)).toContain("todo-add");
   });
 
+  it("lets a chore merge while a check that already fails on main keeps failing", async () => {
+    const w = world({ script: choreScript(), presets: new Map([[TODO, todoSpec]]) });
+    await w.orchestrator.bootstrap(templateTree());
+    await w.orchestrator.run((await w.orchestrator.submit(TODO)).sessionId as string);
+    w.checks.failNext("lint", "main breaks this rule already", 100);
+    const chore = await w.orchestrator.submit("/chore Explain how to run the tests in the README");
+    expect((await w.orchestrator.run(chore.sessionId as string)).machine.state).toBe("merged");
+    const main = await w.repos.readCommit("demo", (await w.repos.resolveRef("demo", "main")) as string);
+    expect(main?.tree["README.md"]).toBe(README);
+    expect(w.bus.log.some((e) => e.type === "main.reverted")).toBe(false);
+  });
+
   it("keeps a chore away from the locked feature tests", async () => {
     const w = world({ script: choreScript({ "features/todo-add/todo-add.test.ts": "export {};\n" }), presets: new Map([[TODO, todoSpec]]) });
     await w.orchestrator.bootstrap(templateTree());
