@@ -1666,9 +1666,20 @@ export class Orchestrator {
       cursor = (await this.commitOf(record.fork, cursor)).parents[0];
     }
     if (cursor !== record.head) return;
+    for (const commitId of adopted) await this.recoverNote(record.fork, commitId);
     record.head = forkHead;
     record.commits.push(...adopted.filter((id) => !record.commits.includes(id)));
     await this.runApp(record);
+  }
+
+  private async recoverNote(fork: string, commitId: string): Promise<void> {
+    if (await this.deps.repos.readNote(fork, NOTES_NAMESPACE, commitId)) return;
+    const commit = await this.commitOf(fork, commitId);
+    const key = pendingNoteKey(fork, commit.parents[0] ?? null);
+    const pending = await this.deps.store.get<PendingNote | null>(key);
+    if (pending?.message !== commit.message) return;
+    await this.withToken(fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId, note: pending.note }));
+    await this.deps.store.put(key, null);
   }
 
   private async syncFromMain(record: SessionRecord): Promise<"synced" | "up-to-date" | "conflict"> {
@@ -1865,9 +1876,13 @@ export class Orchestrator {
 
   private async commitTurn(record: SessionRecord, turn: { changes: FileChanges; role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; message: string }, lane?: Lane, app = true): Promise<void> {
     await this.withToken(record.fork, async (token) => {
-      const commit = await this.deps.repos.commit(token, { ref: lane?.branch ?? "main", parent: lane ? lane.head : record.head, changes: turn.changes, message: turn.message, author: this.config.author });
-      const note = this.note(record, { ...turn, paths: changedPaths(turn.changes) });
-      await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: commit.id, note: renderNote(note) });
+      const parent = lane ? lane.head : record.head;
+      const note = renderNote(this.note(record, { ...turn, paths: changedPaths(turn.changes) }));
+      const pending = pendingNoteKey(record.fork, parent);
+      await this.deps.store.put<PendingNote>(pending, { message: turn.message, note });
+      const commit = await this.deps.repos.commit(token, { ref: lane?.branch ?? "main", parent, changes: turn.changes, message: turn.message, author: this.config.author });
+      await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: commit.id, note });
+      await this.deps.store.put(pending, null);
       if (lane) lane.head = commit.id;
       else record.head = commit.id;
       record.commits.push(commit.id);
@@ -1918,10 +1933,13 @@ export class Orchestrator {
   }
 
   private async startApp(target: string, repo: string, commitId: string, url: string | null): Promise<AppRun> {
-    try {
-      return await this.deps.apps.run({ target, repo, ref: "main", commitId });
-    } catch (error) {
-      return { status: "failed", url, local: null, commitId, error: error instanceof Error ? error.message : String(error) };
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.deps.apps.run({ target, repo, ref: "main", commitId });
+      } catch (error) {
+        if (transient(error) && attempt < APP_TRIES) continue;
+        return { status: "failed", url, local: null, commitId, error: error instanceof Error ? error.message : String(error) };
+      }
     }
   }
 
@@ -2073,6 +2091,13 @@ const BUILD_KINDS: readonly WorkItem["kind"][] = ["code", "fix", "refactor", "ch
 const MERGED_PROOFS = 6;
 
 const ADOPT_LIMIT = 20;
+const APP_TRIES = 3;
+
+type PendingNote = { readonly message: string; readonly note: string };
+
+function pendingNoteKey(fork: string, parent: string | null): string {
+  return `note/${fork}/${parent ?? "root"}`;
+}
 
 const SETUP_LOG_FILES = 60;
 
@@ -2151,7 +2176,7 @@ const TURN_RESTARTS = 3;
 
 export function transient(error: unknown): boolean {
   if ((error as { retryable?: unknown } | null)?.retryable === true) return true;
-  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)|container service disconnected|sandbox container (stopped|did not start)|HTTP Error: (429|5\d\d)|git clone failed: .*(hung up|early EOF|RPC failed|returned error: (429|5\d\d)|connection reset|timed out)/i.test((error as Error | null)?.message ?? "");
+  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded|no longer active)|container service disconnected|sandbox container (stopped|did not start)|HTTP Error: (429|5\d\d)|git clone failed: .*(hung up|early EOF|RPC failed|returned error: (429|5\d\d)|connection reset|timed out)/i.test((error as Error | null)?.message ?? "");
 }
 
 export function runnable(record: SessionRecord): boolean {
