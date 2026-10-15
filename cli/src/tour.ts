@@ -129,7 +129,9 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     const page = await context.newPage();
     page.on("pageerror", (error) => report.errors.push(`pageerror ${error.message}`));
     let leaving = false;
+    let deleting: string | null = null;
     page.on("response", (response) => {
+      if (deleting && response.status() === 409 && new RegExp(`/(api/projects|agents/project)/${deleting}[/?]`).test(response.url())) return;
       if (response.status() >= 400 && response.request().method() !== "HEAD") report.errors.push(`http ${response.status()} ${response.request().method()} ${response.url()}`);
     });
     page.on("console", (message) => {
@@ -301,7 +303,10 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     writeFileSync(join(options.out, "events.jsonl"), events.map((e) => JSON.stringify(e)).join("\n"));
     if (options.remove) {
       if (report.projects.includes(project) && !(options.removeExisting && options.project)) report.errors.push(`remove: ${project} was there before the tour, so the tour left it`);
-      else await removeInSettings(page, project, report, shot).catch((error: unknown) => void report.errors.push(`remove: ${error instanceof Error ? error.message : String(error)}`));
+      else {
+        deleting = project;
+        await removeInSettings(page, project, report, shot).catch((error: unknown) => void report.errors.push(`remove: ${error instanceof Error ? error.message : String(error)}`));
+      }
     }
     return report;
   } finally {

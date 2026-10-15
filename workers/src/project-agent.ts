@@ -173,7 +173,7 @@ export class ProjectAgent extends Agent<Env> {
 
   override async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method !== "GET" && (await this.ctx.storage.get<boolean>(REMOVING))) return Response.json({ error: `${this.name} is being deleted` }, { status: 409 });
+    if (await this.ctx.storage.get<boolean>(REMOVING)) return Response.json({ error: `${this.name} is being deleted` }, { status: 409 });
     const action = url.pathname.split("/").filter(Boolean).at(-1);
     if (url.pathname.endsWith("/git/webhook")) return this.webhook(request);
     const origin = request.headers.has(ORIGIN_HEADER) ? publicOrigin(request) : (homeOrigin(this.env) ?? url.origin);
