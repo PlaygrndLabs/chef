@@ -90,7 +90,7 @@ function RecentProjects(props: { readonly projects: readonly RecentProject[]; re
               <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
               <ChevronRight className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
             </span>
-            <span className="line-clamp-2 flex-1 text-sm text-muted-foreground">{p.note ?? (p.how === "created" ? "New project, nothing built yet" : "No changes yet")}</span>
+            <span className="line-clamp-2 flex-1 text-sm text-muted-foreground">{p.note ?? "No recent changes"}</span>
             <span className="font-mono text-[11px] tracking-[0.04em] text-muted-foreground uppercase" data-how={p.how}>
               {HOW[p.how]} {since(p.at)}
             </span>

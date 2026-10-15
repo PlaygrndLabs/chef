@@ -222,7 +222,12 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "POST" && action === "bootstrap") {
       return setupResponse(request, async (progress) => {
         const existing = (await orchestrator.mainTree()).commitId;
-        if (existing) return { commitId: existing, created: false };
+        if (existing) {
+          await this.schedule(0, "runMainApp", undefined, { idempotent: true });
+          if (external) await this.ensurePolling();
+          if ((await this.overview()).status === "none") await this.startReading();
+          return { commitId: existing, created: false };
+        }
         await this.schedule(5, "runMainApp", undefined, { idempotent: true });
         if (external) {
           const pulled = await external.pull(progress);

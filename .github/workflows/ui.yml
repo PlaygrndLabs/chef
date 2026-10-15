@@ -7,6 +7,10 @@ on:
         description: Project to open (created when missing); empty opens the first one
         required: false
         default: ""
+      repo:
+        description: Repository URL to import when the tour creates the project (Other git host); empty starts fresh
+        required: false
+        default: ""
       prompt:
         description: Requests to type into the chat, one per line, each sent once the last one is answered; empty only looks around
         required: false
@@ -44,11 +48,13 @@ jobs:
         run: |
           args=(--minutes "$MINUTES" --out results/tour)
           [ -n "$PROJECT" ] && args+=(--project "$PROJECT")
+          [ -n "$REPO" ] && args+=(--repo "$REPO")
           [ -n "$PROMPT" ] && args+=(--prompt "$PROMPT")
           [ "$DELETE" = "true" ] && args+=(--delete)
           node --import tsx cli/src/bin.ts tour "${args[@]}"
         env:
           PROJECT: ${{ inputs.project }}
+          REPO: ${{ inputs.repo }}
           PROMPT: ${{ inputs.prompt }}
           MINUTES: ${{ inputs.minutes }}
           DELETE: ${{ inputs.delete }}

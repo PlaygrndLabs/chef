@@ -7,6 +7,7 @@ export interface TourOptions {
   readonly password?: string | undefined;
   readonly project?: string | undefined;
   readonly prompt?: string | undefined;
+  readonly repo?: string | undefined;
   readonly minutes: number;
   readonly everySeconds: number;
   readonly remove?: boolean;
@@ -76,10 +77,14 @@ async function json<T>(page: Page, path: string, init?: { method: string; data?:
   return (await response.json()) as T;
 }
 
-async function createInDialog(page: Page, project: string, report: TourReport, shot: (name: string) => Promise<void>): Promise<void> {
+async function createInDialog(page: Page, project: string, repo: string | undefined, report: TourReport, shot: (name: string) => Promise<void>): Promise<void> {
   await page.goto("/");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /new project/i }).first().click();
+  if (repo) {
+    await page.getByRole("radio", { name: "Other git host" }).click();
+    await page.getByLabel("Repository URL").fill(repo);
+  }
   await page.getByLabel("Project name").fill(project);
   await page.getByRole("button", { name: "Create project" }).click();
   const dialog = page.locator('[data-dialog="new-project"]');
@@ -190,7 +195,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     const project = options.project ?? report.projects[0];
     if (!project) return report;
     if (!report.projects.includes(project)) {
-      await createInDialog(page, project, report, shot).catch(async (error: unknown) => {
+      await createInDialog(page, project, options.repo, report, shot).catch(async (error: unknown) => {
         report.errors.push(`new project dialog ${error instanceof Error ? error.message : String(error)}`);
         await json(page, "/api/projects", { method: "POST", data: { name: project } }).catch(() => json(page, `/api/projects/${project}/bootstrap`, { method: "POST" }));
       });
