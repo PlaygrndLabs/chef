@@ -24,6 +24,32 @@ export function gitHubRepo(url: string): GitHubRepo | null {
   return match ? { owner: match[1] as string, repo: match[2] as string } : null;
 }
 
+export interface ListedRef {
+  readonly ref: string;
+  readonly target?: string | undefined;
+}
+
+export type BranchChoice = { readonly ok: true; readonly branch: string } | { readonly ok: false; readonly error: string };
+
+export function pickBranch(url: string, refs: readonly ListedRef[], wanted: string | null): BranchChoice {
+  const heads = refs.filter((r) => r.ref.startsWith("refs/heads/")).map((r) => r.ref.slice("refs/heads/".length));
+  const target = refs.find((r) => r.ref === "HEAD")?.target;
+  const main = target?.startsWith("refs/heads/") ? target.slice("refs/heads/".length) : heads.length === 1 ? (heads[0] as string) : null;
+  if (wanted) return heads.includes(wanted) ? { ok: true, branch: wanted } : { ok: false, error: `${url} has no branch ${wanted}${main ? `; its main branch is ${main}` : ""}` };
+  if (main) return { ok: true, branch: main };
+  return { ok: false, error: heads.length ? `${url} has no default branch, so name its main branch` : `${url} has no branches yet` };
+}
+
+export async function remoteBranch(link: { readonly url: string; readonly token: string | null; readonly username?: string }, wanted: string | null, http: HttpClient = webHttp): Promise<BranchChoice> {
+  try {
+    const onAuth = link.token ? () => ({ username: link.username ?? "x-access-token", password: link.token as string }) : undefined;
+    const refs = await git.listServerRefs({ http, url: link.url, symrefs: true, ...(onAuth ? { onAuth } : {}) });
+    return pickBranch(link.url, refs, wanted);
+  } catch (error) {
+    return { ok: false, error: `Chef could not read ${link.url}: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
 export class GitRemote implements ExternalRemote {
   readonly url: string;
   readonly branch: string;

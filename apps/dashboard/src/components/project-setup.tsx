@@ -34,7 +34,7 @@ function Field(props: { readonly label: string; readonly children: ReactNode }) 
 function otherLink(url: string, branch: string, token: string): GitLinkUpdate {
   const github = /^https:\/\/github\.com\//.test(url);
   const mode = token ? (github ? "pull-request" : "branch") : "off";
-  return { url, branch: branch || "main", mode, syncBranch: "chef", ...(token ? { token } : {}) };
+  return { url, ...(branch ? { branch } : {}), mode, syncBranch: "chef", ...(token ? { token } : {}) };
 }
 
 interface Plan {
@@ -177,7 +177,7 @@ export function NewProjectForm(props: { readonly onCreated: (name: string) => vo
   const [github, setGitHub] = useState<GitHubView | null>(null);
   const [picked, setPicked] = useState<InstalledRepository | null>(null);
   const [url, setUrl] = useState("");
-  const [branch, setBranch] = useState("main");
+  const [branch, setBranch] = useState("");
   const [token, setToken] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [created, setCreated] = useState(false);
@@ -276,7 +276,7 @@ export function NewProjectForm(props: { readonly onCreated: (name: string) => vo
           </Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Its main branch">
-              <Input value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Main branch" />
+              <Input value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Main branch" placeholder="Its default branch" />
             </Field>
             <Field label="Access token">
               <Input value={token} onChange={(e) => setToken(e.target.value)} aria-label="Access token" type="password" autoComplete="off" placeholder="Needed to send work back" />

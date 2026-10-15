@@ -262,7 +262,7 @@ export interface ProjectSettingsView {
 
 export interface GitLinkUpdate {
   readonly url: string;
-  readonly branch: string;
+  readonly branch?: string;
   readonly token?: string;
   readonly github?: boolean;
   readonly mode: OutboundMode;

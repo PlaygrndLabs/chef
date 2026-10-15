@@ -83,7 +83,7 @@ function RepositoryForm(props: { readonly project: string; readonly api: Project
   const [source, setSource] = useState<"github" | "other">(current && !current.github ? "other" : "github");
   const [github, setGitHub] = useState<GitHubView | null>(null);
   const [url, setUrl] = useState(current?.url ?? "");
-  const [branch, setBranch] = useState(current?.branch ?? "main");
+  const [branch, setBranch] = useState(current?.branch ?? "");
   const [token, setToken] = useState("");
   const [mode, setMode] = useState<OutboundMode>(current?.mode ?? "pull-request");
   const [syncBranch, setSyncBranch] = useState(current?.syncBranch ?? "chef");
@@ -115,7 +115,7 @@ function RepositoryForm(props: { readonly project: string; readonly api: Project
       onSubmit={(e) => {
         e.preventDefault();
         const link = viaGitHub ? { github: true } : token.trim() ? { token: token.trim() } : {};
-        void run({ git: { url: url.trim(), branch: branch.trim(), mode, syncBranch: syncBranch.trim(), ...link } }, current ? "Saved" : "Linked; Chef is taking the repository in");
+        void run({ git: { url: url.trim(), ...(branch.trim() ? { branch: branch.trim() } : {}), mode, syncBranch: syncBranch.trim(), ...link } }, current ? "Saved" : "Linked; Chef is taking the repository in");
       }}
     >
       {viaGitHub ? (
@@ -151,7 +151,7 @@ function RepositoryForm(props: { readonly project: string; readonly api: Project
         <>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Its main branch">
-              <Input value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Main branch" required />
+              <Input value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Main branch" placeholder="Its default branch" />
             </Field>
             <Field label="chef's branch there">
               <Input value={syncBranch} onChange={(e) => setSyncBranch(e.target.value)} aria-label="Sync branch" required disabled={mode === "off"} />
