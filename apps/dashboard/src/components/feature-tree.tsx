@@ -1,9 +1,13 @@
 import { createContext, useContext, useState } from "react";
-import { ChevronRight, CornerDownRight, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, CornerDownRight, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ListSkeleton } from "@/components/loading";
+import { MapMarkIcon, MARK_LABEL } from "@/components/map-mark";
 import { KindBadges, StatusDot } from "@/components/status";
 import { roleLabel, useAgents, workingRole } from "@/lib/agents";
 import { PLAIN_STATE, stateTone, type Tone } from "@/lib/format";
@@ -84,6 +88,7 @@ interface TreeActions {
   readonly saveTitle: (node: TreeNode, title: string) => void;
   readonly move: (id: string, parent: string | null) => void;
   readonly askDelete: (node: TreeNode) => void;
+  readonly askAdd: (parent: TreeNode | null) => void;
   readonly targets: (node: TreeNode) => readonly TreeNode[];
   readonly nodeOf: (id: string) => TreeNode | undefined;
   readonly dragging: string | null;
@@ -168,7 +173,7 @@ function TitleField({ node }: { readonly node: TreeNode }) {
 }
 
 function RowMenu({ node }: { readonly node: TreeNode }) {
-  const { rename, move, askDelete, targets } = useActions();
+  const { rename, move, askDelete, askAdd, targets } = useActions();
   const { feature } = node;
   const places = targets(node);
   return (
@@ -197,6 +202,12 @@ function RowMenu({ node }: { readonly node: TreeNode }) {
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        {feature.map ? (
+          <DropdownMenuItem onSelect={() => askAdd(node)}>
+            <Plus />
+            Add a wish under it
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onSelect={() => askDelete(node)}>
           <Trash2 />
@@ -215,15 +226,15 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
   const { feature, session } = node;
   const open = !closed.has(feature.id);
   const current = active?.id === feature.id;
-  const tone = toneOf(session);
-  const role = workingRole(session);
-  const doing = role ? roleLabel(role, agents) : stateText(session);
+  const tone = session ? toneOf(session) : null;
+  const role = session ? workingRole(session) : null;
+  const doing = role ? roleLabel(role, agents) : session ? stateText(session) : MARK_LABEL[feature.mark];
   const single = feature.sessions.length === 1;
   const dot = (
     <>
-      <StatusDot tone={tone} />
+      <MapMarkIcon mark={feature.mark} tone={tone} />
       <span className="sr-only" {...(role ? { "data-working-role": role } : {})}>
-        {doing}
+        {feature.mark === "working" ? doing : `${MARK_LABEL[feature.mark]}${session ? `, ${doing}` : ""}`}
       </span>
     </>
   );
@@ -271,15 +282,16 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
               data-feature={feature.id}
               data-status={feature.status}
               data-group={node.group}
-              data-state={session.state}
-              {...(single ? { "data-session": session.id } : {})}
+              data-mark={feature.mark}
+              {...(session ? { "data-state": session.state } : {})}
+              {...(single && session ? { "data-session": session.id } : {})}
               aria-current={current ? "page" : undefined}
               title={`${feature.title} · ${doing}`}
               className="flex h-full min-w-0 flex-1 items-center gap-2 pr-2 pl-1 text-left text-sm"
             >
               {dot}
               <span className="min-w-0 truncate">{feature.title}</span>
-              <KindBadges node={session} />
+              {session ? <KindBadges node={session} /> : null}
             </button>
             <span className={cn("absolute top-1.5 right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-data-[state=open]:opacity-100", current ? "bg-sidebar-accent" : "group-hover:bg-sidebar-accent")}>
               <RowMenu node={node} />
@@ -287,7 +299,7 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
           </>
         )}
       </div>
-      {current && !single ? <Builds node={node} depth={depth} /> : null}
+      {current && feature.sessions.length > 1 ? <Builds node={node} depth={depth} /> : null}
       {open && node.children.length ? (
         <ul role="group" className="flex flex-col">
           {node.children.map((child) => (
@@ -304,11 +316,13 @@ function DeleteDialog({ node, onOpenChange }: { readonly node: TreeNode | null; 
   const [busy, setBusy] = useState(false);
   const parts = node ? flatten(node.children) : [];
   const live = node ? [node, ...parts].some((n) => n.feature.onMain) : false;
+  const built = node ? [node, ...parts].some((n) => n.feature.onMain || n.feature.sessions.length > 0) : false;
   const remove = async () => {
     if (!node) return;
     setBusy(true);
     try {
-      await api.removeFeature(node.feature.id);
+      if (built) await api.removeFeature(node.feature.id);
+      if (node.feature.map) await api.editMap({ kind: "remove", id: node.feature.map.id });
       data.refresh();
       onOpenChange(false);
     } catch (error) {
@@ -324,7 +338,7 @@ function DeleteDialog({ node, onOpenChange }: { readonly node: TreeNode | null; 
           <AlertDialogTitle>Delete {node?.feature.title}?</AlertDialogTitle>
           <AlertDialogDescription>
             {parts.length ? `Its ${parts.length === 1 ? "part" : `${parts.length} parts`} ${parts.map((p) => p.feature.title).join(", ")} ${parts.length === 1 ? "goes" : "go"} too. ` : ""}
-            {live ? "Chef stops any work on it and takes its code out of main." : "Chef stops the work on it."}
+            {live ? "Chef stops any work on it and takes its code out of main." : built ? "Chef stops the work on it." : node?.feature.mark === "current" ? "It leaves the feature list. Its code stays as it is." : "It leaves the feature list."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -345,11 +359,55 @@ function DeleteDialog({ node, onOpenChange }: { readonly node: TreeNode | null; 
   );
 }
 
+function AddDialog({ parent, open, onOpenChange }: { readonly parent: TreeNode | null; readonly open: boolean; readonly onOpenChange: (open: boolean) => void }) {
+  const { api, data } = useWorkspace();
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const add = async () => {
+    if (!title.trim()) return;
+    setBusy(true);
+    try {
+      await api.editMap({ kind: "add", parent: parent?.feature.map?.id ?? null, title: title.trim() });
+      data.refresh();
+      setTitle("");
+      onOpenChange(false);
+    } catch (error) {
+      failed("Could not add the wish")(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md" data-dialog="add-wish">
+        <DialogHeader>
+          <DialogTitle>{parent ? `Add a wish under ${parent.feature.title}` : "Add a wish"}</DialogTitle>
+          <DialogDescription>It shows in the feature list with a lamp until Chef builds it. Nothing starts until you ask.</DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void add();
+          }}
+        >
+          <Input autoFocus aria-label="Title" placeholder="Title, for example Share a board" value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
+          <DialogFooter className="mt-4">
+            <Button type="submit" disabled={busy || !title.trim()}>
+              {busy ? "Adding" : "Add"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function FeatureTree({ children }: { readonly children?: React.ReactNode }) {
   const { features, data, selection, api } = useWorkspace();
   const [closed, setClosed] = useState(() => readClosed(selection.project));
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<TreeNode | null>(null);
+  const [adding, setAdding] = useState<{ readonly parent: TreeNode | null } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const toggle = (id: string) =>
@@ -366,17 +424,21 @@ export function FeatureTree({ children }: { readonly children?: React.ReactNode 
     rename: setRenaming,
     saveTitle: (node, title) => {
       setRenaming(null);
-      api.arrange(node.feature.id, { title }).then(data.refresh, failed(`Could not rename "${node.feature.title}"`));
+      const map = node.feature.map;
+      (map ? api.editMap({ kind: "update", id: map.id, title }) : api.arrange(node.feature.id, { title })).then(data.refresh, failed(`Could not rename "${node.feature.title}"`));
     },
     move: (id, parent) => {
       setDragging(null);
       if (parent && closed.has(parent)) toggle(parent);
-      api.arrange(id, { parent }).then(data.refresh, failed("Could not move the feature"));
+      const map = all.find((n) => n.feature.id === id)?.feature.map;
+      const under = parent ? all.find((n) => n.feature.id === parent)?.feature.map : null;
+      (map && under !== undefined ? api.editMap({ kind: "move", id: map.id, parent: under?.id ?? null }) : api.arrange(id, { parent })).then(data.refresh, failed("Could not move the feature"));
     },
     askDelete: setDeleting,
+    askAdd: (parent) => setAdding({ parent }),
     targets: (node) => {
       const own = new Set(flatten([node]).map((n) => n.feature.id));
-      return all.filter((n) => !own.has(n.feature.id));
+      return all.filter((n) => !own.has(n.feature.id) && (!node.feature.map || n.feature.map !== null));
     },
     nodeOf: (id) => all.find((n) => n.feature.id === id),
     dragging,
@@ -403,10 +465,17 @@ export function FeatureTree({ children }: { readonly children?: React.ReactNode 
             <TopLevelDrop />
           </>
         ) : (
-          <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Each thing you ask for in the chat shows up here, and new parts sit under the feature they add to.</p>
+          <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">Each thing you ask for in the chat shows up here, and new parts sit under the feature they add to. For a project that already has code, ask Chef to map its current features.</p>
         )}
+        {data.ready ? (
+          <button type="button" onClick={() => setAdding({ parent: null })} data-action="add-wish" className="mt-1 flex h-7 items-center gap-2 px-2 text-left text-xs text-muted-foreground hover:text-foreground">
+            <Plus className="size-3.5" />
+            Add a wish
+          </button>
+        ) : null}
       </nav>
       <DeleteDialog node={deleting} onOpenChange={(open) => !open && setDeleting(null)} />
+      <AddDialog parent={adding?.parent ?? null} open={adding !== null} onOpenChange={(open) => !open && setAdding(null)} />
     </ActionsContext.Provider>
   );
 }
