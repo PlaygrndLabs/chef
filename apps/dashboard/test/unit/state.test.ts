@@ -45,12 +45,13 @@ describe("project event state", () => {
 
   it("notes when a branch has no compose file and when main's app changes", () => {
     const state = run([
+      { type: "session.state", sessionId: "s2", featureId: "todo-edit", from: "queued", to: "coding", reason: "planned" },
       { type: "app.updated", sessionId: "s2", featureId: "todo-edit", status: "no-stack", url: null, commitId: "c2abcdef" },
       { type: "main-app.updated", status: "failed", commitId: "m2abcdef", url: null, error: "port 3000 never answered" },
     ]);
     expect(state.sessions["s2"]?.app).toMatchObject({ status: "no-stack", url: null });
-    expect(state.log.map((e) => e.summary)).toEqual(["app no-stack at c2abcde", "main app failed at m2abcde: port 3000 never answered"]);
-    expect(updates(state.sessions["s2"]?.timeline ?? [], "coding").flatMap((u) => u.tech)).toContain("no compose file at c2abcde, so the app cannot start");
+    expect(state.log.slice(1).map((e) => e.summary)).toEqual(["app no-stack at c2abcde", "main app failed at m2abcde: port 3000 never answered"]);
+    expect(updates(state.sessions["s2"]?.timeline ?? [], "coding").flatMap((u) => (u.kind === "chef" ? u.tech : []))).toContain("no compose file at c2abcde, so the app cannot start");
   });
 
   it("follows roles that work at the same time on their own branches", () => {
