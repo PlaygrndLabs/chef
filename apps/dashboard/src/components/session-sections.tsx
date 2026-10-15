@@ -6,6 +6,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
+import { host as chefHost } from "@/host";
+import { toast } from "sonner";
+import { COMPOSE_PROMPT } from "@chef/core/app";
 import { AppFrame, loadTone, useAppLoad } from "@/components/app-frame";
 import { CloudflareList, CloudflareSections } from "@/components/cloudflare-resources";
 import { isActive } from "@/lib/events";
@@ -44,11 +47,16 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
+const useProjectLevel = chefHost.useProjectLevel ?? (() => null);
+
 function AppTab({ link, url, start, title, note, missing }: { readonly link: string; readonly url: string | null; readonly start: string; readonly title: string; readonly note: string; readonly missing: string }) {
   const [trail, setTrail] = useState<Trail>({ entries: [start], index: 0 });
   const [load, setLoad] = useState({ path: start, count: 0 });
   const [pages, setPages] = useState<readonly AppPage[]>([]);
   const [draft, setDraft] = useState<string | null>(null);
+  const [askedCompose, setAskedCompose] = useState(false);
+  const { api, selection } = useWorkspace();
+  const viewOnly = useProjectLevel(selection.project) === "view";
   const frame = useRef<HTMLIFrameElement>(null);
   const app = useAppLoad({ link, path: load.path, count: load.count, missing });
   const { loaded } = app;
@@ -138,6 +146,20 @@ function AppTab({ link, url, start, title, note, missing }: { readonly link: str
           app.retryNext();
           open(path);
         }}
+        addCompose={
+          viewOnly
+            ? undefined
+            : {
+                asked: askedCompose,
+                onAsk: () => {
+                  setAskedCompose(true);
+                  api.prompt(COMPOSE_PROMPT).catch((error: unknown) => {
+                    setAskedCompose(false);
+                    toast.error("Could not ask Chef to dockerize the project", { description: error instanceof Error ? error.message : String(error) });
+                  });
+                },
+              }
+        }
       />
       <p className="text-xs text-muted-foreground">{note}</p>
     </div>

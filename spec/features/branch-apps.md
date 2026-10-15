@@ -11,7 +11,7 @@ acceptance:
   - id: AC3
     text: The app's status (starting, running, failed or no-stack) and address are recorded on the session from the first commit
   - id: AC4
-    text: A branch without a compose file shows that it has no app to run and how to add one
+    text: A branch without a compose file shows that it has no app to run, with a Dockerize the project button that asks Chef to add one
 ---
 
 Chef deploys nothing of the user's app to Cloudflare; the user connects their own repo to their real production. A sandbox that sleeps wakes and starts the app again when someone opens it.

@@ -92,7 +92,12 @@ export function loadTone(load: FrameLoad): "run" | "ok" | "bad" {
   return load.loaded !== null ? "ok" : load.error || load.noStack ? "bad" : "run";
 }
 
-export const AppFrame = forwardRef<HTMLIFrameElement, { readonly src: string | null; readonly title: string; readonly load: FrameLoad; readonly path: string; readonly onLoad: () => void; readonly onRetry: () => void }>(function AppFrame(props, ref) {
+export interface AddCompose {
+  readonly asked: boolean;
+  readonly onAsk: () => void;
+}
+
+export const AppFrame = forwardRef<HTMLIFrameElement, { readonly src: string | null; readonly title: string; readonly load: FrameLoad; readonly path: string; readonly onLoad: () => void; readonly onRetry: () => void; readonly addCompose?: AddCompose | undefined }>(function AppFrame(props, ref) {
   const { load } = props;
   const busy = load.loaded === null;
   const now = useNow(busy ? 200 : 60_000);
@@ -101,12 +106,12 @@ export const AppFrame = forwardRef<HTMLIFrameElement, { readonly src: string | n
   return (
     <div className="relative flex min-h-[320px] w-full flex-1 flex-col">
       {props.src ? <iframe ref={ref} src={props.src} title={props.title} onLoad={props.onLoad} className="w-full flex-1 rounded-xl border bg-white" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" /> : <div className="flex-1 rounded-xl border" />}
-      {shown ? <LoadPanel view={view} onRetry={props.onRetry} /> : null}
+      {shown ? <LoadPanel view={view} onRetry={props.onRetry} addCompose={props.addCompose} /> : null}
     </div>
   );
 });
 
-function LoadPanel({ view, onRetry }: { readonly view: LoadView; readonly onRetry: () => void }) {
+function LoadPanel({ view, onRetry, addCompose }: { readonly view: LoadView; readonly onRetry: () => void; readonly addCompose: AddCompose | undefined }) {
   const failed = view.phase === "failed" || view.phase === "no-stack";
   return (
     <div className="absolute inset-0 grid place-items-center overflow-auto rounded-xl border bg-background p-6" data-app-load={view.phase} role="status" aria-live="polite">
@@ -129,7 +134,16 @@ function LoadPanel({ view, onRetry }: { readonly view: LoadView; readonly onRetr
             </Step>
           ))}
         </ol>
-        {failed || view.slow ? (
+        {view.phase === "no-stack" && addCompose ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" disabled={addCompose.asked} onClick={addCompose.onAsk} data-add-compose>
+              {addCompose.asked ? "Chef is dockerizing it" : "Dockerize the project"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={onRetry}>
+              Check again
+            </Button>
+          </div>
+        ) : failed || view.slow ? (
           <div>
             <Button type="button" size="sm" variant={failed ? "default" : "outline"} onClick={onRetry}>
               {view.phase === "no-stack" ? "Check again" : failed ? "Try again" : "Reload"}

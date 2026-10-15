@@ -128,7 +128,7 @@ export interface LoadView {
 export const WAKING_AFTER_MS = 1500;
 const SLOW_AFTER_MS = 20_000;
 
-export const NO_STACK = "Chef starts a branch's app from a compose file (compose.yaml or docker-compose.yml) at the root of the code, with the whole stack. This branch has none yet. Ask Chef in the chat to add one that runs the whole stack.";
+export const NO_STACK = "Chef starts a branch's app from a compose file (compose.yaml or docker-compose.yml) at the root of the code, with the whole stack. This branch has none yet. Chef can add one that runs the whole stack.";
 
 const fill = (ms: number, typicalMs: number) => 1 - Math.exp(-Math.max(0, ms) / typicalMs);
 
