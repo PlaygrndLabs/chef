@@ -312,7 +312,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
         const own = sessions.filter((s) => s.record?.rootPrompt === route.prompt && (s.version ?? 1) === 1 && s.createdAt >= route.at - 2000 && s.createdAt < next);
         const title = features.find((f) => f.id === (own[0]?.featureId ?? route.decision.featureId))?.title ?? null;
         const question = route.decision.intent === "question";
-        const answer = question ? answers[index] || answerFor(messages, route.prompt) : "";
+        const answer = answers[index] || (question ? answerFor(messages, route.prompt) : "");
         const parts = new Set(own.map((s) => s.featureId)).size;
         const voiced = data.live.voice.some((v) => v.prompt === route.prompt && v.at >= route.at && v.at - route.at < VOICE_MATCH_MS);
         return { ...route, sessions: own, voiced, waiting: question && !answer && now - route.at < ANSWER_WAIT_MS, reply: answer || replyFor(route.decision, title, parts > 1 ? own.length / parts : own.length, parts) };

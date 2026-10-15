@@ -265,6 +265,21 @@ export class Orchestrator {
       await this.remember(prompt, answer.text);
       return { decision, sessionId: null, sessionIds: [], answer };
     }
+    let started: { readonly result: SubmitResult; readonly reply: string };
+    try {
+      started = await this.start(prompt, decision, { routing, spec, outline, chat }, attemptsWanted, by);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      await this.emit({ type: "route.failed", prompt, error: reason });
+      await this.remember(prompt, `I could not start this, so nothing is being built for it: ${reason}. Send it again to retry.`);
+      throw error;
+    }
+    await this.remember(prompt, started.reply);
+    return started.result;
+  }
+
+  private async start(prompt: string, decision: RouteDecision, context: { readonly routing: readonly FeatureSpec[]; readonly spec: readonly FeatureSpec[]; readonly outline: string; readonly chat: string }, attemptsWanted: number | undefined, by: string | null): Promise<{ readonly result: SubmitResult; readonly reply: string }> {
+    const { routing, spec, outline, chat } = context;
     const chore = decision.intent === "chore";
     const hotfix = decision.hotfix === true;
     const known = new Set(routing.map((f) => f.id));
@@ -281,8 +296,8 @@ export class Orchestrator {
       created.push(...(await this.createSessions(prompt, own, plan, attempts, { chore, hotfix, ask, by })));
     }
     const first = plans[0]?.feature.id;
-    await this.remember(prompt, `${chore ? "Started a chore" : plans.length > 1 ? "Split it into features" : decision.intent === "change_feature" ? "Changing the feature" : "Started the feature"}: ${plans.map((p) => `${p.feature.title} (${p.feature.id})`).join(", ")}`);
-    return { decision, sessionId: created[0] ?? null, sessionIds: created, ...(first ? { featureId: first } : {}) };
+    const reply = `${chore ? "Started a chore" : plans.length > 1 ? "Split it into features" : decision.intent === "change_feature" ? "Changing the feature" : "Started the feature"}: ${plans.map((p) => `${p.feature.title} (${p.feature.id})`).join(", ")}`;
+    return { reply, result: { decision, sessionId: created[0] ?? null, sessionIds: created, ...(first ? { featureId: first } : {}) } };
   }
 
   async chatMemory(): Promise<ChatMemory> {

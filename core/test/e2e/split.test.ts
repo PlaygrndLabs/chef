@@ -83,6 +83,26 @@ describe("splitting a request into features", () => {
   });
 });
 
+describe("asks that cannot be started", () => {
+  it("tells the person when planning a routed feature fails instead of dropping the ask", async () => {
+    const DUE = "Let people give each item a due date";
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]) });
+    const plan = w.planner.plan.bind(w.planner);
+    w.planner.plan = async (input) => (input.prompt === DUE ? Promise.reject(new Error("the model is overloaded")) : plan(input));
+    await w.orchestrator.bootstrap(templateTree());
+
+    await expect(w.orchestrator.submit(DUE)).rejects.toThrow("the model is overloaded");
+    const types = w.bus.log.filter((e) => "prompt" in e && e.prompt === DUE).map((e) => e.type);
+    expect(types).toEqual(["route.decided", "route.failed"]);
+    const failed = w.bus.log.find((e) => e.type === "route.failed");
+    expect(failed?.type === "route.failed" && failed.error).toBe("the model is overloaded");
+    expect((await w.orchestrator.chatMemory()).turns.at(-1)).toMatchObject({ prompt: DUE, reply: expect.stringContaining("could not start") });
+
+    const next = await w.orchestrator.submit(TODO);
+    expect(next.sessionIds).toHaveLength(1);
+  });
+});
+
 describe("the main chat's memory", () => {
   it("sends earlier messages with a new request and reports how full the chat's memory is", async () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]) });
