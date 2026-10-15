@@ -24,7 +24,7 @@ export const TODO_CLOUD_PROMPT = "Add an item to a todo list that also syncs to 
 export const TODO_SPLIT_PROMPT = "Let people shout and reverse their todo items";
 
 function splits(): Map<string, readonly SplitPart[]> {
-  return new Map([[TODO_SPLIT_PROMPT, BENCH_ITEMS.filter((item) => item.id === "shout" || item.id === "reverse").map((item): SplitPart => ({ kind: "new", prompt: promptFor(item), parent: "todo-add" }))]]);
+  return new Map([[TODO_SPLIT_PROMPT, BENCH_ITEMS.filter((item) => item.id === "shout" || item.id === "reverse").map((item): SplitPart => ({ kind: "new", prompt: promptFor(item), parent: "todo-add", path: `Use ${item.id} on an item.` }))]]);
 }
 
 const TYPES: Readonly<Record<string, string>> = {

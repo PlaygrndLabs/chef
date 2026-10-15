@@ -13,8 +13,8 @@ describe("splitting a request into features", () => {
       [
         EDIT_AND_DELETE,
         [
-          { kind: "new", prompt: "Let people delete an item from the todo list", parent: "todo-add" },
-          { kind: "new", prompt: "Let people edit an item in the todo list", parent: "todo-add" },
+          { kind: "new", prompt: "Let people delete an item from the todo list", parent: "todo-add", path: "Press Delete next to an item." },
+          { kind: "new", prompt: "Let people edit an item in the todo list", parent: "todo-add", path: "Press Edit next to an item." },
         ] as const,
       ],
     ]);
@@ -49,7 +49,7 @@ describe("splitting a request into features", () => {
   });
 
   it("skips splitting for explicit commands and writes the parent into the spec", async () => {
-    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add" }] as const]]);
+    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add", path: "Press Delete next to an item." }] as const]]);
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]), splits });
     await w.orchestrator.bootstrap(templateTree());
     await w.orchestrator.run((await w.orchestrator.submit(TODO)).sessionId as string);
@@ -69,7 +69,7 @@ describe("splitting a request into features", () => {
   });
 
   it("tells the reviewer a child feature may change its parent's files", async () => {
-    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add" }] as const]]);
+    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add", path: "Press Delete next to an item." }] as const]]);
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]), splits });
     await w.orchestrator.bootstrap(templateTree());
     await w.orchestrator.run((await w.orchestrator.submit(TODO)).sessionId as string);

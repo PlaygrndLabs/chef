@@ -44,7 +44,7 @@ export interface SplitInput {
 }
 
 export type SplitPart =
-  | { readonly kind: "new"; readonly prompt: string; readonly parent: string | null }
+  | { readonly kind: "new"; readonly prompt: string; readonly parent: string | null; readonly path: string | null }
   | { readonly kind: "change"; readonly prompt: string; readonly featureId: string; readonly changeKind: ChangeKind };
 
 export interface BuilderRole {

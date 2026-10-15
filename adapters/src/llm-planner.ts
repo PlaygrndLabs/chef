@@ -17,6 +17,7 @@ const SplitSchema = z.object({
       kind: z.enum(["new", "change"]),
       prompt: z.string(),
       featureId: z.string().nullable(),
+      path: z.string().nullable(),
       changeKind: z.enum(["bug", "extend", "refactor"]).nullable(),
     }),
   ),
@@ -82,13 +83,13 @@ export class LlmPlanner implements Planner {
         `Request:\n${input.prompt}\n\n${guess}`,
         [
           "Split the request into the features it asks for. Each part is built by its own session, in parallel with the others, so parts must not depend on each other; if one part needs another part of this same request to exist first, keep them together as one part.",
-          'kind "new": a capability the product does not have yet. Put it under the existing feature it builds on by giving that feature\'s id in featureId (for example "delete items" goes under the todo list), or null when it stands on its own. Adding behavior to an existing feature is a new child feature.',
-          'kind "change": fixing, adjusting or refactoring what one existing feature already does. Give its id in featureId and the changeKind (bug, extend or refactor).',
+          'kind "new": a capability the product does not have yet. It goes under an existing feature only when using it takes that feature\'s steps first: the person reaches the parent and then does more there (for example "delete items" goes under the todo list: open the list, then press Delete on an item). Then give the parent\'s id in featureId and, in path, the steps that follow from where the parent leaves off. A part reached on its own, such as another page of the same app opened from its navigation or its own address, stands on its own with featureId and path null, even when it belongs to the same app, relates to an existing feature or is asked for right after it. For example the meetings page and the members page of a book club app are siblings of its reading list, not parts of it.',
+          'kind "change": fixing, adjusting or refactoring what one existing feature already does. Give its id in featureId and the changeKind (bug, extend or refactor), with path null.',
           "Write each part's prompt as a short, complete request in the person's words that makes sense on its own. Most requests are a single part; never split one capability into steps.",
         ].join("\n"),
       ].join("\n\n"),
     });
-    return result.parts.map((part): SplitPart => (part.kind === "change" && part.featureId ? { kind: "change", prompt: part.prompt, featureId: part.featureId, changeKind: part.changeKind ?? "extend" } : { kind: "new", prompt: part.prompt, parent: part.featureId }));
+    return result.parts.map((part): SplitPart => (part.kind === "change" && part.featureId ? { kind: "change", prompt: part.prompt, featureId: part.featureId, changeKind: part.changeKind ?? "extend" } : { kind: "new", prompt: part.prompt, parent: part.featureId, path: part.path }));
   }
 
   async plan(input: PlanInput): Promise<Plan> {

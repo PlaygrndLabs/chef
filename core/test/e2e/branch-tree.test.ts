@@ -8,8 +8,8 @@ const SPLITS = new Map([
   [
     PARTS,
     [
-      { kind: "new", prompt: promptFor("tags"), parent: "notes" },
-      { kind: "new", prompt: promptFor("search"), parent: "notes" },
+      { kind: "new", prompt: promptFor("tags"), parent: "notes", path: "Open a note, then its tags." },
+      { kind: "new", prompt: promptFor("search"), parent: "notes", path: "Type in the search box above the notes." },
     ] as const,
   ],
 ]);
