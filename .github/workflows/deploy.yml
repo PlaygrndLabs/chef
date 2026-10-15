@@ -91,6 +91,6 @@ jobs:
         run: |
           url=$(cat "$RUNNER_TEMP/url")
           auth=$(bash .github/scripts/sign-in.sh "$url")
-          curl -sS -m 900 -X POST -H "$auth" "$url/api/devcheck/one" | jq -r '.out, "exit \(.code)"' || true
-          curl -sS -m 60 -H "$auth" "$url/api/devcheck/one/app/hello?x=1"; echo
-          curl -sS -m 300 -X POST -H "$auth" "$url/api/devcheck/one" | jq -r '.out' | tail -5 || true
+          curl -sS -m 900 -X POST -H "$auth" "$url/api/devcheck/r$GITHUB_RUN_ID" | jq -r '.out, "exit \(.code)"' || true
+          curl -sS -m 60 -H "$auth" "$url/api/devcheck/r$GITHUB_RUN_ID/app/hello?x=1"; echo
+          curl -sS -m 300 -X POST -H "$auth" "$url/api/devcheck/r$GITHUB_RUN_ID" | jq -r '.out' | tail -5 || true
