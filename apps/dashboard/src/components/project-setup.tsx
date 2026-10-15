@@ -6,7 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { GitHubPicker } from "@/components/github-picker";
-import { githubApi, projectApi, projectsApi, type GitHubView, type GitLinkUpdate, type InstalledRepository } from "@/lib/api";
+import { githubApi, projectApi, projectsApi, type GitHubView, type GitLinkUpdate, type InstalledRepository, type OverviewState } from "@/lib/api";
 import { useNow } from "@/lib/live";
 import { useOverview } from "@/lib/overview";
 import { projectNameFrom } from "@/lib/projects";
@@ -102,22 +102,21 @@ function SetupLog(props: { readonly run: Run; readonly open: boolean; readonly o
 function Progress(props: { readonly plan: Plan; readonly run: Run; readonly created: boolean; readonly onOpen: () => void; readonly onBack: () => void }) {
   const { plan, run, created } = props;
   const api = useMemo(() => projectApi(plan.name), [plan.name]);
-  const { state } = useOverview(created && plan.repository ? api : idle);
-  const reading = Boolean(plan.repository);
+  const { state } = useOverview(created ? api : idle);
   const read: StepState = state?.status === "ready" ? "done" : state?.status === "failed" ? "failed" : created ? "run" : "wait";
   const [logOpen, setLogOpen] = useState(false);
   const [readSince, setReadSince] = useState<number | null>(null);
-  const busy = !run.error && (!created || (reading && read === "run"));
+  const busy = !run.error && (!created || read === "run");
   const now = useNow(busy ? 200 : 60_000);
   useEffect(() => {
-    if (created && (!reading || state?.status === "ready")) props.onOpen();
-  }, [created, reading, state?.status]);
+    if (created && (state?.status === "ready" || state?.status === "none")) props.onOpen();
+  }, [created, state?.status]);
   useEffect(() => {
     if (run.error) setLogOpen(true);
   }, [run.error]);
   useEffect(() => {
-    if (created && reading && readSince === null) setReadSince(Date.now());
-  }, [created, reading, readSince]);
+    if (created && readSince === null) setReadSince(Date.now());
+  }, [created, readSince]);
   const fallback = plan.repository ? `Copy ${plan.repository} into Chef and link it` : `Create ${plan.name} from Chef's starter app`;
   const steps = stepsOf(run, created, fallback, now);
   const readEnd = state?.status === "ready" || state?.status === "failed" ? state.at : null;
@@ -131,7 +130,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
         ];
   const shown: Run = { ...run, lines: [...run.lines, ...(run.error ? [{ kind: "error" as const, text: run.error, at: run.lines.at(-1)?.at ?? now }] : []), ...readLines] };
   return (
-    <div className="grid gap-4" data-setup={run.error ? "failed" : created ? (reading ? read : "done") : "creating"}>
+    <div className="grid gap-4" data-setup={run.error ? "failed" : created ? read : "creating"}>
       <ol className="grid gap-2.5">
         {steps.map((step, i) => (
           <Step key={i} state={step.state} took={step.took}>
@@ -139,7 +138,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
             {step.state === "failed" && run.error ? <span className="block text-xs text-bad">{run.error}</span> : null}
           </Step>
         ))}
-        {reading && !run.error ? (
+        {!run.error ? (
           <Step state={read} took={readSince === null ? null : readEnd !== null ? seconds(Math.max(0, readEnd - readSince)) : now - readSince >= 1000 ? seconds(now - readSince) : null}>
             Read the code and suggest first tasks
             {state?.status === "failed" ? <span className="block text-xs text-bad">{state.error}</span> : null}
@@ -154,7 +153,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
             Back
           </Button>
         </div>
-      ) : created && reading ? (
+      ) : created ? (
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">{read === "failed" ? "You can still open the project and ask Chef to read it again later." : "Chef keeps reading if you open the project now."}</p>
           <Button type="button" size="sm" variant={read === "failed" ? "default" : "outline"} onClick={props.onOpen}>
@@ -167,7 +166,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
 }
 
 const idle = {
-  overview: () => Promise.resolve({ status: "none" as const }),
+  overview: () => new Promise<OverviewState>(() => undefined),
   readCode: () => Promise.resolve({ status: "none" as const }),
 };
 

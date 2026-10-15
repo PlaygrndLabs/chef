@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type Ref } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import { useAgent, useCopilotKit, UseAgentUpdate } from "@copilotkit/react-core/v2";
 import type { RouteDecision } from "@chef/core";
 import { AudioLines, Check, ChevronRight, Loader2, Play, RotateCcw } from "lucide-react";
@@ -288,11 +288,6 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const talk = useTalk();
   const { state: overview, readAgain } = useOverview(api, selection.project);
   const [starting, setStarting] = useState<readonly string[]>([]);
-  useEffect(() => {
-    const again = () => void readAgain();
-    window.addEventListener("chef:read-code", again);
-    return () => window.removeEventListener("chef:read-code", again);
-  }, [readAgain]);
   const { agent } = useAgent({ agentId: "default", updates: [UseAgentUpdate.OnMessagesChanged, UseAgentUpdate.OnStateChanged, UseAgentUpdate.OnRunStatusChanged], throttleMs: 100 });
   const { copilotkit } = useCopilotKit();
   const [draft, setDraft] = useState<{ text: string; n: number } | null>(null);
