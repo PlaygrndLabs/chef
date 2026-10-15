@@ -7,7 +7,7 @@ const SITE = "https://chef.playgrndlabs.com/";
 const OUT = process.env.OUT ?? "results/demo";
 const PROJECT = process.env.PROJECT || "bluebean";
 const FOLLOW_MIN = Number(process.env.MINUTES || "35");
-const MODE = process.env.PROMPT === "retry" ? "retry" : process.env.PROMPT === "tail" ? "tail" : "build";
+const MODE = ["retry", "tail", "main"].includes(process.env.PROMPT) ? process.env.PROMPT : "build";
 const PROMPTS = (MODE !== "build" ? "" : process.env.PROMPT || [
   "Make a welcome page for Bluebean, a small coffee shop: its name, a short line about it, the menu with prices, and the opening hours.",
   "Add an order page where a guest picks a drink, types their name and places the order. Save the orders and list the latest ones under the form.",
@@ -549,7 +549,55 @@ async function tailRun() {
   mark("end");
 }
 
+async function mainRun() {
+  await go(`${BASE}/?project=${PROJECT}&view=main`);
+  mark("project");
+  await pause(2000);
+  await mainTab("App");
+  mark("main-app");
+  const until = Date.now() + 360_000;
+  while (Date.now() < until) {
+    if (!(await page.locator("[data-preview-load]").count()) && (await page.locator("iframe").count())) break;
+    await pause(500);
+  }
+  mark("main-ready");
+  await pause(3000);
+  await shot("main-app");
+  const frame = page.frameLocator("iframe").first();
+  await point(frame.locator("body"), { click: false, wait: 500 });
+  await page.mouse.wheel(0, 400);
+  await pause(2500);
+  await page.mouse.wheel(0, -400);
+  await pause(1500);
+  const chips = page.locator("[data-pages] button");
+  for (let i = 0; i < (await chips.count()); i++) {
+    const label = (await chips.nth(i).innerText().catch(() => "")).toLowerCase();
+    await point(chips.nth(i), { wait: 4000 });
+    mark("main-chip", { i, label });
+    if (!label.includes("guest")) continue;
+    const inputs = frame.locator("input:not([type=hidden]):not([type=submit]), textarea");
+    const values = ["Nino", "Best cappuccino in town. See you tomorrow!"];
+    for (let j = 0; j < Math.min(await inputs.count(), 2); j++) {
+      if (await point(inputs.nth(j))) await inputs.nth(j).pressSequentially(values[j], { delay: 45 }).catch(() => undefined);
+    }
+    await pause(600);
+    await point(frame.locator("button[type=submit], form button").first(), { wait: 3500 });
+    mark("main-signed");
+    await shot("main-guestbook");
+  }
+  await mainTab("History");
+  mark("main-history");
+  await pause(3000);
+  const commits = page.locator("[data-commit]");
+  for (let i = 0; i < Math.min(await commits.count(), 3); i++) await point(commits.nth(i), { wait: 3500 });
+  mark("end");
+}
+
 try {
+  if (MODE === "main") {
+    await mainRun().catch((e) => log(`main: ${e.message}`));
+    throw new Error("done");
+  }
   if (MODE === "tail") {
     await tailRun().catch((e) => log(`tail: ${e.message}`));
     throw new Error("done");
