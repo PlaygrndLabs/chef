@@ -76,6 +76,33 @@ describe("a project with its own structure", () => {
     expect(JSON.parse((await w.repos.readNote("demo", PROOF_NAMESPACE, proofCommit)) ?? "null")).toMatchObject({ ok: true, flow: "GET /" });
   });
 
+  it("holds a sub-feature before coding until its parent has code, without looking for Chef's feature folders", async () => {
+    const filters: FeatureSpec = { ...itemsLeft, id: "filter-items", title: "Filter items", parent: "items-left-count", acceptance: [{ id: "AC1", text: "buttons above the list filter it" }] };
+    const parts = "Add filter buttons under the items left line";
+    const child: Script = (input) => (input.featureId === "filter-items" && input.role !== "test" ? { changes: { "src/static/js/filters.js": "export const filters = [];\n" } } : input.featureId === "filter-items" ? { changes: { "spec/static/filters.spec.js": 'test("AC1: buttons above the list filter it", () => {});\n' } } : script(input, 1));
+    const w = world({ script: child, presets: new Map([[PROMPT, itemsLeft], [parts, filters]]), splits: new Map([[parts, [{ kind: "new", prompt: "Add filter buttons above the list", parent: "items-left-count", path: "Look above the list." }]]]) });
+    await w.orchestrator.bootstrap(IMPORTED);
+    const parent = (await w.orchestrator.submit(PROMPT)).sessionId as string;
+    await w.orchestrator.step(parent);
+    await w.orchestrator.step(parent);
+    const [sub] = (await w.orchestrator.submit(parts)).sessionIds as [string];
+    for (let i = 0; i < 8; i++) await w.orchestrator.step(sub);
+    const waiting = await w.orchestrator.session(sub);
+    expect(waiting.upstream).toBe(parent);
+    expect(waiting.machine.state).toBe("coding");
+    expect(waiting.heldBy).toBe(parent);
+    expect(w.coder.turns.filter((t) => t.featureId === "filter-items" && t.role !== "test")).toHaveLength(0);
+
+    for (let i = 0; i < 20 && (await w.orchestrator.session(parent)).machine.state !== "reviewing"; i++) await w.orchestrator.step(parent);
+    for (let i = 0; i < 20 && (await w.orchestrator.session(sub)).machine.state === "coding"; i++) await w.orchestrator.step(sub);
+    const built = await w.orchestrator.session(sub);
+    expect(built.heldBy).toBeNull();
+    const tree = (await w.repos.readCommit(built.fork, built.head as string))?.tree ?? {};
+    expect(tree["src/static/js/app.js"]).toContain("<ItemsLeft />");
+    expect(tree["src/static/js/filters.js"]).toBeDefined();
+    expect(tree["src/registry.gen.ts"]).toBeUndefined();
+  });
+
   it("names the Dockerize chore after what it does and keeps the registry out of its commits", async () => {
     const w = world({ script });
     await w.orchestrator.bootstrap(IMPORTED);

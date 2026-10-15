@@ -864,7 +864,10 @@ export class Orchestrator {
   private async waitForParentFeature(record: SessionRecord): Promise<boolean> {
     const parent = record.plan.feature.parent;
     const upstream = parent && record.upstream ? await this.activeUpstream(record) : null;
-    const by = upstream && typeof upstream !== "string" && !(await this.commitOf(record.fork, record.head)).tree[`features/${parent}/index.ts`] ? upstream.id : null;
+    const live = upstream && typeof upstream !== "string" ? upstream : null;
+    const tree = live ? (await this.commitOf(record.fork, record.head)).tree : null;
+    const waiting = live !== null && tree !== null && (usesChefTemplate(tree) ? !tree[`features/${parent}/index.ts`] : !live.lastCodeItem);
+    const by = waiting ? (live?.id ?? null) : null;
     if ((record.heldBy ?? null) === by) return by !== null;
     record.heldBy = by;
     await this.emit({ type: "session.held", sessionId: record.id, featureId: record.featureId, by });
