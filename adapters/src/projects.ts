@@ -1,4 +1,4 @@
-import { readSetupStream, SETUP_STREAM, SetupError, setupResponse, type SetupProgress } from "@chef/core";
+import { readSetupStream, SETUP_STREAM, SetupError, setupResponse, type ChefEvent, type SetupProgress } from "@chef/core";
 
 const PROJECT_NAME = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -7,6 +7,13 @@ export interface ProjectEntry {
   readonly createdAt: number;
 }
 
+export interface ProjectActivity {
+  readonly at: number;
+  readonly note: string;
+}
+
+export type ListedProject = ProjectEntry & { readonly updatedAt?: number; readonly note?: string };
+
 export function isProjectName(name: string): boolean {
   return PROJECT_NAME.test(name);
 }
@@ -14,6 +21,32 @@ export function isProjectName(name: string): boolean {
 export interface ProjectRegistry {
   projects(): Promise<readonly ProjectEntry[]>;
   addProject(entry: ProjectEntry): Promise<boolean>;
+  activity?(): Promise<Readonly<Record<string, ProjectActivity>>>;
+}
+
+export function activityNote(event: ChefEvent, title: string | null): string | null {
+  const named = title ?? "a feature";
+  switch (event.type) {
+    case "session.created":
+      return event.kind === "chore" ? `Started ${title ?? "a task"}` : `Started work on ${named}`;
+    case "session.needs":
+      return `${title ?? "A feature"} needs ${event.names.join(", ")}`;
+    case "main.merged":
+      return `Merged ${named} into main`;
+    case "main.reverted":
+      return "Undid a change on main";
+    case "external.pulled":
+      return "Pulled new commits from the linked repository";
+    default:
+      return null;
+  }
+}
+
+export function listProjects(entries: readonly ProjectEntry[], activity: Readonly<Record<string, ProjectActivity>>): ListedProject[] {
+  return entries.map((entry) => {
+    const last = activity[entry.name];
+    return last ? { ...entry, updatedAt: last.at, note: last.note } : entry;
+  });
 }
 
 export interface ProjectRemoval {
@@ -50,7 +83,7 @@ async function bootstrap(name: string, call: ProjectCall, progress: SetupProgres
 }
 
 export async function projectsRequest(request: Request, registry: ProjectRegistry, call: ProjectCall, now: () => number = Date.now): Promise<Response> {
-  if (request.method === "GET") return Response.json({ projects: await registry.projects() });
+  if (request.method === "GET") return Response.json({ projects: listProjects(await registry.projects(), (await registry.activity?.()) ?? {}) });
   if (request.method !== "POST") return Response.json({ error: "method not allowed" }, { status: 405 });
   const body = (await request.json().catch(() => null)) as { name?: unknown; git?: unknown } | null;
   const name = typeof body?.name === "string" ? body.name.trim() : "";

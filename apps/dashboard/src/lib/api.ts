@@ -152,6 +152,8 @@ export function agentsApi(project: string | null) {
 export interface ProjectEntry {
   readonly name: string;
   readonly createdAt: number;
+  readonly updatedAt?: number;
+  readonly note?: string;
 }
 
 export interface NewProject {
