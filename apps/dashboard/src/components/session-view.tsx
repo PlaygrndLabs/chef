@@ -165,11 +165,12 @@ function UpdateRow({ update }: { readonly update: Update }) {
 function MergePrompt({ node }: { readonly node: SessionNode }) {
   const { api, data } = useWorkspace();
   const [busy, setBusy] = useState(false);
+  const upstream = Boolean(node.record?.upstream);
   const merge = async () => {
     setBusy(true);
     try {
       await api.merge(node.id);
-      toast.success("Merging into main");
+      toast.success(upstream ? "Merging into its parent feature" : "Merging into main");
       data.refresh();
     } catch (error) {
       toast.error("Could not merge", { description: error instanceof Error ? error.message : String(error) });
@@ -181,11 +182,14 @@ function MergePrompt({ node }: { readonly node: SessionNode }) {
     <div className="flex flex-wrap items-center gap-3 border border-brand/30 bg-brand/5 p-4" data-merge-ready={node.id}>
       <div className="min-w-0 flex-1">
         <div className="font-medium">Ready to merge</div>
-        <p className="text-sm text-muted-foreground">This build passed every check. Merging puts it on main, and main's app, the release candidate, runs it next. If main changed since, Chef takes those changes in and checks again first.</p>
+        <p className="text-sm text-muted-foreground">
+          {upstream ? "This build passed every check. Merging puts it on the branch of its parent feature, which takes it to main when it is done. If the parent changed since, Chef takes those changes in and checks again first." : "This build passed every check. Merging puts it on main, and main's app, the release candidate, runs it next. If main changed since, Chef takes those changes in and checks again first."}
+          {node.version !== null ? " The other versions of this feature stop and are archived." : ""}
+        </p>
       </div>
       <Button type="button" size="sm" onClick={() => void merge()} disabled={busy}>
         <GitMerge />
-        Merge into main
+        {upstream ? "Merge into parent" : "Merge into main"}
       </Button>
     </div>
   );
@@ -494,6 +498,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
           <span className="hidden truncate font-mono text-xs text-muted-foreground xl:inline" data-build-label>
             build {node.id}
             {node.attempt && node.attempt.of > 1 ? ` · try ${node.attempt.index} of ${node.attempt.of}` : ""}
+            {node.version !== null ? ` · version ${node.version}` : ""}
           </span>
         ) : null}
         <span className="flex-1" />

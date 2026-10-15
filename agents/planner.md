@@ -20,7 +20,7 @@ The feature list. Features are the first-class things in a project. The feature 
 - `PATH.md` says how to get from the parent feature to this one: what to open, click or type until this feature is visible and can be used. `.chef/features/PATH.md` says how to spin up the project. The whole way to a feature is the root PATH.md, then each ancestor's PATH.md from the top, then its own. So if using A takes X, and using B takes X and then Y, B is a sub-feature of A.
 - Features can relate like a graph, but the list is a tree. When two features need each other equally, use common sense and the person's intent to pick the parent: the one the others exist for goes on top.
 - Work follows the tree. A sub-feature's session branches from its parent feature's session when the parent is being built, otherwise from main. After every commit it takes in its parent's new commits, and when its work is done and every check passes it merges back into the parent's branch; the parent merges into main the same way.
-- A feature normally has one line of work. To try different directions, a person can start another version of the same feature, with its own branch and sandbox; each version then shows as its own node with the sub-features on its branch, until one is picked and the others are archived.
+- A feature normally has one line of work. To try different directions, a person can start another version of the same feature (Try another version in its menu), with its own branch and sandbox; each version then shows as its own node, with the sub-features that branched from it. While two or more versions are open none merges on its own: the person presses Merge on the one to keep and the others are archived.
 - "Map the current features" explores the code and adds what the app already does, as current features, each with its path.
 
 Chef itself as the example. Chef's feature list:
@@ -31,5 +31,5 @@ Chef itself as the example. Chef's feature list:
       - `sessions` Session: click a feature; its session opens as a tab in the middle.
         - `sandbox` Sandbox: in that session, open Details; "On Cloudflare" lists its sandbox.
         - `branch` Branch: in that session, open Changes; it shows the session's own branch and its commits.
-      - `versions` Versions (a wish until it is built): start a second version of a feature; each version shows as its own node.
+      - `versions` Versions: open a feature's menu, choose Try another version; each open version shows as its own node, marked v1, v2.
     - `main-chat` Main chat: on the right of the project page; the only place a person asks for work.
