@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from "react";
-import { Bot, ChevronRight, CornerDownRight, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, CornerDownRight, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -174,7 +174,7 @@ function RowMenu({ node }: { readonly node: TreeNode }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" aria-label={`More for ${feature.title}`} className="grid size-6 shrink-0 place-items-center text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100">
+        <button type="button" aria-label={`More for ${feature.title}`} className="grid size-5 shrink-0 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground">
           <MoreHorizontal className="size-3.5" />
         </button>
       </DropdownMenuTrigger>
@@ -217,7 +217,16 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
   const current = active?.id === feature.id;
   const tone = toneOf(session);
   const role = workingRole(session);
+  const doing = role ? roleLabel(role, agents) : stateText(session);
   const single = feature.sessions.length === 1;
+  const dot = (
+    <>
+      <StatusDot tone={tone} />
+      <span className="sr-only" {...(role ? { "data-working-role": role } : {})}>
+        {doing}
+      </span>
+    </>
+  );
   return (
     <li role="treeitem" aria-expanded={node.children.length ? open : undefined} aria-selected={current}>
       <div
@@ -229,7 +238,7 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
           setDragging(feature.id);
         }}
         onDragEnd={() => setDragging(null)}
-        className={cn("group flex h-8 items-center rounded-md hover:bg-sidebar-accent", current && "bg-sidebar-accent", drop.active && "bg-sidebar-accent ring-1 ring-ring ring-inset")}
+        className={cn("group relative flex h-8 items-center hover:bg-sidebar-accent", current && "bg-sidebar-accent", drop.active && "bg-sidebar-accent ring-1 ring-ring ring-inset")}
         style={{ paddingLeft: 4 + depth * INDENT }}
       >
         {node.children.length ? (
@@ -241,7 +250,7 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
         )}
         {renaming === feature.id ? (
           <div className="flex h-full min-w-0 flex-1 items-center gap-2 pr-2 pl-1">
-            <StatusDot tone={tone} />
+            {dot}
             <TitleField node={node} />
           </div>
         ) : (
@@ -265,22 +274,14 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
               data-state={session.state}
               {...(single ? { "data-session": session.id } : {})}
               aria-current={current ? "page" : undefined}
-              title={feature.title}
-              className="flex h-full min-w-0 flex-1 items-center gap-2 pr-1 pl-1 text-left text-sm"
+              title={`${feature.title} · ${doing}`}
+              className="flex h-full min-w-0 flex-1 items-center gap-2 pr-2 pl-1 text-left text-sm"
             >
-              <StatusDot tone={tone} />
-              <span className="min-w-0 flex-1 truncate">{feature.title}</span>
+              {dot}
+              <span className="min-w-0 truncate">{feature.title}</span>
               <KindBadges node={session} />
-              {role ? (
-                <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-run group-hover:hidden" data-working-role={role}>
-                  <Bot className="size-3" />
-                  {roleLabel(role, agents)}
-                </span>
-              ) : (
-                <span className={cn("shrink-0 text-[11px] text-muted-foreground group-hover:hidden", tone === "bad" && "font-medium text-bad")}>{stateText(session)}</span>
-              )}
             </button>
-            <span className="pr-1">
+            <span className={cn("absolute top-1.5 right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-data-[state=open]:opacity-100", current ? "bg-sidebar-accent" : "group-hover:bg-sidebar-accent")}>
               <RowMenu node={node} />
             </span>
           </>
