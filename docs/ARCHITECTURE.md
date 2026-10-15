@@ -226,7 +226,7 @@ Served by the Chef Worker (`workers/src/index.ts`):
 | `GET /api/github/created`, `GET /api/github/installed` | GitHub's redirects back after creating the app and after installing it |
 | `DELETE /api/github` | Forgets the app's credentials (delete the app on GitHub too) |
 | `POST /api/github/webhook` | The app's webhook; outside the password, checked with the app's webhook secret |
-| `GET /api/projects/:name/overview` | What Chef learned from reading the project at setup: `none`, `reading`, `failed` with the error, or `ready` with a summary, open problems and three suggested first tasks |
+| `GET /api/projects/:name/overview` | What Chef learned from reading the project at setup (a project with code that was never read starts its read here): `none`, `reading`, `failed` with the error, or `ready` with a summary, open problems and three suggested first tasks |
 | `POST /api/projects/:name/overview` | Reads the project's code again (bootstrap does this on its own for every new project; the dashboard calls it only for "Try again" and "Read the code again" in the chat); the dashboard polls `GET` until it is ready |
 | `GET /api/projects/:name/git` | The linked repository and its sync state: last commit taken in, last commit sent, a commit Chef could not merge, the rolling pull request |
 | `POST /api/projects/:name/git/sync` | Clears a stuck sync and syncs now |
