@@ -40,6 +40,19 @@ describe("app addresses", () => {
     });
   });
 
+  it("uses the address another start of the same app just made", async () => {
+    const { calls, fetcher } = cloudflare([
+      Response.json({ success: true, result: { name: "chef-dev-app", tags: ["chef-router"] } }),
+      new Response("{}", { status: 404 }),
+      Response.json({ success: false, errors: [{ code: 100338, message: "A preview with name 'main-shop' already exists." }] }, { status: 409 }),
+      Response.json({ success: true, result: { id: "p1", name: "main-shop", urls: ["https://main-shop-chef-dev-app.acme.workers.dev"] } }),
+      Response.json({ success: true, result: { id: "d1" } }),
+    ]);
+    const router = new AppRouter({ accountId: "acc1", apiToken: "tok" }, "chef-dev-app", "chef-dev", fetcher);
+    expect(await router.address({ label: "main-shop", target: "shop--main", key: "k" })).toBe("https://main-shop-chef-dev-app.acme.workers.dev");
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["GET /workers/workers/chef-dev-app", "GET /workers/workers/chef-dev-app/previews/main-shop", "POST /workers/workers/chef-dev-app/previews", "GET /workers/workers/chef-dev-app/previews/main-shop", "POST /workers/workers/chef-dev-app/previews/main-shop/deployments"]);
+  });
+
   it("refuses a router name Chef did not make, and forgets addresses that are already gone", async () => {
     const taken = cloudflare([Response.json({ success: true, result: { tags: [] } })]);
     await expect(new AppRouter({ accountId: "acc1", apiToken: "tok" }, "chef-dev-app", "chef-dev", taken.fetcher).address({ label: "main-shop", target: "shop--main", key: "k" })).rejects.toBeInstanceOf(RouterTakenError);
