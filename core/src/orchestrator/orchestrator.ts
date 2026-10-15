@@ -1911,6 +1911,7 @@ export class Orchestrator {
   private async apply(record: SessionRecord, event: SessionEvent): Promise<void> {
     const from = record.machine.state;
     record.machine = transition(record.machine, event, this.budget, this.deps.clock.now());
+    record.revision = (record.revision ?? 0) + 1;
     if (RETRY_EVENTS.has(event.type) && record.machine.feedback) record.history = [...record.history, record.machine.feedback.slice(0, 400)].slice(-20);
     record.updatedAt = this.deps.clock.now();
     await this.emit({ type: "session.state", sessionId: record.id, featureId: record.featureId, from, to: record.machine.state, reason: record.machine.reason });
@@ -1919,6 +1920,10 @@ export class Orchestrator {
 
   private async save(record: SessionRecord): Promise<void> {
     const stored = await this.deps.store.get<SessionRecord>(`session/${record.id}`);
+    if (stored && isTerminal(stored.machine.state) && (stored.revision ?? 0) > (record.revision ?? 0)) {
+      Object.assign(record, stored);
+      return;
+    }
     if (stored?.syncPending && !this.running.has(record.id)) record.syncPending = true;
     if (this.syncAfterRun.delete(record.id)) record.syncPending = true;
     const state = record.machine.state;
