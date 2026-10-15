@@ -16,7 +16,7 @@ import { ago, appHost, duration, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
-import { addressPath, appLink, entryPage, frameReport, MAIN_APP, pageChips, step, visit, type AppPage, type Trail } from "@/lib/app-view";
+import { addressPath, appLink, builtPage, entryPage, frameReport, MAIN_APP, pageChips, step, visit, type AppPage, type Trail } from "@/lib/app-view";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -49,10 +49,11 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
 
 const useProjectLevel = chefHost.useProjectLevel ?? (() => null);
 
-function AppTab({ link, url, start, title, note, missing }: { readonly link: string; readonly url: string | null; readonly start: string; readonly title: string; readonly note: string; readonly missing: string }) {
+function AppTab({ link, url, start, page = start, title, note, missing }: { readonly link: string; readonly url: string | null; readonly start: string; readonly page?: string; readonly title: string; readonly note: string; readonly missing: string }) {
   const [trail, setTrail] = useState<Trail>({ entries: [start], index: 0 });
   const [load, setLoad] = useState({ path: start, count: 0 });
-  const [pages, setPages] = useState<readonly AppPage[]>([]);
+  const [pages, setPages] = useState<readonly AppPage[] | null>(null);
+  const waiting = useRef(page === start ? null : page);
   const [draft, setDraft] = useState<string | null>(null);
   const [askedCompose, setAskedCompose] = useState(false);
   const { api, selection } = useWorkspace();
@@ -68,6 +69,12 @@ function AppTab({ link, url, start, title, note, missing }: { readonly link: str
       loaded();
       setPages(report.pages);
       setTrail((current) => visit(current, report.path));
+      const wanted = builtPage(waiting.current, report, start);
+      waiting.current = null;
+      if (wanted) {
+        setTrail((current) => visit(current, wanted));
+        setLoad((current) => ({ path: wanted, count: current.count + 1 }));
+      }
     };
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
@@ -77,16 +84,19 @@ function AppTab({ link, url, start, title, note, missing }: { readonly link: str
   const host = app.appUrl ?? url;
   const open = (to: string) => setLoad((current) => ({ path: to, count: current.count + 1 }));
   const go = (to: string) => {
+    waiting.current = null;
     setDraft(null);
     setTrail((current) => visit(current, to));
     open(to);
   };
   const move = (delta: number) => {
+    waiting.current = null;
     const next = step(trail, delta);
     setTrail(next);
     open(next.entries[next.index] ?? "/");
   };
   const shown = path.split(/[?#]/)[0];
+  const unbuilt = pages !== null && page !== "/" && !pages.some((p) => p.path === page);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <form
@@ -128,12 +138,17 @@ function AppTab({ link, url, start, title, note, missing }: { readonly link: str
       </form>
       <div className="flex flex-wrap items-center gap-1" data-pages>
         <span className="mr-1 text-xs text-muted-foreground">Pages</span>
-        {pageChips(pages, start).map((p) => (
-          <button key={p.path} type="button" title={p.title || undefined} onClick={() => go(p.path)} className={cn("h-6 rounded-md border px-1.5 font-mono text-[11px] hover:bg-muted", p.path === shown && "border-foreground/40 bg-muted")}>
+        {pageChips(pages ?? [], page).map((p) => (
+          <button key={p.path} type="button" title={unbuilt && p.path === page ? "This page isn't built yet" : p.title || undefined} onClick={() => go(p.path)} className={cn("h-6 rounded-md border px-1.5 font-mono text-[11px] hover:bg-muted", p.path === shown && "border-foreground/40 bg-muted", unbuilt && p.path === page && "border-dashed text-muted-foreground")} data-unbuilt={unbuilt && p.path === page ? true : undefined}>
             {p.path}
           </button>
         ))}
       </div>
+      {unbuilt && shown !== page ? (
+        <p className="text-xs text-muted-foreground" data-page-unbuilt={page}>
+          The page <span className="font-mono">{page}</span> isn't built yet, so the app opens on its home page. It opens here by itself once this build has it.
+        </p>
+      ) : null}
       <AppFrame
         ref={frame}
         key={load.count}
@@ -255,7 +270,7 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
         {cloudflare.loading && !cloudflare.data ? <Skeleton className="h-16" /> : null}
         {cloudflare.error ? <p className="text-sm text-muted-foreground">Could not read the Cloudflare details: {cloudflare.error}</p> : null}
         {cloudflare.data && !mineOnCloudflare.length ? <p className="text-sm text-muted-foreground">This role uses nothing on Cloudflare in this build.</p> : null}
-        {mineOnCloudflare.length ? <CloudflareList resources={mineOnCloudflare} showRoles={false} /> : null}
+        {mineOnCloudflare.length ? <CloudflareList resources={mineOnCloudflare} session={node.id} showRoles={false} /> : null}
       </Section>
       <Section title="Its commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
@@ -303,7 +318,7 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
   return (
     <div className="flex flex-col gap-6">
       <Section title="On Cloudflare">
-        <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} />
+        <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} session={node.id} />
       </Section>
       <Section title="Steps saved as commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
@@ -392,13 +407,15 @@ export function SessionApp({ feature, node }: { readonly feature: FeatureNode; r
   if (!id || (!app && !merged && !committed)) return <Empty>This build's app starts after Chef's first commit.</Empty>;
   const commit = app ? ` It runs ${short(app.commitId)}.` : "";
   const note = merged ? `This build is merged into main, so this is main's app, the release candidate, with this work together with everything else Chef merged. ${SLEEPS}` : `This is the app of this build's branch, with its whole stack running in the build's own sandbox. It starts again after every step Chef takes.${commit} ${SLEEPS}`;
-  return <AppTab key={merged ? `${id}:main` : `${id}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={entryPage(feature.spec?.entrypoint) ?? "/"} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
+  const page = entryPage(feature.spec?.entrypoint) ?? "/";
+  return <AppTab key={merged ? `${id}:main` : `${id}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={merged ? page : "/"} page={page} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
 }
 
 export function MainApp() {
   const { data, selection } = useWorkspace();
   const app = data.spec?.mainApp ?? null;
-  if (!data.spec?.commitId) return <Empty>Main has no commit yet. Its app starts after the first one.</Empty>;
+  if (data.spec === null) return <Skeleton className="min-h-[320px] w-full flex-1 rounded-xl" aria-label="Loading main's app" />;
+  if (!data.spec.commitId) return <Empty>Main has no commit yet. Its app starts after the first one.</Empty>;
   const note = `This is main's app, the release candidate, with its whole stack running in main's own sandbox${app ? ` at ${short(app.commitId)}` : ""}. Everything Chef merges shows up here. Your own production takes main from your repository. ${SLEEPS}`;
   return <AppTab key={`${MAIN_APP}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, MAIN_APP)} url={app?.url ?? null} start="/" title="App of main" note={note} missing="Main has no commit yet, so it has no app to open." />;
 }

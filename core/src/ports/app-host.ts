@@ -1,3 +1,5 @@
+export const APP_START_SECONDS = 600;
+
 export type AppStatus = "starting" | "running" | "failed" | "no-stack";
 
 export interface AppRun {

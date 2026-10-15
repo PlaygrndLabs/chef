@@ -31,6 +31,25 @@ import { html, icon, page } from "../../shared/ui.ts";
 
 Every page has `window.ui`: `ui.icon(name, { label?, class? })` returns the icon's markup, `ui.escape(text)` escapes text for `innerHTML`, and `ui.toast(message, "danger"?)` shows a short message at the bottom.
 
+Call the app's routes with `ui.api(path, { method?, body?, headers? })`: an object `body` is sent as JSON (the method is `POST` when there is a body, `GET` otherwise), and it resolves to the parsed JSON answer. When the request fails it throws an `Error` whose message is never empty: the route's `{ error }`, or the status ("The request failed (500 Internal Server Error). Try again."), or "Could not reach the app" when the network is down. Show it with `ui.error(target, error)`, which writes the message into the element (or selector) and unhides it; `ui.error(target, null)` clears and hides it again. `ui.message(error)` gives the same text for a toast.
+
+```js
+const problem = document.getElementById("problem");
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  ui.error(problem, null);
+  try {
+    await ui.api("/api/notes", { body: { name: form.name.value, note: form.note.value } });
+    form.note.value = "";
+    await load();
+  } catch (error) {
+    ui.error(problem, error);
+  }
+});
+```
+
+An element with the `hidden` attribute stays hidden whatever its classes, and an empty `alert` or `error` is not shown, so an error box with nothing in it never appears.
+
 ## Classes
 
 - Layout: `container` (set by `page`), `page-header` (h1 plus a one-line `p`), `hero`, `section`, `stack` / `stack-sm` / `stack-lg` (vertical gaps), `row` / `row-sm` (horizontal), `between`, `end`, `wrap`, `grow`, `top`, `grid` (auto columns), `grid-2`, `grid-3`.
@@ -51,7 +70,7 @@ Colors come from CSS variables: `--bg`, `--fg`, `--card`, `--muted`, `--muted-bg
 - One primary button per view; other actions are `btn-outline`, `btn-ghost` or icon buttons.
 - Give buttons an icon and a word ("Add", "Save"). An icon-only button needs `aria-label`.
 - Show an `empty` state with an icon and a hint when there is nothing yet, and a `skeleton` or disabled button while loading or saving.
-- Report errors in an `alert` or `ui.toast(message, "danger")`, never with `alert()`.
+- Report errors in an `alert` (`<div class="alert alert-danger" role="alert" hidden>`) filled with `ui.error`, or with `ui.toast(ui.message(error), "danger")`, never with `alert()`.
 - Pick one `accent` color that fits the app and use it for highlights, not for everything.
 - Keep pages responsive: grids collapse on phones, and nothing should scroll sideways.
 - Do not load fonts, CSS frameworks or scripts from other sites; the app must work offline.

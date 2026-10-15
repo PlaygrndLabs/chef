@@ -72,4 +72,22 @@ describe("router", () => {
     expect(off.via).toBe("planner");
     expect(asked).toHaveLength(1);
   });
+  it("puts a split part under a parent only when it says how to go on from that parent", async () => {
+    const readingList = { ...todoSpec, id: "reading-list", title: "Pageturners reading list", entrypoint: "GET /reading-list" };
+    const prompt = "Add a meetings page and a members page";
+    const splits = new Map([
+      [
+        prompt,
+        [
+          { kind: "new", prompt: "Add a meetings page", parent: "reading-list", path: null },
+          { kind: "new", prompt: "Add a members page", parent: "reading-list", path: "  " },
+          { kind: "new", prompt: "Let members vote for a book", parent: "reading-list", path: "Press Vote next to a book." },
+        ] as const,
+      ],
+    ]);
+    const router = new Router({ classifier: new KeywordClassifier(), planner: new TemplatePlanner(new Map(), splits) });
+    const decision = { intent: "new_feature", featureId: null, changeKind: null, via: "planner", confidence: 0.9, reason: "new" } as const;
+    const parts = await router.split(prompt, [readingList], decision);
+    expect(parts?.map((p) => (p.kind === "new" ? p.parent : p.featureId))).toEqual([null, null, "reading-list"]);
+  });
 });

@@ -1,4 +1,4 @@
-import { AlertTriangle, AppWindowMac, ExternalLink, GitCommitHorizontal, Loader2, Rocket, Undo2, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, AppWindowMac, ExternalLink, GitCommitHorizontal, GitMerge, Loader2, Undo2, Wifi, WifiOff } from "lucide-react";
 import { BarSkeleton } from "@/components/loading";
 import { appLink, MAIN_APP, NO_STACK } from "@/lib/app-view";
 import { ago, short } from "@/lib/format";
@@ -36,7 +36,7 @@ function StatusChips() {
   const stuck = groups["needs-you"];
   const working = groups.working;
   const starting = data.live.routes.filter((r) => r.decision.intent !== "question" && now - r.at < STARTING_MS && !sessions.some((s) => s.createdAt >= r.at)).length;
-  const live = features.filter((f) => f.spec?.status === "merged" || f.sessions.some((s) => s.state === "merged")).length;
+  const merged = features.filter((f) => f.spec?.status === "merged" || f.sessions.some((s) => s.state === "merged")).length;
   const reverts = data.live.reverts.length;
   const external = data.live.external;
   return (
@@ -51,9 +51,9 @@ function StatusChips() {
         {working.length || starting ? <Loader2 className="size-3.5 animate-spin" /> : <span className="size-2 border border-muted-foreground" />}
         {[working.length ? `${working.length} working` : "", starting ? "getting a new build ready" : ""].filter(Boolean).join(", ") || "Nothing running"}
       </Chip>
-      <Chip id="live" label="Features live in the app">
-        <Rocket className="size-3.5 text-ok" />
-        {live} live
+      <Chip id="merged" label="Features merged into main">
+        <GitMerge className="size-3.5 text-ok" />
+        {merged} merged
       </Chip>
       <MainAppChip now={now} />
       {reverts ? (
@@ -103,7 +103,7 @@ function MainAppChip({ now }: { readonly now: number }) {
     return (
       <a href={appLink(selection.project, MAIN_APP)} target="_blank" rel="noreferrer" data-chip="main-app" title={`Open main's app, the release candidate, at commit ${short(app.commitId)}, started ${ago(app.at, now)}`} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground">
         <AppWindowMac className="size-3.5" />
-        <span className="font-mono">{app.url ? new URL(app.url).host : "main"}</span>
+        <span>Open main's app</span>
         <ExternalLink className="size-3" />
       </a>
     );
@@ -124,7 +124,7 @@ export function ProjectBar() {
   const connection = CONNECTION[data.connection];
   return (
     <div className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto dash-t bg-sidebar px-1.5 font-mono" id="project-bar" aria-label="Project status">
-      {data.ready ? <StatusChips /> : <BarSkeleton />}
+      {data.loaded.spec && data.loaded.records ? <StatusChips /> : <BarSkeleton />}
       <span className="flex-1" />
       <Chip id="connection" label={connection.label} tone={connection.tone}>
         <connection.icon className={cn("size-3.5", data.connection === "connecting" && "animate-spin")} />

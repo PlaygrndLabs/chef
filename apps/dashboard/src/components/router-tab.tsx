@@ -16,12 +16,12 @@ const CHANGE: Readonly<Record<string, string>> = { bug: "bug fix", extend: "exte
 const VIA: Readonly<Record<RouteDecision["via"], string>> = { rules: "Rules", classifier: "Jev", planner: "Planner" };
 
 const KINDS: readonly { readonly kind: string; readonly how: string }[] = [
-  { kind: "New feature", how: "Plan, Tests, Build, Check and Live. The planner writes a new spec entry and a builder works in a new feature folder." },
+  { kind: "New feature", how: "Plan, Tests, Build, Check and Merged. The planner writes a new spec entry and a builder works in a new feature folder." },
   { kind: "Change: bug fix", how: "A new spec revision, then a test that shows the bug, the fix, review and checks." },
   { kind: "Change: extend", how: "New acceptance criteria on the same feature, tests first, then the code." },
   { kind: "Change: refactor", how: "Restructures the feature's code. Its existing tests must keep passing." },
-  { kind: "Chore", how: "Work outside one feature, like dependencies, config, shared code, docs or CI. Start it with /chore. The Chore worker may change anything but specs and feature tests, every test must keep passing, and every live feature is proved again on its running app." },
-  { kind: "Hotfix", how: "Start a fix with /hotfix. It runs one try, and other builds wait to go live until it is live, so it reaches the app first. Same tests, review and checks." },
+  { kind: "Chore", how: "Work outside one feature, like dependencies, config, shared code, docs or CI. Start it with /chore. The Chore worker may change anything but specs and feature tests, every test must keep passing, and every merged feature is proved again on its running app." },
+  { kind: "Hotfix", how: "Start a fix with /hotfix. It runs one try, and other builds wait to merge until it is merged, so it reaches main first. Same tests, review and checks." },
   { kind: "Question", how: "Answered from the project's memory. No code changes." },
 ];
 
@@ -256,7 +256,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
         </div>
       </form>
       {view.scope ? <Recent /> : null}
-      <Section title="Kinds of work" note="What each answer starts. Every kind goes through the same tests, review and checks before it goes live, and Chef reverts a merge that turns the app red." id="kinds">
+      <Section title="Kinds of work" note="What each answer starts. Every kind goes through the same tests, review and checks before it is merged into main, and Chef reverts a merge that turns the app red." id="kinds">
         <ul className="flex flex-col divide-y text-sm">
           {KINDS.map((k) => (
             <li key={k.kind} className="grid gap-0.5 py-2 sm:grid-cols-[10rem_1fr]">

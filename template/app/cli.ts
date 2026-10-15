@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Flow } from "../shared/flow.ts";
+import { routeClashes, type Feature } from "../shared/http.ts";
 import { drive, type Fetcher } from "./drive.ts";
 import { REGISTRY_PATH, renderRegistry } from "./gen.ts";
 
@@ -23,17 +24,26 @@ async function featurePaths(): Promise<string[]> {
   return paths;
 }
 
+async function clashes(): Promise<string[]> {
+  const registry = await import(pathToFileURL(join(root, REGISTRY_PATH)).href).catch(() => null);
+  return registry ? routeClashes((registry as { features: readonly Feature[] }).features) : [];
+}
+
 async function gen(check: boolean): Promise<number> {
   const expected = renderRegistry(await featurePaths());
   const target = join(root, REGISTRY_PATH);
   const actual = await readFile(target, "utf8").catch(() => "");
-  if (actual === expected) return 0;
-  if (check) {
-    process.stderr.write(`${REGISTRY_PATH} is out of date; run \`app gen\`\n`);
-    return 1;
+  if (actual !== expected) {
+    if (check) {
+      process.stderr.write(`${REGISTRY_PATH} is out of date; run \`app gen\`\n`);
+      return 1;
+    }
+    await writeFile(target, expected);
   }
-  await writeFile(target, expected);
-  return 0;
+  const found = await clashes();
+  if (!found.length) return 0;
+  process.stderr.write(`routes clash, so one feature would answer requests meant for another:\n${found.map((clash) => `  ${clash}\n`).join("")}give each route its own method and path\n`);
+  return 1;
 }
 
 async function flowFor(feature: string): Promise<Flow> {

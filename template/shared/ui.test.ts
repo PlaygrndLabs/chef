@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { closeBrowser, openPage } from "../app/browser.ts";
-import type { Feature } from "./http.ts";
+import { json, type Feature } from "./http.ts";
 import { html, icon, page, raw, renderPage } from "./ui.ts";
 
 after(closeBrowser);
@@ -27,7 +27,7 @@ test("page returns a styled html document", async () => {
 });
 
 test("an accent that is not a color is ignored", () => {
-  assert.doesNotMatch(renderPage({ title: "x", body: "", accent: "red}body{display:none" }).value, /display:none/);
+  assert.doesNotMatch(renderPage({ title: "x", body: "", accent: "red}body{display:none" }).value, /body\{display:none/);
 });
 
 test("a page script can use the browser helpers", async () => {
@@ -42,5 +42,39 @@ test("a page script can use the browser helpers", async () => {
   assert.match((await tab.locator("#out").innerHTML()) ?? "", /<svg[^>]*class="icon".*&lt;b&gt;/);
   const background = await tab.evaluate(() => getComputedStyle(document.querySelector(".btn") as Element).backgroundColor);
   assert.notEqual(background, "rgba(0, 0, 0, 0)");
+  await close();
+});
+
+test("a failed request always shows a message, even when the server says nothing", async () => {
+  const form = html`<form id="sign"><button class="btn">Sign</button></form><div class="alert alert-danger" role="alert" id="problem" hidden></div><p class="error" id="field"></p>`;
+  const client = `document.getElementById("sign").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  for (const path of ["/api/empty", "/api/said", "/api/broken"]) {
+    try { await ui.api(path, { body: { name: "Nino" } }); } catch (error) { ui.error(document.body.appendChild(Object.assign(document.createElement("p"), { className: "error" })), error); }
+  }
+  ui.error("#problem", new Error(""));
+});`;
+  const guestbook: Feature = {
+    id: "guestbook",
+    title: "Guestbook",
+    routes: [
+      { method: "GET", path: "/guestbook", handle: () => page({ title: "Guestbook", body: form, script: client }) },
+      { method: "POST", path: "/api/empty", handle: () => new Response(null, { status: 500 }) },
+      { method: "POST", path: "/api/said", handle: () => json({ error: "Name is taken" }, 409) },
+      {
+        method: "POST",
+        path: "/api/broken",
+        handle: () => {
+          throw new Error("storage is down");
+        },
+      },
+    ],
+  };
+  const { page: tab, close } = await openPage([guestbook], "/guestbook");
+  assert.equal(await tab.locator("#problem").isVisible(), false);
+  assert.equal(await tab.locator("#field").isVisible(), false);
+  await tab.getByRole("button", { name: "Sign" }).click();
+  await tab.getByRole("alert").filter({ hasText: "Something went wrong" }).waitFor();
+  assert.deepEqual(await tab.locator("body > p.error").allTextContents(), ["The request failed (500 Internal Server Error). Try again.", "Name is taken", "The server failed while answering POST /api/broken: storage is down"]);
   await close();
 });

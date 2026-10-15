@@ -137,6 +137,8 @@ export function summarize(event: ChefEvent): string {
       return `${event.decision.intent} ${event.decision.featureId ?? ""} ${event.decision.confidence.toFixed(2)}`.trim();
     case "question.answered":
       return event.answer.slice(0, 200);
+    case "route.failed":
+      return `could not start: ${event.error}`.slice(0, 200);
     case "session.created":
       return `${event.hotfix ? "hotfix " : ""}${event.kind === "chore" ? "chore " : ""}fork ${event.fork} attempt ${event.attempt.index}/${event.attempt.of}`;
     case "session.held":
@@ -244,6 +246,9 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       return true;
     case "question.answered":
       keep(state.answers, { prompt: event.prompt, answer: event.answer, at }, 200);
+      return true;
+    case "route.failed":
+      keep(state.answers, { prompt: event.prompt, answer: `I could not start this, so nothing is being built for it: ${event.error}. Send it again to retry.`, at }, 200);
       return true;
     case "session.created": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
@@ -465,4 +470,14 @@ const ACTIVE: ReadonlySet<SessionState> = new Set(["queued", "planning", "testin
 
 export function isActive(state: SessionState): boolean {
   return ACTIVE.has(state);
+}
+
+export function routeAnswers(live: Pick<ProjectLive, "routes" | "answers">): (string | null)[] {
+  const taken = new Set<number>();
+  return live.routes.map((route) => {
+    const at = live.answers.findIndex((answer, i) => !taken.has(i) && answer.prompt === route.prompt && answer.at >= route.at);
+    if (at < 0) return null;
+    taken.add(at);
+    return live.answers[at]?.answer ?? null;
+  });
 }

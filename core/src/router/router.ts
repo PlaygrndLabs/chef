@@ -131,8 +131,9 @@ export class Router {
       .slice(0, MAX_PARTS)
       .map((part): SplitPart => {
         const text = part.prompt.trim();
-        if (part.kind === "change") return known.has(part.featureId) ? { kind: "change", prompt: text, featureId: part.featureId, changeKind: part.changeKind } : { kind: "new", prompt: text, parent: null };
-        return { kind: "new", prompt: text, parent: part.parent && known.has(part.parent) ? part.parent : null };
+        if (part.kind === "change") return known.has(part.featureId) ? { kind: "change", prompt: text, featureId: part.featureId, changeKind: part.changeKind } : { kind: "new", prompt: text, parent: null, path: null };
+        const path = part.path?.trim() || null;
+        return part.parent && path && known.has(part.parent) ? { kind: "new", prompt: text, parent: part.parent, path } : { kind: "new", prompt: text, parent: null, path: null };
       });
     return clean.length ? clean : null;
   }

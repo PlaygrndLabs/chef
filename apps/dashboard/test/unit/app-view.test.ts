@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isPage } from "../../../../template/shared/http.ts";
-import { addressPath, appLink, appState, enterAt, entryPage, frameReport, isPagePath, loadView, NO_STACK, pageChips, stateLink, step, visit, type FrameLoad, type Trail } from "../../src/lib/app-view.ts";
+import { addressPath, appLink, appState, builtPage, enterAt, entryPage, frameReport, isPagePath, loadView, NO_STACK, pageChips, stateLink, step, visit, type FrameLoad, type Trail } from "../../src/lib/app-view.ts";
 
 describe("app browser", () => {
   it("opens the page named in the feature's entrypoint, never a script or an API", () => {
@@ -121,5 +121,13 @@ describe("app browser", () => {
     expect(appLink("notes", "main")).toBe("/app/notes/main");
     expect(stateLink("/app/notes/s-1", false)).toBe("/app/notes/s-1?state=1");
     expect(stateLink("/app/notes/main", true)).toBe("/app/notes/main?state=1&retry=1");
+  });
+
+  it("moves on to a build's own page only once the app lists it", () => {
+    const home = (pages: readonly string[]) => ({ path: "/", title: "Home", pages: pages.map((path) => ({ path, title: "" })) });
+    expect(builtPage("/reading-list", home(["/"]), "/")).toBeNull();
+    expect(builtPage("/reading-list", home(["/", "/reading-list"]), "/")).toBe("/reading-list");
+    expect(builtPage("/reading-list", { ...home(["/reading-list"]), path: "/other" }, "/")).toBeNull();
+    expect(builtPage(null, home(["/reading-list"]), "/")).toBeNull();
   });
 });

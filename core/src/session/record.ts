@@ -32,6 +32,7 @@ export interface SessionRecord {
   plan: Plan;
   cursor: number;
   machine: MachineState;
+  revision?: number;
   head: string | null;
   baseMain: string | null;
   commits: string[];

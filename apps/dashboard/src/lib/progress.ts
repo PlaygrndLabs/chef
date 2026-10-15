@@ -2,7 +2,7 @@ import type { LaneStatus, SessionState } from "@chef/core";
 import { isActive, type TimelineItem } from "./events";
 import { short } from "./format";
 
-export const STAGES = ["Plan", "Tests", "Build", "Check", "Live"] as const;
+export const STAGES = ["Plan", "Tests", "Build", "Check", "Merged"] as const;
 
 const STAGE: Readonly<Record<SessionState, number>> = { queued: 0, planning: 0, testing: 1, coding: 2, reviewing: 3, gating: 3, merged: 4, stuck: 0, dropped: 0 };
 
@@ -13,7 +13,7 @@ const NOW: Readonly<Record<SessionState, string>> = {
   coding: "Writing the code.",
   reviewing: "A reviewer is reading the change.",
   gating: "Running the final checks.",
-  merged: "Live. Ask for a change in the chat whenever you want.",
+  merged: "Merged. Ask for a change in the chat whenever you want.",
   stuck: "Chef stopped and is waiting for you.",
   dropped: "Stopped. Press Start over to build it again.",
 };
@@ -46,7 +46,7 @@ export function progress(state: SessionState, timeline: readonly TimelineItem[])
   return { stage: STAGE[at], done: state === "merged", failed: state === "stuck", stopped: state === "dropped", now: lost ? "Another try was picked over this one, so this one stopped." : NOW[state] };
 }
 
-export type UpdateIcon = "plan" | "test" | "code" | "review" | "check" | "live" | "alert" | "stop" | "sync" | "pick";
+export type UpdateIcon = "plan" | "test" | "code" | "review" | "check" | "merged" | "alert" | "stop" | "sync" | "pick";
 export type UpdateTone = "ok" | "run" | "bad" | "idle";
 
 export type Update =
@@ -64,10 +64,10 @@ export type Update =
       role?: string | null;
     };
 
-type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "retry" | "reopen" | null; round: number; lane?: string; open?: boolean; outcome?: LaneStatus };
+type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "app" | "retry" | "reopen" | null; round: number; lane?: string; open?: boolean; outcome?: LaneStatus };
 
 const PHASES: ReadonlySet<SessionState> = new Set(["planning", "testing", "coding", "reviewing", "gating"]);
-const AFTER: Readonly<Record<string, Step["after"]>> = { review_rejected: "review", gate_failed: "gate", retried: "retry", reopened: "reopen" };
+const AFTER: Readonly<Record<string, Step["after"]>> = { review_rejected: "review", gate_failed: "gate", app_failed: "app", retried: "retry", reopened: "reopen" };
 const ICON: Readonly<Partial<Record<SessionState, UpdateIcon>>> = { planning: "plan", testing: "test", coding: "code", reviewing: "review", gating: "check" };
 
 function laneHeadline(step: Step, running: boolean): string {
@@ -88,8 +88,9 @@ function headline(step: Step, running: boolean): string {
     case "coding":
       if (step.after === "review") return running ? "Fixing what the reviewer asked for" : "Fixed what the reviewer asked for";
       if (step.after === "gate") return running ? "Fixing the failed checks" : "Fixed the failed checks";
+      if (step.after === "app") return running ? "Fixing the app so it starts" : "Fixed the app so it starts";
       if (step.after === "retry") return running ? "Trying again with your note" : "Tried again with your note";
-      if (step.after === "reopen") return running ? "Fixing a problem found after it went live" : "Fixed a problem found after it went live";
+      if (step.after === "reopen") return running ? "Fixing a problem found after it was merged" : "Fixed a problem found after it was merged";
       return running ? "Writing the code" : "Wrote the code";
     case "reviewing":
       return "A reviewer is reading the change";
@@ -143,7 +144,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         return;
       }
       case "held":
-        if (item.by) list.push({ kind: "chef", key, at: item.at, icon: "pick", tone: "idle", text: `Waiting for hotfix ${item.by} to go live first`, detail: "", tech: [`held by hotfix ${item.by}`], mark: {} });
+        if (item.by) list.push({ kind: "chef", key, at: item.at, icon: "pick", tone: "idle", text: `Waiting for hotfix ${item.by} to be merged first`, detail: "", tech: [`held by hotfix ${item.by}`], mark: {} });
         return;
       case "agent":
         if (item.lane) {
@@ -243,7 +244,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         return;
       }
       case "merged":
-        list.push(item.into ? { kind: "chef", key, at: item.at, icon: "sync", tone: "ok", text: "Done, merged into its parent feature", detail: "", tech: [`merged into ${item.into} as ${short(item.commitId)}`], mark: {} } : { kind: "chef", key, at: item.at, icon: "live", tone: "ok", text: "Went live", detail: "", tech: [`merged into main as ${short(item.commitId)}`], mark: {} });
+        list.push(item.into ? { kind: "chef", key, at: item.at, icon: "sync", tone: "ok", text: "Done, merged into its parent feature", detail: "", tech: [`merged into ${item.into} as ${short(item.commitId)}`], mark: {} } : { kind: "chef", key, at: item.at, icon: "merged", tone: "ok", text: "Merged into main", detail: "", tech: [`merged into main as ${short(item.commitId)}`], mark: {} });
         step = null;
         return;
       case "stuck":
@@ -290,13 +291,20 @@ export function plainReason(reason: string): string {
   return reason;
 }
 
+export function whatFailed(input: { readonly feedback?: string | null | undefined; readonly history?: readonly string[] | undefined; readonly verdict?: { readonly approve: boolean; readonly reasons: readonly string[] } | null | undefined }): string | null {
+  const saved = input.feedback?.trim() || input.history?.findLast((entry) => entry.trim())?.trim();
+  if (saved) return saved;
+  if (input.verdict && !input.verdict.approve && input.verdict.reasons.length) return `Reviewer rejected the change:\n${input.verdict.reasons.map((r) => `- ${r}`).join("\n")}`;
+  return null;
+}
+
 export function stripFeatureTag(prompt: string): { readonly text: string; readonly feature: string | null } {
   const match = /^#([a-z0-9-]+)\s+([\s\S]*)$/.exec(prompt.trim());
   return match ? { text: match[2] as string, feature: match[1] as string } : { text: prompt, feature: null };
 }
 
 export function activity(state: SessionState, timeline: readonly TimelineItem[], stuck: string | null): string {
-  if (state === "merged") return "Passed every check and went live";
+  if (state === "merged") return timeline.some((item) => item.kind === "merged" && item.into) ? "Passed every check and merged into its parent feature" : "Passed every check and merged into main";
   if (state === "stuck") return stuck ? plainReason(stuck) : "Needs your help";
   if (state === "dropped") return "Stopped";
   const last = [...updates(timeline, state)].reverse().find((u) => u.kind === "chef");

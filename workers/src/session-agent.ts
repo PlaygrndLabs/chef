@@ -1,6 +1,6 @@
 import { Agent } from "agents";
 import { WorkerEntrypoint } from "cloudflare:workers";
-import type { AppStatus, CoderEvent, CoderTurnResult, CustomAgent, FileChanges } from "@chef/core";
+import { APP_START_SECONDS, type AppStatus, type CoderEvent, type CoderTurnResult, type CustomAgent, type FileChanges } from "@chef/core";
 import { APP_REQUEST_HEADER } from "@chef/adapters/app-gate";
 import { appPage } from "@chef/adapters/app-page";
 import { layerStore } from "./image-layers.ts";
@@ -22,6 +22,7 @@ export interface SandboxJob {
   readonly readToken: string;
   readonly llm: { readonly baseUrl: string };
   readonly turnId?: string;
+  readonly ownStructure?: boolean;
 }
 
 export type TurnOutcome = { readonly status: "done"; readonly result: CoderTurnResult } | { readonly status: "running" } | { readonly status: "lost" };
@@ -62,6 +63,7 @@ export interface ChecksJob {
   readonly readToken: string;
   readonly commands: readonly { name: string; argv: readonly string[]; timeoutMs?: number; env?: Readonly<Record<string, string>> }[];
   readonly overlay?: FileChanges;
+  readonly install?: { readonly argv: readonly string[]; readonly key: string; readonly timeoutMs?: number; readonly env?: Readonly<Record<string, string>> };
 }
 
 export interface AppJob {
@@ -72,6 +74,7 @@ export interface AppJob {
   readonly commitId: string;
   readonly env: Readonly<Record<string, string>>;
   readonly idleMinutes: number;
+  readonly startSeconds?: number;
 }
 
 export interface AppState {
@@ -110,6 +113,8 @@ export const FOLLOW_SECONDS = 60;
 const LAST_USED = "sandbox/last-used";
 const APP = "sandbox/app";
 const VISIT_NOTE_MS = 30_000;
+const APP_GRACE_MS = 60_000;
+const DIAGNOSE_MS = 20_000;
 const TURN = "sandbox/turn";
 const TURNS_DIR = "/workspace/turns";
 
@@ -136,6 +141,7 @@ export class SessionAgent extends Agent<Env> {
   private following: string | null = null;
   private visited = 0;
   private appRun: { readonly commitId: string; readonly run: Promise<AppState> } | null = null;
+  private appsStarting = 0;
 
   async status(): Promise<SandboxStatus> {
     return { running: this.ctx.container?.running ?? false, exit: this.exit };
@@ -304,23 +310,45 @@ export class SessionAgent extends Agent<Env> {
   }
 
   private async startApp(job: AppJob, readToken: string): Promise<AppState> {
-    let state: AppState = { status: "starting", target: job.target, project: job.project, commitId: job.commitId, port: null, idleMinutes: job.idleMinutes, at: Date.now() };
-    await this.ctx.storage.put(APP, state);
-    const { code, tail } = await this.runScript("app.mjs", { ...job, readToken }, (event) => {
-      if (event["type"] !== "chef.app") return;
-      const status = event["status"] as AppStatus;
-      const port = typeof event["port"] === "number" ? event["port"] : null;
-      state = { ...state, status, port, at: Date.now(), ...(typeof event["error"] === "string" ? { error: event["error"] } : {}) };
-      void this.ctx.storage.put(APP, state);
-    });
-    if (state.status === "starting") state = { ...state, status: "failed", error: `the app runner stopped with exit code ${code}: ${tail.slice(-500) || "no output"}`, at: Date.now() };
-    await this.ctx.storage.put(APP, state);
-    if (state.status === "running") await this.ctx.container?.setInactivityTimeout((await this.idleSeconds()) * 1000).catch(() => undefined);
-    return state;
+    const alone = this.appsStarting++ === 0;
+    try {
+      let state: AppState = { status: "starting", target: job.target, project: job.project, commitId: job.commitId, port: null, idleMinutes: job.idleMinutes, at: Date.now() };
+      await this.ctx.storage.put(APP, state);
+      if (alone && this.ctx.container?.running) await this.shell(STOP_APP, {}).catch(() => undefined);
+      const startSeconds = job.startSeconds ?? APP_START_SECONDS;
+      const script = { ...job, startSeconds, readToken };
+      const { code, tail, stopped } = await this.runScript(
+        "app.mjs",
+        script,
+        (event) => {
+          if (event["type"] !== "chef.app") return;
+          const status = event["status"] as AppStatus;
+          const port = typeof event["port"] === "number" ? event["port"] : null;
+          state = { ...state, status, port, at: Date.now(), ...(typeof event["error"] === "string" ? { error: event["error"] } : {}) };
+          void this.ctx.storage.put(APP, state);
+        },
+        {},
+        startSeconds * 1000 + APP_GRACE_MS,
+      );
+      if (state.status === "starting") state = { ...state, status: "failed", error: stopped ? await this.stuckApp(job, startSeconds) : `the app runner stopped with exit code ${code}${this.exit ? ` (the sandbox stopped: ${this.exit})` : ""}: ${tail.slice(-500) || "no output"}`, at: Date.now() };
+      await this.ctx.storage.put(APP, state);
+      if (state.status === "running") await this.ctx.container?.setInactivityTimeout((await this.idleSeconds()) * 1000).catch(() => undefined);
+      return state;
+    } finally {
+      this.appsStarting--;
+    }
+  }
+
+  private async stuckApp(job: AppJob, startSeconds: number): Promise<string> {
+    const minutes = Math.round(startSeconds / 60);
+    const diagnosis = this.ctx.container?.running ? this.shell(`${STOP_APP}\n${APP_LOGS}`, { PROJECT: job.project, FILE: `/workspace/${job.target}/compose.chef.json` }).catch(() => ({ code: 1, out: "" })) : Promise.resolve({ code: 1, out: "" });
+    const logs = await Promise.race([diagnosis, new Promise<{ code: number; out: string }>((resolve) => setTimeout(() => resolve({ code: 1, out: "" }), DIAGNOSE_MS))]);
+    return `the app did not start within ${minutes} minutes, so Chef stopped it${this.exit ? ` (the sandbox stopped: ${this.exit})` : ""}: ${logs.out.trim().slice(-3000) || "no output"}`;
   }
 
   async appState(): Promise<AppState | null> {
     const state = (await this.ctx.storage.get<AppState>(APP)) ?? null;
+    if (state?.status === "starting" && this.appsStarting === 0) return { ...state, status: "asleep" };
     if (!state || this.ctx.container?.running) return state;
     return state.status === "running" || state.status === "starting" ? { ...state, status: "asleep" } : state;
   }
@@ -359,10 +387,10 @@ export class SessionAgent extends Agent<Env> {
     await this.schedule(await this.idleSeconds(), "sleepIfIdle", undefined, { idempotent: true });
   }
 
-  private async runScript(script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null } = {}): Promise<{ code: number; tail: string }> {
+  private async runScript(script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null } = {}, limitMs?: number): Promise<{ code: number; tail: string; stopped: boolean }> {
     this.busy++;
     try {
-      return await this.exec(script, job, onEvent, secrets);
+      return await this.exec(script, job, onEvent, secrets, limitMs);
     } finally {
       this.busy--;
       await this.ctx.storage.put(LAST_USED, Date.now());
@@ -370,7 +398,7 @@ export class SessionAgent extends Agent<Env> {
     }
   }
 
-  private async exec(script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null }): Promise<{ code: number; tail: string }> {
+  private async exec(script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null }, limitMs?: number): Promise<{ code: number; tail: string; stopped: boolean }> {
     const container = await this.ensureContainer();
     this.following = null;
     await this.intercept({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cacheScope: cacheScope(job.remote) }, secrets);
@@ -379,16 +407,28 @@ export class SessionAgent extends Agent<Env> {
     const process = await container.exec(["node", `/opt/chef/${script}`], { env: { ...SANDBOX_ENV, CHEF_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" }).catch((error: unknown) => {
       throw new Error(`${String(error)} (the sandbox container stopped: ${this.exit ?? "no reason reported"})`);
     });
-    const lines = (process.stdout as ReadableStream<Uint8Array>).pipeThrough(new TextDecoderStream()).pipeThrough(splitLines(true));
+    const reader = (process.stdout as ReadableStream<Uint8Array>).pipeThrough(new TextDecoderStream()).pipeThrough(splitLines(true)).getReader();
+    let stopped = false;
+    const timer = limitMs === undefined ? null : setTimeout(() => {
+      stopped = true;
+      void reader.cancel().catch(() => undefined);
+    }, limitMs);
     let tail = "";
-    for await (const line of lines) {
-      try {
-        onEvent(JSON.parse(line) as Record<string, unknown>);
-      } catch {
-        tail = `${tail}${line}\n`.slice(-4000);
+    try {
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) break;
+        try {
+          onEvent(JSON.parse(next.value) as Record<string, unknown>);
+        } catch {
+          tail = `${tail}${next.value}\n`.slice(-4000);
+        }
       }
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    return { code: await process.exitCode, tail };
+    if (stopped) return { code: 143, tail, stopped };
+    return { code: await process.exitCode, tail, stopped };
   }
 
   private async ensureContainer(): Promise<Container> {
@@ -448,6 +488,10 @@ ticks=$((WAIT * 4))
 while [ "$ticks" -gt 0 ] && [ ! -f exit ] && alive "$pid"; do sleep 0.25; ticks=$((ticks - 1)); done
 kill "$follower" 2>/dev/null
 exit 0`;
+
+const STOP_APP = `pkill -TERM -f "/opt/chef/[a]pp.mjs" || true`;
+
+const APP_LOGS = `docker compose -p "$PROJECT" -f "$FILE" logs --no-color --tail 40 2>&1 | tail -c 3000`;
 
 const STDERR = `tail -c 4000 "$DIR/stderr.log" 2>/dev/null`;
 

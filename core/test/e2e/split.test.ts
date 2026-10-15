@@ -13,8 +13,8 @@ describe("splitting a request into features", () => {
       [
         EDIT_AND_DELETE,
         [
-          { kind: "new", prompt: "Let people delete an item from the todo list", parent: "todo-add" },
-          { kind: "new", prompt: "Let people edit an item in the todo list", parent: "todo-add" },
+          { kind: "new", prompt: "Let people delete an item from the todo list", parent: "todo-add", path: "Press Delete next to an item." },
+          { kind: "new", prompt: "Let people edit an item in the todo list", parent: "todo-add", path: "Press Edit next to an item." },
         ] as const,
       ],
     ]);
@@ -49,7 +49,7 @@ describe("splitting a request into features", () => {
   });
 
   it("skips splitting for explicit commands and writes the parent into the spec", async () => {
-    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add" }] as const]]);
+    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add", path: "Press Delete next to an item." }] as const]]);
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]), splits });
     await w.orchestrator.bootstrap(templateTree());
     await w.orchestrator.run((await w.orchestrator.submit(TODO)).sessionId as string);
@@ -69,7 +69,7 @@ describe("splitting a request into features", () => {
   });
 
   it("tells the reviewer a child feature may change its parent's files", async () => {
-    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add" }] as const]]);
+    const splits = new Map([["Let people delete an item", [{ kind: "new", prompt: "Let people delete an item", parent: "todo-add", path: "Press Delete next to an item." }] as const]]);
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]), splits });
     await w.orchestrator.bootstrap(templateTree());
     await w.orchestrator.run((await w.orchestrator.submit(TODO)).sessionId as string);
@@ -80,6 +80,26 @@ describe("splitting a request into features", () => {
     expect(review?.feature.parent).toBe("todo-add");
     expect(review?.scope).toEqual(expect.arrayContaining(["features/let-people-delete-item/**", "features/todo-add/**"]));
     expect(review?.scope?.some((pattern) => pattern.startsWith("!"))).toBe(false);
+  });
+});
+
+describe("asks that cannot be started", () => {
+  it("tells the person when planning a routed feature fails instead of dropping the ask", async () => {
+    const DUE = "Let people give each item a due date";
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[TODO, todoSpec]]) });
+    const plan = w.planner.plan.bind(w.planner);
+    w.planner.plan = async (input) => (input.prompt === DUE ? Promise.reject(new Error("the model is overloaded")) : plan(input));
+    await w.orchestrator.bootstrap(templateTree());
+
+    await expect(w.orchestrator.submit(DUE)).rejects.toThrow("the model is overloaded");
+    const types = w.bus.log.filter((e) => "prompt" in e && e.prompt === DUE).map((e) => e.type);
+    expect(types).toEqual(["route.decided", "route.failed"]);
+    const failed = w.bus.log.find((e) => e.type === "route.failed");
+    expect(failed?.type === "route.failed" && failed.error).toBe("the model is overloaded");
+    expect((await w.orchestrator.chatMemory()).turns.at(-1)).toMatchObject({ prompt: DUE, reply: expect.stringContaining("could not start") });
+
+    const next = await w.orchestrator.submit(TODO);
+    expect(next.sessionIds).toHaveLength(1);
   });
 });
 
