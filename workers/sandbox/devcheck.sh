@@ -25,3 +25,6 @@ job=$(printf '{"target":"devcheck","project":"devcheck","remote":"/tmp/devcheck"
 CHEF_JOB="$job" node /opt/chef/app.mjs
 step "local"; curl -sS http://127.0.0.1:8080/local; echo
 step "ps"; docker ps --format '{{.Names}} {{.Status}}'
+step "all"; docker ps -a --format '{{.Names}} {{.Status}}'
+step "api logs"; docker logs --tail 20 devcheck-api-1 2>&1
+step "listening"; (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) | head -20
