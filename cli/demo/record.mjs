@@ -7,8 +7,8 @@ const SITE = "https://chef.playgrndlabs.com/";
 const OUT = process.env.OUT ?? "results/demo";
 const PROJECT = process.env.PROJECT || "bluebean";
 const FOLLOW_MIN = Number(process.env.MINUTES || "35");
-const MODE = process.env.PROMPT === "retry" ? "retry" : "build";
-const PROMPTS = (MODE === "retry" ? "" : process.env.PROMPT || [
+const MODE = process.env.PROMPT === "retry" ? "retry" : process.env.PROMPT === "tail" ? "tail" : "build";
+const PROMPTS = (MODE !== "build" ? "" : process.env.PROMPT || [
   "Make a welcome page for Bluebean, a small coffee shop: its name, a short line about it, the menu with prices, and the opening hours.",
   "Add an order page where a guest picks a drink, types their name and places the order. Save the orders and list the latest ones under the form.",
   "Add a guestbook page where visitors leave a short note with their name and see the latest notes.",
@@ -253,9 +253,9 @@ async function panel(name, wait = 5000) {
 }
 
 async function mainTab(section) {
-  const tab = page.locator('[data-tab=":live"]');
+  const tab = page.locator('[data-tab=":main"]');
   if (!(await tab.count())) {
-    await go(`${BASE}/?project=${PROJECT}&view=live`);
+    await go(`${BASE}/?project=${PROJECT}&view=main`);
   } else {
     await point(tab, { wait: 1200 });
   }
@@ -496,7 +496,64 @@ async function showcaseRetry() {
   mark("end");
 }
 
+async function tailRun() {
+  await go(`${BASE}/?project=${PROJECT}`);
+  mark("project");
+  await pause(3000);
+  const list = await features();
+  const order = list.find((s) => s.featureId.startsWith("order"));
+  if (order && (await openFeature(order.featureId))) {
+    mark("order-feature", { state: order.machine.state });
+    await pause(3000);
+    await panel("Messages", 6000);
+    await page.mouse.wheel(0, 500);
+    await pause(2500);
+    await panel("App", 1000);
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      if (!(await page.locator("[data-preview-load]").count()) && (await page.locator("iframe").count())) break;
+      await pause(500);
+    }
+    await pause(5000);
+    await shot("order-app");
+  }
+  mark("main-history");
+  await mainTab("History");
+  await pause(3500);
+  await shot("history");
+  const commits = page.locator("[data-commit]");
+  const count = Math.min(await commits.count(), 4);
+  for (let i = 0; i < count; i++) {
+    await point(commits.nth(i), { wait: 3500 });
+    const files = page.locator("[data-file]");
+    if (i < 2 && (await files.count()) > 1) await point(files.nth(1), { wait: 2500 });
+  }
+  await shot("history-commit");
+  mark("main-app");
+  await panel("App", 1000);
+  const until = Date.now() + 90_000;
+  while (Date.now() < until) {
+    if (!(await page.locator("[data-preview-load]").count()) && (await page.locator("iframe").count())) break;
+    await pause(500);
+  }
+  await pause(5000);
+  await shot("main-app");
+  const chips = page.locator("[data-pages] button");
+  for (let i = 0; i < (await chips.count()); i++) {
+    await point(chips.nth(i), { wait: 5000 });
+    mark("main-chip", { i });
+  }
+  let src = await page.locator("iframe").first().getAttribute("src").catch(() => null);
+  const base = src ? new URL(src).origin : `https://main-${PROJECT}-chef-dev-app.playgrndlabs.workers.dev`;
+  await liveApp(base);
+  mark("end");
+}
+
 try {
+  if (MODE === "tail") {
+    await tailRun().catch((e) => log(`tail: ${e.message}`));
+    throw new Error("done");
+  }
   if (MODE === "retry") {
     await go(`${BASE}/?project=${PROJECT}`);
     mark("project");
