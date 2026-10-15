@@ -1,7 +1,7 @@
 import type { FeatureLayout, FeatureSpec, SessionRecord, SessionState } from "@chef/core";
 import { isActive, type ProjectLive, type SessionLive } from "./events";
 
-export type FeatureStatus = "building" | "stuck" | "merged" | "proposed" | "dropped";
+export type FeatureStatus = "building" | "ready" | "stuck" | "merged" | "proposed" | "dropped";
 
 export function statusOf(state: SessionState): FeatureStatus {
   if (state === "merged") return "merged";
@@ -20,6 +20,7 @@ export interface SessionNode {
   readonly updatedAt: number;
   readonly needs: readonly string[];
   readonly budget: string | null;
+  readonly ready: string | null;
   readonly live: SessionLive | undefined;
   readonly record: SessionRecord | undefined;
 }
@@ -41,18 +42,19 @@ export function sessionNodes(live: ProjectLive, records: readonly SessionRecord[
   const byId = new Map<string, SessionNode>();
   for (const record of records) {
     const l = live.sessions[record.id];
-    byId.set(record.id, { id: record.id, featureId: record.featureId, state: l?.state ?? record.machine.state, attempt: record.attempt, parent: record.parent, createdAt: record.createdAt, updatedAt: Math.max(record.updatedAt, l?.updatedAt ?? 0), needs: l && l.updatedAt >= record.updatedAt ? l.needs : (record.needs ?? []), budget: l && l.updatedAt >= record.updatedAt ? l.budget : (record.overBudget ?? null), live: l, record });
+    byId.set(record.id, { id: record.id, featureId: record.featureId, state: l?.state ?? record.machine.state, attempt: record.attempt, parent: record.parent, createdAt: record.createdAt, updatedAt: Math.max(record.updatedAt, l?.updatedAt ?? 0), needs: l && l.updatedAt >= record.updatedAt ? l.needs : (record.needs ?? []), budget: l && l.updatedAt >= record.updatedAt ? l.budget : (record.overBudget ?? null), ready: l && l.updatedAt >= record.updatedAt ? l.ready : record.ready && !record.ready.approved ? record.ready.commitId : null, live: l, record });
   }
   for (const id of live.order) {
     const l = live.sessions[id];
     if (!l || byId.has(id)) continue;
-    byId.set(id, { id, featureId: l.featureId, state: l.state, attempt: l.attempt, parent: l.parent, createdAt: l.createdAt, updatedAt: l.updatedAt, needs: l.needs, budget: l.budget, live: l, record: undefined });
+    byId.set(id, { id, featureId: l.featureId, state: l.state, attempt: l.attempt, parent: l.parent, createdAt: l.createdAt, updatedAt: l.updatedAt, needs: l.needs, budget: l.budget, ready: l.ready, live: l, record: undefined });
   }
   return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
 }
 
 function featureStatusOf(sessions: readonly SessionNode[], spec: FeatureSpec | null): FeatureStatus {
-  if (sessions.some((s) => isActive(s.state))) return "building";
+  if (sessions.some((s) => isActive(s.state) && !waitsForMerge(s))) return "building";
+  if (sessions.some((s) => waitsForMerge(s))) return "ready";
   const latest = [...sessions].reverse().find((s) => s.state !== "dropped");
   if (latest?.state === "stuck") return "stuck";
   if (spec?.status === "merged" || sessions.some((s) => s.state === "merged")) return "merged";
@@ -123,7 +125,7 @@ export function featureTree(features: readonly FeatureNode[]): TreeNode[] {
     const session = currentSession(feature) as SessionNode;
     const path = new Set([...seen, feature.id]);
     const children = built.filter((f) => f.parent === feature.id && !path.has(f.id)).map((f) => make(f, path));
-    return { feature, session, group: groupOf(session.state, session.needs, session.budget), children: sortTree(children) };
+    return { feature, session, group: groupOf(session.state, session.needs, session.budget, session.ready), children: sortTree(children) };
   };
   const roots = built.filter((f) => !f.parent || !ids.has(f.parent) || f.parent === f.id).map((f) => make(f, new Set()));
   const placed = new Set<string>();
@@ -141,7 +143,7 @@ export function featureTree(features: readonly FeatureNode[]): TreeNode[] {
   return sortTree(roots);
 }
 
-const STATUS_ORDER: Readonly<Record<FeatureStatus, number>> = { stuck: 0, building: 1, proposed: 2, merged: 3, dropped: 4 };
+const STATUS_ORDER: Readonly<Record<FeatureStatus, number>> = { stuck: 0, ready: 1, building: 2, proposed: 3, merged: 4, dropped: 5 };
 
 export function sortFeatures(list: readonly FeatureNode[]): FeatureNode[] {
   return [...list].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
@@ -151,11 +153,19 @@ export type SessionGroup = "needs-you" | "working" | "live" | "stopped";
 
 export const GROUPS: readonly SessionGroup[] = ["needs-you", "working", "live", "stopped"];
 
-export function groupOf(state: SessionState, needs: readonly string[] = [], budget: string | null = null): SessionGroup {
-  if (state === "stuck" || ((needs.length > 0 || budget !== null) && isActive(state))) return "needs-you";
+export function groupOf(state: SessionState, needs: readonly string[] = [], budget: string | null = null, ready: string | null = null): SessionGroup {
+  if (state === "stuck" || ((needs.length > 0 || budget !== null || ready !== null) && isActive(state))) return "needs-you";
   if (state === "merged") return "live";
   if (state === "dropped") return "stopped";
   return "working";
+}
+
+export function waitsForMerge(node: Pick<SessionNode, "state" | "ready">): string | null {
+  return node.state === "gating" ? node.ready : null;
+}
+
+export function nodeStatus(node: Pick<SessionNode, "state" | "ready">): FeatureStatus {
+  return waitsForMerge(node) ? "ready" : statusOf(node.state);
 }
 
 export function waitsForKey(node: Pick<SessionNode, "state" | "needs">): boolean {
@@ -168,7 +178,7 @@ export function waitsForBudget(node: Pick<SessionNode, "state" | "budget">): str
 
 export function groupSessions(sessions: readonly SessionNode[]): Record<SessionGroup, SessionNode[]> {
   const groups: Record<SessionGroup, SessionNode[]> = { "needs-you": [], working: [], live: [], stopped: [] };
-  for (const s of sessions) groups[groupOf(s.state, s.needs, s.budget)].push(s);
+  for (const s of sessions) groups[groupOf(s.state, s.needs, s.budget, s.ready)].push(s);
   for (const list of Object.values(groups)) list.sort((a, b) => b.updatedAt - a.updatedAt);
   return groups;
 }

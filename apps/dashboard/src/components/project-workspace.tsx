@@ -124,7 +124,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
       feature,
       session,
       projects,
-      panelExpanded: expanded && feature !== null,
+      panelExpanded: expanded && (feature !== null || activeTab === LIVE_TAB),
       expandPanel: setExpanded,
       addProject: () => {
         setTreeSheet(false);
@@ -193,7 +193,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
     [],
   );
 
-  const showTabs = !(expanded && feature !== null);
+  const showTabs = !(expanded && (feature !== null || activeTab === LIVE_TAB));
   return (
     <WorkspaceContext.Provider value={workspace}>
       <Shown />
@@ -244,9 +244,9 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
           </Sheet>
         </>
       ) : null}
-      <Dialog open={expanded && feature !== null} onOpenChange={setExpanded}>
+      <Dialog open={expanded && (feature !== null || activeTab === LIVE_TAB)} onOpenChange={setExpanded}>
         <DialogContent showCloseButton={false} className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none" aria-describedby={undefined}>
-          <DialogTitle className="sr-only">{feature?.title ?? "Feature"}</DialogTitle>
+          <DialogTitle className="sr-only">{feature?.title ?? (activeTab === LIVE_TAB ? "main" : "Feature")}</DialogTitle>
           <TabContent />
         </DialogContent>
       </Dialog>

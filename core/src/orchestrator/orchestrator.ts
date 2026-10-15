@@ -1,5 +1,5 @@
 import type { ChefEvent } from "../events/events.ts";
-import { applyChanges, changedPaths, diffTrees, type Author, type Commit, type FileChanges, type Resolver, type Tree } from "../git/tree.ts";
+import { applyChanges, changedPaths, diffTrees, type Author, type Commit, type CommitSummary, type FileChanges, type Resolver, type Tree } from "../git/tree.ts";
 import { NOTES_NAMESPACE, PROOF_NAMESPACE, parseNote, renderNote, type TurnNote } from "../notes/notes.ts";
 import type { CheckResult, CheckRunner, ProofRecord, ProofRunner } from "../ports/check-runner.ts";
 import type { Classifier } from "../ports/classifier.ts";
@@ -75,7 +75,12 @@ export interface ProjectConfig {
   readonly previewLink?: (key: string) => string;
   readonly environment?: () => Promise<readonly EnvVar[]>;
   readonly instructions?: () => Promise<string>;
+  readonly merge?: () => Promise<MergeMode>;
 }
+
+export const MERGE_MODES = ["auto", "manual"] as const;
+
+export type MergeMode = (typeof MERGE_MODES)[number];
 
 export interface SubmitResult {
   readonly decision: RouteDecision;
@@ -113,6 +118,34 @@ export interface SessionChanges {
   readonly base: string | null;
   readonly head: string | null;
   readonly files: readonly { readonly path: string; readonly before: string | null; readonly after: string | null }[];
+}
+
+export interface HistoryEntry {
+  readonly id: string;
+  readonly parents: readonly string[];
+  readonly message: string;
+  readonly author: string;
+  readonly timestamp: number;
+  readonly note: { readonly feature: string; readonly session: string; readonly role: string; readonly kind: string; readonly prompt: string } | null;
+}
+
+export interface MainHistory {
+  readonly head: string | null;
+  readonly commits: readonly HistoryEntry[];
+  readonly more: boolean;
+}
+
+export interface SessionHistory {
+  readonly branch: string;
+  readonly from: string | null;
+  readonly head: string | null;
+  readonly merged: string | null;
+  readonly commits: readonly HistoryEntry[];
+}
+
+export interface CommitChanges {
+  readonly commit: HistoryEntry;
+  readonly files: SessionChanges["files"];
 }
 
 export class Orchestrator {
@@ -367,6 +400,15 @@ export class Orchestrator {
     return record;
   }
 
+  async approveMerge(id: string): Promise<SessionRecord> {
+    const record = await this.session(id);
+    if (record.machine.state !== "gating" || !record.ready || record.ready.approved) throw new ControlError(`session ${id} is not waiting to be merged`);
+    record.ready = { ...record.ready, approved: true };
+    await this.emit({ type: "session.ready", sessionId: id, featureId: record.featureId, commitId: null });
+    await this.save(record);
+    return record;
+  }
+
   async retry(id: string, guidance: string): Promise<SessionRecord> {
     const record = await this.session(id);
     if (record.machine.state !== "stuck") throw new ControlError(`only a stuck session can be retried, and ${id} is ${record.machine.state}`);
@@ -460,6 +502,51 @@ export class Orchestrator {
     const clip = (text: string | undefined) => (text === undefined ? null : text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text);
     const files = changedPaths(diffTrees(base.tree, head.tree)).map((path) => ({ path, before: clip(base.tree[path]), after: clip(head.tree[path]) }));
     return { base: base.id, head: head.id, files };
+  }
+
+  async history(limit = 50): Promise<MainHistory> {
+    const head = await this.deps.repos.resolveRef(this.canonical, "main");
+    if (!head) return { head: null, commits: [], more: false };
+    const commits = await this.deps.repos.history(this.canonical, "main", limit + 1);
+    return { head, commits: await Promise.all(commits.slice(0, limit).map((c) => this.historyEntry(c))), more: commits.length > limit };
+  }
+
+  async commitChanges(id: string, maxChars = 100_000): Promise<CommitChanges | null> {
+    return this.changesIn(this.canonical, id, maxChars);
+  }
+
+  async sessionHistory(id: string): Promise<SessionHistory> {
+    const record = await this.session(id);
+    const repo = this.repoOf(record);
+    const commits = (await Promise.all([...record.commits].reverse().map((c) => this.deps.repos.readCommit(repo, c)))).filter((c): c is Commit => c !== null);
+    return {
+      branch: record.fork,
+      from: commits.at(-1)?.parents[0] ?? record.baseMain,
+      head: record.head,
+      merged: record.merge?.commitId ?? null,
+      commits: await Promise.all(commits.map((c) => this.historyEntry(c, repo))),
+    };
+  }
+
+  async sessionCommit(id: string, commitId: string, maxChars = 100_000): Promise<CommitChanges | null> {
+    const record = await this.session(id);
+    if (!record.commits.includes(commitId)) return null;
+    return this.changesIn(this.repoOf(record), commitId, maxChars);
+  }
+
+  private async changesIn(repo: string, id: string, maxChars: number): Promise<CommitChanges | null> {
+    const commit = await this.deps.repos.readCommit(repo, id);
+    if (!commit) return null;
+    const parent = commit.parents[0] ? await this.deps.repos.readCommit(repo, commit.parents[0]) : null;
+    const before = parent?.tree ?? {};
+    const clip = (text: string | undefined) => (text === undefined ? null : text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text);
+    const files = changedPaths(diffTrees(before, commit.tree)).map((path) => ({ path, before: clip(before[path]), after: clip(commit.tree[path]) }));
+    return { commit: await this.historyEntry(commit, repo), files };
+  }
+
+  private async historyEntry(commit: CommitSummary, repo = this.canonical): Promise<HistoryEntry> {
+    const note = parseNote(await this.deps.repos.readNote(repo, NOTES_NAMESPACE, commit.id).catch(() => null));
+    return { id: commit.id, parents: commit.parents, message: commit.message, author: commit.author.name, timestamp: commit.timestamp, note: note ? { feature: note.feature, session: note.session, role: note.role, kind: note.kind, prompt: note.prompt } : null };
   }
 
   async drain(maxRounds = 200): Promise<SessionRecord[]> {
@@ -824,6 +911,7 @@ export class Orchestrator {
     }
     const outcome = await this.gate(record);
     if (outcome.requeue) return;
+    record.ready = null;
     await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: outcome.ok, checks: outcome.checks });
     if (record.machine.state !== "gating") return;
     if (outcome.ok) {
@@ -833,6 +921,19 @@ export class Orchestrator {
     } else {
       await this.apply(record, { type: "gate_failed", log: formatChecks(outcome.checks.filter((c) => !c.ok)) });
     }
+  }
+
+  private async gateChecks(record: SessionRecord, head: Commit): Promise<CheckResult[]> {
+    const checks: CheckResult[] = [...(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }))];
+    checks.push(await this.scopeCheck(record));
+    if (this.specialization.lockTests) checks.push(await this.lockedCheck(record));
+    checks.push(await this.verdictCheck(record));
+    checks.push(await this.proofCheck(record, head));
+    return checks;
+  }
+
+  private async mergeMode(): Promise<MergeMode> {
+    return this.config.merge ? this.config.merge() : "auto";
   }
 
   private async heldForHotfix(record: SessionRecord): Promise<boolean> {
@@ -847,12 +948,16 @@ export class Orchestrator {
     const synced = await this.syncFromMain(record);
     if (synced === "conflict") return { ok: false, checks: [], requeue: true };
     const head = await this.commitOf(record.fork, record.head);
-    const checks: CheckResult[] = [...(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }))];
-    checks.push(await this.scopeCheck(record));
-    if (this.specialization.lockTests) checks.push(await this.lockedCheck(record));
-    checks.push(await this.verdictCheck(record));
-    checks.push(await this.proofCheck(record, head));
+    const approved = record.ready?.approved === true;
+    const checks = approved && record.ready?.commitId === head.id ? record.ready.checks : await this.gateChecks(record, head);
     if (checks.some((c) => !c.ok)) return { ok: false, checks };
+    if (!approved && (await this.mergeMode()) === "manual") {
+      if (record.ready?.commitId === head.id) return { ok: false, checks, requeue: true };
+      record.ready = { commitId: head.id, checks, approved: false };
+      await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: true, checks });
+      await this.emit({ type: "session.ready", sessionId: record.id, featureId: record.featureId, commitId: head.id });
+      return { ok: false, checks, requeue: true };
+    }
     return this.mergeQueue.run(async () => {
       const mainHead = await this.deps.repos.resolveRef(this.canonical, "main");
       if (!mainHead || mainHead !== record.baseMain) {
@@ -1655,7 +1760,7 @@ export function transient(error: unknown): boolean {
 }
 
 export function runnable(record: SessionRecord): boolean {
-  return !isTerminal(record.machine.state) && !record.needs?.length && !record.overBudget;
+  return !isTerminal(record.machine.state) && !record.needs?.length && !record.overBudget && !(record.ready && !record.ready.approved);
 }
 
 function sameNames(a: readonly string[], b: readonly string[]): boolean {

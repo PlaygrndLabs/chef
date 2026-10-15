@@ -45,6 +45,7 @@ export type ChefEvent = Base &
     | { readonly type: "external.pull-request"; readonly url: string; readonly number: number; readonly branch: string; readonly features: readonly string[] }
     | { readonly type: "session.stuck"; readonly sessionId: string; readonly featureId: string; readonly reason: string }
     | { readonly type: "session.steered"; readonly sessionId: string; readonly featureId: string; readonly message: string }
+    | { readonly type: "session.ready"; readonly sessionId: string; readonly featureId: string; readonly commitId: string | null }
     | { readonly type: "session.needs"; readonly sessionId: string; readonly featureId: string; readonly names: readonly string[] }
     | { readonly type: "session.budget"; readonly sessionId: string; readonly featureId: string; readonly reason: string | null }
     | { readonly type: "turn.rejected"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly rule: RejectionRule; readonly paths: readonly string[]; readonly lane?: string }

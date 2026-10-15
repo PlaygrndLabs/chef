@@ -263,28 +263,6 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
   );
 }
 
-export function ChangesTab({ node }: { readonly node: SessionNode }) {
-  const { api } = useWorkspace();
-  const head = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
-  const changes = useFetch(() => api.changes(node.id), `${node.id}:${head}:${node.state}`, node.id);
-  if (changes.loading && !changes.data) return <Skeleton className="h-40" />;
-  if (changes.error) return <Empty>{changes.error}</Empty>;
-  const files = changes.data?.files ?? [];
-  if (!files.length) return <Empty>No code has changed yet.</Empty>;
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">
-        {files.length} {files.length === 1 ? "file" : "files"} changed compared with the live app.
-      </p>
-      <div className="overflow-hidden rounded-xl border">
-        {files.map((f) => (
-          <FileDiff key={f.path} path={f.path} before={f.before} after={f.after} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function Meter({ label, value, max, text }: { readonly label: string; readonly value: number; readonly max: number; readonly text: string }) {
   const pct = max ? Math.min(100, Math.round((value / max) * 100)) : 0;
   return (
@@ -394,19 +372,11 @@ export function SessionPreview({ feature, node }: { readonly feature: FeatureNod
 }
 
 export function LiveApp() {
-  const { data, selection } = useWorkspace();
+  const { data } = useWorkspace();
   const live = data.spec?.live ?? null;
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-view="live">
-      <div className="flex items-center gap-2">
-        <h2 className="truncate text-sm font-medium">{selection.project}</h2>
-        <span className="font-mono text-xs text-muted-foreground">main {short(live?.commitId ?? data.spec?.commitId) || ""}</span>
-      </div>
-      {live?.url ? (
-        <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} start="/" live />
-      ) : (
-        <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "Chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
-      )}
-    </div>
+  return live?.url ? (
+    <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} start="/" live />
+  ) : (
+    <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "Chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
   );
 }
