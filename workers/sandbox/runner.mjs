@@ -6,6 +6,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 const job = JSON.parse(Buffer.from(process.env.CHEF_JOB ?? "", "base64").toString("utf8"));
 const dir = join(process.env.CHEF_WORKSPACE ?? "/workspace", job.sessionId, "repo");
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
+const INSTALLED_DIRS = ["node_modules", ".pnpm-store", ".yarn/cache", "__pycache__", ".venv"];
 const git = (...args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 
 function clone(target) {
@@ -35,11 +36,12 @@ if (existsSync(join(dir, ".git"))) {
 }
 git("config", "user.email", "ma.karimi76@gmail.com");
 git("config", "user.name", "chef");
+const exclude = join(dir, ".git", "info", "exclude");
+const excluded = existsSync(exclude) ? readFileSync(exclude, "utf8") : "";
+const installed = INSTALLED_DIRS.filter((name) => !excluded.split("\n").includes(name));
+if (installed.length) appendFileSync(exclude, `\n${installed.join("\n")}\n`);
 const modules = process.env.CHEF_NODE_MODULES ?? "/opt/chef/template/node_modules";
-if (!job.ownStructure && existsSync(modules) && !existsSync(join(dir, "node_modules"))) {
-  symlinkSync(modules, join(dir, "node_modules"), "dir");
-  appendFileSync(join(dir, ".git", "info", "exclude"), "\nnode_modules\n");
-}
+if (!job.ownStructure && existsSync(modules) && !existsSync(join(dir, "node_modules"))) symlinkSync(modules, join(dir, "node_modules"), "dir");
 
 const env = {
   PATH: process.env.PATH ?? "",
