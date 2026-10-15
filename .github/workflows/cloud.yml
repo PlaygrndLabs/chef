@@ -51,6 +51,7 @@ jobs:
       ENV_LATER: ${{ inputs.env_later }}
       CHECK_PATH: ${{ inputs.check_path }}
       CHECK_TEXT: ${{ inputs.check_text }}
+      EVENTS_FILE: ${{ github.workspace }}/results/events.jsonl
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -62,6 +63,7 @@ jobs:
       - name: Send the prompt and follow its sessions while tailing the Worker
         working-directory: workers
         run: |
+          mkdir -p ../results
           npx wrangler tail chef-dev --format json > "$RUNNER_TEMP/tail.jsonl" 2> "$RUNNER_TEMP/tail.err" &
           sleep 15
           bash ../.github/scripts/follow.sh
@@ -70,3 +72,8 @@ jobs:
         run: |
           jq -r 'select(.outcome != "ok" or (.logs | length) > 0 or (.exceptions | length) > 0) | [.eventTimestamp, .outcome, ((.event.request.url // .event.rpcMethod // "") | tostring), ((.exceptions // []) | map(.name + ": " + .message) | join(" | ")), ((.logs // []) | map(.message | map(tostring) | join(" ")) | join(" | "))] | @tsv' "$RUNNER_TEMP/tail.jsonl" | cut -c1-2000 | tail -300
           tail -20 "$RUNNER_TEMP/tail.err"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloud-events
+          path: results/

@@ -24,7 +24,8 @@ end=$((SECONDS + MINUTES * 60))
 while [ $SECONDS -lt $end ]; do
   events=$(curl -sS -m 60 -H "$auth" "$api/events?after=$last" || echo '[]')
   if [ "$(echo "$events" | jq 'length' 2>/dev/null || echo 0)" != "0" ]; then
-    echo "$events" | jq -r '.[] | select(.event.type != "assistant.message_delta" and .event.type != "tool.execution_start") | "\(.seq) \(.event.type) \(.event.sessionId // "") \(.event.from // "")->\(.event.to // "") \(.event.reason // .event.url // .event.message // .event.summary // "" | tostring | .[0:1500])"'
+    [ -n "${EVENTS_FILE:-}" ] && echo "$events" | jq -c '.[]' >> "$EVENTS_FILE"
+    echo "$events" | jq -r '.[] | select(.event.type != "assistant.message_delta" and .event.type != "tool.execution_start") | "\((.event.at // 0) / 1000 | strftime("%H:%M:%S")) \(.seq) \(.event.type) \(.event.sessionId // "") \(.event.from // "")->\(.event.to // "") \(.event.reason // .event.url // .event.message // .event.summary // "" | tostring | .[0:1500])"'
     last=$(echo "$events" | jq '.[-1].seq')
   fi
   sessions=$(curl -sS -m 60 -H "$auth" "$api/sessions" || echo '[]')
