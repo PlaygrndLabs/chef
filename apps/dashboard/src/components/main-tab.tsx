@@ -3,8 +3,9 @@ import { Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HistoryView } from "@/components/history-view";
-import { LiveApp } from "@/components/session-sections";
-import { short } from "@/lib/format";
+import { MainApp } from "@/components/session-sections";
+import { ToneBadge } from "@/components/status";
+import { APP_STATUS_LABEL, APP_TONE, short } from "@/lib/format";
 import { useWorkspace } from "@/lib/workspace";
 
 type Section = "app" | "history";
@@ -32,12 +33,17 @@ export function MainTab() {
     setSection(next);
     remember(selection.project, next);
   };
-  const live = data.spec?.live ?? null;
+  const app = data.spec?.mainApp ?? null;
   return (
-    <Tabs value={section} onValueChange={(v) => show(v as Section)} className="flex h-full min-h-0 flex-col gap-0 bg-background" data-view="live" data-section={section}>
+    <Tabs value={section} onValueChange={(v) => show(v as Section)} className="flex h-full min-h-0 flex-col gap-0 bg-background" data-view="main" data-section={section}>
       <header className="flex h-12 shrink-0 items-center gap-2.5 px-4">
         <h1 className="min-w-0 truncate text-base font-medium">{selection.project}</h1>
-        <span className="font-mono text-xs text-muted-foreground">main {short(live?.commitId ?? data.spec?.commitId) || ""}</span>
+        <span className="font-mono text-xs text-muted-foreground">main {short(app?.commitId ?? data.spec?.commitId) || ""}</span>
+        {app ? (
+          <span title="Main's app is the release candidate" data-main-app={app.status}>
+            <ToneBadge tone={APP_TONE[app.status]}>{APP_STATUS_LABEL[app.status]}</ToneBadge>
+          </span>
+        ) : null}
         <span className="flex-1" />
         <Button variant="ghost" size="icon-sm" onClick={() => expandPanel(!panelExpanded)} aria-label={panelExpanded ? "Make smaller" : "Open large"} title={panelExpanded ? "Make smaller" : "Open large"}>
           {panelExpanded ? <Minimize2 /> : <Maximize2 />}
@@ -46,7 +52,7 @@ export function MainTab() {
       <div className="flex shrink-0 items-center border-b px-3 pb-2">
         <TabsList className="h-8 max-w-full justify-start">
           <TabsTrigger value="app" className="min-w-0 px-2.5 text-[13px]">
-            Live app
+            App
           </TabsTrigger>
           <TabsTrigger value="history" className="min-w-0 px-2.5 text-[13px]">
             History
@@ -54,7 +60,7 @@ export function MainTab() {
         </TabsList>
       </div>
       <TabsContent value="app" className="flex min-h-0 flex-1 flex-col p-4">
-        <LiveApp />
+        <MainApp />
       </TabsContent>
       <TabsContent value="history" className="flex min-h-0 flex-1 flex-col">
         <HistoryView />

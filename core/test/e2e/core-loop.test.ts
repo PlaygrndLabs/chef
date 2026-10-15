@@ -6,7 +6,7 @@ import { fixture, scriptFromFixture, templateTree, todoSpec, world } from "../ha
 const PROMPT = "Add an item to a todo list";
 
 describe("phase 1 core loop on fakes", () => {
-  it("takes one prompt to canonical main with proof, notes and a preview from the first commit", async () => {
+  it("takes one prompt to canonical main with proof, notes and a running app from the first commit", async () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]) });
     const initial = await w.orchestrator.bootstrap(templateTree());
     const { decision, sessionId } = await w.orchestrator.submit(PROMPT);
@@ -37,9 +37,10 @@ describe("phase 1 core loop on fakes", () => {
     const started = w.bus.log.flatMap((e) => (e.type === "agent.started" ? [e.role] : []));
     expect([...new Set(started)]).toEqual(["planner", "test", "backend", "reviewer"]);
 
-    expect(record.firstPreviewCommit).toBe(record.commits[0]);
-    expect(w.previews.deployments[0]?.commitId).toBe(record.commits[0]);
-    expect(w.bus.log.find((e) => e.type === "preview.updated")).toBeDefined();
+    expect(record.firstAppCommit).toBe(record.commits[0]);
+    expect(w.apps.runs[0]).toMatchObject({ target: record.id, repo: record.fork, commitId: record.commits[0] });
+    expect(w.bus.log.find((e) => e.type === "app.updated" && e.status === "running")).toBeDefined();
+    expect(w.proofs.proofs.at(-1)?.url).toBe(`http://${record.id}.local.example`);
 
     const proofCommit = w.proofs.proofs.at(-1)?.commitId as string;
     const proof = JSON.parse((await w.repos.readNote("demo", PROOF_NAMESPACE, proofCommit)) ?? "null");

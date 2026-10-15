@@ -16,9 +16,9 @@ const PAGE = 50;
 const CONTEXT = 3;
 
 type FileChange = CommitChanges["files"][number];
-type Mark = "live" | "pulled" | "pushed";
+type Mark = "app" | "pulled" | "pushed";
 
-const MARK_LABEL: Readonly<Record<Mark, string>> = { live: "Live", pulled: "From GitHub", pushed: "On GitHub" };
+const MARK_LABEL: Readonly<Record<Mark, string>> = { app: "App runs it", pulled: "From GitHub", pushed: "On GitHub" };
 
 interface Line {
   readonly kind: "same" | "add" | "del";
@@ -79,7 +79,7 @@ function fileState(file: FileChange): { readonly letter: string; readonly title:
 }
 
 function MarkChip({ mark }: { readonly mark: Mark }) {
-  return <span className={cn("shrink-0 border px-1 font-mono text-[10px] leading-4 tracking-wider uppercase", mark === "live" ? "border-brand bg-brand text-brand-foreground" : "border-foreground/30 text-muted-foreground")}>{MARK_LABEL[mark]}</span>;
+  return <span className={cn("shrink-0 border px-1 font-mono text-[10px] leading-4 tracking-wider uppercase", mark === "app" ? "border-brand bg-brand text-brand-foreground" : "border-foreground/30 text-muted-foreground")}>{MARK_LABEL[mark]}</span>;
 }
 
 function CommitRow({ entry, marks, selected, onSelect }: { readonly entry: HistoryEntry; readonly marks: readonly Mark[]; readonly selected: boolean; readonly onSelect: () => void }) {
@@ -346,16 +346,17 @@ export function HistoryView() {
   const head = data.spec?.commitId ?? "";
   const history = useFetch(() => api.history(limit), `${head}:${limit}`, "history");
   const git = useFetch(() => api.git(), head, "git");
+  const mainApp = data.spec?.mainApp ?? null;
   const marks = useMemo(() => {
     const out = new Map<string, Mark[]>();
     const add = (id: string | null | undefined, mark: Mark) => {
       if (id) out.set(id, [...(out.get(id) ?? []), mark]);
     };
-    add(data.spec?.live?.commitId, "live");
+    add(mainApp?.status === "running" ? mainApp.commitId : null, "app");
     add(git.data?.state?.pulled, "pulled");
     add(git.data?.state?.pushed, "pushed");
     return out;
-  }, [data.spec?.live?.commitId, git.data]);
+  }, [mainApp?.status, mainApp?.commitId, git.data]);
   const link = git.data?.settings ?? null;
   return (
     <GitView
@@ -404,7 +405,7 @@ export function BranchView({ node }: { readonly node: SessionNode }) {
       commits={branch?.commits ?? null}
       error={history.error ? `Could not load this branch: ${history.error}` : null}
       empty="No commits on this branch yet."
-      summary={{ title: "All changes", note: merged ? "compared with main before it went live" : "compared with the live app", key, load: () => api.changes(node.id).then((c) => c.files) }}
+      summary={{ title: "All changes", note: merged ? "compared with main before it was merged" : "compared with main", key, load: () => api.changes(node.id).then((c) => c.files) }}
       load={(id) => api.sessionCommit(node.id, id)}
     />
   );

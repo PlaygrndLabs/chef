@@ -12,7 +12,7 @@ const KIND: Readonly<Record<CloudflareKind, string>> = {
   repo: "Artifacts",
   branch: "Artifacts",
   container: "Container",
-  preview: "Workers",
+  app: "Container",
   worker: "Workers",
   "durable-object": "Durable Objects",
   workflow: "Workflows",

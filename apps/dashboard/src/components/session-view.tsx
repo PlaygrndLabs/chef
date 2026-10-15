@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChecksTab, DetailsTab, Empty, RoleWork, SessionPreview } from "@/components/session-sections";
+import { ChecksTab, DetailsTab, Empty, RoleWork, SessionApp } from "@/components/session-sections";
 import { KeyPrompt } from "@/components/environment";
 import { BranchView } from "@/components/history-view";
 import { KindBadges, StatusDot, StatusPill } from "@/components/status";
@@ -181,7 +181,7 @@ function MergePrompt({ node }: { readonly node: SessionNode }) {
     <div className="flex flex-wrap items-center gap-3 border border-brand/30 bg-brand/5 p-4" data-merge-ready={node.id}>
       <div className="min-w-0 flex-1">
         <div className="font-medium">Ready to merge</div>
-        <p className="text-sm text-muted-foreground">This build passed every check. Merging puts it on main and the live app. If main changed since, Chef takes those changes in and checks again first.</p>
+        <p className="text-sm text-muted-foreground">This build passed every check. Merging puts it on main, and main's app, the release candidate, runs it next. If main changed since, Chef takes those changes in and checks again first.</p>
       </div>
       <Button type="button" size="sm" onClick={() => void merge()} disabled={busy}>
         <GitMerge />
@@ -216,7 +216,7 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
         <button type="button" onClick={focusComposer} className="underline underline-offset-2 hover:text-foreground">
           chat
         </button>{" "}
-        what to do differently, or stop this build. The live app is not affected.
+        what to do differently, or stop this build. Main and its app are not affected.
       </p>
       {feedback ? (
         <Collapsible>
@@ -310,7 +310,7 @@ function Related({ node }: { readonly node: SessionNode }) {
             </li>
           ))}
         </ol>
-        <p className="text-xs text-muted-foreground">{r.parent ? `This build continues from ${r.parent.id}. ` : ""}Each new build starts from the live app, so earlier work that went live is kept.</p>
+        <p className="text-xs text-muted-foreground">{r.parent ? `This build continues from ${r.parent.id}. ` : ""}Each new build starts from main, so earlier work that was merged is kept.</p>
       </div>
     </section>
   );
@@ -383,7 +383,7 @@ function PickReasons({ node }: { readonly node: SessionNode }) {
 }
 
 const SECTIONS: readonly { readonly value: PanelTab; readonly label: string }[] = [
-  { value: "preview", label: "Preview" },
+  { value: "app", label: "App" },
   { value: "messages", label: "Messages" },
   { value: "changes", label: "Changes" },
   { value: "checks", label: "Checks" },
@@ -457,7 +457,7 @@ function Scroll({ children }: { readonly children: React.ReactNode }) {
   return <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>;
 }
 
-function Sharing(props: { readonly project: string; readonly title: string; readonly session: string; readonly preview: string | null; readonly onClose: () => void }) {
+function Sharing(props: { readonly project: string; readonly title: string; readonly session: string; readonly onClose: () => void }) {
   const Custom = host.Share;
   if (Custom) return <Custom project={props.project} kind="session" id={props.session} title={props.title} onClose={props.onClose} />;
   return <ShareDialog target={props} open onOpenChange={(open) => (open ? undefined : props.onClose())} />;
@@ -468,7 +468,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
   const node = currentSession(feature, selection.session);
   const [stopping, setStopping] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const section = selection.panel ?? "preview";
+  const section = selection.panel ?? "app";
   const active = node ? isActive(node.state) : false;
   const chore = node ? isChore(node) : feature.id.startsWith("chore-") && !feature.onMain;
 
@@ -562,8 +562,8 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
           {node.state === "stuck" ? <NeedsYou node={node} /> : waitsForKey(node) ? <KeyPrompt names={node.needs} api={api} onSaved={data.refresh} /> : <MergePrompt node={node} />}
         </div>
       ) : null}
-      <TabsContent value="preview" className="flex min-h-0 flex-1 flex-col p-4">
-        <SessionPreview feature={feature} node={node} />
+      <TabsContent value="app" className="flex min-h-0 flex-1 flex-col p-4">
+        <SessionApp feature={feature} node={node} />
       </TabsContent>
       <TabsContent value="messages" className="flex min-h-0 flex-1 flex-col">
         <Messages feature={feature} node={node} />
@@ -578,7 +578,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
         <Scroll>{node ? <DetailsTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>
       </TabsContent>
       {node ? <StopDialog node={node} open={stopping} onOpenChange={setStopping} /> : null}
-      {node && sharing ? <Sharing project={selection.project} title={feature.title} session={node.id} preview={node.record?.previewKey ?? null} onClose={() => setSharing(false)} /> : null}
+      {node && sharing ? <Sharing project={selection.project} title={feature.title} session={node.id} onClose={() => setSharing(false)} /> : null}
     </Tabs>
   );
 }

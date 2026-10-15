@@ -54,12 +54,12 @@ describe("project settings", () => {
     expect(applyProjectUpdate(undefined, { git: { url: "https://gitlab.com/acme/app", github: true, mode: "branch" } }, secret, 5)).toMatchObject({ ok: false, error: expect.stringContaining("github.com") });
   });
 
-  it("unlinks and resets the preview idle time", () => {
-    const linked = applyProjectUpdate(undefined, { previewIdleMinutes: 30, git: { url: "https://github.com/acme/app", mode: "off" } }, secret);
+  it("unlinks and resets the app idle time", () => {
+    const linked = applyProjectUpdate(undefined, { appIdleMinutes: 30, git: { url: "https://github.com/acme/app", mode: "off" } }, secret);
     if (!linked.ok) throw new Error(linked.error);
-    const cleared = applyProjectUpdate(linked.settings, { previewIdleMinutes: null, git: null }, secret);
+    const cleared = applyProjectUpdate(linked.settings, { appIdleMinutes: null, git: null }, secret);
     if (!cleared.ok) throw new Error(cleared.error);
-    expect(readProjectSettings(cleared.settings)).toEqual({ previewIdleMinutes: 60, attempts: null, merge: "auto", git: null });
+    expect(readProjectSettings(cleared.settings)).toEqual({ appIdleMinutes: 60, attempts: null, merge: "auto", git: null });
     const manual = applyProjectUpdate(cleared.settings, { merge: "manual" }, secret);
     if (!manual.ok) throw new Error(manual.error);
     expect(viewProjectSettings(readProjectSettings(manual.settings)).merge).toBe("manual");

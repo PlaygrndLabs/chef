@@ -10,8 +10,8 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type LiveStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, PreviewKeeper, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PreviewHost, type PushedEvent, agentsOf, cloudflareView, engineOf, previewBranch, previewName, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
-import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type PlainEnvVar, type StoredEnv } from "@chef/adapters/project-env";
+import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type AppStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PushedEvent, agentsOf, cloudflareView, engineOf, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
+import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
 import { applyProjectUpdate, readProjectSettings, requestsGitHubApp, viewProjectSettings, type ProjectSettings } from "@chef/adapters/project-settings";
@@ -23,33 +23,35 @@ import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
-import { SandboxCheckRunner, SandboxLiveHost, SandboxPreviewHost, SandboxProofRunner } from "./sandbox-checks.ts";
+import { SandboxCheckRunner, SandboxProofRunner } from "./sandbox-checks.ts";
+import { SandboxAppHost } from "./app-host.ts";
+import { AppRouter, appName, routerName, RouterTakenError } from "./app-router.ts";
 import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
-import { previewPath, previewResponse, type PreviewAnswer } from "@chef/adapters/preview-page";
-import { newPreviewKey, OWNER_COOKIE_SECONDS, previewEntry, previewPass, PREVIEW_KEY_VAR, SHARE_COOKIE_SECONDS } from "@chef/adapters/preview-gate";
-import { previewScope, sessionScope, SHARE_HEADER, type ShareKind } from "./shares.ts";
-import { CloudflareWorkerSpace, WorkerTakenError, type EnvPatch } from "./preview-space.ts";
+import { appPath, appResponse, type AppAnswer } from "@chef/adapters/app-page";
+import { appEntry, newAppKey, OWNER_COOKIE_SECONDS, SHARE_COOKIE_SECONDS } from "@chef/adapters/app-gate";
+import { appScope, sessionScope, SHARE_HEADER, type ShareKind } from "./shares.ts";
 import { homeOrigin, ORIGIN_HEADER } from "./access.ts";
 import { publicOrigin } from "./github-pages.ts";
 import { gitHubApp } from "./github.ts";
 import { agentStore, currentSettings, envCipher, settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
-import type { SandboxStatus } from "./session-agent.ts";
+import type { AppState, SandboxStatus } from "./session-agent.ts";
 import { containerAppName, EngineIdCache } from "./cloudflare-ids.ts";
 
 const SESSION_ROUTE = /^\/api\/projects\/[a-z][a-z0-9-]{1,30}\/sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/;
-const PREVIEW_ROUTE = /^\/preview\/[a-z][a-z0-9-]{1,30}\/([a-z0-9-]{1,80})\/?$/;
+const APP_ROUTE = /^\/app\/[a-z][a-z0-9-]{1,30}\/([a-z0-9-]{1,40})\/?$/;
 const PROJECT_SETTINGS = "project/settings";
 const ORIGIN = "project/origin";
 const OVERVIEW = "project/overview";
 const ENV = "project/env";
 const AGENTS = "project/agents/";
-const LIVE = "project/live";
-const PREVIEW_KEY = "project/preview-key";
+const MAIN_APP = "project/main-app";
+const APP_KEY = "project/app-key";
+const ADDRESS = "project/address/";
 const REMOVING = "project/removing";
 
-export interface LiveState {
-  readonly status: LiveStatus;
+export interface MainAppState {
+  readonly status: AppStatus;
   readonly commitId: string;
   readonly url: string | null;
   readonly error?: string;
@@ -57,8 +59,8 @@ export interface LiveState {
 }
 const READING_TIMEOUT_MS = 10 * 60_000;
 const POLL_SECONDS = 300;
-const BUSY_SWEEP_SECONDS = 600;
-const DEPLOY_WAIT_SECONDS = 120;
+const MAIN_WAIT_SECONDS = 120;
+const STARTING_STALE_MS = 30 * 60_000;
 const NOTE_REPEAT_MS = 10 * 60_000;
 
 const generated = { "src/registry.gen.ts": (tree: Tree) => renderRegistry(Object.keys(tree)) };
@@ -72,11 +74,12 @@ function role(profiles: Profiles, name: string) {
 export class ProjectAgent extends Agent<Env> {
   private readonly pump = new SessionPump((work) => this.keepAliveWhile(work));
   private readonly calls = new Map<string, Promise<VoiceCall | null>>();
-  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; keeper: PreviewKeeper | null; space: CloudflareWorkerSpace | null; live: SandboxLiveHost | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
+  private built: { orchestrator: Orchestrator; bus: DurableEventBus; repos: ArtifactsRepoHost; apps: SandboxAppHost; router: AppRouter | null; external: ExternalSync | null; settings: Resolved; fingerprint: string } | null = null;
   private cipher: EnvCipher | null = null;
   private readonly engineIds = new EngineIdCache();
-  private deploying = false;
-  private deployAgain = false;
+  private runningMain = false;
+  private mainAgain = false;
+  private readonly waking = new Set<string>();
   private lastNote: { readonly note: string; readonly at: number } | null = null;
 
   private async build() {
@@ -104,13 +107,14 @@ export class ProjectAgent extends Agent<Env> {
     const llmReviewer = new LlmReviewer(llm, resolveModel(reviewerRole.model, settings.models), withSkills(reviewerRole.instructions, reviewerRole.skills));
     const store = new DurableStore(this.ctx.storage);
     const clock = { now: () => Date.now() };
-    const grant = settings.cloudflare ? { accountId: settings.cloudflare.accountId, worker: `${env.PROJECT_WORKER_PREFIX}${this.name}` } : null;
-    const space = settings.cloudflare && grant ? new CloudflareWorkerSpace(grant, settings.cloudflare.apiToken) : null;
-    const live = settings.cloudflare && grant ? new SandboxLiveHost(env.SESSION, repos, grant, settings.cloudflare.apiToken) : null;
-    const keeper =
-      settings.cloudflare && grant && space
-        ? new PreviewKeeper(new SandboxPreviewHost(env.SESSION, repos, grant, settings.cloudflare.apiToken, () => this.prepareEnvironment(space)), space, { repos, store, clock, canonical: this.name, onActivity: () => void this.scheduleSweep(), gated: true })
-        : null;
+    const engine = engineOf(env.PROJECT_WORKER_PREFIX);
+    const router = settings.cloudflare ? new AppRouter({ accountId: settings.cloudflare.accountId, apiToken: settings.cloudflare.apiToken }, routerName(engine), engine) : null;
+    const apps = new SandboxAppHost(env.SESSION, repos, {
+      project: this.name,
+      env: async () => Object.fromEntries((await revealEnv(await this.effectiveEnv(), this.envCipher())).map((v) => [v.name, v.value])),
+      idleMinutes: async () => (await this.projectSettings()).appIdleMinutes,
+      address: (sandbox) => this.address(sandbox),
+    });
     const orchestrator = new Orchestrator(
       {
         repos,
@@ -118,9 +122,9 @@ export class ProjectAgent extends Agent<Env> {
         classifier: settings.jev ? new JevClassifier(new TypeSafeClient({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL }), env.JEV_MODEL) : NO_CLASSIFIER,
         planner: new LlmPlanner(llm, resolveModel(plannerRole.model, settings.models), withSkills(plannerRole.instructions, plannerRole.skills)),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
-        previews: keeper ?? noPreviews,
+        apps,
         checks: new SandboxCheckRunner(env.SESSION, repos),
-        proofs: new SandboxProofRunner(env.SESSION, repos, async (url) => (keeper ? previewPass(url, await this.previewKey(), Date.now()) : null)),
+        proofs: new SandboxProofRunner(env.SESSION, repos),
         bus,
         clock,
         ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
@@ -135,7 +139,7 @@ export class ProjectAgent extends Agent<Env> {
         router: routerConfigOf(agents.config.router),
         generated,
         specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }), laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) },
-        previewLink: (key) => `/preview/${this.name}/${key}`,
+        appLink: (id) => `/app/${this.name}/${id}`,
         environment: async () => envNames(await this.effectiveEnv()),
         instructions: async () => (await settingsStub(env).sharedInstructions())?.text ?? "",
         merge: async () => (await this.projectSettings()).merge,
@@ -144,9 +148,9 @@ export class ProjectAgent extends Agent<Env> {
     const git = project.git;
     const installation = git?.installation;
     const tokenSource = app && installation !== undefined ? () => app.installationToken(installation) : undefined;
-    const external = git ? orchestrator.external(new GitRemote({ url: git.url, branch: git.branch, token: git.token, ...(tokenSource ? { tokenSource } : {}) }, control), { mode: git.mode, syncBranch: git.syncBranch, ...(origin ? { previewLink: (key: string) => `${origin}/preview/${this.name}/${key}` } : {}) }) : null;
+    const external = git ? orchestrator.external(new GitRemote({ url: git.url, branch: git.branch, token: git.token, ...(tokenSource ? { tokenSource } : {}) }, control), { mode: git.mode, syncBranch: git.syncBranch, ...(origin ? { mainAppLink: `${origin}/app/${this.name}/main` } : {}) }) : null;
     bus.subscribe((event) => void this.noteActivity(event, orchestrator).catch((error) => console.error(`noting ${this.name}'s activity failed`, error)));
-    this.built = { orchestrator, bus, repos, keeper, space, live, external, settings, fingerprint };
+    this.built = { orchestrator, bus, repos, apps, router, external, settings, fingerprint };
     return this.built;
   }
 
@@ -172,7 +176,7 @@ export class ProjectAgent extends Agent<Env> {
     if (url.pathname.endsWith("/git/webhook")) return this.webhook(request);
     const origin = request.headers.has(ORIGIN_HEADER) ? publicOrigin(request) : (homeOrigin(this.env) ?? url.origin);
     if ((await this.ctx.storage.get<string>(ORIGIN)) !== origin) await this.ctx.storage.put(ORIGIN, origin);
-    const { orchestrator, bus, settings, external, space } = await this.build();
+    const { orchestrator, bus, settings, external } = await this.build();
     const sessionHistory = SESSION_HISTORY_ROUTE.exec(url.pathname);
     if (sessionHistory && request.method === "GET") return sessionHistoryResponse(orchestrator, sessionHistory[1] as string, sessionHistory[2] ?? null);
     const session = SESSION_ROUTE.exec(url.pathname);
@@ -180,21 +184,21 @@ export class ProjectAgent extends Agent<Env> {
     const feature = FEATURE_ROUTE.exec(url.pathname);
     if (feature) {
       const { response, mainChanged } = await featureRequest(request, orchestrator, feature[1] as string);
-      if (mainChanged) await this.schedule(0, "deployLive", undefined, { idempotent: true });
+      if (mainChanged) await this.schedule(0, "runMainApp", undefined, { idempotent: true });
       return response;
     }
     const featureMap = FEATURE_MAP_ROUTE.exec(url.pathname);
     if (featureMap) {
       if (featureMap[1] && !settings.llm) return Response.json({ error: NO_LLM }, { status: 409 });
       const { response, mainChanged } = await featureMapRequest(request, orchestrator, Boolean(featureMap[1]));
-      if (mainChanged) await this.schedule(0, "deployLive", undefined, { idempotent: true });
+      if (mainChanged) await this.schedule(0, "runMainApp", undefined, { idempotent: true });
       return response;
     }
-    const preview = PREVIEW_ROUTE.exec(url.pathname);
-    if (preview && request.method === "GET") return this.previewRequest(preview[1] as string, url.searchParams.has("retry"), previewPath(url.searchParams.get("path")), url.searchParams.has("state"), request.headers.has(SHARE_HEADER));
-    if (action === "preview-key" && request.method === "POST") {
-      await this.ctx.storage.put(PREVIEW_KEY, newPreviewKey());
-      await this.schedule(0, "pushEnvironment");
+    const app = APP_ROUTE.exec(url.pathname);
+    if (app && request.method === "GET") return this.appRequest(app[1] as string, url.searchParams.has("retry"), appPath(url.searchParams.get("path")), url.searchParams.has("state"), request.headers.has(SHARE_HEADER));
+    if (action === "app-key" && request.method === "POST") {
+      await this.ctx.storage.put(APP_KEY, newAppKey());
+      await this.schedule(0, "refreshAddresses");
       return new Response(null, { status: 204 });
     }
     if (action === "settings" && url.pathname.endsWith(`/projects/${this.name}/settings`)) return this.settingsRequest(request);
@@ -215,36 +219,23 @@ export class ProjectAgent extends Agent<Env> {
     if (history && request.method === "GET") return historyResponse(orchestrator, history[1] ?? null, url.searchParams.get("limit"));
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
-      if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
-      return Response.json({ commitId: main.commitId, features: readSpec(main.tree), map: readFeatureMap(main.tree), layout: await orchestrator.layout(), live: (await this.ctx.storage.get<LiveState>(LIVE)) ?? null });
+      if (await this.mainBehind()) await this.schedule(0, "runMainApp", undefined, { idempotent: true });
+      return Response.json({ commitId: main.commitId, features: readSpec(main.tree), map: readFeatureMap(main.tree), layout: await orchestrator.layout(), mainApp: (await this.ctx.storage.get<MainAppState>(MAIN_APP)) ?? null });
     }
-    if (request.method === "POST" && action === "live") {
-      if (!space) return Response.json({ error: NO_CLOUDFLARE }, { status: 409 });
-      const current = await this.ctx.storage.get<LiveState>(LIVE);
-      if (current?.status === "failed") await this.ctx.storage.put<LiveState>(LIVE, { ...current, commitId: "" });
-      await this.schedule(0, "deployLive", undefined, { idempotent: true });
+    if (request.method === "POST" && action === "main-app") {
+      await this.schedule(0, "restartMainApp", undefined, { idempotent: true });
       return Response.json({ ok: true }, { status: 202 });
     }
     if (request.method === "POST" && action === "bootstrap") {
       return setupResponse(request, async (progress) => {
         const existing = (await orchestrator.mainTree()).commitId;
         if (existing) {
-          await this.schedule(0, "deployLive", undefined, { idempotent: true });
+          await this.schedule(0, "runMainApp", undefined, { idempotent: true });
           if (external) await this.ensurePolling();
           if ((await this.overview()).status === "none") await this.startReading();
           return { commitId: existing, created: false };
         }
-        if (space) {
-          progress.step("Reserve the live address");
-          try {
-            await space.ensure();
-            progress.log(`The live app will be at ${await space.liveUrl()}`);
-          } catch (error) {
-            if (error instanceof WorkerTakenError) throw new SetupError(error.message, 409);
-            throw error;
-          }
-        }
-        await this.schedule(5, "deployLive", undefined, { idempotent: true });
+        await this.schedule(5, "runMainApp", undefined, { idempotent: true });
         if (external) {
           const pulled = await external.pull(progress);
           if (pulled.status !== "imported") throw new SetupError(`importing the linked repository did not finish: ${pulled.status}`, 409);
@@ -296,27 +287,22 @@ export class ProjectAgent extends Agent<Env> {
   async removeProject(): Promise<{ readonly removed: readonly string[]; readonly kept: readonly string[] }> {
     await this.ctx.storage.put(REMOVING, true);
     for (const schedule of await this.listSchedules()) await this.cancelSchedule(schedule.id);
-    const { orchestrator, repos, space } = await this.build();
-    const worker = `${this.env.PROJECT_WORKER_PREFIX}${this.name}`;
+    const { orchestrator, repos, router } = await this.build();
     const sessions = await orchestrator.sessions();
     const removed: string[] = [];
     const kept: string[] = [];
-    const sandboxes = new Set([this.name, `live-${worker}`]);
+    const sandboxes = new Set([this.name, this.mainSandbox()]);
     for (const session of sessions) {
       sandboxes.add(session.id);
       for (const lane of session.lanes ?? []) sandboxes.add(sandboxName(session.id, lane.role));
-      sandboxes.add(`preview-${previewName(previewBranch(session.previewKey), worker)}`);
     }
     await Promise.all([...sandboxes].map((name) => (this.env.SESSION.get(this.env.SESSION.idFromName(name)) as unknown as { discard(): Promise<void> }).discard().catch(() => undefined)));
     removed.push(`stopped the work of ${sessions.length === 1 ? "1 session" : `${sessions.length} sessions`}`);
-    for (let waited = 0; this.deploying && waited < DEPLOY_WAIT_SECONDS; waited++) await new Promise((resolve) => setTimeout(resolve, 1000));
-    if (space) {
-      try {
-        if ((await space.removeWorker()) === "removed") removed.push(`removed the app ${worker} and its previews`);
-      } catch (error) {
-        if (!(error instanceof WorkerTakenError)) throw error;
-        kept.push(error.message);
-      }
+    for (let waited = 0; this.runningMain && waited < MAIN_WAIT_SECONDS; waited++) await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (router) {
+      const addressed = [...(await this.ctx.storage.list<{ readonly url: string }>({ prefix: ADDRESS })).keys()].map((key) => key.slice(ADDRESS.length));
+      await router.remove([this.mainSandbox(), ...sessions.map((session) => session.id), ...addressed].map((sandbox) => this.label(sandbox)));
+      removed.push("removed the addresses of its running apps");
     }
     const forgotten = await orchestrator.forgetMemory();
     if (forgotten > 0) removed.push(`forgot ${forgotten === 1 ? "1 memory entry" : `${forgotten} memory entries`}`);
@@ -371,10 +357,10 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   private async cloudflare(id: string): Promise<CloudflareView> {
-    const { orchestrator, repos, keeper, settings } = await this.build();
+    const { orchestrator, repos, router, settings } = await this.build();
     const record = await orchestrator.session(id);
     const engine = engineOf(this.env.PROJECT_WORKER_PREFIX);
-    const projectWorker = `${this.env.PROJECT_WORKER_PREFIX}${this.name}`;
+    const routerWorker = routerName(engine);
     const accountId = settings.cloudflare?.accountId ?? this.env.CF_ACCOUNT_ID ?? null;
     const lanes = record.lanes ?? [];
     const box = async (name: string): Promise<SandboxFacts> => {
@@ -382,82 +368,134 @@ export class ProjectAgent extends Agent<Env> {
       const status = await (this.env.SESSION.get(objectId) as unknown as { status(): Promise<SandboxStatus> }).status().catch(() => ({ running: false, exit: null }));
       return { name, objectId: objectId.toString(), running: status.running, exit: status.exit };
     };
-    const branch = previewBranch(record.previewKey);
-    const name = previewName(branch, projectWorker);
-    const [main, fork, ids, session, laneBoxes, previewBox, deployed, awake] = await Promise.all([
+    const [main, fork, ids, session, laneBoxes, mainBox] = await Promise.all([
       repos.info(this.name),
       record.forkDeleted ? Promise.resolve(null) : repos.info(record.fork),
       this.engineIds.ids(settings.cloudflare, engine),
       box(id),
       Promise.all(lanes.map(async (lane) => [lane.role, await box(sandboxName(id, lane.role))] as const)),
-      keeper ? box(`preview-${name}`) : Promise.resolve(null),
-      keeper ? keeper.current({ repo: this.name, branch }) : Promise.resolve(null),
-      keeper ? keeper.live() : Promise.resolve(false),
+      box(this.mainSandbox()),
     ]);
-    const live = (await this.ctx.storage.get<LiveState>(LIVE)) ?? null;
+    const mainApp = (await this.ctx.storage.get<MainAppState>(MAIN_APP)) ?? null;
     return cloudflareView({
       accountId,
       engine,
       project: this.name,
-      projectWorker,
+      router: routerWorker,
       projectObject: this.ctx.id.toString(),
       namespaces: ids.namespaces,
       containerApp: { name: containerAppName(engine), id: ids.containerApp },
       main: { remote: main?.remote ?? null, commitId: (await orchestrator.mainTree()).commitId },
       session: { id, fork: record.fork, remote: fork?.remote ?? null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: lanes.map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
       agents: agentsOf(record),
-      sandboxes: { session, lanes: Object.fromEntries(laneBoxes), preview: previewBox },
-      preview: keeper ? { name, branch, url: record.preview?.url ?? null, versionId: deployed?.versionId ?? null, commitId: deployed?.commitId ?? record.preview?.commitId ?? null, awake } : null,
-      live: live ? { url: live.url, commitId: live.commitId, status: live.status } : null,
+      sandboxes: { session, lanes: Object.fromEntries(laneBoxes), main: mainBox },
+      app: router ? { name: appName(this.label(id), routerWorker), url: record.app?.url ?? null, status: record.app?.status ?? null, commitId: record.app?.commitId ?? null } : null,
+      mainApp: mainApp ? { url: mainApp.url, commitId: mainApp.commitId, status: mainApp.status } : null,
     });
   }
 
-  private async previewRequest(key: string, retry: boolean, path: string, asState: boolean, viaShare: boolean): Promise<Response> {
-    const state = await this.previewState(key, retry);
+  private async appRequest(id: string, retry: boolean, path: string, asState: boolean, viaShare: boolean): Promise<Response> {
+    const state = await this.appAnswer(id, retry);
     const now = Date.now();
-    const enter = state.status === "ready" ? await previewEntry(state.url, await this.previewKey(), { path, now, cookieSeconds: viaShare ? SHARE_COOKIE_SECONDS : OWNER_COOKIE_SECONDS }) : undefined;
-    return previewResponse(state, { key, path, asState, now, ...(enter ? { enter } : {}) });
+    const enter = state.status === "ready" ? await appEntry(state.url, await this.appKey(), { path, now, cookieSeconds: viaShare ? SHARE_COOKIE_SECONDS : OWNER_COOKIE_SECONDS }) : undefined;
+    return appResponse(state, { target: id, path, asState, now, ...(enter ? { enter } : {}) });
   }
 
   async shareTarget(kind: ShareKind, id: string): Promise<{ readonly name: string; readonly scopes: readonly string[] } | { readonly error: string }> {
     const { orchestrator } = await this.build();
-    const sessions = await orchestrator.sessions();
-    if (kind === "session") {
-      const record = sessions.find((s) => s.id === id);
-      if (!record) return { error: `no session ${id} in ${this.name}` };
-      return { name: record.plan.feature.title, scopes: [sessionScope(this.name, id), previewScope(this.name, record.previewKey)] };
-    }
-    const record = sessions.findLast((s) => s.previewKey === id);
-    if (!record) return { error: `no preview ${id} in ${this.name}` };
-    return { name: record.plan.feature.title, scopes: [previewScope(this.name, id)] };
+    if (kind === "app" && id === "main") return { name: `${this.name} main`, scopes: [appScope(this.name, id)] };
+    const record = (await orchestrator.sessions()).find((s) => s.id === id);
+    if (!record) return { error: `no session ${id} in ${this.name}` };
+    if (kind === "session") return { name: record.plan.feature.title, scopes: [sessionScope(this.name, id), appScope(this.name, id)] };
+    return { name: record.plan.feature.title, scopes: [appScope(this.name, id)] };
   }
 
-  private async previewKey(): Promise<string> {
-    const stored = await this.ctx.storage.get<string>(PREVIEW_KEY);
+  private mainSandbox(): string {
+    return `${this.name}--main`;
+  }
+
+  private label(sandbox: string): string {
+    return sandbox === this.mainSandbox() ? `main-${this.name}` : `${sandbox}-${this.name}`;
+  }
+
+  private async appKey(): Promise<string> {
+    const stored = await this.ctx.storage.get<string>(APP_KEY);
     if (stored) return stored;
-    const key = newPreviewKey();
-    await this.ctx.storage.put(PREVIEW_KEY, key);
+    const key = newAppKey();
+    await this.ctx.storage.put(APP_KEY, key);
     return key;
   }
 
-  private async previewEnv(): Promise<PlainEnvVar[]> {
-    return [...(await revealEnv(await this.effectiveEnv(), this.envCipher())), { name: PREVIEW_KEY_VAR, secret: true, value: await this.previewKey() }];
+  private async address(sandbox: string): Promise<string | null> {
+    const { router } = await this.build();
+    if (!router) return null;
+    const key = await this.appKey();
+    const saved = await this.ctx.storage.get<{ readonly url: string; readonly key: string }>(`${ADDRESS}${sandbox}`);
+    if (saved?.key === key) return saved.url;
+    const url = await router.address({ label: this.label(sandbox), target: sandbox, key });
+    await this.ctx.storage.put(`${ADDRESS}${sandbox}`, { url, key });
+    return url;
   }
 
-  private async previewState(key: string, retry: boolean): Promise<PreviewAnswer> {
-    const { keeper } = await this.build();
-    if (!keeper) return { status: "failed", error: NO_CLOUDFLARE };
-    let visit = await keeper.visit(key);
-    if (visit.status === "failed" && retry) visit = { status: "rebuild" };
-    if (visit.status !== "rebuild") return visit;
-    await keeper.startRebuild(key);
-    await this.schedule(0, "rebuildPreview", key);
-    return { status: "building", since: Date.now() };
+  async refreshAddresses(): Promise<void> {
+    for (const key of (await this.ctx.storage.list({ prefix: ADDRESS })).keys()) {
+      await this.address(key.slice(ADDRESS.length)).catch((error: unknown) => {
+        if (error instanceof RouterTakenError) return null;
+        console.error(`renewing the address of ${key} failed`, error);
+        return null;
+      });
+    }
   }
 
-  async rebuildPreview(key: string): Promise<void> {
-    const { keeper } = await this.build();
-    await keeper?.rebuild(key);
+  private async appSource(id: string): Promise<{ readonly sandbox: string; readonly repo: string; readonly commitId: string } | null> {
+    const { orchestrator, repos } = await this.build();
+    const main = async () => {
+      const commitId = await repos.resolveRef(this.name, "main");
+      return commitId ? { sandbox: this.mainSandbox(), repo: this.name, commitId } : null;
+    };
+    if (id === "main") return main();
+    const record = (await orchestrator.sessions()).find((s) => s.id === id);
+    if (!record) return null;
+    if (record.forkDeleted) return record.machine.state === "merged" ? main() : null;
+    return record.head ? { sandbox: record.id, repo: record.fork, commitId: record.head } : null;
+  }
+
+  private async appAnswer(id: string, retry: boolean): Promise<AppAnswer> {
+    const { router } = await this.build();
+    if (!router) return { status: "failed", error: NO_CLOUDFLARE };
+    const source = await this.appSource(id);
+    if (!source) return { status: "missing" };
+    const state = await (this.env.SESSION.get(this.env.SESSION.idFromName(source.sandbox)) as unknown as { appState(): Promise<AppState | null> }).appState();
+    if (state?.status === "running") {
+      try {
+        const url = await this.address(source.sandbox);
+        if (url) return { status: "ready", url, commitId: state.commitId };
+      } catch (error) {
+        return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+    if (state?.status === "starting" && Date.now() - state.at < STARTING_STALE_MS) return { status: "starting", since: state.at };
+    if (state?.status === "failed" && !retry && state.commitId === source.commitId) return { status: "failed", error: state.error ?? "the app did not start" };
+    if (state?.status === "no-stack" && state.commitId === source.commitId) return { status: "no-stack" };
+    await this.schedule(0, "wakeApp", source.sandbox, { idempotent: true });
+    return { status: "starting", since: Date.now() };
+  }
+
+  async wakeApp(sandbox: string): Promise<void> {
+    if (sandbox === this.mainSandbox()) return this.runMainApp(true);
+    if (this.waking.has(sandbox)) return;
+    this.waking.add(sandbox);
+    try {
+      const source = await this.appSource(sandbox);
+      if (!source) return;
+      if (source.sandbox === this.mainSandbox()) return await this.runMainApp(true);
+      const { apps } = await this.build();
+      await apps.run({ target: source.sandbox, repo: source.repo, ref: "main", commitId: source.commitId });
+    } catch (error) {
+      console.error(`starting the app of ${sandbox} failed`, error);
+    } finally {
+      this.waking.delete(sandbox);
+    }
   }
 
   async projectSettings(): Promise<ProjectSettings> {
@@ -487,7 +525,6 @@ export class ProjectAgent extends Agent<Env> {
     const linked = result.settings.git;
     const linkedRepo = linked?.installation !== undefined ? gitHubRepo(linked.url) : null;
     await settingsStub(this.env).linkRepository(this.name, linkedRepo ? `${linkedRepo.owner}/${linkedRepo.repo}` : null);
-    await this.scheduleSweep();
     const saved = readProjectSettings(result.settings);
     if (saved.git) {
       await this.ensurePolling();
@@ -505,8 +542,8 @@ export class ProjectAgent extends Agent<Env> {
         const before = (await orchestrator.mainTree()).commitId;
         const result = await orchestrator.editGuidance(edit);
         if (result.ok && result.commitId && result.commitId !== before) {
-          const live = await this.ctx.storage.get<LiveState>(LIVE);
-          if (live?.status === "ready" && live.commitId === before) await this.ctx.storage.put<LiveState>(LIVE, { ...live, commitId: result.commitId });
+          const mainApp = await this.ctx.storage.get<MainAppState>(MAIN_APP);
+          if (mainApp?.status === "running" && mainApp.commitId === before) await this.ctx.storage.put<MainAppState>(MAIN_APP, { ...mainApp, commitId: result.commitId });
           await this.schedule(1, "drive");
         }
         return result;
@@ -551,7 +588,7 @@ export class ProjectAgent extends Agent<Env> {
   async sharedEnvironmentChanged(): Promise<void> {
     const { orchestrator } = await this.build();
     if ((await orchestrator.environmentChanged()).length > 0) await this.schedule(1, "drive");
-    await this.schedule(0, "pushEnvironment");
+    await this.schedule(0, "restartApps");
   }
 
   private async envRequest(request: Request): Promise<Response> {
@@ -563,7 +600,7 @@ export class ProjectAgent extends Agent<Env> {
     await this.ctx.storage.put(ENV, result.env);
     const { orchestrator } = await this.build();
     if ((await orchestrator.environmentChanged()).length > 0) await this.schedule(1, "drive");
-    await this.schedule(0, "pushEnvironment");
+    await this.schedule(0, "restartApps");
     return Response.json(await this.envView(result.env));
   }
 
@@ -574,52 +611,10 @@ export class ProjectAgent extends Agent<Env> {
     return viewProjectEnv(stored, shared, this.envCipher(), envNeeds(features, envNames(mergeEnv(shared, stored))));
   }
 
-  private async prepareEnvironment(space: CloudflareWorkerSpace): Promise<(preview: string) => Promise<void>> {
-    await space.ensure();
-    const failed = (error: unknown) => new Error(`giving the preview this project's keys failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
-    let patch: EnvPatch | null;
-    try {
-      patch = await space.applyEnvironment(await this.previewEnv(), { create: true });
-    } catch (error) {
-      throw failed(error);
-    }
-    return async (preview) => {
-      if (!patch || Object.keys(patch).length === 0) return;
-      await space.refreshPreview(preview, patch).catch((error: unknown) => {
-        throw failed(error);
-      });
-    };
-  }
-
-  async pushEnvironment(): Promise<void> {
-    const { keeper, space } = await this.build();
-    if (space && (await this.ctx.storage.get<LiveState>(LIVE))?.status === "ready") {
-      await space.applyLiveEnvironment(await revealEnv(await this.effectiveEnv(), this.envCipher())).catch((error: unknown) => console.error(`updating ${this.name}'s live environment failed`, error));
-    }
-    if (!keeper || !space || !(await keeper.live())) return;
-    try {
-      const patch = await space.applyEnvironment(await this.previewEnv(), { create: false });
-      if (!patch || Object.keys(patch).length === 0) return;
-      for (const branch of await keeper.liveBranches()) await space.refreshPreview(previewName(branch, `${this.env.PROJECT_WORKER_PREFIX}${this.name}`), patch).catch((error: unknown) => console.error(`updating the environment of preview ${branch} failed`, error));
-    } catch (error) {
-      console.error(`updating ${this.name}'s preview environment failed`, error);
-    }
-  }
-
-  private async scheduleSweep(): Promise<void> {
-    const { previewIdleMinutes } = await this.projectSettings();
-    await this.schedule(previewIdleMinutes * 60, "sweepPreviews", undefined, { idempotent: true });
-  }
-
-  async sweepPreviews(): Promise<void> {
-    const { keeper, orchestrator } = await this.build();
-    if (!keeper) return;
-    const { previewIdleMinutes } = await this.projectSettings();
-    const idleMs = previewIdleMinutes * 60_000;
-    const busy = (await orchestrator.sessions()).some((s) => !isTerminal(s.machine.state));
-    const outcome = await keeper.sweep({ busy, idleMs });
-    if (outcome.status === "busy") await this.schedule(BUSY_SWEEP_SECONDS, "sweepPreviews", undefined, { idempotent: true });
-    if (outcome.status === "awake") await this.schedule(Math.max(60, Math.ceil((idleMs - outcome.idleForMs) / 1000)), "sweepPreviews", undefined, { idempotent: true });
+  async restartApps(): Promise<void> {
+    const { orchestrator } = await this.build();
+    if (await this.ctx.storage.get<MainAppState>(MAIN_APP)) await this.restartMainApp();
+    for (const session of await orchestrator.sessions()) if (!isTerminal(session.machine.state) && session.app?.status === "running") await this.wakeApp(session.id);
   }
 
   override shouldSendProtocolMessages(_connection: Connection, context: ConnectionContext): boolean {
@@ -797,58 +792,60 @@ export class ProjectAgent extends Agent<Env> {
     await this.pushExternal();
     if (sessions.some(runnable)) await this.schedule(1, "drive");
     if (sessions.some((s) => s.overBudget && !isTerminal(s.machine.state))) await this.schedule(nextMonth(Date.now()), "budgetChanged", undefined, { idempotent: true });
-    if (await this.liveBehind()) await this.schedule(0, "deployLive", undefined, { idempotent: true });
+    if (await this.mainBehind()) await this.schedule(0, "runMainApp", undefined, { idempotent: true });
   }
 
   async onMainPushed(event: PushedEvent): Promise<void> {
     const { repos } = await this.build();
     repos.emitPush(event);
     await this.schedule(1, "drive");
-    await this.schedule(0, "deployLive", undefined, { idempotent: true });
+    await this.schedule(0, "runMainApp", undefined, { idempotent: true });
   }
 
-  private async liveBehind(): Promise<boolean> {
-    const { repos, space } = await this.build();
-    if (!space) return false;
+  private async mainBehind(): Promise<boolean> {
+    const { repos } = await this.build();
     const head = await repos.resolveRef(this.name, "main");
-    const live = await this.ctx.storage.get<LiveState>(LIVE);
-    return head !== null && head !== live?.commitId;
+    const mainApp = await this.ctx.storage.get<MainAppState>(MAIN_APP);
+    return head !== null && head !== mainApp?.commitId;
   }
 
-  async deployLive(): Promise<void> {
-    if (this.deploying) {
-      this.deployAgain = true;
+  async restartMainApp(): Promise<void> {
+    await this.runMainApp(true);
+  }
+
+  async runMainApp(force?: boolean): Promise<void> {
+    if (this.runningMain) {
+      this.mainAgain = true;
       return;
     }
-    this.deploying = true;
+    this.runningMain = true;
     try {
+      let again = force === true;
       do {
-        this.deployAgain = false;
-        await this.deployLiveOnce();
-      } while (this.deployAgain);
+        this.mainAgain = false;
+        await this.runMainAppOnce(again);
+        again = false;
+      } while (this.mainAgain);
     } finally {
-      this.deploying = false;
+      this.runningMain = false;
     }
   }
 
-  private async deployLiveOnce(): Promise<void> {
-    const { repos, space, live, bus } = await this.build();
-    if (!space || !live) return;
+  private async runMainAppOnce(force: boolean): Promise<void> {
+    const { repos, apps, bus } = await this.build();
     const commitId = await repos.resolveRef(this.name, "main");
-    const current = await this.ctx.storage.get<LiveState>(LIVE);
-    if (!commitId || (current?.commitId === commitId && current.status !== "deploying")) return;
-    const record = async (state: Omit<LiveState, "at">) => {
-      await this.ctx.storage.put<LiveState>(LIVE, { ...state, at: Date.now() });
-      await bus.publish({ type: "live.updated", project: this.name, at: Date.now(), ...state });
+    const current = await this.ctx.storage.get<MainAppState>(MAIN_APP);
+    if (!commitId || (!force && current?.commitId === commitId && current.status !== "starting")) return;
+    const record = async (state: Omit<MainAppState, "at">) => {
+      await this.ctx.storage.put<MainAppState>(MAIN_APP, { ...state, at: Date.now() });
+      await bus.publish({ type: "main-app.updated", project: this.name, at: Date.now(), ...state });
     };
-    await record({ status: "deploying", commitId, url: current?.url ?? null });
+    await record({ status: "starting", commitId, url: current?.url ?? null });
     try {
-      await space.ensure();
-      await live.deploy({ repo: this.name, commitId });
-      await space.applyLiveEnvironment(await revealEnv(await this.effectiveEnv(), this.envCipher()));
-      await record({ status: "ready", commitId, url: await space.liveUrl() });
+      const run = await apps.run({ target: this.mainSandbox(), repo: this.name, ref: "main", commitId });
+      await record({ status: run.status, commitId, url: run.url ?? current?.url ?? null, ...(run.error ? { error: run.error } : {}) });
     } catch (error) {
-      console.error(`deploying ${this.name}'s live app failed`, error);
+      console.error(`starting ${this.name}'s main app failed`, error);
       await record({ status: "failed", commitId, url: current?.url ?? null, error: error instanceof Error ? error.message : String(error) });
     }
   }
@@ -862,13 +859,6 @@ const missingLlm: LlmEndpoint = {
   }),
   via: "anthropic",
   serverFallbacks: false,
-};
-
-const noPreviews: PreviewHost = {
-  deploy: async () => {
-    throw new Error(NO_CLOUDFLARE);
-  },
-  current: async () => null,
 };
 
 function isVoice(url: string): boolean {

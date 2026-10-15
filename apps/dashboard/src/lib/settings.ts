@@ -3,7 +3,7 @@ import { ApiError, settingsApi, type SettingsView } from "./api";
 
 export function missingSettings(settings: SettingsView | null): string[] {
   if (!settings) return [];
-  return [...(settings.llm ? [] : ["models"]), ...(settings.cloudflare ? [] : ["previews"])];
+  return [...(settings.llm ? [] : ["models"]), ...(settings.cloudflare ? [] : ["apps"])];
 }
 
 export function useSettings() {

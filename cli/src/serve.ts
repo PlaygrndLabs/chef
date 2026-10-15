@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, SessionPump, agentsOf, cloudflareView, previewBranch, previewName, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
+import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, SessionPump, agentsOf, cloudflareView, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { newToken } from "@chef/core/access";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
@@ -99,21 +99,20 @@ export async function serve(options: { readonly port: number; readonly project?:
     const record = await w.orchestrator.session(id);
     const name = record.project;
     const box = (sandbox: string): SandboxFacts => ({ name: sandbox, objectId: createHash("sha256").update(sandbox).digest("hex"), running: false, exit: null });
-    const branch = previewBranch(record.previewKey);
     return cloudflareView({
       accountId: null,
       engine: "chef",
       project: name,
-      projectWorker: name,
+      router: "chef-app",
       projectObject: createHash("sha256").update(name).digest("hex"),
       namespaces: {},
       containerApp: { name: "chef-sessionagent", id: null },
       main: { remote: null, commitId: (await w.orchestrator.mainTree()).commitId },
       session: { id, fork: record.fork, remote: null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: (record.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
       agents: agentsOf(record),
-      sandboxes: { session: box(id), lanes: Object.fromEntries((record.lanes ?? []).map((l) => [l.role, box(`${id}--${l.role}`)])), preview: null },
-      preview: { name: previewName(branch), branch, url: record.preview?.url ?? null, versionId: null, commitId: record.preview?.commitId ?? null, awake: false },
-      live: null,
+      sandboxes: { session: box(id), lanes: Object.fromEntries((record.lanes ?? []).map((l) => [l.role, box(`${id}--${l.role}`)])), main: null },
+      app: { name: `${id}-${name}`, url: record.app?.url ?? null, status: record.app?.status ?? null, commitId: record.app?.commitId ?? null },
+      mainApp: null,
     });
   };
 
@@ -194,7 +193,7 @@ export async function serve(options: { readonly port: number; readonly project?:
 
   interface LocalShare {
     readonly shareId: string;
-    readonly kind: "session" | "preview";
+    readonly kind: "session" | "app";
     readonly project: string;
     readonly id: string;
     readonly name: string;
@@ -205,9 +204,9 @@ export async function serve(options: { readonly port: number; readonly project?:
   const shares = new Map<string, LocalShare>();
   const sharesRequest = async (request: Request, name: string): Promise<Response> => {
     if (request.method === "GET") return Response.json({ shares: [...shares.values()].filter((share) => share.project === name) });
-    const body = (await request.json().catch(() => ({}))) as { kind?: "session" | "preview"; id?: string; expiresInDays?: number | null };
-    if ((body.kind !== "session" && body.kind !== "preview") || !body.id) return Response.json({ error: "say what to share" }, { status: 400 });
-    const title = (await w.orchestrator.sessions()).find((record) => record.id === body.id || record.previewKey === body.id)?.plan.feature.title ?? body.id;
+    const body = (await request.json().catch(() => ({}))) as { kind?: "session" | "app"; id?: string; expiresInDays?: number | null };
+    if ((body.kind !== "session" && body.kind !== "app") || !body.id) return Response.json({ error: "say what to share" }, { status: 400 });
+    const title = (await w.orchestrator.sessions()).find((record) => record.id === body.id)?.plan.feature.title ?? body.id;
     const { id, token } = newToken();
     const now = Date.now();
     const share: LocalShare = { shareId: id, kind: body.kind, project: name, id: body.id, name: title, createdAt: now, expiresAt: body.expiresInDays ? now + body.expiresInDays * 86_400_000 : null, lastUsedAt: null };

@@ -23,7 +23,6 @@ export * from "./orchestrator/feature-request.ts";
 export * from "./orchestrator/feature-map-request.ts";
 export * from "./orchestrator/history-request.ts";
 export * from "./orchestrator/pump.ts";
-export * from "./previews/keeper.ts";
 export * from "./sync/external.ts";
 export * from "./util/glob.ts";
 export * from "./util/hash.ts";

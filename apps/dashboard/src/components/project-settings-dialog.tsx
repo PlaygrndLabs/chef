@@ -16,7 +16,7 @@ import { githubApi, projectsApi, type GitHubView, type GitLinkView, type Project
 import { cn } from "@/lib/utils";
 
 const MODES: readonly { readonly mode: OutboundMode; readonly label: string; readonly note: string; readonly pullRequests?: true }[] = [
-  { mode: "pull-request", label: "One pull request", note: "Chef keeps one pull request from the sync branch up to date, listing each finished feature with its preview link.", pullRequests: true },
+  { mode: "pull-request", label: "One pull request", note: "Chef keeps one pull request from the sync branch up to date, listing each finished feature with a link to its app.", pullRequests: true },
   { mode: "feature-pull-requests", label: "A pull request per feature", note: "Each finished feature gets its own branch and pull request.", pullRequests: true },
   { mode: "branch", label: "Sync branch only", note: "Chef mirrors its main to the sync branch. You merge it when you like." },
   { mode: "off", label: "Pull only", note: "Chef takes changes from your repository but never pushes back." },
@@ -186,19 +186,19 @@ function RepositoryForm(props: { readonly project: string; readonly api: Project
 
 type Save = (update: ProjectSettingsUpdate, done?: string) => Promise<boolean>;
 
-function PreviewsForm(props: { readonly minutes: number; readonly save: Save }) {
+function AppsForm(props: { readonly minutes: number; readonly save: Save }) {
   const [minutes, setMinutes] = useState(String(props.minutes));
   return (
     <form
-      id="project-previews"
+      id="project-apps"
       className="flex items-end gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        void props.save({ previewIdleMinutes: Number(minutes) });
+        void props.save({ appIdleMinutes: Number(minutes) });
       }}
     >
-      <Field label="Minutes without visits before previews sleep">
-        <Input value={minutes} onChange={(e) => setMinutes(e.target.value)} aria-label="Preview idle minutes" type="number" min={5} max={10080} required />
+      <Field label="Minutes without visits before a running app sleeps">
+        <Input value={minutes} onChange={(e) => setMinutes(e.target.value)} aria-label="App idle minutes" type="number" min={5} max={10080} required />
       </Field>
       <Button type="submit" size="sm">
         Save
@@ -278,7 +278,7 @@ function DeleteProjectGroup(props: { readonly project: string; readonly linked: 
   return (
     <Group
       title="Delete project"
-      note={`Removes ${project} from Chef, with its live app, previews, code, memory and keys on your Cloudflare account.${props.linked ? " The linked repository stays as it is." : ""}`}
+      note={`Removes ${project} from Chef, with its running apps, code, memory and keys on your Cloudflare account.${props.linked ? " The linked repository stays as it is." : ""}`}
       action={
         <Button type="button" size="sm" variant="destructive" onClick={() => setOpen(true)}>
           <Trash2 />
@@ -298,7 +298,7 @@ function DeleteProjectGroup(props: { readonly project: string; readonly linked: 
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {project}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Chef stops all work on it and removes its live app, previews, code and memory from your Cloudflare account. This can't be undone.{props.linked ? ` ${props.linked} stays as it is.` : ""}
+              Chef stops all work on it and removes its running apps, code and memory from your Cloudflare account. This can't be undone.{props.linked ? ` ${props.linked} stays as it is.` : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Field label={`Type ${project} to confirm`}>
@@ -362,7 +362,7 @@ export function ProjectSettingsDialog(props: {
       render: () =>
         settings ? (
           <>
-            <Group title="Name" note="Its address in Chef, its previews and its Cloudflare resources use this name.">
+            <Group title="Name" note="Its address in Chef, the addresses of its apps and its Cloudflare resources use this name.">
               <Input value={project} readOnly aria-label="Project name" className="font-mono" />
             </Group>
             <Group title="Parallel tries" note="How many ways Chef builds each new feature at once in this project. Each try costs as much as a whole build.">
@@ -372,8 +372,8 @@ export function ProjectSettingsDialog(props: {
               <MergeForm mode={settings.merge ?? "auto"} save={save} />
             </Group>
             <ProjectBudgetGroup api={api} />
-            <Group title="Previews" note="A preview starts when someone opens its link, and is removed from your Cloudflare account after it sits unused.">
-              <PreviewsForm key={settings.previewIdleMinutes} minutes={settings.previewIdleMinutes} save={save} />
+            <Group title="Apps" note="Each branch runs its app, with the whole stack from its compose file, in its own sandbox, and main runs the release candidate. A running app sleeps after it sits unused and starts again when someone opens it.">
+              <AppsForm key={settings.appIdleMinutes} minutes={settings.appIdleMinutes} save={save} />
             </Group>
             <DeleteProjectGroup project={project} linked={settings.git?.url ?? null} />
           </>
@@ -416,7 +416,7 @@ export function ProjectSettingsDialog(props: {
       id: "environment",
       label: "Environment",
       icon: KeyRound,
-      note: "Keys and settings this project's app reads at runtime. Values set for all projects show here too; set one here to use a different value in this project. Previews get the values; agents only see the names.",
+      note: "Keys and settings this project's app reads at runtime. Values set for all projects show here too; set one here to use a different value in this project. Running apps get the values; agents only see the names.",
       render: () => <EnvironmentForm api={api} />,
     },
     ...(host.projectSections?.(project) ?? []),

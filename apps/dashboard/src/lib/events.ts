@@ -1,4 +1,4 @@
-import type { ChatContext, ChefEvent, LaneStatus, RouteDecision, SessionState } from "@chef/core";
+import type { AppStatus, ChatContext, ChefEvent, LaneStatus, RouteDecision, SessionState } from "@chef/core";
 
 export interface LogEntry {
   readonly seq: number;
@@ -18,7 +18,7 @@ export type TimelineItem =
   | { readonly kind: "tool"; readonly at: number; readonly tool: string; readonly detail: string; readonly phase: SessionState; readonly lane?: string }
   | { readonly kind: "error"; readonly at: number; readonly message: string }
   | { readonly kind: "commit"; readonly at: number; readonly commitId: string; readonly role: string; readonly message: string; readonly lane?: string }
-  | { readonly kind: "preview"; readonly at: number; readonly url: string; readonly commitId: string }
+  | { readonly kind: "app"; readonly at: number; readonly status: AppStatus; readonly url: string | null; readonly commitId: string; readonly error?: string }
   | { readonly kind: "review"; readonly at: number; readonly approve: boolean; readonly reasons: readonly string[]; readonly model: string }
   | { readonly kind: "gate"; readonly at: number; readonly ok: boolean; readonly checks: readonly CheckView[] }
   | { readonly kind: "rejected"; readonly at: number; readonly role: string; readonly rule: string; readonly paths: readonly string[]; readonly lane?: string }
@@ -34,6 +34,14 @@ export type TimelineItem =
   | { readonly kind: "lanes"; readonly at: number; readonly lanes: readonly { readonly role: string; readonly branch: string; readonly items: number }[] }
   | { readonly kind: "lane"; readonly at: number; readonly role: string; readonly branch: string; readonly status: LaneStatus; readonly commitId: string | null; readonly paths: readonly string[] }
   | { readonly kind: "held"; readonly at: number; readonly by: string | null };
+
+export interface AppView {
+  readonly status: AppStatus;
+  readonly url: string | null;
+  readonly commitId: string;
+  readonly error?: string | undefined;
+  readonly link?: string | undefined;
+}
 
 export interface LaneLive {
   readonly role: string;
@@ -56,7 +64,7 @@ export interface SessionLive {
   hotfix: boolean;
   heldBy: string | null;
   commits: { readonly id: string; readonly role: string; readonly message: string }[];
-  preview: { readonly url: string; readonly commitId: string; readonly link?: string | undefined } | null;
+  app: AppView | null;
   verdict: { readonly approve: boolean; readonly reasons: readonly string[] } | null;
   gate: { readonly ok: boolean; readonly checks: readonly CheckView[] } | null;
   stuck: string | null;
@@ -89,13 +97,13 @@ export interface ProjectLive {
   readonly voice: { readonly prompt: string; readonly intent: string; readonly sessionId: string | null; readonly featureId: string | null; readonly at: number }[];
   readonly spoken: { readonly voiceSessionId: string; readonly speaker: "you" | "chef"; readonly text: string; readonly startedAt: number; readonly at: number }[];
   readonly log: { readonly seq: number; readonly at: number; readonly type: string; readonly sessionId: string; readonly featureId: string; readonly summary: string }[];
-  readonly previews: Record<string, { readonly url: string; readonly commitId: string; readonly link?: string | undefined; readonly sessionId: string; readonly at: number }>;
+  readonly apps: Record<string, AppView & { readonly sessionId: string; readonly at: number }>;
   external: { readonly type: string; readonly summary: string; readonly at: number; readonly pullRequest?: string | undefined } | null;
   context: ChatContext | null;
 }
 
 export function emptyProject(): ProjectLive {
-  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], answers: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], spoken: [], log: [], previews: {}, external: null, context: null };
+  return { lastSeq: 0, lastAt: 0, sessions: {}, order: [], routes: [], answers: [], merges: [], reverts: [], lessons: [], recalls: [], corrections: [], rules: [], voice: [], spoken: [], log: [], apps: {}, external: null, context: null };
 }
 
 const TIMELINE_LIMIT = 600;
@@ -112,7 +120,7 @@ function sessionOf(state: ProjectLive, sessionId: string, featureId: string, at:
     existing.updatedAt = at;
     return existing;
   }
-  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, kind: "feature", hotfix: false, heldBy: null, commits: [], preview: null, verdict: null, gate: null, stuck: null, needs: [], budget: null, ready: null, merged: null, recalled: [], agent: null, agents: [], lanes: [], timeline: [], createdAt: at, updatedAt: at };
+  const created: SessionLive = { id: sessionId, featureId, fork: "", state: "queued", reason: "", attempt: null, parent: null, kind: "feature", hotfix: false, heldBy: null, commits: [], app: null, verdict: null, gate: null, stuck: null, needs: [], budget: null, ready: null, merged: null, recalled: [], agent: null, agents: [], lanes: [], timeline: [], createdAt: at, updatedAt: at };
   state.sessions[sessionId] = created;
   state.order.push(sessionId);
   return created;
@@ -147,16 +155,16 @@ export function summarize(event: ChefEvent): string {
       return event.event.type;
     case "commit.created":
       return `${event.role} ${event.commitId.slice(0, 7)} ${event.message}`;
-    case "preview.updated":
-      return `${event.url} @ ${event.commitId.slice(0, 7)}`;
+    case "app.updated":
+      return `app ${event.status} at ${event.commitId.slice(0, 7)}${event.url ? ` ${event.url}` : ""}${event.error ? `: ${event.error}` : ""}`;
     case "review.verdict":
       return event.approve ? "approved" : `rejected: ${event.reasons.join("; ")}`;
     case "gate.result":
       return event.ok ? `passed ${event.checks.length} checks` : `failed ${event.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}`;
     case "main.merged":
       return `main ${event.commitId.slice(0, 7)}`;
-    case "live.updated":
-      return event.status === "failed" ? `live app failed at ${event.commitId.slice(0, 7)}: ${event.error ?? ""}`.trim() : `live app ${event.status} ${event.commitId.slice(0, 7)}`;
+    case "main-app.updated":
+      return `main app ${event.status} at ${event.commitId.slice(0, 7)}${event.error ? `: ${event.error}` : ""}`;
     case "main.reverted":
       return `reverted ${event.revertedCommit.slice(0, 7)}`;
     case "chat.context":
@@ -311,11 +319,12 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       keep(s.timeline, { kind: "commit", at, commitId: event.commitId, role: event.role, message: event.message, ...(event.lane ? { lane: event.lane } : {}) }, TIMELINE_LIMIT);
       return true;
     }
-    case "preview.updated": {
+    case "app.updated": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
-      s.preview = { url: event.url, commitId: event.commitId, link: event.link };
-      state.previews[event.featureId] = { url: event.url, commitId: event.commitId, link: event.link, sessionId: event.sessionId, at };
-      keep(s.timeline, { kind: "preview", at, url: event.url, commitId: event.commitId }, TIMELINE_LIMIT);
+      const app: AppView = { status: event.status, url: event.url, commitId: event.commitId, error: event.error, link: event.link };
+      s.app = app;
+      state.apps[event.featureId] = { ...app, sessionId: event.sessionId, at };
+      keep(s.timeline, { kind: "app", at, status: event.status, url: event.url, commitId: event.commitId, ...(event.error ? { error: event.error } : {}) }, TIMELINE_LIMIT);
       return true;
     }
     case "review.verdict": {
@@ -406,7 +415,7 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
       return true;
     case "fork.deleted":
     case "fork.kept":
-    case "live.updated":
+    case "main-app.updated":
     case "feature.arranged":
     case "features.removed":
     case "features.changed":
