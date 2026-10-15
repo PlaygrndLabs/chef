@@ -1,4 +1,4 @@
-import { APP_START_SECONDS, type AppHost, type AppRun, type RepoHost } from "@chef/core";
+import { APP_START_SECONDS, type AppHost, type AppRun, type RepoHost, type SessionRecord } from "@chef/core";
 import type { AppJob, AppState } from "./session-agent.ts";
 
 type AppStub = { runApp(job: AppJob, readToken: string): Promise<AppState> };
@@ -49,4 +49,17 @@ async function answered(run: Promise<AppState>, input: { readonly target: string
   } finally {
     clearTimeout(timer);
   }
+}
+
+export type AppBranch = { readonly kind: "main" } | { readonly kind: "session"; readonly id: string; readonly fork: string; readonly head: string };
+
+export function appBranch(sessions: readonly Pick<SessionRecord, "id" | "machine" | "merge" | "forkDeleted" | "head" | "fork">[], id: string): AppBranch | null {
+  let current = id;
+  for (let depth = 0; current !== "main" && depth <= 20; depth++) {
+    const record = sessions.find((s) => s.id === current);
+    if (!record) return null;
+    if (record.machine.state !== "merged") return record.forkDeleted || !record.head ? null : { kind: "session", id: record.id, fork: record.fork, head: record.head };
+    current = record.merge?.into ?? "main";
+  }
+  return { kind: "main" };
 }
