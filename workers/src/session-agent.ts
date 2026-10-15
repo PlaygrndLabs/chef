@@ -3,6 +3,8 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import type { AppStatus, CoderEvent, CoderTurnResult, CustomAgent, FileChanges } from "@chef/core";
 import { APP_REQUEST_HEADER } from "@chef/adapters/app-gate";
 import { appPage } from "@chef/adapters/app-page";
+import { layerStore } from "./image-layers.ts";
+import { REGISTRY_HOSTS, registryFetch } from "./registry-cache.ts";
 
 export const PLACEHOLDER = "chef-placeholder";
 
@@ -35,6 +37,7 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.protocol !== "https:") return new Response("https only", { status: 403 });
+    if (REGISTRY_HOSTS.has(url.hostname)) return registryFetch(request, { store: layerStore(this.env.IMAGE_LAYERS), upstream: (forward) => fetch(forward, { redirect: "manual" }), waitUntil: (work) => this.ctx.waitUntil(work), now: Date.now });
     const headers = new Headers(request.headers);
     if (url.hostname === this.ctx.props.artifactsHost) {
       if (url.pathname.endsWith("/git-receive-pack") || url.searchParams.get("service") === "git-receive-pack") return new Response("the coder sandbox cannot push", { status: 403 });
@@ -394,7 +397,7 @@ export class SessionAgent extends Agent<Env> {
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");
     const fetcher = outbound({ props: { ...props, llmKey: secrets.llmKey ?? null } });
-    for (const host of new Set([props.artifactsHost, ...(props.llmHost ? [props.llmHost] : [])])) await container.interceptOutboundHttps(host, fetcher);
+    for (const host of new Set([props.artifactsHost, ...(props.llmHost ? [props.llmHost] : []), ...REGISTRY_HOSTS])) await container.interceptOutboundHttps(host, fetcher);
     const trusted = await container.exec(["sh", "/opt/chef/trust.sh"], { env: { PATH: ROOT_PATH }, user: "0:0", stdout: "pipe", stderr: "combined" });
     const out = await new Response(trusted.stdout as ReadableStream<Uint8Array>).text();
     if ((await trusted.exitCode) !== 0) console.error(`trusting Cloudflare's certificate in ${this.name} failed: ${out.slice(-300)}`);

@@ -12,12 +12,14 @@
     "bindings": [
       { "name": "PROJECT", "class_name": "ProjectAgent" },
       { "name": "SESSION", "class_name": "SessionAgent" },
-      { "name": "SETTINGS", "class_name": "Settings" }
+      { "name": "SETTINGS", "class_name": "Settings" },
+      { "name": "IMAGE_LAYERS", "class_name": "ImageLayers" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["ProjectAgent", "SessionAgent"] },
-    { "tag": "v2", "new_sqlite_classes": ["Settings"] }
+    { "tag": "v2", "new_sqlite_classes": ["Settings"] },
+    { "tag": "v3", "new_sqlite_classes": ["ImageLayers"] }
   ],
   "containers": [
     {
