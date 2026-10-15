@@ -94,3 +94,33 @@ test("API clients and unknown API paths still get a JSON 404", async () => {
     assert.deepEqual(await response.json(), { error: "not found" });
   }
 });
+
+test("a route that throws answers with what went wrong instead of an empty error", async () => {
+  const broken: Feature = {
+    id: "broken",
+    title: "Broken",
+    routes: [
+      {
+        method: "POST",
+        path: "/api/notes",
+        handle: () => {
+          throw new Error("storage is down");
+        },
+      },
+      {
+        method: "GET",
+        path: "/broken",
+        handle: () => {
+          throw new Error("storage is down");
+        },
+      },
+    ],
+  };
+  const app = createApp([broken], new MemoryStore());
+  const failed = await app(new Request("http://app.test/api/notes", { method: "POST", headers: { accept: "text/html" } }));
+  assert.equal(failed.status, 500);
+  assert.deepEqual(await failed.json(), { error: "The server failed while answering POST /api/notes: storage is down" });
+  const page = await app(new Request("http://app.test/broken", { headers: { accept: "text/html" } }));
+  assert.equal(page.status, 500);
+  assert.match(await page.text(), /role="alert".*The server failed while answering GET \/broken: storage is down/);
+});

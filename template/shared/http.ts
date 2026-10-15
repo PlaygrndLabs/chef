@@ -72,6 +72,13 @@ export function notBuiltPage(features: readonly Feature[], path: string): Respon
   });
 }
 
+function failure(request: Request, path: string, error: unknown): Response {
+  const reason = (error instanceof Error ? error.message : String(error ?? "")).trim() || "an unknown error";
+  const message = `The server failed while answering ${request.method} ${path}: ${reason}`;
+  if (!wantsPage(request) || isApi(path)) return json({ error: message }, 500);
+  return page({ title: "Something went wrong", status: 500, body: html`<div class="alert alert-danger" role="alert">${icon("alert")}<span>${message}</span></div>` });
+}
+
 function wantsPage(request: Request): boolean {
   return request.method === "GET" && (request.headers.get("accept") ?? "").includes("text/html");
 }
@@ -100,7 +107,13 @@ export function createApp(features: readonly Feature[], store: Store, env: Env =
     for (const route of routes) {
       if (route.method !== request.method) continue;
       const params = matchPath(route.path, url.pathname);
-      if (params) return route.handle(request, { store, params, env });
+      if (!params) continue;
+      try {
+        return await route.handle(request, { store, params, env });
+      } catch (error) {
+        console.error(error);
+        return failure(request, url.pathname, error);
+      }
     }
     return wantsPage(request) && !isApi(url.pathname) ? notBuiltPage(features, url.pathname) : json({ error: "not found" }, 404);
   };
