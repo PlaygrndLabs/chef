@@ -398,7 +398,8 @@ export function SessionApp({ feature, node }: { readonly feature: FeatureNode; r
 export function MainApp() {
   const { data, selection } = useWorkspace();
   const app = data.spec?.mainApp ?? null;
-  if (!data.spec?.commitId) return <Empty>Main has no commit yet. Its app starts after the first one.</Empty>;
+  if (data.spec === null) return <Skeleton className="min-h-[320px] w-full flex-1 rounded-xl" aria-label="Loading main's app" />;
+  if (!data.spec.commitId) return <Empty>Main has no commit yet. Its app starts after the first one.</Empty>;
   const note = `This is main's app, the release candidate, with its whole stack running in main's own sandbox${app ? ` at ${short(app.commitId)}` : ""}. Everything Chef merges shows up here. Your own production takes main from your repository. ${SLEEPS}`;
   return <AppTab key={`${MAIN_APP}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, MAIN_APP)} url={app?.url ?? null} start="/" title="App of main" note={note} missing="Main has no commit yet, so it has no app to open." />;
 }

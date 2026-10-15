@@ -124,7 +124,7 @@ export function ProjectBar() {
   const connection = CONNECTION[data.connection];
   return (
     <div className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto dash-t bg-sidebar px-1.5 font-mono" id="project-bar" aria-label="Project status">
-      {data.ready ? <StatusChips /> : <BarSkeleton />}
+      {data.loaded.spec && data.loaded.records ? <StatusChips /> : <BarSkeleton />}
       <span className="flex-1" />
       <Chip id="connection" label={connection.label} tone={connection.tone}>
         <connection.icon className={cn("size-3.5", data.connection === "connecting" && "animate-spin")} />

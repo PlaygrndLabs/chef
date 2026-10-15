@@ -8,7 +8,7 @@ function thousands(tokens: number): string {
 
 export function ContextMeter() {
   const { data } = useWorkspace();
-  if (!data.ready) return null;
+  if (!data.loaded.events) return null;
   const context = data.live.context ?? { used: 0, limit: CHAT_CONTEXT_TOKENS, turns: 0, summarized: 0 };
   const share = Math.min(1, context.used / context.limit);
   const about = `Chef sends this chat's memory with each new message: ${context.summarized ? `a summary of ${context.summarized} earlier ${context.summarized === 1 ? "message" : "messages"} and ` : ""}the last ${context.turns === 1 ? "message" : `${context.turns} messages`}, ${context.used.toLocaleString()} of ${context.limit.toLocaleString()} tokens. When it fills, Chef summarizes the older messages. Each feature keeps its own context in its session.`;

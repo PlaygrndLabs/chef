@@ -187,6 +187,8 @@ Sessions reach the app through CopilotKit. The Chef Worker hosts the CopilotKit 
 3. `SessionStream` maps each Chef event of the sessions the prompt started to AG-UI: coder text deltas become assistant messages, coder tool calls become tool calls, every state change is a step (`<session>:<state>`), and the running app, review, gate, merge and stuck results update a shared state snapshot (`ChefState`) that the chat renders as session cards.
 4. The run ends with a summary line when every session has merged, got stuck or been dropped.
 
+The dashboard follows a project's events over `WS /agents/project/:name`, and over `GET /events` every few seconds when the socket fails or has not opened within four seconds. It shows each part as soon as its own data is in instead of waiting for all of it: main's tab and its app need only `/spec`, the feature list and project bar `/spec` and the sessions, the chat the event history and the sessions, and Chef's first look at the project shows when `/overview` answers.
+
 `chef serve` runs the same runtime and dashboard on a computer against the local world (fake coder, real or fake checks).
 
 The start page shows what changed lately. Each `ProjectAgent` listens to its own events and keeps one line about the latest change people care about (work started, a feature merged into `main`, a feature waiting on a key, a change undone, commits pulled from the linked repository) in the `Settings` object (`noteProjectActivity`, `activityNote` in `adapters/src/projects.ts`). `GET /api/projects` returns it with each project as `updatedAt` and `note`. The dashboard's start page lists every project in the sidebar and shows the six most recent in the middle, by the later of that change and when this browser last opened the project.

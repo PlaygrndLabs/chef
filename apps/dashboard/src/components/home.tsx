@@ -321,7 +321,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   const timeline = [...history.map((item) => ({ at: item.at, item, turn: null })), ...said.map((turn) => ({ at: turn.at, item: null, turn }))].sort((a, b) => a.at - b.at);
   const pending = [...sentHere].filter(([prompt, sent]) => routes.filter((r) => r.prompt === prompt).length <= sent.seen).map(([prompt, sent]) => ({ prompt, failed: sent.failed, reason: sent.reason ?? null }));
 
-  const loading = !data.ready || overview === null;
+  const loading = !data.loaded.events || !data.loaded.records;
   useLayoutEffect(() => {
     if (!loading && (history.length || pending.length || said.length)) end.current?.scrollIntoView({ block: "end" });
   }, [loading, messages.length, history.length, pending.length, said.length, said[said.length - 1]?.text, talk.phase]);
@@ -376,7 +376,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
       });
   };
   const introduced = overview !== null && overview.status !== "none";
-  const welcome = !loading && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0 && said.length === 0;
+  const welcome = !loading && overview !== null && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0 && said.length === 0;
   const live = talk.phase !== "off" && talk.project === selection.project;
   const viewOnly = useProjectLevel(selection.project) === "view";
   const goLive = () => {
@@ -391,13 +391,13 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
     <div className="@container relative flex h-full min-h-0 flex-col" data-view="project" id="chat">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 py-8 sm:px-6">
+          {overview && introduced ? <OverviewMessage state={overview} started={started} onStart={start} onReadAgain={() => void readAgain().catch((error: unknown) => toast.error("Could not start reading", { description: error instanceof Error ? error.message : String(error) }))} /> : null}
           {loading ? (
             <ChatSkeleton />
           ) : (
             <>
               {welcome ? <Welcome onExample={(text) => setDraft((d) => ({ text, n: (d?.n ?? 0) + 1 }))} /> : null}
-              {overview && introduced ? <OverviewMessage state={overview} started={started} onStart={start} onReadAgain={() => void readAgain().catch((error: unknown) => toast.error("Could not start reading", { description: error instanceof Error ? error.message : String(error) }))} /> : null}
-              {!welcome && !introduced && history.length === 0 && pending.length === 0 && said.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature in the list, or describe a new one below.</p> : null}
+              {overview !== null && !welcome && !introduced && history.length === 0 && pending.length === 0 && said.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature in the list, or describe a new one below.</p> : null}
               {timeline.map(({ item, turn }) =>
                 turn ? (
                   <Said key={turn.key} speaker={turn.speaker} text={turn.text} live={turn.live} />

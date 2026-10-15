@@ -70,6 +70,7 @@ export function connectFeed({ project, store, onEvents, onConnection, onCaughtUp
   let polling = false;
   let again = false;
   let live = false;
+  let connectWait: number | undefined;
 
   const markCaughtUp = () => {
     if (closed || caughtUp) return;
@@ -125,8 +126,14 @@ export function connectFeed({ project, store, onEvents, onConnection, onCaughtUp
       startPolling();
       return;
     }
+    connectWait = window.setTimeout(() => {
+      if (!live) startPolling();
+    }, REPLAY_WAIT_MS);
     socket.addEventListener("open", () => {
       live = true;
+      window.clearTimeout(connectWait);
+      window.clearInterval(poller);
+      poller = undefined;
       onConnection("live");
       if (!caughtUp) replayWait = window.setTimeout(() => void poll(), REPLAY_WAIT_MS);
     });
@@ -148,6 +155,7 @@ export function connectFeed({ project, store, onEvents, onConnection, onCaughtUp
     });
     const fallBack = () => {
       live = false;
+      window.clearTimeout(connectWait);
       startPolling();
     };
     socket.addEventListener("close", fallBack);
@@ -161,6 +169,7 @@ export function connectFeed({ project, store, onEvents, onConnection, onCaughtUp
     socket?.close();
     window.clearInterval(poller);
     window.clearTimeout(replayWait);
+    window.clearTimeout(connectWait);
   };
 }
 
@@ -168,6 +177,7 @@ export interface ProjectData {
   readonly live: ProjectLive;
   readonly version: number;
   readonly ready: boolean;
+  readonly loaded: { readonly events: boolean; readonly records: boolean; readonly spec: boolean };
   readonly connection: Connection;
   readonly spec: ProjectSpec | null;
   readonly records: readonly SessionRecord[];
@@ -221,7 +231,8 @@ export function useProject(project: string): ProjectData {
   }, [project, store, refresh, loadRecords, loadSpec]);
 
   const ready = caughtUp && spec !== null && records !== null;
-  return useMemo(() => ({ live: store.state, version, ready, connection, spec, records: records ?? NO_RECORDS, refresh }), [store, version, ready, connection, spec, records, refresh]);
+  const loaded = useMemo(() => ({ events: caughtUp, records: records !== null, spec: spec !== null }), [caughtUp, records, spec]);
+  return useMemo(() => ({ live: store.state, version, ready, loaded, connection, spec, records: records ?? NO_RECORDS, refresh }), [store, version, ready, loaded, connection, spec, records, refresh]);
 }
 
 export function useNow(intervalMs = 5000): number {

@@ -39,14 +39,13 @@ function Tab({ id }: { readonly id: string }) {
 
 export function TabContent() {
   const { activeTab, feature, data } = useWorkspace();
-  if (!data.ready) return <PanelSkeleton />;
   if (activeTab === null || activeTab === MAIN_TAB)
     return (
       <Suspense fallback={<PanelSkeleton />}>
         <MainTabView />
       </Suspense>
     );
-  if (!feature) return <Missing />;
+  if (!feature) return data.ready ? <Missing /> : <PanelSkeleton />;
   if (feature.sessions.length === 0)
     return (
       <Suspense fallback={<PanelSkeleton />}>
