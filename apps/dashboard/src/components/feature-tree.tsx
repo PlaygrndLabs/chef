@@ -25,6 +25,7 @@ function stateText(node: SessionNode): string {
   if (waitsForKey(node)) return "Needs a key";
   if (waitsForMerge(node)) return "Ready to merge";
   if (heldBy(node)) return "Waiting";
+  if (node.state === "merged" && node.into) return "Done";
   return PLAIN_STATE[node.state];
 }
 
@@ -322,7 +323,7 @@ function DeleteDialog({ node, onOpenChange }: { readonly node: TreeNode | null; 
     setBusy(true);
     try {
       if (built) await api.removeFeature(node.feature.id);
-      if (node.feature.map) await api.editMap({ kind: "remove", id: node.feature.map.id });
+      else if (node.feature.map) await api.editMap({ kind: "remove", id: node.feature.map.id });
       data.refresh();
       onOpenChange(false);
     } catch (error) {

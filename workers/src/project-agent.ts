@@ -447,7 +447,7 @@ export class ProjectAgent extends Agent<Env> {
     }
   }
 
-  private async appSource(id: string): Promise<{ readonly sandbox: string; readonly repo: string; readonly commitId: string } | null> {
+  private async appSource(id: string, depth = 0): Promise<{ readonly sandbox: string; readonly repo: string; readonly commitId: string } | null> {
     const { orchestrator, repos } = await this.build();
     const main = async () => {
       const commitId = await repos.resolveRef(this.name, "main");
@@ -456,6 +456,7 @@ export class ProjectAgent extends Agent<Env> {
     if (id === "main") return main();
     const record = (await orchestrator.sessions()).find((s) => s.id === id);
     if (!record) return null;
+    if (record.forkDeleted && record.machine.state === "merged" && record.merge?.into && depth < 20) return this.appSource(record.merge.into, depth + 1);
     if (record.forkDeleted) return record.machine.state === "merged" ? main() : null;
     return record.head ? { sandbox: record.id, repo: record.fork, commitId: record.head } : null;
   }

@@ -97,7 +97,7 @@ export function FeatureCard({ node }: { readonly node: SessionNode }) {
   );
 }
 
-const RANK: Readonly<Record<FeatureStatus, number>> = { merged: 0, ready: 1, building: 2, stuck: 3, proposed: 4, dropped: 5 };
+const RANK: Readonly<Record<FeatureStatus, number>> = { merged: 0, done: 1, ready: 2, building: 3, stuck: 4, proposed: 5, dropped: 6 };
 
 export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
   const best = new Map<string, SessionNode>();
