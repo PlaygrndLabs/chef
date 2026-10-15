@@ -1,6 +1,7 @@
 import { checkTree, formatProblems } from "../checks/code-rules.ts";
 import type { Tree } from "../git/tree.ts";
-import type { CheckResult, CheckRunner, ProofRecord, ProofRunner } from "../ports/check-runner.ts";
+import type { CheckResult, CheckRunner, ProbeInput, ProofRecord, ProofRunner } from "../ports/check-runner.ts";
+import { usesChefTemplate } from "../structure/structure.ts";
 import type { Clock } from "../ports/runtime.ts";
 import { lintSpecFiles } from "../spec/lint.ts";
 
@@ -37,16 +38,17 @@ export class FakeCheckRunner implements CheckRunner {
 
   async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
     this.runs.push({ repo: input.repo, commitId: input.commitId });
-    const code = checkTree(input.tree);
+    const template = usesChefTemplate(input.tree);
+    const code = template ? checkTree(input.tree) : [];
     const specFiles: Record<string, string> = {};
     for (const [path, content] of Object.entries(input.tree)) if (path.startsWith("spec/")) specFiles[path] = content;
     const spec = lintSpecFiles(specFiles).problems;
-    const stale = Object.entries(this.generated).filter(([path, generate]) => input.tree[path] !== generate(input.tree)).map(([path]) => path);
+    const stale = template ? Object.entries(this.generated).filter(([path, generate]) => input.tree[path] !== generate(input.tree)).map(([path]) => path) : [];
     const tests = this.oracle(input.tree);
     const results: CheckResult[] = [
-      { name: "lint", ok: code.length === 0, log: formatProblems(code) || "no problems" },
+      ...(template ? [{ name: "lint", ok: code.length === 0, log: formatProblems(code) || "no problems" }] : []),
       { name: "spec-lint", ok: spec.length === 0, log: spec.map((p) => `${p.path}: ${p.message}`).join("\n") || "spec ok" },
-      { name: "generated", ok: stale.length === 0, log: stale.length ? `stale: ${stale.join(", ")}` : "generated files up to date" },
+      ...(template ? [{ name: "generated", ok: stale.length === 0, log: stale.length ? `stale: ${stale.join(", ")}` : "generated files up to date" }] : []),
       { name: "test", ok: tests.ok, log: tests.log },
     ];
     return results.map((result) => {
@@ -80,6 +82,12 @@ export class FakeProofRunner implements ProofRunner {
       steps.push({ name: "drive", ok: false, detail: injected.detail });
     }
     const proof: ProofRecord = { feature: input.feature, flow: input.flow, url: input.url, commitId: input.commitId, ok: steps.length > 0 && steps.every((s) => s.ok), steps, at: this.clock.now() };
+    this.proofs.push(proof);
+    return proof;
+  }
+
+  async probe(input: ProbeInput): Promise<ProofRecord> {
+    const proof: ProofRecord = { feature: input.feature, flow: `GET ${input.path}`, url: input.url, commitId: input.commitId, ok: true, steps: [{ name: `GET ${input.path}`, ok: true, detail: `fake request to ${input.url}` }], at: this.clock.now() };
     this.proofs.push(proof);
     return proof;
   }

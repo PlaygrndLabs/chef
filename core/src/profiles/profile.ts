@@ -2,6 +2,7 @@ import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { FeatureSpec } from "../spec/schema.ts";
 import { matchesScope } from "../util/glob.ts";
+import { ownScope } from "../structure/structure.ts";
 
 export const Skill = z.strictObject({
   name: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/, "a skill name uses lower case letters, digits and dashes, starting with a letter"),
@@ -46,9 +47,10 @@ export function loadProfiles(files: Readonly<Record<string, string>>): Profiles 
   return out;
 }
 
-export function scopeFor(profile: AgentProfile, feature: FeatureSpec): string[] {
-  const scope = profile.writeScope.map((pattern) => pattern.replaceAll("{feature}", feature.id));
-  if (feature.parent) scope.push(...profile.writeScope.filter((pattern) => pattern.includes("{feature}")).map((pattern) => pattern.replaceAll("{feature}", feature.parent as string)));
+export function scopeFor(profile: AgentProfile, feature: FeatureSpec, template = true): string[] {
+  const patterns = template ? profile.writeScope : ownScope(profile.writeScope);
+  const scope = patterns.map((pattern) => pattern.replaceAll("{feature}", feature.id));
+  if (feature.parent) scope.push(...patterns.filter((pattern) => pattern.includes("{feature}")).map((pattern) => pattern.replaceAll("{feature}", feature.parent as string)));
   if (profile.sharedAccess) scope.unshift(...feature.shared);
   return scope;
 }

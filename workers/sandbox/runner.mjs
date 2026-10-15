@@ -36,7 +36,7 @@ if (existsSync(join(dir, ".git"))) {
 git("config", "user.email", "ma.karimi76@gmail.com");
 git("config", "user.name", "chef");
 const modules = process.env.CHEF_NODE_MODULES ?? "/opt/chef/template/node_modules";
-if (existsSync(modules) && !existsSync(join(dir, "node_modules"))) {
+if (!job.ownStructure && existsSync(modules) && !existsSync(join(dir, "node_modules"))) {
   symlinkSync(modules, join(dir, "node_modules"), "dir");
   appendFileSync(join(dir, ".git", "info", "exclude"), "\nnode_modules\n");
 }
@@ -107,7 +107,7 @@ function changedPaths() {
 }
 
 function lintProblems() {
-  if (!existsSync(lint)) return "";
+  if (job.ownStructure || !existsSync(lint)) return "";
   const paths = changedPaths();
   if (paths.length === 0) return "";
   const run = spawnSync("node", [lint, ...paths], { cwd: dir, encoding: "utf8" });

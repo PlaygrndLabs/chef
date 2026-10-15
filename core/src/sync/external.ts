@@ -10,6 +10,8 @@ import { customAgent, outOfScope, type Profiles } from "../profiles/profile.ts";
 import type { SessionRecord } from "../session/record.ts";
 import { readSpec } from "../spec/lint.ts";
 import { quietSetup, type SetupProgress } from "../setup/progress.ts";
+import { structureGuidance } from "../structure/structure.ts";
+import { withGuidance } from "../guidance/guidance.ts";
 
 export const OUTBOUND_MODES = ["off", "branch", "pull-request", "feature-pull-requests"] as const;
 
@@ -279,9 +281,9 @@ export class ExternalSync {
         role: profile.role,
         model: profile.model,
         prompt,
-        instructions: profile.instructions.replaceAll("{feature}", "sync"),
+        instructions: withGuidance(profile.instructions.replaceAll("{feature}", "sync"), structureGuidance(tree)),
         writeScope: scope,
-        agent: customAgent(profile, "sync", scope),
+        agent: customAgent(profile, "sync", scope, structureGuidance(tree)),
         attempt: { index: 1, of: 1 },
         workspace: { repo: fork, remote: info?.remote ?? "", ref: "main", commitId, readToken: readToken.secret, tree },
         onEvent: () => undefined,

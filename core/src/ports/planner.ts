@@ -64,6 +64,7 @@ export interface PlanInput {
   readonly conversation?: string;
   readonly guidance?: string;
   readonly map?: string;
+  readonly ownStructure?: boolean;
 }
 
 export interface Plan {
@@ -96,19 +97,35 @@ export interface Planner {
   mapFeatures?(input: MapInput): Promise<MappedFeatures>;
 }
 
-const FILLER = new Set(["a", "an", "the", "to", "of", "and", "or", "for", "in", "on", "with", "our", "my", "all", "please", "chore", "hotfix"]);
+const FILLER = new Set(["a", "an", "the", "to", "of", "and", "or", "for", "in", "on", "at", "with", "our", "my", "all", "this", "its", "please", "chore", "hotfix", "project", "app", "code", "codebase", "repo", "repository"]);
+
+const CHORE_TITLE_CHARS = 60;
+const CHORE_SLUG_CHARS = 28;
+
+export function choreTitle(prompt: string): string {
+  const first = (prompt.trim().split("\n")[0] ?? "").trim();
+  const clause = first.split(/:\s|[.!?](?=\s|$)/)[0]?.trim() || first;
+  if (clause.length <= CHORE_TITLE_CHARS) return clause || "Chore";
+  const cut = clause.slice(0, CHORE_TITLE_CHARS + 1);
+  const space = cut.lastIndexOf(" ");
+  return (space > CHORE_TITLE_CHARS / 2 ? cut.slice(0, space) : cut.slice(0, CHORE_TITLE_CHARS)).replace(/[\s,;:-]+$/, "");
+}
 
 export function choreId(prompt: string, taken: ReadonlySet<string>): string {
-  const words = (prompt.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => !FILLER.has(w));
-  const slug = words.slice(0, 4).join("-").slice(0, 28).replace(/-+$/, "") || "work";
-  const base = `chore-${slug}`;
+  const words = (choreTitle(prompt).toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => w.length > 1 && !FILLER.has(w));
+  const kept: string[] = [];
+  for (const word of words.slice(0, 4)) {
+    if ([...kept, word].join("-").length > CHORE_SLUG_CHARS) break;
+    kept.push(word);
+  }
+  const base = `chore-${kept.join("-") || "work"}`;
   let id = base;
   for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
   return id;
 }
 
 export function chorePlan(featureId: string, prompt: string, role: string): Plan {
-  const title = (prompt.trim().split("\n")[0] ?? "").slice(0, 120) || "Chore";
+  const title = choreTitle(prompt);
   return {
     feature: { id: featureId, title, status: "building", entrypoint: "src/index.ts", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: prompt.trim().slice(0, 500) || title }], body: prompt.trim() },
     specChanged: false,
@@ -117,7 +134,7 @@ export function chorePlan(featureId: string, prompt: string, role: string): Plan
   };
 }
 
-export function withTestItem(plan: Plan, role: string): Plan {
+export function withTestItem(plan: Plan, role: string, flow = true): Plan {
   const changesBehavior = plan.items.some((i) => i.kind === "code" || i.kind === "fix");
   if (!changesBehavior || plan.items.some((i) => i.kind === "test")) return plan;
   const ids = plan.feature.acceptance.map((c) => c.id);
@@ -126,7 +143,7 @@ export function withTestItem(plan: Plan, role: string): Plan {
     featureId: plan.feature.id,
     kind: "test",
     role,
-    prompt: `Write failing tests for ${plan.feature.id}, one per acceptance criterion (${ids.join(", ")}), each named after its criterion id, and its flow.ts.`,
+    prompt: flow ? `Write failing tests for ${plan.feature.id}, one per acceptance criterion (${ids.join(", ")}), each named after its criterion id, and its flow.ts.` : `Write failing tests for ${plan.feature.id} with the repository's own test tool, one per acceptance criterion (${ids.join(", ")}), each named after its criterion id.`,
     acceptance: ids,
   };
   const at = plan.items.findIndex((i) => i.kind !== "spec_change");

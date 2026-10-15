@@ -22,6 +22,7 @@ export interface SandboxJob {
   readonly readToken: string;
   readonly llm: { readonly baseUrl: string };
   readonly turnId?: string;
+  readonly ownStructure?: boolean;
 }
 
 export type TurnOutcome = { readonly status: "done"; readonly result: CoderTurnResult } | { readonly status: "running" } | { readonly status: "lost" };
@@ -62,6 +63,7 @@ export interface ChecksJob {
   readonly readToken: string;
   readonly commands: readonly { name: string; argv: readonly string[]; timeoutMs?: number; env?: Readonly<Record<string, string>> }[];
   readonly overlay?: FileChanges;
+  readonly install?: { readonly argv: readonly string[]; readonly key: string; readonly timeoutMs?: number; readonly env?: Readonly<Record<string, string>> };
 }
 
 export interface AppJob {

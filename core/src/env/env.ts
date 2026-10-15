@@ -32,11 +32,13 @@ export function envNeeds(features: readonly Pick<FeatureSpec, "id" | "env">[], c
   return [...needs].map(([name, ids]) => ({ name, features: ids })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function renderEnvironment(configured: readonly EnvVar[], feature: Pick<FeatureSpec, "env">): string | null {
+export function renderEnvironment(configured: readonly EnvVar[], feature: Pick<FeatureSpec, "env">, template = true): string | null {
   if (configured.length === 0 && feature.env.length === 0) return null;
   const missing = missingEnv(feature, configured);
   const lines = [
-    "Environment: keys and settings reach the app at runtime as strings in `context.env` (for example `context.env.STRIPE_SECRET_KEY`). You never see their values. Never hard-code a key or put one in a file; in tests pass fake values through `testApp(t, features, { NAME: \"test\" })` and never call the real service from a test.",
+    template
+      ? "Environment: keys and settings reach the app at runtime as strings in `context.env` (for example `context.env.STRIPE_SECRET_KEY`). You never see their values. Never hard-code a key or put one in a file; in tests pass fake values through `testApp(t, features, { NAME: \"test\" })` and never call the real service from a test."
+      : "Environment: keys and settings reach the running app as environment variables of its compose services (for example `STRIPE_SECRET_KEY`). You never see their values. Never hard-code a key or put one in a file; tests use fake values and never call the real service.",
   ];
   if (configured.length) lines.push(`Set in this project: ${configured.map((v) => `${v.name}${v.secret ? " (secret)" : ""}`).join(", ")}.`);
   if (feature.env.length) lines.push(`This feature uses: ${feature.env.join(", ")}.${missing.length ? ` Not set yet: ${missing.join(", ")}; the person will add them before the app is checked, so write the code as if they exist and answer with a clear error when one is empty.` : ""}`);

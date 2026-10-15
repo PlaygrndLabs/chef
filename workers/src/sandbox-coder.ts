@@ -1,5 +1,5 @@
 import { NO_LLM } from "@chef/adapters/settings";
-import { TurnRunning, type Coder, type CoderEvent, type CoderTurnInput, type CoderTurnResult, type ResumeTurnInput } from "@chef/core";
+import { TurnRunning, usesChefTemplate, type Coder, type CoderEvent, type CoderTurnInput, type CoderTurnResult, type ResumeTurnInput } from "@chef/core";
 import type { TurnOutcome } from "./session-agent.ts";
 
 interface SandboxStub {
@@ -32,6 +32,7 @@ export class SandboxCoder implements Coder {
         readToken: input.workspace.readToken,
         llm: { baseUrl: llm.baseUrl },
         ...(input.turnId ? { turnId: input.turnId } : {}),
+        ...(usesChefTemplate(input.workspace.tree) ? {} : { ownStructure: true }),
       },
       input.onEvent,
       llm.apiKey,

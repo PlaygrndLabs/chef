@@ -26,6 +26,15 @@ export interface ProofRecord {
   readonly at: number;
 }
 
+export interface ProbeInput {
+  readonly repo: string;
+  readonly feature: string;
+  readonly url: string;
+  readonly path: string;
+  readonly commitId: string;
+}
+
 export interface ProofRunner {
   prove(input: { repo: string; feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord>;
+  probe?(input: ProbeInput): Promise<ProofRecord>;
 }

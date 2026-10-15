@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { checkTree, formatProblems, parseTap } from "@chef/core/checks";
-import { lintSpecFiles, type CheckResult, type CheckRunner, type Clock, type ProofRecord, type ProofRunner, type Tree } from "@chef/core";
+import { lintSpecFiles, repoChecks, usesChefTemplate, type CheckResult, type CheckRunner, type Clock, type ProbeInput, type ProofRecord, type ProofRunner, type Tree } from "@chef/core";
 import { exec } from "./exec.ts";
 import { materialize } from "./materialize.ts";
 
@@ -23,6 +23,7 @@ export class LocalCheckRunner implements CheckRunner {
   constructor(private readonly nodeModules: string) {}
 
   async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
+    if (!usesChefTemplate(input.tree)) return this.runOwn(input.tree);
     const work = await materialize(input.tree, this.nodeModules);
     try {
       const tsc = join(this.nodeModules, "typescript", "bin", "tsc");
@@ -45,6 +46,30 @@ export class LocalCheckRunner implements CheckRunner {
     } finally {
       await work.dispose();
     }
+  }
+
+  private async runOwn(tree: Tree): Promise<CheckResult[]> {
+    const own = repoChecks(tree);
+    const results: CheckResult[] = [];
+    if (own.install) {
+      const work = await materialize(tree, null);
+      try {
+        for (const command of [own.install, ...own.commands]) {
+          if (results.some((r) => !r.ok && r.name === "install")) {
+            results.push({ name: command.name, ok: false, log: "Not run: installing the dependencies failed." });
+            continue;
+          }
+          const run = await exec(command.argv[0] as string, command.argv.slice(1), { cwd: work.dir, timeoutMs: command.timeoutMs ?? 300_000, env: { ...command.env } });
+          results.push({ name: command.name, ok: run.code === 0, log: tail(run.stdout + run.stderr, 60) || `${command.name} ok` });
+        }
+      } finally {
+        await work.dispose();
+      }
+    }
+    const specFiles: Record<string, string> = {};
+    for (const [path, content] of Object.entries(tree)) if (path.startsWith("spec/")) specFiles[path] = content;
+    const spec = lintSpecFiles(specFiles).problems;
+    return [...results, ...own.notes, { name: "spec-lint", ok: spec.length === 0, log: spec.map((p) => `${p.path}: ${p.message}`).join("\n") || "spec ok" }];
   }
 }
 
@@ -78,6 +103,19 @@ export class LocalProofRunner implements ProofRunner {
       };
     } finally {
       await work.dispose();
+    }
+  }
+
+  async probe(input: ProbeInput): Promise<ProofRecord> {
+    const flow = `GET ${input.path}`;
+    const target = new URL(input.path, input.url).href;
+    const done = (ok: boolean, detail: string): ProofRecord => ({ feature: input.feature, flow, url: input.url, commitId: input.commitId, ok, steps: [{ name: flow, ok, detail }], at: this.clock.now() });
+    if (!this.reachable(input.url)) return done(true, `${target} cannot be reached from this computer, so there is nothing to ask`);
+    try {
+      const response = await fetch(target, { redirect: "manual", signal: AbortSignal.timeout(20_000) });
+      return done(response.status < (input.path === "/" ? 500 : 400), `${target} answered ${response.status}`);
+    } catch (error) {
+      return done(false, `${target} did not answer: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }
