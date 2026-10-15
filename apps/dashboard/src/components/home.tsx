@@ -97,7 +97,7 @@ export function FeatureCard({ node }: { readonly node: SessionNode }) {
   );
 }
 
-const RANK: Readonly<Record<FeatureStatus, number>> = { merged: 0, ready: 1, building: 2, stuck: 3, proposed: 4, dropped: 5 };
+const RANK: Readonly<Record<FeatureStatus, number>> = { merged: 0, done: 1, ready: 2, building: 3, stuck: 4, proposed: 5, dropped: 6 };
 
 export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
   const best = new Map<string, SessionNode>();
@@ -298,7 +298,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
 
   const history = routes.map((route, index, list) => {
         const next = list[index + 1]?.at ?? Number.POSITIVE_INFINITY;
-        const own = sessions.filter((s) => s.record?.rootPrompt === route.prompt && s.createdAt >= route.at - 2000 && s.createdAt < next);
+        const own = sessions.filter((s) => s.record?.rootPrompt === route.prompt && (s.version ?? 1) === 1 && s.createdAt >= route.at - 2000 && s.createdAt < next);
         const title = features.find((f) => f.id === (own[0]?.featureId ?? route.decision.featureId))?.title ?? null;
         const stored = data.live.answers.find((a) => a.prompt === route.prompt && a.at >= route.at && a.at < next)?.answer ?? "";
         const answer = route.decision.intent === "question" ? stored || answerFor(messages, route.prompt) : "";

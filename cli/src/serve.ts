@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, SessionPump, agentsOf, cloudflareView, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
+import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, SessionPump, agentsOf, cloudflareView, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { newToken } from "@chef/core/access";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
@@ -134,6 +134,11 @@ export async function serve(options: { readonly port: number; readonly project?:
         drive();
         return Response.json({ state: record.machine.state }, { status: 202 });
       }
+      if (request.method === "POST" && sub === "version") {
+        const record = await w.orchestrator.newVersion(id, (await body())["prompt"] ?? null);
+        drive();
+        return Response.json({ sessionId: record.id, version: record.version ?? null }, { status: 202 });
+      }
       if (request.method === "POST" && sub === "steer") {
         const message = (await body())["message"]?.trim();
         if (!message) return Response.json({ error: "message is required" }, { status: 400 });
@@ -264,8 +269,10 @@ export async function serve(options: { readonly port: number; readonly project?:
       }
       if (request.method === "GET" && action === "spec") {
         const main = await w.orchestrator.mainTree();
-        return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await w.orchestrator.layout() });
+        return Response.json({ commitId: main.commitId, features: readSpec(main.tree), map: readFeatureMap(main.tree), layout: await w.orchestrator.layout() });
       }
+      const featureMap = FEATURE_MAP_ROUTE.exec(url.pathname);
+      if (featureMap) return (await featureMapRequest(request, w.orchestrator, Boolean(featureMap[1]))).response;
       const sessionHistory = SESSION_HISTORY_ROUTE.exec(url.pathname);
       if (sessionHistory && request.method === "GET") return sessionHistoryResponse(w.orchestrator, sessionHistory[1] as string, sessionHistory[2] ?? null);
       const history = HISTORY_ROUTE.exec(url.pathname);

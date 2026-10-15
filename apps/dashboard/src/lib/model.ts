@@ -1,7 +1,7 @@
-import type { FeatureLayout, FeatureSpec, SessionRecord, SessionState } from "@chef/core";
+import type { FeatureLayout, FeatureMap, FeatureSpec, MapFeature, SessionRecord, SessionState } from "@chef/core";
 import { isActive, type AppView, type ProjectLive, type SessionLive } from "./events";
 
-export type FeatureStatus = "building" | "ready" | "stuck" | "merged" | "proposed" | "dropped";
+export type FeatureStatus = "building" | "ready" | "stuck" | "merged" | "done" | "proposed" | "dropped";
 
 export function statusOf(state: SessionState): FeatureStatus {
   if (state === "merged") return "merged";
@@ -23,10 +23,16 @@ export interface SessionNode {
   readonly ready: string | null;
   readonly live: SessionLive | undefined;
   readonly record: SessionRecord | undefined;
+  readonly into: string | null;
+  readonly version: number | null;
 }
+
+export type MapMark = "current" | "wish" | "working";
 
 export interface FeatureNode {
   readonly id: string;
+  readonly map: MapFeature | null;
+  readonly mark: MapMark;
   readonly title: string;
   readonly status: FeatureStatus;
   readonly flow: string;
@@ -38,51 +44,79 @@ export interface FeatureNode {
   readonly updatedAt: number;
 }
 
+function waitingIn(record: SessionRecord, records: ReadonlyMap<string, SessionRecord>, state: (id: string) => SessionState | undefined): string | null {
+  let into = record.merge?.into;
+  for (let depth = 0; into && depth < 20; depth++) {
+    const upstream = records.get(into);
+    if (!upstream) return null;
+    if (state(into) !== "merged") return upstream.featureId;
+    into = upstream.merge?.into;
+  }
+  return null;
+}
+
 export function sessionNodes(live: ProjectLive, records: readonly SessionRecord[]): SessionNode[] {
   const byId = new Map<string, SessionNode>();
+  const known = new Map(records.map((r) => [r.id, r]));
+  const stateOf = (id: string) => live.sessions[id]?.state ?? known.get(id)?.machine.state;
   for (const record of records) {
     const l = live.sessions[record.id];
-    byId.set(record.id, { id: record.id, featureId: record.featureId, state: l?.state ?? record.machine.state, attempt: record.attempt, parent: record.parent, createdAt: record.createdAt, updatedAt: Math.max(record.updatedAt, l?.updatedAt ?? 0), needs: l && l.updatedAt >= record.updatedAt ? l.needs : (record.needs ?? []), budget: l && l.updatedAt >= record.updatedAt ? l.budget : (record.overBudget ?? null), ready: l && l.updatedAt >= record.updatedAt ? l.ready : record.ready && !record.ready.approved ? record.ready.commitId : null, live: l, record });
+    byId.set(record.id, { id: record.id, featureId: record.featureId, state: l?.state ?? record.machine.state, attempt: record.attempt, parent: record.parent, createdAt: record.createdAt, updatedAt: Math.max(record.updatedAt, l?.updatedAt ?? 0), needs: l && l.updatedAt >= record.updatedAt ? l.needs : (record.needs ?? []), budget: l && l.updatedAt >= record.updatedAt ? l.budget : (record.overBudget ?? null), ready: l && l.updatedAt >= record.updatedAt ? l.ready : record.ready && !record.ready.approved ? record.ready.commitId : null, live: l, record, into: waitingIn(record, known, stateOf), version: l?.version ?? record.version ?? null });
   }
   for (const id of live.order) {
     const l = live.sessions[id];
     if (!l || byId.has(id)) continue;
-    byId.set(id, { id, featureId: l.featureId, state: l.state, attempt: l.attempt, parent: l.parent, createdAt: l.createdAt, updatedAt: l.updatedAt, needs: l.needs, budget: l.budget, ready: l.ready, live: l, record: undefined });
+    byId.set(id, { id, featureId: l.featureId, state: l.state, attempt: l.attempt, parent: l.parent, createdAt: l.createdAt, updatedAt: l.updatedAt, needs: l.needs, budget: l.budget, ready: l.ready, live: l, record: undefined, into: null, version: l.version });
   }
   return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
 }
 
-function featureStatusOf(sessions: readonly SessionNode[], spec: FeatureSpec | null): FeatureStatus {
+function featureStatusOf(sessions: readonly SessionNode[], spec: FeatureSpec | null, map: MapFeature | null = null): FeatureStatus {
+  if (!sessions.length && map) return map.state === "current" ? "merged" : "proposed";
   if (sessions.some((s) => isActive(s.state) && !waitsForMerge(s))) return "building";
   if (sessions.some((s) => waitsForMerge(s))) return "ready";
   const latest = [...sessions].reverse().find((s) => s.state !== "dropped");
   if (latest?.state === "stuck") return "stuck";
-  if (spec?.status === "merged" || sessions.some((s) => s.state === "merged")) return "merged";
+  if (sessions.some((s) => s.state === "merged" && !s.into)) return "merged";
+  if (sessions.some((s) => s.state === "merged" && s.into)) return "done";
+  if (spec?.status === "merged") return "merged";
   if (spec) return spec.status === "stuck" ? "stuck" : spec.status === "building" ? "proposed" : spec.status;
   return sessions.length ? "dropped" : "proposed";
 }
 
-export function featureNodes(live: ProjectLive, records: readonly SessionRecord[], spec: readonly FeatureSpec[], layout: FeatureLayout = {}): FeatureNode[] {
+function markOf(status: FeatureStatus, sessions: readonly SessionNode[], map: MapFeature | null, onMain: boolean): MapMark {
+  if (sessions.some((s) => isActive(s.state) && !waitsForMerge(s) && !waitsForKey(s) && !waitsForBudget(s))) return "working";
+  if (map) return map.state;
+  return onMain && status === "merged" ? "current" : sessions.some((s) => s.state === "merged") ? "current" : "wish";
+}
+
+export function featureNodes(live: ProjectLive, records: readonly SessionRecord[], spec: readonly FeatureSpec[], layout: FeatureLayout = {}, map: FeatureMap | null = null): FeatureNode[] {
   const sessions = sessionNodes(live, records);
-  const ids = new Set<string>([...spec.map((f) => f.id), ...sessions.map((s) => s.featureId)]);
+  const mapped = new Map((map?.features ?? []).map((f) => [f.name, f]));
+  const ids = new Set<string>([...mapped.keys(), ...spec.map((f) => f.id), ...sessions.map((s) => s.featureId)]);
   const nodes: FeatureNode[] = [];
   for (const id of ids) {
     const place = layout[id];
     const removedAt = place?.removedAt;
     const own = sessions.filter((s) => s.featureId === id && (removedAt === undefined || s.createdAt > removedAt));
-    if (removedAt !== undefined && own.length === 0) continue;
+    const inMap = mapped.get(id) ?? null;
+    if (removedAt !== undefined && own.length === 0 && !inMap) continue;
     const fromMain = spec.find((f) => f.id === id) ?? null;
     const planned = [...own].reverse().find((s) => s.record)?.record?.plan.feature ?? null;
     const feature = fromMain ?? planned;
     const app = live.apps[id] ?? null;
+    const status = featureStatusOf(own, fromMain, inMap);
+    const mapParent = inMap ? (inMap.parent ? (inMap.parent.split("/").at(-1) ?? null) : null) : undefined;
     nodes.push({
       id,
-      title: place?.title ?? feature?.title ?? id,
-      status: featureStatusOf(own, fromMain),
+      map: inMap,
+      mark: markOf(status, own, inMap, Boolean(fromMain)),
+      title: inMap ? inMap.title : (place?.title ?? feature?.title ?? id),
+      status,
       flow: feature?.flow ?? id,
       spec: fromMain ?? planned,
       onMain: Boolean(fromMain),
-      parent: place?.parent !== undefined ? place.parent : (feature?.parent ?? null),
+      parent: mapParent !== undefined ? mapParent : place?.parent !== undefined ? place.parent : (feature?.parent ?? null),
       sessions: own,
       app,
       updatedAt: Math.max(0, ...own.map((s) => s.updatedAt)),
@@ -99,7 +133,8 @@ export function currentSession(feature: FeatureNode, selected: string | null = n
 
 export interface TreeNode {
   readonly feature: FeatureNode;
-  readonly session: SessionNode;
+  readonly session: SessionNode | null;
+  readonly version: number | null;
   readonly group: SessionGroup;
   readonly children: readonly TreeNode[];
 }
@@ -118,16 +153,27 @@ function sortTree(nodes: readonly TreeNode[]): TreeNode[] {
   return [...nodes].sort((a, b) => rankOf(a) - rankOf(b) || latestOf(b) - latestOf(a) || a.feature.title.localeCompare(b.feature.title));
 }
 
+export function liveVersions(feature: FeatureNode): SessionNode[] {
+  const open = feature.sessions.filter((s) => s.version !== null && s.state !== "merged" && s.state !== "dropped");
+  return open.length > 1 ? open.sort((a, b) => (a.version ?? 0) - (b.version ?? 0)) : [];
+}
+
 export function featureTree(features: readonly FeatureNode[]): TreeNode[] {
-  const built = features.filter((f) => f.sessions.length > 0);
+  const built = features.filter((f) => f.sessions.length > 0 || f.map !== null);
   const ids = new Set(built.map((f) => f.id));
-  const make = (feature: FeatureNode, seen: ReadonlySet<string>): TreeNode => {
-    const session = currentSession(feature) as SessionNode;
-    const path = new Set([...seen, feature.id]);
-    const children = built.filter((f) => f.parent === feature.id && !path.has(f.id)).map((f) => make(f, path));
-    return { feature, session, group: groupOf(session.state, session.needs, session.budget, session.ready), children: sortTree(children) };
+  const node = (feature: FeatureNode, session: SessionNode | null, version: number | null, children: readonly TreeNode[]): TreeNode => {
+    const group: SessionGroup = session ? groupOf(session.state, session.needs, session.budget, session.ready) : feature.mark === "current" ? "live" : "stopped";
+    return { feature, session, version, group, children: sortTree(children) };
   };
-  const roots = built.filter((f) => !f.parent || !ids.has(f.parent) || f.parent === f.id).map((f) => make(f, new Set()));
+  const makeAll = (feature: FeatureNode, seen: ReadonlySet<string>): TreeNode[] => {
+    const path = new Set([...seen, feature.id]);
+    const children = built.filter((f) => f.parent === feature.id && !path.has(f.id)).flatMap((f) => makeAll(f, path));
+    const versions = liveVersions(feature);
+    if (versions.length === 0) return [node(feature, currentSession(feature), null, children)];
+    const tied = (child: TreeNode) => versions.find((v) => child.session?.record?.upstream === v.id)?.id ?? null;
+    return versions.map((v) => node(feature, v, v.version, children.filter((c) => tied(c) === null || tied(c) === v.id)));
+  };
+  const roots = built.filter((f) => !f.parent || !ids.has(f.parent) || f.parent === f.id).flatMap((f) => makeAll(f, new Set()));
   const placed = new Set<string>();
   const mark = (node: TreeNode): void => {
     placed.add(node.feature.id);
@@ -136,14 +182,15 @@ export function featureTree(features: readonly FeatureNode[]): TreeNode[] {
   roots.forEach(mark);
   for (const f of built) {
     if (placed.has(f.id)) continue;
-    const node = make(f, new Set());
-    mark(node);
-    roots.push(node);
+    for (const made of makeAll(f, new Set())) {
+      mark(made);
+      roots.push(made);
+    }
   }
   return sortTree(roots);
 }
 
-const STATUS_ORDER: Readonly<Record<FeatureStatus, number>> = { stuck: 0, ready: 1, building: 2, proposed: 3, merged: 4, dropped: 5 };
+const STATUS_ORDER: Readonly<Record<FeatureStatus, number>> = { stuck: 0, ready: 1, building: 2, proposed: 3, done: 4, merged: 5, dropped: 6 };
 
 export function sortFeatures(list: readonly FeatureNode[]): FeatureNode[] {
   return [...list].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));

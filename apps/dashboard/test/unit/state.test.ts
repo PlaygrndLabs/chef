@@ -81,7 +81,7 @@ describe("project event state", () => {
       ["backend", "ok", "Did its part", ""],
       ["frontend", "run", "Working on its part on its own branch", "Drawing the page"],
     ]);
-    const node = { id: "s1", featureId: "todo", state: "coding", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], budget: null, ready: null, live: s, record: undefined } as const;
+    const node = { id: "s1", featureId: "todo", state: "coding", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], budget: null, ready: null, live: s, record: undefined, into: null, version: null } as const;
     const team = teamOf(node);
     expect(team.filter((m) => m.branch).map((m) => [m.role, m.state, m.branch])).toEqual([["backend", "done", "lane/backend"], ["frontend", "working", "lane/frontend"]]);
     const both = run([...events.slice(0, -2)]);
@@ -155,6 +155,52 @@ describe("feature map", () => {
       ["todo-delete", "live"],
     ]);
     expect(featureTree([{ ...(nodes.find((n) => n.id === "todo") as (typeof nodes)[number]), parent: "todo-delete" }, ...nodes.filter((n) => n.id !== "todo")]).map((n) => n.feature.id).sort()).toEqual(["notes", "todo"]);
+  });
+});
+
+describe("feature list from the feature map", () => {
+  it("lists mapped features without sessions under their map parent, with current, wish and working marks", () => {
+    const state = run([
+      { type: "session.created", sessionId: "s1", featureId: "share", fork: "f1", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s1", featureId: "share", from: "queued", to: "coding", reason: "planned" },
+    ]);
+    const feature = (id: string, title: string, state: "current" | "wish") => ({ id, name: id.split("/").at(-1) as string, parent: id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : null, title, state, specs: "", path: "" });
+    const map = { start: "Run it.", features: [feature("boards", "Boards", "current"), feature("boards/share", "Share a board", "wish"), feature("boards/archive", "Archive", "wish")] };
+    const nodes = featureNodes(state, [], [], {}, map);
+    const tree = featureTree(nodes);
+    expect(tree.map((n) => [n.feature.id, n.feature.mark, n.session])).toEqual([["boards", "current", null]]);
+    expect(tree[0]?.children.map((n) => [n.feature.id, n.feature.mark])).toEqual([
+      ["share", "working"],
+      ["archive", "wish"],
+    ]);
+  });
+});
+
+describe("child builds merged into their parent", () => {
+  it("calls a child Done while its parent still builds, and Live once the parent reaches main", () => {
+    const record = (id: string, featureId: string, state: SessionRecord["machine"]["state"], into?: string) => ({ id, featureId, machine: { state }, attempt: null, parent: null, createdAt: 1, updatedAt: 1, plan: { feature: { id: featureId, title: featureId } }, ...(into ? { merge: { commitId: "m", mainBefore: "b", into } } : {}) }) as unknown as SessionRecord;
+    const building = [record("s1", "notes", "coding"), record("s2", "tags", "merged", "s1")];
+    const child = featureNodes(emptyProject(), building, []).find((f) => f.id === "tags");
+    expect(child?.status).toBe("done");
+    expect(child?.sessions[0]?.into).toBe("notes");
+    const live = [record("s1", "notes", "merged"), record("s2", "tags", "merged", "s1")];
+    expect(featureNodes(emptyProject(), live, []).find((f) => f.id === "tags")?.status).toBe("merged");
+    const items = run([{ type: "branch.merged", sessionId: "s2", featureId: "tags", into: "s1", intoFeature: "notes", commitId: "m1" }]).sessions["s2"]?.timeline ?? [];
+    expect(updates(items, "merged").map((u) => (u.kind === "chef" ? u.text : u.text))).toEqual(["Done, merged into its parent feature"]);
+  });
+});
+
+describe("versions of one feature", () => {
+  it("shows each open version as its own node, with a child tied to the version it branched from", () => {
+    const record = (id: string, featureId: string, state: SessionRecord["machine"]["state"], extra: object = {}) => ({ id, featureId, machine: { state }, attempt: null, parent: null, createdAt: Number(id.slice(1)), updatedAt: 1, plan: { feature: { id: featureId, title: featureId, ...(featureId === "tags" ? { parent: "notes" } : {}) } }, ...extra }) as unknown as SessionRecord;
+    const records = [record("s1", "notes", "coding", { version: 1 }), record("s2", "notes", "coding", { version: 2 }), record("s3", "tags", "coding", { upstream: "s2" })];
+    const tree = featureTree(featureNodes(emptyProject(), records, []));
+    expect(tree.map((n) => [n.feature.id, n.version, n.session?.id, n.children.map((c) => c.feature.id)])).toEqual([
+      ["notes", 1, "s1", []],
+      ["notes", 2, "s2", ["tags"]],
+    ]);
+    const one = featureTree(featureNodes(emptyProject(), [records[0] as SessionRecord, record("s2", "notes", "dropped", { version: 2 })], []));
+    expect(one.map((n) => [n.feature.id, n.version, n.session?.id])).toEqual([["notes", null, "s1"]]);
   });
 });
 

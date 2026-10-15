@@ -37,8 +37,8 @@ export function StateBadge({ state, dot = false }: { readonly state: SessionStat
   );
 }
 
-export const FEATURE_TONE: Readonly<Record<FeatureStatus, Tone>> = { building: "run", ready: "run", stuck: "bad", merged: "ok", proposed: "idle", dropped: "gone" };
-export const FEATURE_LABEL: Readonly<Record<FeatureStatus, string>> = { building: "Building", ready: "Ready to merge", stuck: "Needs you", merged: "Live", proposed: "Not built yet", dropped: "Stopped" };
+export const FEATURE_TONE: Readonly<Record<FeatureStatus, Tone>> = { building: "run", ready: "run", stuck: "bad", merged: "ok", done: "ok", proposed: "idle", dropped: "gone" };
+export const FEATURE_LABEL: Readonly<Record<FeatureStatus, string>> = { building: "Building", ready: "Ready to merge", stuck: "Needs you", merged: "Live", done: "Done", proposed: "Not built yet", dropped: "Stopped" };
 
 const PILL: Readonly<Record<Tone, string>> = {
   run: "bg-run/10 text-run",

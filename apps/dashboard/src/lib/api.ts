@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionHistory, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureMap, FeatureSpec, MapEdit, LearnedRule, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionHistory, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -344,6 +344,7 @@ export interface MainApp {
 export interface ProjectSpec {
   readonly commitId: string | null;
   readonly features: readonly FeatureSpec[];
+  readonly map?: FeatureMap;
   readonly mainApp?: MainApp | null;
   readonly layout?: FeatureLayout;
 }
@@ -370,6 +371,7 @@ export function projectApi(project: string) {
     spec: () => call<ProjectSpec>(`${base}/spec`),
     restartMainApp: () => call<{ ok: boolean }>(`${base}/main-app`, { method: "POST" }),
     arrange: (id: string, change: FeatureArrangement) => call<{ layout: FeatureLayout }>(`${base}/features/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(change) }),
+    editMap: (edit: MapEdit) => call<{ commitId: string | null; id: string | null }>(`${base}/feature-map`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(edit) }),
     removeFeature: (id: string) => call<{ featureIds: string[]; commitId: string | null }>(`${base}/features/${id}`, { method: "DELETE" }),
     sessions: () => call<SessionRecord[]>(`${base}/sessions`),
     session: (id: string) => call<{ record: SessionRecord; budget: Budget }>(`${base}/sessions/${id}`),
@@ -381,6 +383,7 @@ export function projectApi(project: string) {
     drop: (id: string, reason: string) => call<{ state: string }>(`${base}/sessions/${id}/drop`, post({ reason })),
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),
     merge: (id: string) => call<{ state: string }>(`${base}/sessions/${id}/merge`, post({})),
+    newVersion: (id: string, prompt?: string) => call<{ sessionId: string; version: number | null }>(`${base}/sessions/${id}/version`, post(prompt ? { prompt } : {})),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
     route: (prompt: string) => call<RouteDecision>(`${base}/route`, post({ prompt })),

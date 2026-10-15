@@ -13,7 +13,7 @@ const NO_RECORDS: readonly SessionRecord[] = [];
 
 export type Connection = "connecting" | "live" | "polling" | "offline";
 
-const REFRESH_RECORDS: ReadonlySet<ChefEvent["type"]> = new Set(["session.created", "session.state", "session.stuck", "session.needs", "session.ready", "session.budget", "main.merged", "main.reverted", "commit.created", "sync.merged", "attempt.picked", "features.removed"]);
+const REFRESH_RECORDS: ReadonlySet<ChefEvent["type"]> = new Set(["session.created", "session.state", "session.stuck", "session.needs", "session.ready", "session.budget", "main.merged", "branch.merged", "session.versioned", "main.reverted", "commit.created", "sync.merged", "attempt.picked", "features.removed"]);
 const REFRESH_SPEC: ReadonlySet<ChefEvent["type"]> = new Set(["main.merged", "main.reverted", "main-app.updated", "feature.arranged", "features.removed", "features.changed"]);
 
 export class Store {

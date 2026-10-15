@@ -10,7 +10,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost } from "@chef/adapters/realtime";
-import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type AppStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PushedEvent, agentsOf, cloudflareView, engineOf, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
+import { AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type AppStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PushedEvent, agentsOf, cloudflareView, engineOf, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -220,7 +220,7 @@ export class ProjectAgent extends Agent<Env> {
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
       if (await this.mainBehind()) await this.schedule(0, "runMainApp", undefined, { idempotent: true });
-      return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await orchestrator.layout(), mainApp: (await this.ctx.storage.get<MainAppState>(MAIN_APP)) ?? null });
+      return Response.json({ commitId: main.commitId, features: readSpec(main.tree), map: readFeatureMap(main.tree), layout: await orchestrator.layout(), mainApp: (await this.ctx.storage.get<MainAppState>(MAIN_APP)) ?? null });
     }
     if (request.method === "POST" && action === "main-app") {
       await this.schedule(0, "restartMainApp", undefined, { idempotent: true });
@@ -342,6 +342,15 @@ export class ProjectAgent extends Agent<Env> {
         await this.schedule(1, "drive");
         return Response.json({ state: record.machine.state }, { status: 202 });
       }
+      if (request.method === "POST" && action === "version") {
+        const by = requester(request);
+        const blocked = await orchestrator.blocked(by);
+        if (blocked) return Response.json({ error: blocked }, { status: 402 });
+        const { prompt } = (await request.json().catch(() => ({}))) as { prompt?: string };
+        const record = await orchestrator.newVersion(id, prompt ?? null, by);
+        await this.schedule(1, "drive");
+        return Response.json({ sessionId: record.id, version: record.version ?? null }, { status: 202 });
+      }
       if (request.method === "POST" && action === "steer") {
         const { message } = (await request.json().catch(() => ({}))) as { message?: string };
         if (!message?.trim()) return Response.json({ error: "message is required" }, { status: 400 });
@@ -447,7 +456,7 @@ export class ProjectAgent extends Agent<Env> {
     }
   }
 
-  private async appSource(id: string): Promise<{ readonly sandbox: string; readonly repo: string; readonly commitId: string } | null> {
+  private async appSource(id: string, depth = 0): Promise<{ readonly sandbox: string; readonly repo: string; readonly commitId: string } | null> {
     const { orchestrator, repos } = await this.build();
     const main = async () => {
       const commitId = await repos.resolveRef(this.name, "main");
@@ -456,6 +465,7 @@ export class ProjectAgent extends Agent<Env> {
     if (id === "main") return main();
     const record = (await orchestrator.sessions()).find((s) => s.id === id);
     if (!record) return null;
+    if (record.forkDeleted && record.machine.state === "merged" && record.merge?.into && depth < 20) return this.appSource(record.merge.into, depth + 1);
     if (record.forkDeleted) return record.machine.state === "merged" ? main() : null;
     return record.head ? { sandbox: record.id, repo: record.fork, commitId: record.head } : null;
   }
