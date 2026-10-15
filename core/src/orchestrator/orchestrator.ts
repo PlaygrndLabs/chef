@@ -319,7 +319,7 @@ export class Orchestrator {
     let text: string;
     try {
       const { added } = await this.mapFeatures();
-      text = added.length ? `I explored the code and added ${added.length === 1 ? "1 feature" : `${added.length} features`} to the feature list, each with how to reach it:\n${describeEntries(added)}` : "The feature list already has every feature I could find in the code.";
+      text = added.length ? `I explored the code and added ${added.length === 1 ? "1 feature to the feature list with how to reach it" : `${added.length} features to the feature list, each with how to reach it`}:\n${describeEntries(added)}` : "The feature list already has every feature I could find in the code.";
     } catch (error) {
       text = `I could not map the features: ${error instanceof Error ? error.message : String(error)}`;
     }
