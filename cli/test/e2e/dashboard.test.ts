@@ -19,7 +19,7 @@ describe("dashboard in a browser", () => {
       await page.goto(local.url);
       const setup = page.locator('[data-view="setup"]');
       await setup.waitFor({ timeout: 10_000 });
-      expect(await setup.innerText()).toContain("Create your first project");
+      await setup.getByText("Create your first project").waitFor({ timeout: 10_000 });
       await setup.getByLabel("Project name").fill("shop");
       await setup.getByRole("button", { name: "Create project" }).click();
       await page.getByRole("button", { name: "Switch project" }).click();
