@@ -240,7 +240,15 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     let round = 0;
     for (;;) {
       round++;
-      const sessions = await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[]);
+      const sessions = await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch((error: unknown) => {
+        report.errors.push(`round ${round}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2000));
+        return null;
+      });
+      if (!sessions) {
+        if (Date.now() > deadline) break;
+        await page.waitForTimeout(options.everySeconds * 1000);
+        continue;
+      }
       for (const s of sessions) report.states[s.id] = s.machine.state === "stuck" ? `stuck: ${s.machine.reason ?? ""} ${(s.machine.feedback ?? "").slice(0, 1500)}`.trim() : s.machine.state;
       const latest = sessions.at(-1);
       await go(`/?project=${project}`);

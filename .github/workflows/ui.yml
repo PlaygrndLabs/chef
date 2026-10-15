@@ -40,6 +40,8 @@ jobs:
     env:
       CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
       CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -49,6 +51,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @chef/cli exec playwright install --with-deps chromium
+      - name: Tail the Worker
+        working-directory: workers
+        run: |
+          mkdir -p ../results/tour
+          nohup npx wrangler tail chef-dev --format json > "$RUNNER_TEMP/tail.jsonl" 2> "$RUNNER_TEMP/tail.err" &
+          sleep 15
       - name: Walk through the deployed app and take screenshots
         run: |
           args=(--minutes "$MINUTES" --out results/tour)
@@ -65,6 +73,12 @@ jobs:
           MINUTES: ${{ inputs.minutes }}
           DELETE: ${{ inputs.delete }}
           DELETE_EXISTING: ${{ inputs.delete_existing }}
+      - name: Worker logs
+        if: always()
+        run: |
+          jq -r 'select(.outcome != "ok" or (.logs | length) > 0 or (.exceptions | length) > 0) | [.eventTimestamp, .outcome, ((.event.request.url // .event.rpcMethod // "") | tostring), ((.exceptions // []) | map(.name + ": " + .message) | join(" | ")), ((.logs // []) | map(.message | map(tostring) | join(" ")) | join(" | "))] | @tsv' "$RUNNER_TEMP/tail.jsonl" | cut -c1-2000 > results/tour/worker.tsv || true
+          tail -20 "$RUNNER_TEMP/tail.err" >> results/tour/worker.tsv || true
+          tail -100 results/tour/worker.tsv
       - uses: actions/upload-artifact@v4
         if: always()
         with:
