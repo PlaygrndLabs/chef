@@ -4,7 +4,7 @@ import type { AppStatus, CoderEvent, CoderTurnResult, CustomAgent, FileChanges }
 import { APP_REQUEST_HEADER } from "@chef/adapters/app-gate";
 import { appPage } from "@chef/adapters/app-page";
 import { layerStore } from "./image-layers.ts";
-import { REGISTRY_HOSTS, registryFetch } from "./registry-cache.ts";
+import { LAYER_CACHE_ADDRESS, layerCacheFetch } from "./layer-cache.ts";
 
 export const PLACEHOLDER = "chef-placeholder";
 
@@ -31,13 +31,14 @@ interface OutboundProps {
   readonly readToken: string;
   readonly llmHost: string | null;
   readonly llmKey: string | null;
+  readonly cacheScope: string;
 }
 
 export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.hostname === LAYER_CACHE_ADDRESS) return layerCacheFetch(request, layerStore(this.env.IMAGE_LAYERS), this.ctx.props.cacheScope);
     if (url.protocol !== "https:") return new Response("https only", { status: 403 });
-    if (REGISTRY_HOSTS.has(url.hostname)) return registryFetch(request, { store: layerStore(this.env.IMAGE_LAYERS), upstream: (forward) => fetch(forward, { redirect: "manual" }), waitUntil: (work) => this.ctx.waitUntil(work), now: Date.now });
     const headers = new Headers(request.headers);
     if (url.hostname === this.ctx.props.artifactsHost) {
       if (url.pathname.endsWith("/git-receive-pack") || url.searchParams.get("service") === "git-receive-pack") return new Response("the coder sandbox cannot push", { status: 403 });
@@ -114,6 +115,11 @@ const TURNS_DIR = "/workspace/turns";
 
 type Outbound = Omit<OutboundProps, "llmKey">;
 
+function cacheScope(remote: string): string {
+  const url = new URL(remote);
+  return `${url.host}${url.pathname}`;
+}
+
 interface TurnState {
   readonly id: string;
   readonly dir: string;
@@ -177,7 +183,7 @@ export class SessionAgent extends Agent<Env> {
   private async launch(id: string, job: SandboxJob, llmKey: string): Promise<TurnState> {
     await this.stopTurn();
     await this.ensureContainer();
-    const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname };
+    const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname, cacheScope: cacheScope(job.remote) };
     await this.intercept(outbound, { llmKey });
     this.following = id;
     const turn: TurnState = { id, dir: `${TURNS_DIR}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
@@ -357,7 +363,7 @@ export class SessionAgent extends Agent<Env> {
   private async exec(script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null }): Promise<{ code: number; tail: string }> {
     const container = await this.ensureContainer();
     this.following = null;
-    await this.intercept({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null }, secrets);
+    await this.intercept({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cacheScope: cacheScope(job.remote) }, secrets);
     const { readToken, ...visible } = job;
     void readToken;
     const process = await container.exec(["node", `/opt/chef/${script}`], { env: { ...SANDBOX_ENV, CHEF_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" }).catch((error: unknown) => {
@@ -397,7 +403,8 @@ export class SessionAgent extends Agent<Env> {
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");
     const fetcher = outbound({ props: { ...props, llmKey: secrets.llmKey ?? null } });
-    for (const host of new Set([props.artifactsHost, ...(props.llmHost ? [props.llmHost] : []), ...REGISTRY_HOSTS])) await container.interceptOutboundHttps(host, fetcher);
+    for (const host of new Set([props.artifactsHost, ...(props.llmHost ? [props.llmHost] : [])])) await container.interceptOutboundHttps(host, fetcher);
+    await container.interceptOutboundHttp(LAYER_CACHE_ADDRESS, fetcher);
     const trusted = await container.exec(["sh", "/opt/chef/trust.sh"], { env: { PATH: ROOT_PATH }, user: "0:0", stdout: "pipe", stderr: "combined" });
     const out = await new Response(trusted.stdout as ReadableStream<Uint8Array>).text();
     if ((await trusted.exitCode) !== 0) console.error(`trusting Cloudflare's certificate in ${this.name} failed: ${out.slice(-300)}`);

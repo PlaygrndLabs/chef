@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import type { CachedManifest, LayerStore } from "./registry-cache.ts";
+import type { CachedManifest, LayerStore } from "./layer-cache.ts";
 
 const CHUNK = 1_900_000;
 const MAX_BLOB = 4 * 1024 * 1024 * 1024;
@@ -118,9 +118,7 @@ export function layerStore(layers: DurableObjectNamespace<ImageLayers>): LayerSt
       const found = await of(`blob:${digest}`).read();
       return found ? new Response(found.body, { headers: { "content-type": found.type, "content-length": String(found.size), "docker-content-digest": digest } }) : null;
     },
-    async saveBlob(digest, size, type, body) {
-      await of(`blob:${digest}`).write(digest, size, type, body);
-    },
+    saveBlob: (digest, size, type, body) => of(`blob:${digest}`).write(digest, size, type, body),
     manifest: (key) => of(`manifest:${key}`).manifest(),
     saveManifest: (key, manifest) => of(`manifest:${key}`).saveManifest(manifest),
   };
