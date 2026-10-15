@@ -28,9 +28,9 @@ describe("manual session controls", () => {
   it("retries a stuck session with fresh budget and the person's guidance, then merges", async () => {
     const w = stuckWorld();
     await w.orchestrator.bootstrap(templateTree());
-    w.checks.failNext("test", "AC2 failed: expected two items", 3);
     const { sessionId } = await w.orchestrator.submit(PROMPT);
     const id = sessionId as string;
+    w.checks.failNext("test", "AC2 failed: expected two items", 3, (await w.orchestrator.session(id)).fork);
     expect((await w.orchestrator.run(id)).machine.state).toBe("stuck");
     await expect(w.orchestrator.steer(id, "late note")).rejects.toBeInstanceOf(ControlError);
     const retried = await w.orchestrator.retry(id, "Keep the items in insertion order");
@@ -46,9 +46,9 @@ describe("manual session controls", () => {
   it("drops a stuck session", async () => {
     const w = stuckWorld();
     await w.orchestrator.bootstrap(templateTree());
-    w.checks.failNext("test", "still red", 10);
     const { sessionId } = await w.orchestrator.submit(PROMPT);
     const id = sessionId as string;
+    w.checks.failNext("test", "still red", 10, (await w.orchestrator.session(id)).fork);
     await w.orchestrator.run(id);
     expect((await w.orchestrator.drop(id)).machine.state).toBe("dropped");
   });
