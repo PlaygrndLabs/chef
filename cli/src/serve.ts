@@ -134,6 +134,11 @@ export async function serve(options: { readonly port: number; readonly project?:
         drive();
         return Response.json({ state: record.machine.state }, { status: 202 });
       }
+      if (request.method === "POST" && sub === "version") {
+        const record = await w.orchestrator.newVersion(id, (await body())["prompt"] ?? null);
+        drive();
+        return Response.json({ sessionId: record.id, version: record.version ?? null }, { status: 202 });
+      }
       if (request.method === "POST" && sub === "steer") {
         const message = (await body())["message"]?.trim();
         if (!message) return Response.json({ error: "message is required" }, { status: 400 });

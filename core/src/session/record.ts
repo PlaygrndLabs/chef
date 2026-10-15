@@ -43,6 +43,7 @@ export interface SessionRecord {
   merge: { commitId: string; mainBefore: string; into?: string } | null;
   upstream?: string | null;
   upstreamBase?: string | null;
+  version?: number;
   ready?: { commitId: string; checks: CheckResult[]; approved: boolean } | null;
   readonly attempt: { readonly group: string; readonly index: number; readonly of: number };
   readonly kind?: "feature" | "chore";

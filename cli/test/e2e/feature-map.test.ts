@@ -64,4 +64,41 @@ describe("feature list as a feature map in a browser", () => {
       await local.close();
     }
   }, 180_000);
+
+  it("tries a second version of a feature, shows both as their own rows and archives the other one on merge", async () => {
+    const local = await serve({ port: 0, real: false, assets: DIST });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.goto(local.url);
+      const setup = page.locator('[data-view="setup"]');
+      await setup.waitFor({ timeout: 10_000 });
+      await setup.getByLabel("Project name").fill("shop");
+      await setup.getByRole("button", { name: "Create project" }).click();
+      const input = page.locator("#chat textarea");
+      await input.waitFor();
+      expect((await page.request.put(`${local.url}/api/projects/shop/settings`, { data: { merge: "manual" } })).ok()).toBe(true);
+      await input.fill(TODO_PROMPT);
+      await input.press("Enter");
+      const row = page.locator('#features [data-feature="todo-add"][data-state="gating"]');
+      await row.waitFor({ timeout: 20_000 });
+      await row.hover();
+      await page.getByRole("button", { name: /More for/ }).first().click();
+      await page.getByRole("menuitem", { name: "Try another version" }).click();
+      const second = page.locator('#features [data-feature="todo-add"][data-version="2"][data-state="gating"]');
+      await page.locator('#features [data-feature="todo-add"][data-version="1"][data-state="gating"]').waitFor({ timeout: 60_000 });
+      await second.waitFor({ timeout: 60_000 });
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, "feature-versions.png") });
+      await second.click();
+      await page.getByRole("button", { name: "Merge into main" }).click();
+      await page.locator('#features [data-feature="todo-add"][data-status="merged"]').waitFor({ timeout: 60_000 });
+      expect(await page.locator('#features [data-feature="todo-add"]').count()).toBe(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+      await local.close();
+    }
+  }, 180_000);
 });
