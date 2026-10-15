@@ -17,7 +17,7 @@ async function linked(script: Script = scriptFromFixture(todo), mode: "branch" |
   await w.repos.createRepo("upstream");
   const remote = new MemoryExternalRemote(w.repos, "upstream");
   await remote.commit(regenerated(templateTree()), "Existing project");
-  const sync = w.orchestrator.external(remote, { mode, syncBranch: "chef", previewLink: (key) => `https://chef.example/preview/demo/${key}` });
+  const sync = w.orchestrator.external(remote, { mode, syncBranch: "chef", mainAppLink: "https://chef.example/app/demo/main" });
   return { w, remote, sync };
 }
 
@@ -37,7 +37,7 @@ describe("an optional external git link", () => {
     expect(await remote.head("chef")).toBe(await w.repos.resolveRef("demo", "main"));
     const pr = remote.pullRequests.get("chef");
     expect(pr?.title).toBe("Chef: Add an item to a todo list");
-    expect(pr?.body).toContain("https://chef.example/preview/demo/todo-add");
+    expect(pr?.body).toContain("https://chef.example/app/demo/main");
     expect((await sync.push()).status).toBe("up-to-date");
 
     await remote.merge("chef");
@@ -111,7 +111,7 @@ describe("an optional external git link", () => {
     expect(commit?.parents).toEqual([upstreamMain]);
     expect(commit?.tree[INDEX]).toBe(todo[INDEX]);
     expect(readSpec(commit?.tree ?? {}).find((f) => f.id === "todo-add")?.status).toBe("merged");
-    expect(remote.pullRequests.get("chef-todo-add")?.body).toContain("Preview: https://chef.example/preview/demo/todo-add");
+    expect(remote.pullRequests.get("chef-todo-add")?.body).toContain("Try it in Chef's running app of main: https://chef.example/app/demo/main");
     expect(await remote.head()).toBe(upstreamMain);
   });
 

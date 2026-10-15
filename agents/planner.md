@@ -27,7 +27,7 @@ Chef itself as the example. Chef's feature list:
 - Start (`.chef/features/PATH.md`): deploy Chef on your Cloudflare account, open its address and sign in.
 - `projects` Projects: the start page lists them; press New project to make one.
   - `project-page` Project page: open a project.
-    - `features` Features: the feature list on the left. In Chef every session is tied to a feature, and a session has a sandbox and an Artifacts repository with its branch. Session, sandbox and repository are sister ideas, and any of them could be the parent of the others. Chef is about easy, fast and focused feature management, development and preview included, and the feature is the first-class one, so Features is the parent and the rest sit under it.
+    - `features` Features: the feature list on the left. In Chef every session is tied to a feature, and a session has a sandbox and an Artifacts repository with its branch. Session, sandbox and repository are sister ideas, and any of them could be the parent of the others. Chef is about easy, fast and focused feature management, development and its running app included, and the feature is the first-class one, so Features is the parent and the rest sit under it.
       - `sessions` Session: click a feature; its session opens as a tab in the middle.
         - `sandbox` Sandbox: in that session, open Details; "On Cloudflare" lists its sandbox.
         - `branch` Branch: in that session, open Changes; it shows the session's own branch and its commits.

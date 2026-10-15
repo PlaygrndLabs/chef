@@ -12,4 +12,4 @@ acceptance:
     text: Only the gate writes canonical main
 ---
 
-The proof is a real run of the feature's flow against its preview, stored under `refs/notes/chef-proof`.
+The proof is a real run of the feature's flow against its branch's running app, stored under `refs/notes/chef-proof`.

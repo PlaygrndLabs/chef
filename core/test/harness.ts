@@ -12,7 +12,7 @@ import {
   KeywordClassifier,
   LexicalIndex,
   MemoryEventBus,
-  MemoryPreviewHost,
+  MemoryAppHost,
   MemoryRepoHost,
   MemoryStore,
   RuleReviewer,
@@ -89,7 +89,7 @@ export interface World {
   readonly coder: ScriptedCoder;
   readonly checks: FakeCheckRunner;
   readonly proofs: FakeProofRunner;
-  readonly previews: MemoryPreviewHost;
+  readonly apps: MemoryAppHost;
   readonly planner: TemplatePlanner;
   readonly deps: Deps;
 }
@@ -101,7 +101,7 @@ export function world(options: { script: Script; presets?: Map<string, FeatureSp
   const coder = new ScriptedCoder(options.script);
   const checks = new FakeCheckRunner(undefined, generated);
   const proofs = new FakeProofRunner(clock);
-  const previews = new MemoryPreviewHost();
+  const apps = new MemoryAppHost();
   const planner = new TemplatePlanner(options.presets ?? new Map(), options.splits ?? new Map());
   const deps: Deps = {
     repos,
@@ -109,7 +109,7 @@ export function world(options: { script: Script; presets?: Map<string, FeatureSp
     classifier: new KeywordClassifier(),
     planner,
     reviewer: new RuleReviewer(),
-    previews,
+    apps,
     checks,
     proofs,
     bus,
@@ -120,5 +120,5 @@ export function world(options: { script: Script; presets?: Map<string, FeatureSp
     ...options.deps,
   };
   const orchestrator = new Orchestrator(deps, { name: "demo", author: { name: "chef", email: "ma.karimi76@gmail.com" }, profiles: profiles(), generated, ...options.config });
-  return { orchestrator, repos, bus, coder, checks, proofs, previews, planner, deps };
+  return { orchestrator, repos, bus, coder, checks, proofs, apps, planner, deps };
 }

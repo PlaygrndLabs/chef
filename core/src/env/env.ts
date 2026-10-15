@@ -39,7 +39,7 @@ export function renderEnvironment(configured: readonly EnvVar[], feature: Pick<F
     "Environment: keys and settings reach the app at runtime as strings in `context.env` (for example `context.env.STRIPE_SECRET_KEY`). You never see their values. Never hard-code a key or put one in a file; in tests pass fake values through `createApp(features, store, { NAME: \"test\" })` and never call the real service from a test.",
   ];
   if (configured.length) lines.push(`Set in this project: ${configured.map((v) => `${v.name}${v.secret ? " (secret)" : ""}`).join(", ")}.`);
-  if (feature.env.length) lines.push(`This feature uses: ${feature.env.join(", ")}.${missing.length ? ` Not set yet: ${missing.join(", ")}; the person will add them before the preview is checked, so write the code as if they exist and answer with a clear error when one is empty.` : ""}`);
+  if (feature.env.length) lines.push(`This feature uses: ${feature.env.join(", ")}.${missing.length ? ` Not set yet: ${missing.join(", ")}; the person will add them before the app is checked, so write the code as if they exist and answer with a clear error when one is empty.` : ""}`);
   return lines.join("\n");
 }
 

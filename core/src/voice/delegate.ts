@@ -31,7 +31,7 @@ export function spokenReply(result: SubmitResult): string {
   const kind = result.decision.intent === "new_feature" ? "a new feature" : result.decision.intent === "chore" ? "a chore" : `a ${result.decision.changeKind ?? "change"} to an existing feature`;
   const attempts = result.sessionIds.length > 1 ? ` with ${result.sessionIds.length} parallel attempts` : "";
   const lane = result.decision.hotfix ? " as a hotfix, ahead of other builds" : "";
-  return `Started ${kind}, ${feature}${attempts}${lane}. It merges on its own once tests, review and proof pass; the dashboard shows its preview.`;
+  return `Started ${kind}, ${feature}${attempts}${lane}. It merges on its own once tests, review and proof pass; the dashboard shows its running app.`;
 }
 
 export class VoiceDelegate {

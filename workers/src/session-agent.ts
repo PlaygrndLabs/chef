@@ -1,8 +1,10 @@
 import { Agent } from "agents";
 import { WorkerEntrypoint } from "cloudflare:workers";
-import type { CoderEvent, CoderTurnResult, CustomAgent, FileChanges } from "@chef/core";
-import { PREVIEW_PASS_HEADER } from "@chef/adapters/preview-gate";
-import { cloudflareAllowed, PLACEHOLDER, type CloudflareGrant } from "./sandbox-grants.ts";
+import type { AppStatus, CoderEvent, CoderTurnResult, CustomAgent, FileChanges } from "@chef/core";
+import { APP_REQUEST_HEADER } from "@chef/adapters/app-gate";
+import { appPage } from "@chef/adapters/app-page";
+
+export const PLACEHOLDER = "chef-placeholder";
 
 export interface SandboxJob {
   readonly sessionId: string;
@@ -25,17 +27,8 @@ export type TurnOutcome = { readonly status: "done"; readonly result: CoderTurnR
 interface OutboundProps {
   readonly artifactsHost: string;
   readonly readToken: string;
-  readonly allowHosts: readonly string[];
   readonly llmHost: string | null;
   readonly llmKey: string | null;
-  readonly cloudflareToken: string | null;
-  readonly cloudflare: CloudflareGrant | null;
-  readonly previewPass?: PreviewPass | null;
-}
-
-interface PreviewPass {
-  readonly host: string;
-  readonly token: string;
 }
 
 export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
@@ -46,19 +39,12 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
     if (url.hostname === this.ctx.props.artifactsHost) {
       if (url.pathname.endsWith("/git-receive-pack") || url.searchParams.get("service") === "git-receive-pack") return new Response("the coder sandbox cannot push", { status: 403 });
       headers.set("authorization", `Bearer ${this.ctx.props.readToken}`);
-    } else if (this.ctx.props.cloudflare && this.ctx.props.cloudflareToken && cloudflareAllowed(url, this.ctx.props.cloudflare)) {
-      const current = headers.get("authorization");
-      if (current?.includes(PLACEHOLDER)) headers.set("authorization", current.replace(PLACEHOLDER, this.ctx.props.cloudflareToken));
     } else if (url.hostname === this.ctx.props.llmHost && this.ctx.props.llmKey) {
       const llmKey = this.ctx.props.llmKey;
       for (const name of ["x-api-key", "authorization"]) {
         const current = headers.get(name);
         if (current?.includes(PLACEHOLDER)) headers.set(name, current.replace(PLACEHOLDER, llmKey));
       }
-    } else if (this.ctx.props.previewPass && url.hostname === this.ctx.props.previewPass.host) {
-      headers.set(PREVIEW_PASS_HEADER, this.ctx.props.previewPass.token);
-    } else if (!this.ctx.props.allowHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) {
-      return new Response(`host ${url.hostname} is not allowed from the coder sandbox`, { status: 403 });
     }
     return fetch(new Request(request, { headers }));
   }
@@ -71,10 +57,28 @@ export interface ChecksJob {
   readonly commitId: string;
   readonly readToken: string;
   readonly commands: readonly { name: string; argv: readonly string[]; timeoutMs?: number; env?: Readonly<Record<string, string>> }[];
-  readonly allowHosts?: readonly string[];
-  readonly cloudflare?: CloudflareGrant;
   readonly overlay?: FileChanges;
-  readonly previewPass?: PreviewPass;
+}
+
+export interface AppJob {
+  readonly target: string;
+  readonly project: string;
+  readonly remote: string;
+  readonly ref: string;
+  readonly commitId: string;
+  readonly env: Readonly<Record<string, string>>;
+  readonly idleMinutes: number;
+}
+
+export interface AppState {
+  readonly status: AppStatus | "asleep";
+  readonly target: string;
+  readonly project: string;
+  readonly commitId: string;
+  readonly port: number | null;
+  readonly error?: string;
+  readonly idleMinutes: number;
+  readonly at: number;
 }
 
 export interface CommandResult {
@@ -100,10 +104,12 @@ export const SANDBOX_IDLE_SECONDS = 300;
 export const FOLLOW_SECONDS = 60;
 
 const LAST_USED = "sandbox/last-used";
+const APP = "sandbox/app";
+const VISIT_NOTE_MS = 30_000;
 const TURN = "sandbox/turn";
 const TURNS_DIR = "/workspace/turns";
 
-type Outbound = Omit<OutboundProps, "llmKey" | "cloudflareToken">;
+type Outbound = Omit<OutboundProps, "llmKey">;
 
 interface TurnState {
   readonly id: string;
@@ -119,6 +125,8 @@ export class SessionAgent extends Agent<Env> {
   private exit: string | null = null;
   private busy = 0;
   private following: string | null = null;
+  private visited = 0;
+  private appRun: Promise<AppState> | null = null;
 
   async status(): Promise<SandboxStatus> {
     return { running: this.ctx.container?.running ?? false, exit: this.exit };
@@ -142,11 +150,12 @@ export class SessionAgent extends Agent<Env> {
     if (!container?.running) return;
     const lastUsed = (await this.ctx.storage.get<number>(LAST_USED)) ?? 0;
     const idleFor = Date.now() - lastUsed;
-    if (this.busy === 0 && idleFor >= SANDBOX_IDLE_SECONDS * 1000 && !(await this.turnAlive())) {
+    const idleSeconds = await this.idleSeconds();
+    if (this.busy === 0 && idleFor >= idleSeconds * 1000 && !(await this.turnAlive())) {
       await container.destroy();
       return;
     }
-    await this.schedule(Math.max(30, Math.ceil(SANDBOX_IDLE_SECONDS - idleFor / 1000)), "sleepIfIdle", undefined, { idempotent: true });
+    await this.schedule(Math.max(30, Math.ceil(idleSeconds - idleFor / 1000)), "sleepIfIdle", undefined, { idempotent: true });
   }
 
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome> {
@@ -165,7 +174,7 @@ export class SessionAgent extends Agent<Env> {
   private async launch(id: string, job: SandboxJob, llmKey: string): Promise<TurnState> {
     await this.stopTurn();
     await this.ensureContainer();
-    const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [], llmHost: new URL(job.llm.baseUrl).hostname, cloudflare: null };
+    const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname };
     await this.intercept(outbound, { llmKey });
     this.following = id;
     const turn: TurnState = { id, dir: `${TURNS_DIR}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
@@ -204,7 +213,7 @@ export class SessionAgent extends Agent<Env> {
       this.busy--;
       await this.ctx.storage.put(TURN, turn);
       await this.ctx.storage.put(LAST_USED, Date.now());
-      await this.schedule(SANDBOX_IDLE_SECONDS, "sleepIfIdle", undefined, { idempotent: true });
+      await this.scheduleSleep();
     }
   }
 
@@ -260,38 +269,94 @@ export class SessionAgent extends Agent<Env> {
     return { code: await process.exitCode, out };
   }
 
-  async runChecks(job: ChecksJob, cloudflareToken: string | null = null): Promise<CommandResult[]> {
+  async runChecks(job: ChecksJob): Promise<CommandResult[]> {
     let results: CommandResult[] | null = null;
-    const { code, tail } = await this.runScript(
-      "checks.mjs",
-      job,
-      (event) => {
-        if (event["type"] === "chef.checks") results = event["results"] as CommandResult[];
-      },
-      { cloudflareToken },
-    );
+    const { code, tail } = await this.runScript("checks.mjs", job, (event) => {
+      if (event["type"] === "chef.checks") results = event["results"] as CommandResult[];
+    });
     if (!results) throw new Error(`checks runner failed with exit code ${code}: ${tail.slice(-500)}`);
     return results;
   }
 
-  private async runScript(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant; previewPass?: PreviewPass }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null } = {}): Promise<{ code: number; tail: string }> {
+  async runApp(job: AppJob, readToken: string): Promise<AppState> {
+    if (this.appRun) return this.appRun;
+    this.appRun = this.startApp(job, readToken).finally(() => (this.appRun = null));
+    return this.appRun;
+  }
+
+  private async startApp(job: AppJob, readToken: string): Promise<AppState> {
+    let state: AppState = { status: "starting", target: job.target, project: job.project, commitId: job.commitId, port: null, idleMinutes: job.idleMinutes, at: Date.now() };
+    await this.ctx.storage.put(APP, state);
+    const { code, tail } = await this.runScript("app.mjs", { ...job, readToken }, (event) => {
+      if (event["type"] !== "chef.app") return;
+      const status = event["status"] as AppStatus;
+      const port = typeof event["port"] === "number" ? event["port"] : null;
+      state = { ...state, status, port, at: Date.now(), ...(typeof event["error"] === "string" ? { error: event["error"] } : {}) };
+      void this.ctx.storage.put(APP, state);
+    });
+    if (state.status === "starting") state = { ...state, status: "failed", error: `the app runner stopped with exit code ${code}: ${tail.slice(-500) || "no output"}`, at: Date.now() };
+    await this.ctx.storage.put(APP, state);
+    if (state.status === "running") await this.ctx.container?.setInactivityTimeout((await this.idleSeconds()) * 1000).catch(() => undefined);
+    return state;
+  }
+
+  async appState(): Promise<AppState | null> {
+    const state = (await this.ctx.storage.get<AppState>(APP)) ?? null;
+    if (!state || this.ctx.container?.running) return state;
+    return state.status === "running" || state.status === "starting" ? { ...state, status: "asleep" } : state;
+  }
+
+  override async fetch(request: Request): Promise<Response> {
+    if (request.headers.get(APP_REQUEST_HEADER) !== "1") return super.fetch(request);
+    const state = await this.appState();
+    const container = this.ctx.container;
+    if (!container?.running || state?.status !== "running" || !state.port) {
+      if (state && (state.status === "asleep" || state.status === "running")) this.ctx.waitUntil(this.wake(state));
+      if (state?.status === "failed") return appPage({ status: "failed", target: state.target, ...(state.error ? { error: state.error } : {}) });
+      if (state?.status === "no-stack") return appPage({ status: "no-stack", target: state.target });
+      return appPage({ status: state ? "starting" : "missing", target: state?.target ?? this.name });
+    }
+    if (Date.now() - this.visited > VISIT_NOTE_MS) {
+      this.visited = Date.now();
+      await this.ctx.storage.put(LAST_USED, this.visited);
+      await this.scheduleSleep();
+    }
+    const url = new URL(request.url);
+    const headers = new Headers(request.headers);
+    headers.delete(APP_REQUEST_HEADER);
+    return container.getTcpPort(state.port).fetch(new Request(`http://localhost:${state.port}${url.pathname}${url.search}`, new Request(request, { headers })));
+  }
+
+  private async wake(state: AppState): Promise<void> {
+    await (this.env.PROJECT.get(this.env.PROJECT.idFromName(state.project)) as unknown as { wakeApp(target: string): Promise<void> }).wakeApp(state.target).catch((error: unknown) => console.error(`waking the app of ${state.target} failed`, error));
+  }
+
+  private async idleSeconds(): Promise<number> {
+    const app = await this.ctx.storage.get<AppState>(APP);
+    return Math.max(SANDBOX_IDLE_SECONDS, app && app.status === "running" ? app.idleMinutes * 60 : 0);
+  }
+
+  private async scheduleSleep(): Promise<void> {
+    await this.schedule(await this.idleSeconds(), "sleepIfIdle", undefined, { idempotent: true });
+  }
+
+  private async runScript(script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null } = {}): Promise<{ code: number; tail: string }> {
     this.busy++;
     try {
       return await this.exec(script, job, onEvent, secrets);
     } finally {
       this.busy--;
       await this.ctx.storage.put(LAST_USED, Date.now());
-      await this.schedule(SANDBOX_IDLE_SECONDS, "sleepIfIdle", undefined, { idempotent: true });
+      await this.scheduleSleep();
     }
   }
 
-  private async exec(script: string, job: { remote: string; readToken: string; allowHosts?: readonly string[]; llm?: { readonly baseUrl: string }; cloudflare?: CloudflareGrant; previewPass?: PreviewPass }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null }): Promise<{ code: number; tail: string }> {
+  private async exec(script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null }): Promise<{ code: number; tail: string }> {
     const container = await this.ensureContainer();
     this.following = null;
-    await this.intercept({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, allowHosts: [...(job.allowHosts ?? [])], llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cloudflare: job.cloudflare ?? null, previewPass: job.previewPass ?? null }, secrets);
-    const { readToken, previewPass, ...visible } = job;
+    await this.intercept({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null }, secrets);
+    const { readToken, ...visible } = job;
     void readToken;
-    void previewPass;
     const process = await container.exec(["node", `/opt/chef/${script}`], { env: { ...SANDBOX_ENV, CHEF_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" }).catch((error: unknown) => {
       throw new Error(`${String(error)} (the sandbox container stopped: ${this.exit ?? "no reason reported"})`);
     });
@@ -312,23 +377,27 @@ export class SessionAgent extends Agent<Env> {
     if (!container) throw new Error("the SessionAgent container is not configured");
     if (container.running) return container;
     this.exit = null;
-    container.start({ image: container.images["coder"] as string, enableInternet: false, instance: SANDBOX_INSTANCE });
+    container.start({ image: container.images["coder"] as string, enableInternet: true, instance: SANDBOX_INSTANCE });
     container.monitor().then(
       () => (this.exit = "its main process exited"),
       (error: unknown) => (this.exit = String(error)),
     );
     for (let waited = 0; !container.running && !this.exit && waited < 60_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
     if (!container.running) throw new Error(`the sandbox container did not start: ${this.exit ?? "timed out"}`);
-    await container.setInactivityTimeout(SANDBOX_IDLE_SECONDS * 1000).catch(() => undefined);
+    await container.setInactivityTimeout((await this.idleSeconds()) * 1000).catch(() => undefined);
     return container;
   }
 
-  private async intercept(props: Outbound, secrets: { readonly llmKey?: string | null; readonly cloudflareToken?: string | null }): Promise<void> {
+  private async intercept(props: Outbound, secrets: { readonly llmKey?: string | null }): Promise<void> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");
-    await container.interceptOutboundHttps("*", outbound({ props: { ...props, llmKey: secrets.llmKey ?? null, cloudflareToken: secrets.cloudflareToken ?? null } }));
+    const fetcher = outbound({ props: { ...props, llmKey: secrets.llmKey ?? null } });
+    for (const host of new Set([props.artifactsHost, ...(props.llmHost ? [props.llmHost] : [])])) await container.interceptOutboundHttps(host, fetcher);
+    const trusted = await container.exec(["sh", "/opt/chef/trust.sh"], { env: { PATH: ROOT_PATH }, user: "0:0", stdout: "pipe", stderr: "combined" });
+    const out = await new Response(trusted.stdout as ReadableStream<Uint8Array>).text();
+    if ((await trusted.exitCode) !== 0) console.error(`trusting Cloudflare's certificate in ${this.name} failed: ${out.slice(-300)}`);
   }
 }
 
@@ -365,9 +434,10 @@ const STDERR = `tail -c 4000 "$DIR/stderr.log" 2>/dev/null`;
 const KILL = `pid=$(cat "$DIR/pid" 2>/dev/null) && { kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null; }; exit 0`;
 
 const CA = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
-const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, GIT_SSL_CAINFO: CA, SSL_CERT_FILE: CA, PLAYWRIGHT_BROWSERS_PATH: "/opt/pw-browsers" };
+const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, PLAYWRIGHT_BROWSERS_PATH: "/opt/pw-browsers" };
 const SANDBOX_USER = "1000:1000";
-const SANDBOX_INSTANCE = "standard-1";
+const ROOT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+const SANDBOX_INSTANCE = "standard-2";
 
 function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { addressWith, currentAddress } from "./address";
 
-export type View = "project" | "feature" | "live";
-export type Panel = "preview" | "messages" | "changes" | "checks" | "details";
+export type View = "project" | "feature" | "main";
+export type Panel = "app" | "messages" | "changes" | "checks" | "details";
 export type SettingsScope = "app" | "project";
 
 export interface SettingsPlace {
@@ -21,7 +21,7 @@ export interface Selection {
   readonly role?: string | null;
 }
 
-const PANELS: readonly Panel[] = ["preview", "messages", "changes", "checks", "details"];
+const PANELS: readonly Panel[] = ["app", "messages", "changes", "checks", "details"];
 const PROJECT = /^[a-z][a-z0-9-]{1,30}$/;
 const SECTION = /^[a-z][a-z-]{1,30}$/;
 const ROLE = /^[a-z][a-z0-9-]{0,40}$/;
@@ -39,7 +39,7 @@ function read(): Selection {
   const feature = params.get("feature");
   const panel = params.get("panel") as Panel | null;
   const named = params.get("view");
-  const view: View = named === "live" ? named : feature || session ? "feature" : "project";
+  const view: View = named === "main" ? named : feature || session ? "feature" : "project";
   const settings = readSettings(params);
   const role = params.get("role");
   return {
@@ -57,7 +57,7 @@ function read(): Selection {
 function write(selection: Selection) {
   const params = new URLSearchParams();
   if (selection.project) params.set("project", selection.project);
-  if (selection.view === "live") params.set("view", selection.view);
+  if (selection.view === "main") params.set("view", selection.view);
   if (selection.view === "feature") {
     if (selection.feature) params.set("feature", selection.feature);
     if (selection.session) params.set("session", selection.session);

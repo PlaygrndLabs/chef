@@ -20,7 +20,7 @@ const KINDS: readonly { readonly kind: string; readonly how: string }[] = [
   { kind: "Change: bug fix", how: "A new spec revision, then a test that shows the bug, the fix, review and checks." },
   { kind: "Change: extend", how: "New acceptance criteria on the same feature, tests first, then the code." },
   { kind: "Change: refactor", how: "Restructures the feature's code. Its existing tests must keep passing." },
-  { kind: "Chore", how: "Work outside one feature, like dependencies, config, shared code, docs or CI. Start it with /chore. The Chore worker may change anything but specs and feature tests, every test must keep passing, and every live feature is proved again on its preview." },
+  { kind: "Chore", how: "Work outside one feature, like dependencies, config, shared code, docs or CI. Start it with /chore. The Chore worker may change anything but specs and feature tests, every test must keep passing, and every live feature is proved again on its running app." },
   { kind: "Hotfix", how: "Start a fix with /hotfix. It runs one try, and other builds wait to go live until it is live, so it reaches the app first. Same tests, review and checks." },
   { kind: "Question", how: "Answered from the project's memory. No code changes." },
 ];

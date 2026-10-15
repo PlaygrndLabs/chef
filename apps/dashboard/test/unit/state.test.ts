@@ -25,7 +25,8 @@ describe("project event state", () => {
       { type: "coder.event", sessionId: "s1", featureId: "todo-add", event: { type: "assistant.message_delta", delta: "ing route" } },
       { type: "coder.event", sessionId: "s1", featureId: "todo-add", event: { type: "tool.execution_start", tool: "Edit", detail: "features/todo-add/index.ts" } },
       { type: "commit.created", sessionId: "s1", featureId: "todo-add", repo: "demo--todo-add--s1", commitId: "c1", role: "backend", message: "m" },
-      { type: "preview.updated", sessionId: "s1", featureId: "todo-add", url: "https://p.example", commitId: "c1" },
+      { type: "app.updated", sessionId: "s1", featureId: "todo-add", status: "starting", url: null, commitId: "c1" },
+      { type: "app.updated", sessionId: "s1", featureId: "todo-add", status: "running", url: "https://s1.example", commitId: "c1", link: "/app/demo/s1" },
       { type: "review.verdict", sessionId: "s1", featureId: "todo-add", approve: true, reasons: ["ok"], model: "m", head: "c1", base: "b" },
       { type: "gate.result", sessionId: "s1", featureId: "todo-add", ok: true, checks: [{ name: "lint", ok: true, log: "" }] },
       { type: "main.merged", sessionId: "s1", featureId: "todo-add", commitId: "m1" },
@@ -34,11 +35,23 @@ describe("project event state", () => {
     const s = state.sessions["s1"];
     expect(s?.state).toBe("merged");
     expect(s?.merged).toBe("m1");
-    expect(s?.timeline.map((t) => t.kind)).toEqual(["created", "state", "text", "tool", "commit", "preview", "review", "gate", "merged", "state"]);
+    expect(s?.timeline.map((t) => t.kind)).toEqual(["created", "state", "text", "tool", "commit", "app", "app", "review", "gate", "merged", "state"]);
     expect(s?.timeline.find((t) => t.kind === "text")).toMatchObject({ text: "Adding route", phase: "coding" });
-    expect(state.previews["todo-add"]?.url).toBe("https://p.example");
+    expect(state.apps["todo-add"]).toMatchObject({ status: "running", url: "https://s1.example", sessionId: "s1", link: "/app/demo/s1" });
+    expect(s?.app).toMatchObject({ status: "running", commitId: "c1" });
     expect(state.log.some((e) => e.type === "coder.event" && e.summary === "text")).toBe(false);
     expect(state.merges.map((m) => m.featureId)).toEqual(["todo-add"]);
+  });
+
+  it("notes when a branch has no compose file and when main's app changes", () => {
+    const state = run([
+      { type: "session.state", sessionId: "s2", featureId: "todo-edit", from: "queued", to: "coding", reason: "planned" },
+      { type: "app.updated", sessionId: "s2", featureId: "todo-edit", status: "no-stack", url: null, commitId: "c2abcdef" },
+      { type: "main-app.updated", status: "failed", commitId: "m2abcdef", url: null, error: "port 3000 never answered" },
+    ]);
+    expect(state.sessions["s2"]?.app).toMatchObject({ status: "no-stack", url: null });
+    expect(state.log.slice(1).map((e) => e.summary)).toEqual(["app no-stack at c2abcde", "main app failed at m2abcde: port 3000 never answered"]);
+    expect(updates(state.sessions["s2"]?.timeline ?? [], "coding").flatMap((u) => (u.kind === "chef" ? u.tech : []))).toContain("no compose file at c2abcde, so the app cannot start");
   });
 
   it("follows roles that work at the same time on their own branches", () => {

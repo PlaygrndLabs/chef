@@ -11,7 +11,7 @@ acceptance:
   - id: AC3
     text: The planner lists the names a feature reads in its spec entry and the app reads them from context.env
   - id: AC4
-    text: Every preview of the project gets the values, and changing one updates the previews that are awake
+    text: Every running app of the project gets the values, and changing one starts the apps that are awake again with them
   - id: AC5
     text: A session whose feature needs a key that is not set waits before its gate, shows which keys it needs, and carries on by itself once they are saved
 ---

@@ -19,7 +19,7 @@ describe("dashboard in a browser", () => {
       await page.goto(local.url);
       const setup = page.locator('[data-view="setup"]');
       await setup.waitFor({ timeout: 10_000 });
-      expect(await setup.innerText()).toContain("Create your first project");
+      await setup.getByText("Create your first project").waitFor({ timeout: 10_000 });
       await setup.getByLabel("Project name").fill("shop");
       await setup.getByRole("button", { name: "Create project" }).click();
       await page.getByRole("button", { name: "Switch project" }).click();
@@ -56,7 +56,7 @@ describe("dashboard in a browser", () => {
       await card.click();
       const feature = page.locator('[data-view="feature"][data-state="merged"]');
       await feature.waitFor({ timeout: 10_000 });
-      expect(await page.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
+      expect(await page.getByRole("tab", { name: "App", exact: true }).getAttribute("aria-selected")).toBe("true");
       expect(await page.locator('#sessions [data-tab="todo-add"]').getAttribute("aria-selected")).toBe("true");
       expect(new URL(page.url()).searchParams.get("session")).toBe("s1");
       await page.getByRole("tab", { name: "Messages" }).click();
@@ -106,24 +106,22 @@ describe("dashboard in a browser", () => {
       expect(await page.locator("#chat").innerText()).toContain("On it. This is 2 features");
       await page.locator('#features [data-feature="shout"]').click();
       await page.locator('[data-view="feature"][data-feature="shout"]').waitFor({ timeout: 10_000 });
-      expect(await page.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
+      expect(await page.getByRole("tab", { name: "App", exact: true }).getAttribute("aria-selected")).toBe("true");
       expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual(["todo-add", "shout"]);
-      const ownPreview = page.locator("#sessions").getByRole("tabpanel", { name: "Preview" });
-      expect(await ownPreview.locator('iframe[title="Preview"]').getAttribute("src")).toMatch(/^https:\/\/shout-/);
-      expect(await ownPreview.innerText()).toContain("This is the app as this session left it");
+      await page.locator("#sessions").getByRole("tabpanel", { name: "App" }).waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "Close Shout a phrase" }).click();
       await page.locator('[data-view="feature"][data-feature="todo-add"]').waitFor({ timeout: 10_000 });
 
-      await page.locator("#live-app-row").click();
-      await page.locator('[data-view="live"]').waitFor({ timeout: 10_000 });
-      expect(await page.locator('[data-tab=":live"]').innerText()).toContain("main");
+      await page.locator("#main-app-row").click();
+      await page.locator('[data-view="main"]').waitFor({ timeout: 10_000 });
+      expect(await page.locator('[data-tab=":main"]').innerText()).toContain("main");
       await page.getByRole("tab", { name: "History" }).click();
       await page.locator('[data-view="history"] [data-commit]').first().waitFor({ timeout: 10_000 });
       await page.locator('[data-view="history"] [data-commit][aria-current="true"]').waitFor();
       await page.locator('[data-view="history"] [data-commit]').first().click();
       await page.locator("[data-commit-detail] [data-file]").first().waitFor({ timeout: 10_000 });
       await page.locator("[data-commit-detail] [data-diff]").waitFor();
-      await page.getByRole("tab", { name: "Live app" }).click();
+      await page.getByRole("tab", { name: "App", exact: true }).click();
 
       await page.locator('#features [data-feature="reverse"]').dblclick();
       const title = page.getByRole("textbox", { name: /^New name for/ });
@@ -131,7 +129,7 @@ describe("dashboard in a browser", () => {
       await title.press("Enter");
       await page.locator('#features [data-feature="reverse"]', { hasText: "Flip the list" }).waitFor({ timeout: 10_000 });
 
-      await page.locator('#features [data-feature="reverse"]').dragTo(page.locator("#live-app-row"));
+      await page.locator('#features [data-feature="reverse"]').dragTo(page.locator("#main-app-row"));
       await page.locator('#features > ul > li > div [data-feature="reverse"]').waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "More for Flip the list" }).click();
       await page.getByRole("menuitem", { name: "Move under" }).hover();
@@ -196,8 +194,8 @@ describe("dashboard in a browser", () => {
       expect(await dialog.getByLabel("Voice model").inputValue()).toBe("gpt-realtime");
       expect(await dialog.locator('#settings-voice [data-current="voice"]').getAttribute("data-set")).toBe("no");
       expect(await dialog.getAttribute("data-section")).toBe("models");
-      expect(await dialog.locator('[data-settings-nav="previews"] [aria-label="needs setup"]').count()).toBe(1);
-      await dialog.locator('[data-settings-nav="previews"]').click();
+      expect(await dialog.locator('[data-settings-nav="apps"] [aria-label="needs setup"]').count()).toBe(1);
+      await dialog.locator('[data-settings-nav="apps"]').click();
       const cloudflare = dialog.locator("#settings-cloudflare");
       await cloudflare.getByLabel("Account id").fill("0123456789abcdef0123456789abcdef");
       await cloudflare.getByLabel("API token").fill("cf-token-abcd1234");

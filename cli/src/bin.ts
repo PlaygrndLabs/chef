@@ -74,8 +74,8 @@ function describe(event: ChefEvent): string | null {
       return `state  ${event.sessionId} ${event.from} -> ${event.to} (${event.reason})`;
     case "commit.created":
       return `commit ${event.commitId.slice(0, 10)} [${event.role}] ${event.message}`;
-    case "preview.updated":
-      return `preview ${event.url} @ ${event.commitId.slice(0, 10)}`;
+    case "app.updated":
+      return `app    ${event.status}${event.url ? ` ${event.url}` : ""} @ ${event.commitId.slice(0, 10)}${event.error ? `: ${event.error}` : ""}`;
     case "review.verdict":
       return `review ${event.approve ? "approved" : `rejected: ${event.reasons.join("; ")}`}`;
     case "gate.result":
