@@ -369,7 +369,7 @@ export function SessionApp({ feature, node }: { readonly feature: FeatureNode; r
   const committed = Boolean(node?.record?.head ?? node?.live?.commits.length);
   if (!id || (!app && !merged && !committed)) return <Empty>This build's app starts after Chef's first commit.</Empty>;
   const commit = app ? ` It runs ${short(app.commitId)}.` : "";
-  const note = merged ? `This build is merged into main, so this is main's app, the release candidate, with this work together with everything else Chef merged. ${SLEEPS}` : `This branch's app, with its whole stack running in the sandbox of this build. It starts again after every step Chef takes.${commit} ${SLEEPS}`;
+  const note = merged ? `This build is merged into main, so this is main's app, the release candidate, with this work together with everything else Chef merged. ${SLEEPS}` : `This is the app of this build's branch, with its whole stack running in the build's own sandbox. It starts again after every step Chef takes.${commit} ${SLEEPS}`;
   return <AppTab key={merged ? `${id}:main` : `${id}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={entryPage(feature.spec?.entrypoint) ?? "/"} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
 }
 
