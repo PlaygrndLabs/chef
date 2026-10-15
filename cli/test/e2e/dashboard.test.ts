@@ -53,7 +53,9 @@ describe("dashboard in a browser", () => {
       await expect.poll(() => page.locator('#features [data-session="s1"]').getAttribute("data-state"), { timeout: 10_000 }).toBe("merged");
       await page.locator('#features [data-feature="todo-add"][data-status="merged"][data-group="merged"]').waitFor();
       expect(await page.locator('#project-bar [data-chip="working"]').innerText()).toContain("Nothing running");
-      expect(await page.locator('[data-view="no-tab"]').count()).toBe(1);
+      expect(await page.locator('#sessions [data-view="main"]').count()).toBe(1);
+      expect(await page.locator('#sessions [data-tab=":main"]').getAttribute("aria-selected")).toBe("true");
+      expect(await page.locator('#sessions [aria-label="Close main"]').count()).toBe(0);
       await card.click();
       const feature = page.locator('[data-view="feature"][data-state="merged"]');
       await feature.waitFor({ timeout: 10_000 });
@@ -108,7 +110,7 @@ describe("dashboard in a browser", () => {
       await page.locator('#features [data-feature="shout"]').click();
       await page.locator('[data-view="feature"][data-feature="shout"]').waitFor({ timeout: 10_000 });
       expect(await page.getByRole("tab", { name: "App", exact: true }).getAttribute("aria-selected")).toBe("true");
-      expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual(["todo-add", "shout"]);
+      expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual([":main", "todo-add", "shout"]);
       await page.locator("#sessions").getByRole("tabpanel", { name: "App" }).waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "Close Shout a phrase" }).click();
       await page.locator('[data-view="feature"][data-feature="todo-add"]').waitFor({ timeout: 10_000 });

@@ -83,9 +83,9 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const featureId = selection.view === "feature" ? (selection.feature ?? picked?.featureId ?? null) : null;
   const feature = featureId ? (features.find((f) => f.id === featureId) ?? null) : null;
   const session = feature ? currentSession(feature, selection.session) : null;
-  const activeTab = selection.view === "main" ? MAIN_TAB : (featureId ?? (selection.view === "feature" ? selection.session : null));
-  const { tabs, close, keep } = useTabs(project, activeTab);
   const compact = useMediaQuery("(max-width: 1023px)");
+  const activeTab = selection.view === "main" ? MAIN_TAB : (featureId ?? (selection.view === "feature" ? selection.session : compact ? null : MAIN_TAB));
+  const { tabs, close, keep } = useTabs(project, activeTab);
   const width = useWindowWidth();
   const [palette, setPalette] = useState(false);
   const [treeSheet, setTreeSheet] = useState(false);
@@ -102,7 +102,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const chat = Math.min(Math.max(chatWidth, CHAT.min), chatMax);
 
   useEffect(() => {
-    if (data.ready) keep((id) => id === MAIN_TAB || features.some((f) => f.id === id));
+    if (data.ready) keep((id) => features.some((f) => f.id === id));
   }, [data.ready, features, keep]);
 
   const openSettings = useCallback(
@@ -150,7 +150,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
         const next = close(id);
         if (id !== activeTab) return;
         setExpanded(false);
-        select(next === null ? { view: "project", feature: null, session: null, panel: null } : tabPlace(next));
+        select(next === MAIN_TAB && compact ? { view: "project", feature: null, session: null, panel: null } : tabPlace(next));
       },
       focusComposer: () => {
         setTreeSheet(false);
