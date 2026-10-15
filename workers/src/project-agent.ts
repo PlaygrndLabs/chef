@@ -342,6 +342,15 @@ export class ProjectAgent extends Agent<Env> {
         await this.schedule(1, "drive");
         return Response.json({ state: record.machine.state }, { status: 202 });
       }
+      if (request.method === "POST" && action === "version") {
+        const by = requester(request);
+        const blocked = await orchestrator.blocked(by);
+        if (blocked) return Response.json({ error: blocked }, { status: 402 });
+        const { prompt } = (await request.json().catch(() => ({}))) as { prompt?: string };
+        const record = await orchestrator.newVersion(id, prompt ?? null, by);
+        await this.schedule(1, "drive");
+        return Response.json({ sessionId: record.id, version: record.version ?? null }, { status: 202 });
+      }
       if (request.method === "POST" && action === "steer") {
         const { message } = (await request.json().catch(() => ({}))) as { message?: string };
         if (!message?.trim()) return Response.json({ error: "message is required" }, { status: 400 });

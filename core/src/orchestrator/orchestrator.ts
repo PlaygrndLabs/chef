@@ -470,6 +470,34 @@ export class Orchestrator {
     return record;
   }
 
+  async newVersion(id: string, prompt: string | null = null, by: string | null = null): Promise<SessionRecord> {
+    const source = await this.session(id);
+    if (isTerminal(source.machine.state)) throw new ControlError(`session ${id} is ${source.machine.state}, so ask for a change instead`);
+    if (source.kind === "chore") throw new ControlError("a chore has no versions");
+    const live = await this.versionsOf(source);
+    const ask = prompt?.trim() || null;
+    const [created] = await this.createSessions(ask ?? source.rootPrompt, source.decision, source.plan, 1, { chore: false, hotfix: false, ask, by });
+    const record = await this.session(created as string);
+    if (source.version === undefined) {
+      source.version = 1;
+      await this.save(source);
+    }
+    record.version = Math.max(1, ...live.map((s) => s.version ?? 1)) + 1;
+    await this.save(record);
+    await this.emit({ type: "session.versioned", sessionId: record.id, featureId: record.featureId, from: source.id, version: record.version });
+    if (ask) await this.steer(record.id, ask);
+    return record;
+  }
+
+  private async versionsOf(record: SessionRecord): Promise<SessionRecord[]> {
+    return (await this.sessions()).filter((s) => s.featureId === record.featureId && (s.id === record.id || s.version !== undefined) && !isTerminal(s.machine.state));
+  }
+
+  private async rivalsOf(record: SessionRecord): Promise<SessionRecord[]> {
+    if (record.version === undefined) return [];
+    return (await this.versionsOf(record)).filter((s) => s.id !== record.id && s.version !== undefined);
+  }
+
   async approveMerge(id: string): Promise<SessionRecord> {
     const record = await this.session(id);
     if (record.machine.state !== "gating" || !record.ready || record.ready.approved) throw new ControlError(`session ${id} is not waiting to be merged`);
@@ -1056,6 +1084,7 @@ export class Orchestrator {
     if (record.machine.state !== "gating") return;
     if (outcome.ok) {
       await this.apply(record, { type: "gate_passed" });
+      for (const rival of await this.rivalsOf(record)) await this.drop(rival.id, `version ${record.version ?? 1} was merged instead`);
       if (record.merge?.into && upstream) {
         await this.emit({ type: "branch.merged", sessionId: record.id, featureId: record.featureId, into: record.merge.into, intoFeature: upstream.featureId, commitId: record.merge.commitId });
         return;
@@ -1088,12 +1117,21 @@ export class Orchestrator {
     return hotfix !== null;
   }
 
+  private async waitForPerson(record: SessionRecord, head: string, checks: CheckResult[]): Promise<GateOutcome> {
+    if (record.ready?.commitId === head) return { ok: false, checks, requeue: true };
+    record.ready = { commitId: head, checks, approved: false };
+    await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: true, checks });
+    await this.emit({ type: "session.ready", sessionId: record.id, featureId: record.featureId, commitId: head });
+    return { ok: false, checks, requeue: true };
+  }
+
   private async gateInto(record: SessionRecord, upstream: SessionRecord): Promise<GateOutcome> {
     const synced = await this.syncFromUpstream(record, upstream);
     if (synced === "conflict") return { ok: false, checks: [], requeue: true };
     const head = await this.commitOf(record.fork, record.head);
     const checks = record.ready?.commitId === head.id ? record.ready.checks : await this.gateChecks(record, head);
     if (checks.some((c) => !c.ok)) return { ok: false, checks };
+    if (record.ready?.approved !== true && (await this.rivalsOf(record)).length > 0) return this.waitForPerson(record, head.id, checks);
     return this.mergeQueue.run(async () => {
       if (this.running.has(upstream.id)) return { ok: false, checks, requeue: true };
       this.running.add(upstream.id);
@@ -1158,13 +1196,7 @@ export class Orchestrator {
     const approved = record.ready?.approved === true;
     const checks = approved && record.ready?.commitId === head.id ? record.ready.checks : await this.gateChecks(record, head);
     if (checks.some((c) => !c.ok)) return { ok: false, checks };
-    if (!approved && (await this.mergeMode()) === "manual") {
-      if (record.ready?.commitId === head.id) return { ok: false, checks, requeue: true };
-      record.ready = { commitId: head.id, checks, approved: false };
-      await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: true, checks });
-      await this.emit({ type: "session.ready", sessionId: record.id, featureId: record.featureId, commitId: head.id });
-      return { ok: false, checks, requeue: true };
-    }
+    if (!approved && ((await this.mergeMode()) === "manual" || (await this.rivalsOf(record)).length > 0)) return this.waitForPerson(record, head.id, checks);
     return this.mergeQueue.run(async () => {
       const mainHead = await this.deps.repos.resolveRef(this.canonical, "main");
       if (!mainHead || mainHead !== record.baseMain) {

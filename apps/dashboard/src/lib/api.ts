@@ -383,6 +383,7 @@ export function projectApi(project: string) {
     drop: (id: string, reason: string) => call<{ state: string }>(`${base}/sessions/${id}/drop`, post({ reason })),
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),
     merge: (id: string) => call<{ state: string }>(`${base}/sessions/${id}/merge`, post({})),
+    newVersion: (id: string, prompt?: string) => call<{ sessionId: string; version: number | null }>(`${base}/sessions/${id}/version`, post(prompt ? { prompt } : {})),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
     route: (prompt: string) => call<RouteDecision>(`${base}/route`, post({ prompt })),

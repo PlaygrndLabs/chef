@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from "react";
-import { ChevronRight, CornerDownRight, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, CornerDownRight, GitFork, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,8 +10,9 @@ import { ListSkeleton } from "@/components/loading";
 import { MapMarkIcon, MARK_LABEL } from "@/components/map-mark";
 import { KindBadges, StatusDot } from "@/components/status";
 import { roleLabel, useAgents, workingRole } from "@/lib/agents";
+import { isActive } from "@/lib/events";
 import { PLAIN_STATE, stateTone, type Tone } from "@/lib/format";
-import { featureTree, groupOf, heldBy, waitsForKey, waitsForMerge, type SessionNode, type TreeNode } from "@/lib/model";
+import { featureTree, groupOf, heldBy, isChore, waitsForBudget, waitsForKey, waitsForMerge, type SessionNode, type TreeNode } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -175,8 +176,20 @@ function TitleField({ node }: { readonly node: TreeNode }) {
 
 function RowMenu({ node }: { readonly node: TreeNode }) {
   const { rename, move, askDelete, askAdd, targets } = useActions();
-  const { feature } = node;
+  const { api, data, openSession } = useWorkspace();
+  const { feature, session } = node;
   const places = targets(node);
+  const versionable = session !== null && session.state !== "merged" && session.state !== "dropped" && !isChore(session);
+  const newVersion = () => {
+    if (!session) return;
+    api.newVersion(session.id).then(
+      (made) => {
+        data.refresh();
+        openSession(made.sessionId);
+      },
+      (error: unknown) => toast.error(`Could not start another version of "${feature.title}"`, { description: error instanceof Error ? error.message : String(error) }),
+    );
+  };
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -203,6 +216,12 @@ function RowMenu({ node }: { readonly node: TreeNode }) {
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        {versionable ? (
+          <DropdownMenuItem onSelect={newVersion} data-action="new-version">
+            <GitFork />
+            Try another version
+          </DropdownMenuItem>
+        ) : null}
         {feature.map ? (
           <DropdownMenuItem onSelect={() => askAdd(node)}>
             <Plus />
@@ -220,22 +239,25 @@ function RowMenu({ node }: { readonly node: TreeNode }) {
 }
 
 function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonly depth: number; readonly closed: ReadonlySet<string>; readonly toggle: (id: string) => void }) {
-  const { selection, feature: active, openFeature } = useWorkspace();
+  const { selection, feature: active, session: selected, openFeature, openSession } = useWorkspace();
   const { renaming, rename, askDelete, setDragging } = useActions();
   const agents = useAgents(selection.project);
   const drop = useDropTarget(node.feature.id);
   const { feature, session } = node;
-  const open = !closed.has(feature.id);
-  const current = active?.id === feature.id;
+  const key = node.version !== null && session ? `${feature.id}@${session.id}` : feature.id;
+  const open = !closed.has(key);
+  const current = active?.id === feature.id && (node.version === null || selected?.id === session?.id);
+  const mark = node.version !== null && session ? (isActive(session.state) && !waitsForMerge(session) && !waitsForKey(session) && !waitsForBudget(session) ? "working" : feature.mark) : feature.mark;
+  const choose = () => (node.version !== null && session ? openSession(session.id) : openFeature(feature.id));
   const tone = session ? toneOf(session) : null;
   const role = session ? workingRole(session) : null;
   const doing = role ? roleLabel(role, agents) : session ? stateText(session) : MARK_LABEL[feature.mark];
-  const single = feature.sessions.length === 1;
+  const single = feature.sessions.length === 1 || node.version !== null;
   const dot = (
     <>
-      <MapMarkIcon mark={feature.mark} tone={tone} />
+      <MapMarkIcon mark={mark} tone={tone} />
       <span className="sr-only" {...(role ? { "data-working-role": role } : {})}>
-        {feature.mark === "working" ? doing : `${MARK_LABEL[feature.mark]}${session ? `, ${doing}` : ""}`}
+        {mark === "working" ? doing : `${MARK_LABEL[mark]}${session ? `, ${doing}` : ""}`}
       </span>
     </>
   );
@@ -254,7 +276,7 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
         style={{ paddingLeft: 4 + depth * INDENT }}
       >
         {node.children.length ? (
-          <button type="button" onClick={() => toggle(feature.id)} className="grid size-5 shrink-0 place-items-center text-muted-foreground hover:text-foreground" aria-label={open ? `Hide what is under ${feature.title}` : `Show what is under ${feature.title}`}>
+          <button type="button" onClick={() => toggle(key)} className="grid size-5 shrink-0 place-items-center text-muted-foreground hover:text-foreground" aria-label={open ? `Hide what is under ${feature.title}` : `Show what is under ${feature.title}`}>
             <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
           </button>
         ) : (
@@ -269,7 +291,7 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
           <>
             <button
               type="button"
-              onClick={() => openFeature(feature.id)}
+              onClick={choose}
               onDoubleClick={() => rename(feature.id)}
               onKeyDown={(e) => {
                 if (e.key === "F2") {
@@ -283,7 +305,8 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
               data-feature={feature.id}
               data-status={feature.status}
               data-group={node.group}
-              data-mark={feature.mark}
+              data-mark={mark}
+              {...(node.version !== null ? { "data-version": node.version } : {})}
               {...(session ? { "data-state": session.state } : {})}
               {...(single && session ? { "data-session": session.id } : {})}
               aria-current={current ? "page" : undefined}
@@ -292,6 +315,7 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
             >
               {dot}
               <span className="min-w-0 truncate">{feature.title}</span>
+              {node.version !== null ? <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground uppercase">v{node.version}</span> : null}
               {session ? <KindBadges node={session} /> : null}
             </button>
             <span className={cn("absolute top-1.5 right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-data-[state=open]:opacity-100", current ? "bg-sidebar-accent" : "group-hover:bg-sidebar-accent")}>
@@ -300,11 +324,11 @@ function Row({ node, depth, closed, toggle }: { readonly node: TreeNode; readonl
           </>
         )}
       </div>
-      {current && feature.sessions.length > 1 ? <Builds node={node} depth={depth} /> : null}
+      {current && feature.sessions.length > 1 && node.version === null ? <Builds node={node} depth={depth} /> : null}
       {open && node.children.length ? (
         <ul role="group" className="flex flex-col">
           {node.children.map((child) => (
-            <Row key={child.feature.id} node={child} depth={depth + 1} closed={closed} toggle={toggle} />
+            <Row key={child.version !== null && child.session ? `${child.feature.id}@${child.session.id}` : child.feature.id} node={child} depth={depth + 1} closed={closed} toggle={toggle} />
           ))}
         </ul>
       ) : null}
@@ -460,7 +484,7 @@ export function FeatureTree({ children }: { readonly children?: React.ReactNode 
           <>
             <ul role="tree" aria-label="Features" className="flex flex-col">
               {tree.map((node) => (
-                <Row key={node.feature.id} node={node} depth={0} closed={closed} toggle={toggle} />
+                <Row key={node.version !== null && node.session ? `${node.feature.id}@${node.session.id}` : node.feature.id} node={node} depth={0} closed={closed} toggle={toggle} />
               ))}
             </ul>
             <TopLevelDrop />
