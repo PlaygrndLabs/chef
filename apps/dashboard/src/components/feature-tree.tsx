@@ -96,7 +96,7 @@ const ActionsContext = createContext<TreeActions | null>(null);
 
 function useActions(): TreeActions {
   const actions = useContext(ActionsContext);
-  if (!actions) throw new Error("tree actions need the feature tree");
+  if (!actions) throw new Error("tree actions need the feature list");
   return actions;
 }
 

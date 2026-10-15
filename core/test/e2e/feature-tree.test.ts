@@ -25,7 +25,7 @@ async function todoWithParts() {
   return { w, remove, edit };
 }
 
-describe("arranging the feature tree", () => {
+describe("arranging the feature list", () => {
   it("renames and moves features, and the router sees the new names and places", async () => {
     const { w, edit } = await todoWithParts();
     await w.orchestrator.arrange("todo-add", { title: "Todo list" });
