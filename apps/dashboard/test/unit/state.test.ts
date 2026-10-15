@@ -158,6 +158,24 @@ describe("feature map", () => {
   });
 });
 
+describe("feature list from the feature map", () => {
+  it("lists mapped features without sessions under their map parent, with current, wish and working marks", () => {
+    const state = run([
+      { type: "session.created", sessionId: "s1", featureId: "share", fork: "f1", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s1", featureId: "share", from: "queued", to: "coding", reason: "planned" },
+    ]);
+    const feature = (id: string, title: string, state: "current" | "wish") => ({ id, name: id.split("/").at(-1) as string, parent: id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : null, title, state, specs: "", path: "" });
+    const map = { start: "Run it.", features: [feature("boards", "Boards", "current"), feature("boards/share", "Share a board", "wish"), feature("boards/archive", "Archive", "wish")] };
+    const nodes = featureNodes(state, [], [], {}, map);
+    const tree = featureTree(nodes);
+    expect(tree.map((n) => [n.feature.id, n.feature.mark, n.session])).toEqual([["boards", "current", null]]);
+    expect(tree[0]?.children.map((n) => [n.feature.id, n.feature.mark])).toEqual([
+      ["share", "working"],
+      ["archive", "wish"],
+    ]);
+  });
+});
+
 describe("plain progress", () => {
   const timeline = (events: object[]) => run(events).sessions["s1"]?.timeline ?? [];
   const created = { type: "session.created", sessionId: "s1", featureId: "a", fork: "f", reason: "new", attempt: attempt(), parent: null };

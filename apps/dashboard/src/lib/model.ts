@@ -1,4 +1,4 @@
-import type { FeatureLayout, FeatureSpec, SessionRecord, SessionState } from "@chef/core";
+import type { FeatureLayout, FeatureMap, FeatureSpec, MapFeature, SessionRecord, SessionState } from "@chef/core";
 import { isActive, type AppView, type ProjectLive, type SessionLive } from "./events";
 
 export type FeatureStatus = "building" | "ready" | "stuck" | "merged" | "proposed" | "dropped";
@@ -25,8 +25,12 @@ export interface SessionNode {
   readonly record: SessionRecord | undefined;
 }
 
+export type MapMark = "current" | "wish" | "working";
+
 export interface FeatureNode {
   readonly id: string;
+  readonly map: MapFeature | null;
+  readonly mark: MapMark;
   readonly title: string;
   readonly status: FeatureStatus;
   readonly flow: string;
@@ -52,7 +56,8 @@ export function sessionNodes(live: ProjectLive, records: readonly SessionRecord[
   return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
 }
 
-function featureStatusOf(sessions: readonly SessionNode[], spec: FeatureSpec | null): FeatureStatus {
+function featureStatusOf(sessions: readonly SessionNode[], spec: FeatureSpec | null, map: MapFeature | null = null): FeatureStatus {
+  if (!sessions.length && map) return map.state === "current" ? "merged" : "proposed";
   if (sessions.some((s) => isActive(s.state) && !waitsForMerge(s))) return "building";
   if (sessions.some((s) => waitsForMerge(s))) return "ready";
   const latest = [...sessions].reverse().find((s) => s.state !== "dropped");
@@ -62,27 +67,39 @@ function featureStatusOf(sessions: readonly SessionNode[], spec: FeatureSpec | n
   return sessions.length ? "dropped" : "proposed";
 }
 
-export function featureNodes(live: ProjectLive, records: readonly SessionRecord[], spec: readonly FeatureSpec[], layout: FeatureLayout = {}): FeatureNode[] {
+function markOf(status: FeatureStatus, sessions: readonly SessionNode[], map: MapFeature | null, onMain: boolean): MapMark {
+  if (sessions.some((s) => isActive(s.state) && !waitsForMerge(s) && !waitsForKey(s) && !waitsForBudget(s))) return "working";
+  if (map) return map.state;
+  return onMain && status === "merged" ? "current" : sessions.some((s) => s.state === "merged") ? "current" : "wish";
+}
+
+export function featureNodes(live: ProjectLive, records: readonly SessionRecord[], spec: readonly FeatureSpec[], layout: FeatureLayout = {}, map: FeatureMap | null = null): FeatureNode[] {
   const sessions = sessionNodes(live, records);
-  const ids = new Set<string>([...spec.map((f) => f.id), ...sessions.map((s) => s.featureId)]);
+  const mapped = new Map((map?.features ?? []).map((f) => [f.name, f]));
+  const ids = new Set<string>([...mapped.keys(), ...spec.map((f) => f.id), ...sessions.map((s) => s.featureId)]);
   const nodes: FeatureNode[] = [];
   for (const id of ids) {
     const place = layout[id];
     const removedAt = place?.removedAt;
     const own = sessions.filter((s) => s.featureId === id && (removedAt === undefined || s.createdAt > removedAt));
-    if (removedAt !== undefined && own.length === 0) continue;
+    const inMap = mapped.get(id) ?? null;
+    if (removedAt !== undefined && own.length === 0 && !inMap) continue;
     const fromMain = spec.find((f) => f.id === id) ?? null;
     const planned = [...own].reverse().find((s) => s.record)?.record?.plan.feature ?? null;
     const feature = fromMain ?? planned;
     const app = live.apps[id] ?? null;
+    const status = featureStatusOf(own, fromMain, inMap);
+    const mapParent = inMap?.parent ? (inMap.parent.split("/").at(-1) ?? null) : undefined;
     nodes.push({
       id,
-      title: place?.title ?? feature?.title ?? id,
-      status: featureStatusOf(own, fromMain),
+      map: inMap,
+      mark: markOf(status, own, inMap, Boolean(fromMain)),
+      title: place?.title ?? inMap?.title ?? feature?.title ?? id,
+      status,
       flow: feature?.flow ?? id,
       spec: fromMain ?? planned,
       onMain: Boolean(fromMain),
-      parent: place?.parent !== undefined ? place.parent : (feature?.parent ?? null),
+      parent: place?.parent !== undefined ? place.parent : mapParent !== undefined ? mapParent : (feature?.parent ?? null),
       sessions: own,
       app,
       updatedAt: Math.max(0, ...own.map((s) => s.updatedAt)),
@@ -99,7 +116,7 @@ export function currentSession(feature: FeatureNode, selected: string | null = n
 
 export interface TreeNode {
   readonly feature: FeatureNode;
-  readonly session: SessionNode;
+  readonly session: SessionNode | null;
   readonly group: SessionGroup;
   readonly children: readonly TreeNode[];
 }
@@ -119,13 +136,14 @@ function sortTree(nodes: readonly TreeNode[]): TreeNode[] {
 }
 
 export function featureTree(features: readonly FeatureNode[]): TreeNode[] {
-  const built = features.filter((f) => f.sessions.length > 0);
+  const built = features.filter((f) => f.sessions.length > 0 || f.map !== null);
   const ids = new Set(built.map((f) => f.id));
   const make = (feature: FeatureNode, seen: ReadonlySet<string>): TreeNode => {
-    const session = currentSession(feature) as SessionNode;
+    const session = currentSession(feature);
     const path = new Set([...seen, feature.id]);
     const children = built.filter((f) => f.parent === feature.id && !path.has(f.id)).map((f) => make(f, path));
-    return { feature, session, group: groupOf(session.state, session.needs, session.budget, session.ready), children: sortTree(children) };
+    const group: SessionGroup = session ? groupOf(session.state, session.needs, session.budget, session.ready) : feature.mark === "current" ? "live" : "stopped";
+    return { feature, session, group, children: sortTree(children) };
   };
   const roots = built.filter((f) => !f.parent || !ids.has(f.parent) || f.parent === f.id).map((f) => make(f, new Set()));
   const placed = new Set<string>();
