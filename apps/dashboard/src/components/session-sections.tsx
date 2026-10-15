@@ -399,7 +399,8 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
 const SLEEPS = "It sleeps when nobody opens it for a while and wakes up on the next visit.";
 
 export function SessionApp({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
-  const { selection } = useWorkspace();
+  const { data, selection } = useWorkspace();
+  const mainApp = data.spec?.mainApp ?? null;
   const app = node ? (node.live?.app ?? node.record?.app ?? null) : feature.app;
   const id = node?.id ?? feature.app?.sessionId ?? null;
   const merged = node?.state === "merged";
@@ -408,7 +409,7 @@ export function SessionApp({ feature, node }: { readonly feature: FeatureNode; r
   const commit = app ? ` It runs ${short(app.commitId)}.` : "";
   const note = merged ? `This build is merged into main, so this is main's app, the release candidate, with this work together with everything else Chef merged. ${SLEEPS}` : `This is the app of this build's branch, with its whole stack running in the build's own sandbox. It starts again after every step Chef takes.${commit} ${SLEEPS}`;
   const page = entryPage(feature.spec?.entrypoint) ?? "/";
-  return <AppTab key={merged ? `${id}:main` : `${id}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={merged ? page : "/"} page={page} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
+  return <AppTab key={merged ? `${id}:main:${mainApp?.status ?? ""}:${mainApp?.commitId ?? ""}` : `${id}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={merged ? page : "/"} page={page} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
 }
 
 export function MainApp() {

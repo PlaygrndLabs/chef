@@ -24,7 +24,7 @@ import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxProofRunner } from "./sandbox-checks.ts";
-import { SandboxAppHost } from "./app-host.ts";
+import { appBranch, SandboxAppHost } from "./app-host.ts";
 import { AppRouter, appName, routerName, RouterTakenError } from "./app-router.ts";
 import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
 import { appPath, appResponse, type AppAnswer } from "@chef/adapters/app-page";
@@ -457,18 +457,15 @@ export class ProjectAgent extends Agent<Env> {
     }
   }
 
-  private async appSource(id: string, depth = 0): Promise<{ readonly sandbox: string; readonly repo: string; readonly commitId: string } | null> {
+  private async appSource(id: string): Promise<{ readonly sandbox: string; readonly repo: string; readonly commitId: string } | null> {
     const { orchestrator, repos } = await this.build();
     const main = async () => {
       const commitId = await repos.resolveRef(this.name, "main");
       return commitId ? { sandbox: this.mainSandbox(), repo: this.name, commitId } : null;
     };
-    if (id === "main") return main();
-    const record = (await orchestrator.sessions()).find((s) => s.id === id);
-    if (!record) return null;
-    if (record.forkDeleted && record.machine.state === "merged" && record.merge?.into && depth < 20) return this.appSource(record.merge.into, depth + 1);
-    if (record.forkDeleted) return record.machine.state === "merged" ? main() : null;
-    return record.head ? { sandbox: record.id, repo: record.fork, commitId: record.head } : null;
+    const branch = id === "main" ? { kind: "main" as const } : appBranch(await orchestrator.sessions(), id);
+    if (!branch) return null;
+    return branch.kind === "main" ? main() : { sandbox: branch.id, repo: branch.fork, commitId: branch.head };
   }
 
   private async appAnswer(id: string, retry: boolean): Promise<AppAnswer> {
