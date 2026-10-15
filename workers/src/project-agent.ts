@@ -131,6 +131,7 @@ export class ProjectAgent extends Agent<Env> {
         store,
         memory: new VectorizeIndex(env.MEMORY as unknown as VectorizeLike, env.AI as unknown as EmbedderLike, this.name),
         spend,
+        background: (work) => this.detach("starting a session's app", work),
       },
       {
         name: this.name,
@@ -492,13 +493,17 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   async wakeApp(sandbox: string): Promise<void> {
-    if (sandbox === this.mainSandbox()) return this.runMainApp(true);
+    this.detach(`starting the app of ${sandbox}`, () => this.wakeNow(sandbox));
+  }
+
+  private async wakeNow(sandbox: string): Promise<void> {
+    if (sandbox === this.mainSandbox()) return this.mainAppNow(true);
     if (this.waking.has(sandbox)) return;
     this.waking.add(sandbox);
     try {
       const source = await this.appSource(sandbox);
       if (!source) return;
-      if (source.sandbox === this.mainSandbox()) return await this.runMainApp(true);
+      if (source.sandbox === this.mainSandbox()) return await this.mainAppNow(true);
       const { apps } = await this.build();
       await apps.run({ target: source.sandbox, repo: source.repo, ref: "main", commitId: source.commitId });
     } catch (error) {
@@ -627,6 +632,10 @@ export class ProjectAgent extends Agent<Env> {
     const { orchestrator } = await this.build();
     if (await this.ctx.storage.get<MainAppState>(MAIN_APP)) await this.restartMainApp();
     for (const session of await orchestrator.sessions()) if (!isTerminal(session.machine.state) && session.app?.status === "running") await this.wakeApp(session.id);
+  }
+
+  private detach(what: string, work: () => Promise<void>): void {
+    void this.keepAliveWhile(work).catch((error: unknown) => console.error(`${what} failed`, error));
   }
 
   override shouldSendProtocolMessages(_connection: Connection, context: ConnectionContext): boolean {
@@ -778,6 +787,10 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   async readProject(): Promise<void> {
+    this.detach(`reading ${this.name}`, () => this.readNow());
+  }
+
+  private async readNow(): Promise<void> {
     const { orchestrator, settings } = await this.build();
     let state: OverviewState;
     try {
@@ -827,13 +840,17 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   async runMainApp(force?: boolean): Promise<void> {
+    this.detach(`starting ${this.name}'s main app`, () => this.mainAppNow(force === true));
+  }
+
+  private async mainAppNow(force: boolean): Promise<void> {
     if (this.runningMain) {
       this.mainAgain = true;
       return;
     }
     this.runningMain = true;
     try {
-      let again = force === true;
+      let again = force;
       do {
         this.mainAgain = false;
         await this.runMainAppOnce(again);

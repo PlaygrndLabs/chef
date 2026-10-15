@@ -48,6 +48,23 @@ describe("phase 1 core loop on fakes", () => {
     expect(proof.steps.map((s: { name: string }) => s.name)).toEqual(["AC1: add an item", "AC2: see the item in the list", "AC3: an empty item is rejected"]);
   });
 
+  it("moves on while a branch app starts in the background, and proves the app of the head it merges", async () => {
+    const queued: (() => Promise<void>)[] = [];
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]), deps: { background: (work) => void queued.push(work) } });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(PROMPT);
+    const record = await w.orchestrator.run(sessionId as string);
+    expect(record.machine.state).toBe("merged");
+    expect(queued.length).toBeGreaterThan(0);
+    expect(w.apps.runs).toHaveLength(1);
+    const proven = w.proofs.proofs.at(-1)?.commitId;
+    expect(w.apps.runs[0]?.commitId).toBe(proven);
+    const gardener = record.commits.at(-1);
+    expect(proven).not.toBe(gardener);
+    for (const work of queued) await work();
+    expect(w.apps.runs.map((r) => r.commitId)).not.toContain(gardener);
+  });
+
   it("never hands a coder a write token or any token for canonical main", async () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]) });
     await w.orchestrator.bootstrap(templateTree());
