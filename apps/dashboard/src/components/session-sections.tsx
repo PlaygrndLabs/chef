@@ -255,7 +255,7 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
         {cloudflare.loading && !cloudflare.data ? <Skeleton className="h-16" /> : null}
         {cloudflare.error ? <p className="text-sm text-muted-foreground">Could not read the Cloudflare details: {cloudflare.error}</p> : null}
         {cloudflare.data && !mineOnCloudflare.length ? <p className="text-sm text-muted-foreground">This role uses nothing on Cloudflare in this build.</p> : null}
-        {mineOnCloudflare.length ? <CloudflareList resources={mineOnCloudflare} showRoles={false} /> : null}
+        {mineOnCloudflare.length ? <CloudflareList resources={mineOnCloudflare} session={node.id} showRoles={false} /> : null}
       </Section>
       <Section title="Its commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
@@ -303,7 +303,7 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
   return (
     <div className="flex flex-col gap-6">
       <Section title="On Cloudflare">
-        <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} />
+        <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} session={node.id} />
       </Section>
       <Section title="Steps saved as commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}

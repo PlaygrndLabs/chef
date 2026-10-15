@@ -103,7 +103,7 @@ function MainAppChip({ now }: { readonly now: number }) {
     return (
       <a href={appLink(selection.project, MAIN_APP)} target="_blank" rel="noreferrer" data-chip="main-app" title={`Open main's app, the release candidate, at commit ${short(app.commitId)}, started ${ago(app.at, now)}`} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground">
         <AppWindowMac className="size-3.5" />
-        <span className="font-mono">{app.url ? new URL(app.url).host : "main"}</span>
+        <span>Open main's app</span>
         <ExternalLink className="size-3" />
       </a>
     );
