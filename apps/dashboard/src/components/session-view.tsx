@@ -14,7 +14,7 @@ import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, stateTone } from "@/lib/format";
 import { currentSession, heldBy, isChore, relationsOf, nodeStatus, waitsForBudget, waitsForKey, waitsForMerge, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
-import { activity, plainReason, progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
+import { activity, plainReason, progress, STAGES, updates, whatFailed, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
 import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -199,7 +199,8 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   const { api, data, focusComposer } = useWorkspace();
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const feedback = node.record?.machine.feedback;
+  const reason = plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "");
+  const failed = whatFailed({ feedback: node.record?.machine.feedback, history: node.record?.history, verdict: node.live?.verdict ?? node.record?.verdict });
   const retry = async () => {
     setBusy(true);
     try {
@@ -215,6 +216,17 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-bad/30 bg-bad/5 p-4" data-needs-you={node.id}>
       <div className="font-medium text-bad">Chef needs your help</div>
+      {reason ? (
+        <p className="text-sm" data-stuck-reason>
+          {reason}
+        </p>
+      ) : null}
+      {failed ? (
+        <section className="flex flex-col gap-1.5" data-what-failed>
+          <h4 className="kicker">What failed</h4>
+          <pre className="max-h-56 overflow-auto border border-dashed bg-background p-3 font-mono text-xs whitespace-pre-wrap">{failed}</pre>
+        </section>
+      ) : null}
       <p className="text-sm text-muted-foreground">
         Press Try again, tell Chef in the{" "}
         <button type="button" onClick={focusComposer} className="underline underline-offset-2 hover:text-foreground">
@@ -222,17 +234,6 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
         </button>{" "}
         what to do differently, or stop this build. Main and its app are not affected.
       </p>
-      {feedback ? (
-        <Collapsible>
-          <CollapsibleTrigger className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground">
-            What failed
-            <ChevronDown className="size-3" />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-background p-3 font-mono text-xs whitespace-pre-wrap">{feedback}</pre>
-          </CollapsibleContent>
-        </Collapsible>
-      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => void retry()} disabled={busy}>
           {busy ? <Loader2 className="animate-spin" /> : <RotateCcw />}

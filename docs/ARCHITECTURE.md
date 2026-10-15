@@ -59,7 +59,7 @@ The planner and reviewer call Claude through `adapters/src/anthropic.ts` with st
 
 A prompt routed as a question starts no session: it is answered from the memory index, by the planner when it has an `answer` method, and the answer lists the files it used.
 
-A failed gate or rejected review sends the session back to coding with the failure log. Budgets on attempts, tokens and time turn a session `stuck`; a stuck session blocks no other session.
+A failed gate or rejected review sends the session back to coding with the failure log. Budgets on attempts, tokens and time turn a session `stuck`; a stuck session blocks no other session. Its page in the dashboard says why it stopped and shows what failed last (the session's `machine.feedback`, else the last entry of its `history`, else the reviewer's reasons).
 
 ### Work that outlives a deploy
 

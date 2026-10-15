@@ -290,6 +290,13 @@ export function plainReason(reason: string): string {
   return reason;
 }
 
+export function whatFailed(input: { readonly feedback?: string | null | undefined; readonly history?: readonly string[] | undefined; readonly verdict?: { readonly approve: boolean; readonly reasons: readonly string[] } | null | undefined }): string | null {
+  const saved = input.feedback?.trim() || input.history?.findLast((entry) => entry.trim())?.trim();
+  if (saved) return saved;
+  if (input.verdict && !input.verdict.approve && input.verdict.reasons.length) return `Reviewer rejected the change:\n${input.verdict.reasons.map((r) => `- ${r}`).join("\n")}`;
+  return null;
+}
+
 export function stripFeatureTag(prompt: string): { readonly text: string; readonly feature: string | null } {
   const match = /^#([a-z0-9-]+)\s+([\s\S]*)$/.exec(prompt.trim());
   return match ? { text: match[2] as string, feature: match[1] as string } : { text: prompt, feature: null };
