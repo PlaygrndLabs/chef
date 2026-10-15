@@ -27,7 +27,7 @@ export interface SandboxJob {
 
 export type TurnOutcome = { readonly status: "done"; readonly result: CoderTurnResult } | { readonly status: "running" } | { readonly status: "lost" };
 
-interface OutboundProps {
+export interface OutboundAccess {
   readonly artifactsHost: string;
   readonly readToken: string;
   readonly llmHost: string | null;
@@ -35,17 +35,26 @@ interface OutboundProps {
   readonly cacheScope: string;
 }
 
+interface OutboundProps {
+  readonly sandbox: string;
+}
+
+type AccessStub = { outboundAccess(): Promise<OutboundAccess | null> };
+
 export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (url.hostname === LAYER_CACHE_ADDRESS) return layerCacheFetch(request, layerStore(this.env.IMAGE_LAYERS), this.ctx.props.cacheScope);
+    const sessions = this.env.SESSION;
+    const access = await (sessions.get(sessions.idFromName(this.ctx.props.sandbox)) as unknown as AccessStub).outboundAccess();
+    if (!access) return new Response("this sandbox has no access to anything yet", { status: 503 });
+    if (url.hostname === LAYER_CACHE_ADDRESS) return layerCacheFetch(request, layerStore(this.env.IMAGE_LAYERS), access.cacheScope);
     if (url.protocol !== "https:") return new Response("https only", { status: 403 });
     const headers = new Headers(request.headers);
-    if (url.hostname === this.ctx.props.artifactsHost) {
+    if (url.hostname === access.artifactsHost) {
       if (url.pathname.endsWith("/git-receive-pack") || url.searchParams.get("service") === "git-receive-pack") return new Response("the coder sandbox cannot push", { status: 403 });
-      headers.set("authorization", `Bearer ${this.ctx.props.readToken}`);
-    } else if (url.hostname === this.ctx.props.llmHost && this.ctx.props.llmKey) {
-      const llmKey = this.ctx.props.llmKey;
+      headers.set("authorization", `Bearer ${access.readToken}`);
+    } else if (url.hostname === access.llmHost && access.llmKey) {
+      const llmKey = access.llmKey;
       for (const name of ["x-api-key", "authorization"]) {
         const current = headers.get(name);
         if (current?.includes(PLACEHOLDER)) headers.set(name, current.replace(PLACEHOLDER, llmKey));
@@ -118,7 +127,7 @@ const DIAGNOSE_MS = 20_000;
 const TURN = "sandbox/turn";
 const TURNS_DIR = "/workspace/turns";
 
-type Outbound = Omit<OutboundProps, "llmKey">;
+type Outbound = Omit<OutboundAccess, "llmKey">;
 
 function cacheScope(remote: string): string {
   const url = new URL(remote);
@@ -138,7 +147,12 @@ interface TurnState {
 export class SessionAgent extends Agent<Env> {
   private exit: string | null = null;
   private busy = 0;
-  private following: string | null = null;
+  private readonly grants = new Map<number, Outbound>();
+  private granted = 0;
+  private lastGrant: Outbound | null = null;
+  private llmKey: string | null = null;
+  private readonly intercepted = new Set<string>();
+  private intercepting: Promise<void> = Promise.resolve();
   private visited = 0;
   private appRun: { readonly commitId: string; readonly run: Promise<AppState> } | null = null;
   private appsStarting = 0;
@@ -173,25 +187,36 @@ export class SessionAgent extends Agent<Env> {
     await this.schedule(Math.max(30, Math.ceil(idleSeconds - idleFor / 1000)), "sleepIfIdle", undefined, { idempotent: true });
   }
 
+  async outboundAccess(): Promise<OutboundAccess | null> {
+    const latest = [...this.grants.values()].at(-1) ?? this.lastGrant;
+    return latest ? { ...latest, llmKey: this.llmKey } : null;
+  }
+
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome> {
     const id = job.turnId ?? `${job.sessionId}-${Date.now()}`;
-    let turn = await this.ctx.storage.get<TurnState>(TURN);
-    if (turn?.id !== id) turn = await this.launch(id, job, llmKey);
-    return this.follow(turn, onEvent, llmKey, job.turnId ? FOLLOW_SECONDS : null);
+    this.llmKey = llmKey;
+    const release = this.grant({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname, cacheScope: cacheScope(job.remote) });
+    try {
+      let turn = await this.ctx.storage.get<TurnState>(TURN);
+      if (turn?.id !== id) turn = await this.launch(id, job);
+      return await this.follow(turn, onEvent, job.turnId ? FOLLOW_SECONDS : null);
+    } finally {
+      release();
+    }
   }
 
   async resumeTurn(id: string, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome> {
     const turn = await this.ctx.storage.get<TurnState>(TURN);
     if (turn?.id !== id) return { status: "lost" };
-    return this.follow(turn, onEvent, llmKey, FOLLOW_SECONDS);
+    this.llmKey = llmKey;
+    return this.follow(turn, onEvent, FOLLOW_SECONDS);
   }
 
-  private async launch(id: string, job: SandboxJob, llmKey: string): Promise<TurnState> {
+  private async launch(id: string, job: SandboxJob): Promise<TurnState> {
     await this.stopTurn();
     await this.ensureContainer();
     const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname, cacheScope: cacheScope(job.remote) };
-    await this.intercept(outbound, { llmKey });
-    this.following = id;
+    await this.intercept(outbound);
     const turn: TurnState = { id, dir: `${TURNS_DIR}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
     const { readToken, turnId, ...visible } = job;
     void readToken;
@@ -202,11 +227,10 @@ export class SessionAgent extends Agent<Env> {
     return turn;
   }
 
-  private async follow(turn: TurnState, onEvent: (event: CoderEvent) => void, llmKey: string, seconds: number | null): Promise<TurnOutcome> {
+  private async follow(turn: TurnState, onEvent: (event: CoderEvent) => void, seconds: number | null): Promise<TurnOutcome> {
     if (turn.done && turn.result) return { status: "done", result: turnResult(turn) };
     if (!this.ctx.container?.running) return { status: "lost" };
-    if (this.following !== turn.id) await this.intercept(turn.outbound, { llmKey });
-    this.following = turn.id;
+    await this.intercept(turn.outbound);
     this.busy++;
     try {
       const deadline = seconds === null ? Infinity : Date.now() + seconds * 1000;
@@ -400,8 +424,18 @@ export class SessionAgent extends Agent<Env> {
 
   private async exec(script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null }, limitMs?: number): Promise<{ code: number; tail: string; stopped: boolean }> {
     const container = await this.ensureContainer();
-    this.following = null;
-    await this.intercept({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cacheScope: cacheScope(job.remote) }, secrets);
+    const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: job.llm ? new URL(job.llm.baseUrl).hostname : null, cacheScope: cacheScope(job.remote) };
+    if (secrets.llmKey) this.llmKey = secrets.llmKey;
+    const release = this.grant(outbound);
+    try {
+      await this.intercept(outbound);
+      return await this.execGranted(container, script, job, onEvent, limitMs);
+    } finally {
+      release();
+    }
+  }
+
+  private async execGranted(container: Container, script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, limitMs?: number): Promise<{ code: number; tail: string; stopped: boolean }> {
     const { readToken, ...visible } = job;
     void readToken;
     const process = await container.exec(["node", `/opt/chef/${script}`], { env: { ...SANDBOX_ENV, CHEF_JOB: toBase64(JSON.stringify(visible)) }, user: SANDBOX_USER, stdout: "pipe", stderr: "combined" }).catch((error: unknown) => {
@@ -436,6 +470,7 @@ export class SessionAgent extends Agent<Env> {
     if (!container) throw new Error("the SessionAgent container is not configured");
     if (container.running) return container;
     this.exit = null;
+    this.intercepted.clear();
     container.start({ image: container.images["coder"] as string, enableInternet: true, instance: SANDBOX_INSTANCE });
     container.monitor().then(
       () => (this.exit = "its main process exited"),
@@ -447,14 +482,36 @@ export class SessionAgent extends Agent<Env> {
     return container;
   }
 
-  private async intercept(props: Outbound, secrets: { readonly llmKey?: string | null }): Promise<void> {
+  private grant(outbound: Outbound): () => void {
+    const id = ++this.granted;
+    this.grants.set(id, outbound);
+    this.lastGrant = outbound;
+    return () => void this.grants.delete(id);
+  }
+
+  private intercept(props: Outbound): Promise<void> {
+    const next = this.intercepting.catch(() => undefined).then(() => this.interceptHosts(props));
+    this.intercepting = next;
+    return next;
+  }
+
+  private async interceptHosts(props: Outbound): Promise<void> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
+    const hosts = [...new Set([props.artifactsHost, ...(props.llmHost ? [props.llmHost] : [])])].filter((host) => !this.intercepted.has(host));
+    const cache = !this.intercepted.has(LAYER_CACHE_ADDRESS);
+    if (hosts.length === 0 && !cache) return;
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");
-    const fetcher = outbound({ props: { ...props, llmKey: secrets.llmKey ?? null } });
-    for (const host of new Set([props.artifactsHost, ...(props.llmHost ? [props.llmHost] : [])])) await container.interceptOutboundHttps(host, fetcher);
-    await container.interceptOutboundHttp(LAYER_CACHE_ADDRESS, fetcher);
+    const fetcher = outbound({ props: { sandbox: this.name } });
+    for (const host of hosts) {
+      await container.interceptOutboundHttps(host, fetcher);
+      this.intercepted.add(host);
+    }
+    if (cache) {
+      await container.interceptOutboundHttp(LAYER_CACHE_ADDRESS, fetcher);
+      this.intercepted.add(LAYER_CACHE_ADDRESS);
+    }
     const trusted = await container.exec(["sh", "/opt/chef/trust.sh"], { env: { PATH: ROOT_PATH }, user: "0:0", stdout: "pipe", stderr: "combined" });
     const out = await new Response(trusted.stdout as ReadableStream<Uint8Array>).text();
     if ((await trusted.exitCode) !== 0) console.error(`trusting Cloudflare's certificate in ${this.name} failed: ${out.slice(-300)}`);
