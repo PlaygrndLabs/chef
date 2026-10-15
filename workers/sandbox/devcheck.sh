@@ -6,7 +6,7 @@ for i in $(seq 1 100); do docker version > /dev/null 2>&1 && break; sleep 0.3; d
 docker version --format 'server {{.Server.Version}}' || tail -30 /var/log/dockerd.log
 docker info --format 'driver {{.Driver}} cgroup {{.CgroupDriver}}' 2>&1
 step "outer https"; curl -sS -o /dev/null -w '%{http_code}\n' https://registry.npmjs.org/react
-step "hello"; docker run --rm --network=host hello-world 2>&1 | head -3
+step "hello"; docker run --rm --network=host hello-world 2>&1 | grep -m1 Hello
 step "inner npm"; docker run --rm --network=host node:22-alpine npm view react version 2>&1 | tail -2
 step "build"
 mkdir -p /tmp/devcheck/api && cd /tmp/devcheck
@@ -23,6 +23,6 @@ services:
     depends_on: [api]
     command: ["node", "-e", "require('http').createServer(async (q, s) => { const r = await fetch('http://api:8000/').then((x) => x.text()).catch((e) => String(e)); s.end('web says: ' + r + ' at ' + q.url); }).listen(8080)"]
 YAML
-docker compose up -d --build 2>&1 | tail -5
+COMPOSE_BAKE=false docker compose up -d --build 2>&1 | tail -8
 for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/ 2>/dev/null && break; sleep 1; done; echo
 step "ps"; docker compose ps --format '{{.Service}} {{.State}}'
