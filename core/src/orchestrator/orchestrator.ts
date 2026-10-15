@@ -21,7 +21,7 @@ import type { PendingTurn, SessionApp, SessionRecord } from "../session/record.t
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
-import { applyMapEdit, describeEntries, FEATURES_DIR, isMapRequest, mapAsSpec, mapChanges, placeMapped, readFeatureMap, renderMapOutline, type FeatureMap, type MapEdit, type MapEntry } from "../features/index.ts";
+import { applyMapEdit, describeEntries, FEATURES_DIR, isMapRequest, mapAsSpec, mapChanges, mergedEntryChanges, nameOf, wasMapped, placeMapped, readFeatureMap, renderMapOutline, type FeatureMap, type MapEdit, type MapEntry } from "../features/index.ts";
 import { arrange, arrangedSpec, arrangementProblem, markRemoved, placed, subtreeOf, type FeatureArrangement, type FeatureLayout, type KnownFeature } from "../spec/layout.ts";
 import { missingEnv, renderEnvironment, type EnvVar } from "../env/env.ts";
 import { Archiver, MainWriter, Mutex } from "./capabilities.ts";
@@ -341,9 +341,9 @@ export class Orchestrator {
       const main = await this.mainTree();
       if (!main.commitId) throw new ControlError("the project has no main branch yet");
       const placed = placeMapped(readFeatureMap(main.tree), mapped);
-      const changes = mapChanges(placed);
+      const changes = mapChanges(wasMapped(main.tree) ? placed : { ...placed, start: placed.start ?? "" });
       if (Object.keys(changes).length === 0) return { added: [], commitId: null };
-      const message = `Feature list: map ${placed.entries.length === 1 ? "1 current feature" : `${placed.entries.length} current features`}`;
+      const message = placed.entries.length === 0 ? "Feature list: how to start the project" : `Feature list: map ${placed.entries.length === 1 ? "1 current feature" : `${placed.entries.length} current features`}`;
       return { added: placed.entries, commitId: await this.commitMain(main.commitId, changes, message), message };
     });
     if (outcome.commitId && "message" in outcome) await this.emit({ type: "features.changed", commitId: outcome.commitId, message: outcome.message, ids: outcome.added.map((e) => e.id) });
@@ -521,7 +521,8 @@ export class Orchestrator {
       const head = await this.deps.repos.resolveRef(this.canonical, "main");
       if (!head) return { commitId: null, reverted: false };
       const tree = (await this.commitOf(this.canonical, head)).tree;
-      const doomed = Object.keys(tree).filter((path) => featureIds.some((id) => path === specPath(id) || path.startsWith(`features/${id}/`)));
+      const mapped = readFeatureMap(tree).features.filter((f) => featureIds.includes(f.name)).map((f) => `${FEATURES_DIR}/${f.id}/`);
+      const doomed = Object.keys(tree).filter((path) => featureIds.some((id) => path === specPath(id) || path.startsWith(`features/${id}/`)) || mapped.some((dir) => path.startsWith(dir)));
       if (doomed.length === 0) return { commitId: null, reverted: false };
       const removed = this.regenerate(applyChanges(tree, Object.fromEntries(doomed.map((path) => [path, null]))));
       const changes = diffTrees(tree, applyChanges(removed, gardenFeatureMap(removed)));
@@ -546,7 +547,9 @@ export class Orchestrator {
   private async knownFeatures(layout: FeatureLayout): Promise<KnownFeature[]> {
     const known = new Map<string, KnownFeature>();
     for (const record of await this.sessions()) known.set(record.featureId, { id: record.featureId, title: record.plan.feature.title, parent: record.plan.feature.parent ?? null });
-    for (const f of readSpec((await this.mainTree()).tree)) known.set(f.id, { id: f.id, title: f.title, parent: f.parent ?? null });
+    const { tree } = await this.mainTree();
+    for (const f of readSpec(tree)) known.set(f.id, { id: f.id, title: f.title, parent: f.parent ?? null });
+    for (const f of readFeatureMap(tree).features) known.set(f.name, { id: f.name, title: f.title, parent: f.parent ? nameOf(f.parent) : null });
     return [...known.values()].filter((f) => layout[f.id]?.removedAt === undefined).map((f) => placed(f, layout));
   }
 
@@ -1294,7 +1297,11 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     const path = specPath(record.featureId);
     const current = readSpec(head.tree).find((f) => f.id === record.featureId);
-    if (!current || current.status === "merged") return;
+    const listed = record.kind === "chore" ? {} : mergedEntryChanges(head.tree, arrangedSpec([current ?? record.plan.feature], await this.layout())[0] ?? record.plan.feature);
+    if (!current || current.status === "merged") {
+      if (Object.keys(listed).length) await this.commitTurn(record, { changes: listed, role: "gardener", kind: "spec_change", workItem: null, prompt: `Mark ${record.featureId} current in the feature list`, model: "chef-gardener", runId: this.deps.ids.next("run"), message: `features: mark ${record.featureId} current` });
+      return;
+    }
     const updated: FeatureSpec = { ...current, status: "merged" };
     const tree = applyChanges(head.tree, { [path]: renderFeature(updated) });
     const memoryPath = featureMemoryPath(record.featureId);
@@ -1307,7 +1314,7 @@ export class Orchestrator {
     const memory = renderFeatureMemory(tree[memoryPath], { feature: updated, sessionId: record.id, parent: record.parent, rootPrompt: record.rootPrompt, attempt: record.attempt, turns, feedback: record.history });
     const corrections = [...(await this.deps.store.list<Correction | null>("corrections/")).entries()].filter(([key, c]) => !key.startsWith("corrections/pending/") && c !== null).map(([, c]) => c as Correction);
     const mined = mineRules(corrections, tree);
-    const changes: Record<string, string | null> = { [path]: renderFeature(updated), ...gardenFeatureMap(tree), [memoryPath]: memory };
+    const changes: Record<string, string | null> = { [path]: renderFeature(updated), ...gardenFeatureMap(tree), ...listed, [memoryPath]: memory };
     for (const { rule } of mined) changes[rulePath(rule.id)] = renderRule(rule);
     await this.commitTurn(record, {
       changes,

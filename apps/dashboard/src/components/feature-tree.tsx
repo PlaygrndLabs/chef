@@ -323,7 +323,7 @@ function DeleteDialog({ node, onOpenChange }: { readonly node: TreeNode | null; 
     setBusy(true);
     try {
       if (built) await api.removeFeature(node.feature.id);
-      if (node.feature.map) await api.editMap({ kind: "remove", id: node.feature.map.id });
+      else if (node.feature.map) await api.editMap({ kind: "remove", id: node.feature.map.id });
       data.refresh();
       onOpenChange(false);
     } catch (error) {

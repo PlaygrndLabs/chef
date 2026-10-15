@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { hasFeatureMap, MAP_SUGGESTION } from "@chef/core";
+import { MAP_SUGGESTION, wasMapped } from "@chef/core";
 import { DEFAULT_MODEL, structured, type LlmEndpoint } from "./anthropic.ts";
 
 export const OverviewSchema = z.object({
@@ -60,7 +60,7 @@ const SYSTEM = `You are Chef, an agent that builds software features on its own.
 Write for the project's owner in plain words. No jargon they did not use, no file paths unless they help.`;
 
 export function withMapSuggestion(overview: Overview, tree: Readonly<Record<string, string>>): Overview {
-  if (hasFeatureMap(tree) || overview.suggestions.some((s) => s.prompt === MAP_SUGGESTION.prompt)) return overview;
+  if (wasMapped(tree) || overview.suggestions.some((s) => s.prompt === MAP_SUGGESTION.prompt)) return overview;
   return { ...overview, suggestions: [{ ...MAP_SUGGESTION }, ...overview.suggestions] };
 }
 

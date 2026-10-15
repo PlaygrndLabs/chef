@@ -105,17 +105,17 @@ export function featureNodes(live: ProjectLive, records: readonly SessionRecord[
     const feature = fromMain ?? planned;
     const app = live.apps[id] ?? null;
     const status = featureStatusOf(own, fromMain, inMap);
-    const mapParent = inMap?.parent ? (inMap.parent.split("/").at(-1) ?? null) : undefined;
+    const mapParent = inMap ? (inMap.parent ? (inMap.parent.split("/").at(-1) ?? null) : null) : undefined;
     nodes.push({
       id,
       map: inMap,
       mark: markOf(status, own, inMap, Boolean(fromMain)),
-      title: place?.title ?? inMap?.title ?? feature?.title ?? id,
+      title: inMap ? inMap.title : (place?.title ?? feature?.title ?? id),
       status,
       flow: feature?.flow ?? id,
       spec: fromMain ?? planned,
       onMain: Boolean(fromMain),
-      parent: place?.parent !== undefined ? place.parent : mapParent !== undefined ? mapParent : (feature?.parent ?? null),
+      parent: mapParent !== undefined ? mapParent : place?.parent !== undefined ? place.parent : (feature?.parent ?? null),
       sessions: own,
       app,
       updatedAt: Math.max(0, ...own.map((s) => s.updatedAt)),
