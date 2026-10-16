@@ -303,6 +303,18 @@ export function stripFeatureTag(prompt: string): { readonly text: string; readon
   return match ? { text: match[2] as string, feature: match[1] as string } : { text: prompt, feature: null };
 }
 
+export type Command = "chore" | "hotfix" | "new" | "map";
+
+export function splitCommands(prompt: string): { readonly commands: readonly Command[]; readonly text: string } {
+  const commands: Command[] = [];
+  let text = prompt.trim();
+  for (let match = /^\/(chore|hotfix|new|map)\b\s*/i.exec(text); match; match = /^\/(chore|hotfix|new|map)\b\s*/i.exec(text)) {
+    commands.push((match[1] as string).toLowerCase() as Command);
+    text = text.slice(match[0].length);
+  }
+  return { commands, text: commands.length ? text : prompt };
+}
+
 export function activity(state: SessionState, timeline: readonly TimelineItem[], stuck: string | null): string {
   if (state === "merged") return timeline.some((item) => item.kind === "merged" && item.into) ? "Passed every check and merged into its parent feature" : "Passed every check and merged into main";
   if (state === "stuck") return stuck ? plainReason(stuck) : "Needs your help";

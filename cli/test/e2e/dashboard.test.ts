@@ -363,6 +363,11 @@ describe("dashboard in a browser", () => {
       const feature = page.locator('[data-view="feature"]');
       await feature.locator("[data-team]").waitFor({ timeout: 10_000 });
       expect(await feature.locator("header [data-chore]").count()).toBe(1);
+      const asked = feature.locator('[data-command="chore"]').first();
+      await asked.waitFor({ timeout: 10_000 });
+      const bubble = await asked.locator("xpath=..").innerText();
+      expect(bubble).toContain("Explain how to run the tests in the README");
+      expect(bubble).not.toContain("/chore");
       expect(await feature.locator("[data-team] [data-member]").evaluateAll((items) => items.map((i) => i.getAttribute("data-member")))).toEqual(["chore", "reviewer"]);
 
       await page.goto(`${local.url}/?project=shop&settings=app.router`);

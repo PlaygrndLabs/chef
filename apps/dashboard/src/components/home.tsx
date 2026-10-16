@@ -7,7 +7,7 @@ import { Composer } from "@/components/composer";
 import { LivePanel } from "@/components/live-talk";
 import { ChatSkeleton } from "@/components/loading";
 import { Button } from "@/components/ui/button";
-import { StatusPill } from "@/components/status";
+import { PromptText, StatusPill } from "@/components/status";
 import { nodeStatus, waitsForBudget, waitsForKey, waitsForMerge, type FeatureStatus, type SessionNode } from "@/lib/model";
 import { activity, stripFeatureTag } from "@/lib/progress";
 import { isActive, routeAnswers } from "@/lib/events";
@@ -405,14 +405,18 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
                   item.sessions.length > 0 ? <Reply key={`${item.at}-${item.prompt}`} text="" sessions={item.sessions} /> : null
                 ) : item ? (
                   <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
-                    <You>{stripFeatureTag(item.prompt).text}</You>
+                    <You>
+                      <PromptText text={stripFeatureTag(item.prompt).text} />
+                    </You>
                     <Reply text={item.reply} sessions={item.sessions} waiting={item.waiting} />
                   </div>
                 ) : null,
               )}
               {pending.map(({ prompt, failed, reason }) => (
                 <div key={`pending-${prompt}`} className="flex flex-col gap-4" data-pending={failed ? "failed" : "sending"}>
-                  <You>{prompt}</You>
+                  <You>
+                    <PromptText text={prompt} />
+                  </You>
                   <div className="flex items-center gap-3">
                     <Avatar />
                     {failed ? (
