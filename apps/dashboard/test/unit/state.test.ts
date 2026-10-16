@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject } from "../../src/lib/events.ts";
 import { featureNodes, featureTree, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
-import { activity, plainReason, progress, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
+import { activity, plainReason, progress, splitCommands, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
 import { teamOf } from "../../src/lib/agents.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
@@ -276,6 +276,10 @@ describe("builds by status and how they relate", () => {
     expect(plainReason("gate failed")).toBe("gate failed");
     expect(stripFeatureTag("#shout make it louder")).toEqual({ text: "make it louder", feature: "shout" });
     expect(stripFeatureTag("Add a page")).toEqual({ text: "Add a page", feature: null });
+    expect(splitCommands("/chore Dockerize the project")).toEqual({ commands: ["chore"], text: "Dockerize the project" });
+    expect(splitCommands("/hotfix /chore bump node")).toEqual({ commands: ["hotfix", "chore"], text: "bump node" });
+    expect(splitCommands("use /chore for chores")).toEqual({ commands: [], text: "use /chore for chores" });
+    expect(splitCommands("/chores later")).toEqual({ commands: [], text: "/chores later" });
   });
 });
 
