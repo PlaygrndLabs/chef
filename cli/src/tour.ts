@@ -131,7 +131,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     let leaving = false;
     let deleting: string | null = null;
     page.on("response", (response) => {
-      if (deleting && response.status() === 409 && new RegExp(`/(api/projects|agents/project)/${deleting}[/?]`).test(response.url())) return;
+      if (deleting && response.status() === 409 && new RegExp(`/(api/projects|agents/project|app)/${deleting}[/?]`).test(response.url())) return;
       if (response.status() >= 400 && response.request().method() !== "HEAD") report.errors.push(`http ${response.status()} ${response.request().method()} ${response.url()}`);
     });
     page.on("console", (message) => {
