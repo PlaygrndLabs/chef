@@ -20,6 +20,7 @@ describe("project structure", () => {
     expect(usesChefTemplate({ ...imported, "src/registry.gen.ts": "" })).toBe(false);
     expect(structureGuidance(templateTree())).toContain("uses Chef's template");
     expect(structureGuidance(imported)).toContain("own structure, not Chef's template");
+    for (const tree of [templateTree(), imported]) expect(structureGuidance(tree)).toContain("`condition: service_healthy`");
   });
 
   it("reads the template's write scopes for the repository's real files", () => {
