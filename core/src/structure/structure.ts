@@ -1,4 +1,5 @@
 import type { Tree } from "../git/tree.ts";
+import { COMPOSE_GUIDANCE } from "../app/compose.ts";
 import { hashHex } from "../util/hash.ts";
 
 export const TEMPLATE_MARKERS = ["app/gen.ts", "src/registry.gen.ts"] as const;
@@ -33,7 +34,7 @@ export function ownScope(scope: readonly string[]): string[] {
 }
 
 export function structureGuidance(tree: Readonly<Record<string, unknown>>): string {
-  return usesChefTemplate(tree) ? TEMPLATE_GUIDANCE : OWN_GUIDANCE;
+  return `${usesChefTemplate(tree) ? TEMPLATE_GUIDANCE : OWN_GUIDANCE}\n\n${COMPOSE_GUIDANCE}`;
 }
 
 const TEMPLATE_GUIDANCE = "# Project structure\n\nThis project uses Chef's template: each feature is a vertical slice under `features/<id>/` with its tests and `flow.ts`, and `src/registry.gen.ts` is generated from those folders. Follow your role's instructions about them.";

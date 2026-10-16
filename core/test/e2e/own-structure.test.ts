@@ -111,6 +111,7 @@ describe("a project with its own structure", () => {
     expect(chore.featureId).toBe("chore-dockerize");
     const record = await w.orchestrator.run(chore.sessionId as string);
     expect(record.plan.feature.title).toBe("Dockerize the project");
+    expect(w.coder.turns.find((t) => t.role === "chore")?.instructions).toContain("Add the Dockerfile every `build:` service builds from");
     expect(record.machine.state).toBe("merged");
     const main = (await w.orchestrator.mainTree()).tree;
     expect(main["compose.yaml"]).toContain("build: .");
