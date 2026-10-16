@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChecksTab, DetailsTab, Empty, RoleWork, SessionApp } from "@/components/session-sections";
 import { KeyPrompt } from "@/components/environment";
 import { BranchView } from "@/components/history-view";
-import { KindBadges, StatusDot, StatusPill } from "@/components/status";
+import { KindBadges, PromptText, StatusDot, StatusPill } from "@/components/status";
 import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, stateTone } from "@/lib/format";
 import { currentSession, heldBy, isChore, relationsOf, nodeStatus, waitsForBudget, waitsForKey, waitsForMerge, type FeatureNode, type SessionNode } from "@/lib/model";
@@ -121,7 +121,9 @@ function UpdateRow({ update }: { readonly update: Update }) {
     return (
       <div className="flex max-w-[80%] flex-col items-end gap-0.5 self-end">
         {update.note ? <span className="text-xs text-muted-foreground">Your note for the next step</span> : null}
-        <div className="rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">{update.text}</div>
+        <div className="rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">
+          <PromptText text={update.text} />
+        </div>
       </div>
     );
   const Icon = ICONS[update.icon];

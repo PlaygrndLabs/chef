@@ -2,6 +2,7 @@ import type { SessionState } from "@chef/core";
 import { cn } from "@/lib/utils";
 import { STATE_LABEL, stateTone, type Tone } from "@/lib/format";
 import { isChore, isHotfix, type FeatureStatus, type SessionNode } from "@/lib/model";
+import { splitCommands, type Command } from "@/lib/progress";
 
 const DOT: Readonly<Record<Tone, string>> = {
   run: "bg-run pulse-run",
@@ -23,8 +24,8 @@ export function StatusDot({ tone, className }: { readonly tone: Tone; readonly c
   return <span aria-hidden="true" className={cn("inline-block size-2 shrink-0", DOT[tone], className)} />;
 }
 
-export function ToneBadge({ tone, children, className }: { readonly tone: Tone; readonly children: React.ReactNode; readonly className?: string }) {
-  return <span className={cn("inline-flex h-5 shrink-0 items-center gap-1.5 rounded-md border px-1.5 text-[11.5px] font-medium whitespace-nowrap", BADGE[tone], className)}>{children}</span>;
+export function ToneBadge({ tone, children, className, ...rest }: { readonly tone: Tone; readonly children: React.ReactNode; readonly className?: string } & React.HTMLAttributes<HTMLSpanElement>) {
+  return <span {...rest} className={cn("inline-flex h-5 shrink-0 items-center gap-1.5 rounded-md border px-1.5 text-[11.5px] font-medium whitespace-nowrap", BADGE[tone], className)}>{children}</span>;
 }
 
 export function StateBadge({ state, dot = false }: { readonly state: SessionState; readonly dot?: boolean }) {
@@ -55,6 +56,26 @@ export function StatusPill({ status, className }: { readonly status: FeatureStat
       <StatusDot tone={tone} />
       {FEATURE_LABEL[status]}
     </span>
+  );
+}
+
+export function CommandBadge({ command }: { readonly command: Command }) {
+  return (
+    <ToneBadge tone={command === "hotfix" ? "bad" : "idle"} className="mr-1.5 h-4 px-1 align-[1px] text-[10.5px]" data-command={command}>
+      {command}
+    </ToneBadge>
+  );
+}
+
+export function PromptText({ text }: { readonly text: string }) {
+  const { commands, text: rest } = splitCommands(text);
+  return (
+    <>
+      {commands.map((command, i) => (
+        <CommandBadge key={`${i}-${command}`} command={command} />
+      ))}
+      {rest}
+    </>
   );
 }
 
