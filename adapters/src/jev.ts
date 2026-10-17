@@ -1,5 +1,7 @@
 import { TypeSafeClient, type TypeSafeClientConfig } from "@typesafe-ai/sdk";
-import type { ChoiceAnswers, ChoiceQuestions, Classifier } from "@chef/core";
+import type { ChoiceAnswers, ChoiceQuestions, Classifier, TokenUsage } from "@chef/core";
+
+export type JevUsage = (model: string, usage: TokenUsage) => Promise<void> | void;
 
 export class JevClassifier implements Classifier {
   readonly model: string;
@@ -7,6 +9,7 @@ export class JevClassifier implements Classifier {
   constructor(
     private readonly client: Pick<TypeSafeClient, "systemOne">,
     model = "jev-1.13.0",
+    private readonly onUsage: JevUsage = () => undefined,
   ) {
     this.model = model;
   }
@@ -20,6 +23,7 @@ export class JevClassifier implements Classifier {
     const request: Record<string, { type: "choice"; instructions: string; criteria: Record<string, string | null> }> = {};
     for (const [name, question] of Object.entries(questions)) request[name] = { type: "choice", instructions: question.instructions, criteria: { ...question.criteria } };
     const result = await this.client.systemOne({ state: state as never, questions: request, model: this.model });
+    if (result.usage) await Promise.resolve(this.onUsage(result.model || this.model, { inputTokens: result.usage.input_tokens ?? 0, outputTokens: result.usage.output_tokens ?? 0 })).catch(() => undefined);
     const answers: Record<string, unknown> = {};
     for (const name of Object.keys(questions)) {
       const answer = result.answers[name];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings } from "../../src/settings.ts";
+import { applyUpdate, describeSettings, NO_SETTINGS, readManaged, resolveSettings } from "../../src/settings.ts";
 
 const ACCOUNT = "0123456789abcdef0123456789abcdef";
 
@@ -14,6 +14,7 @@ describe("app settings", () => {
     expect(resolved.models).toEqual({ planner: "claude-opus-5-5", reviewer: "claude-opus-5-5", coder: "claude-haiku-5-5", voice: "gpt-live-1" });
     expect(resolved.attempts).toBe(3);
     expect(describeSettings(saved.settings, env)).toEqual({
+      managed: null,
       llm: { kind: "custom", baseUrl: "https://llm.example/v1", keyHint: "…0001", source: "app" },
       voice: { kind: "openai", baseUrl: null, keyHint: "…ment", source: "deployment" },
       jev: null,
@@ -54,5 +55,19 @@ describe("app settings", () => {
     for (const bad of [{ llm: { kind: "custom", apiKey: "k" } }, { llm: { kind: "custom", baseUrl: "ftp://x", apiKey: "k" } }, { llm: { kind: "anthropic", apiKey: " " } }, { cloudflare: { accountId: "abc", apiToken: "t" } }, { models: { coder: "bad model" } }, { attempts: 9 }, { unknown: 1 }, null]) {
       expect(applyUpdate(NO_SETTINGS, bad).ok).toBe(false);
     }
+  });
+
+  it("uses only the providers a managing app sets, and never shows their keys", () => {
+    const saved = applyUpdate(NO_SETTINGS, { llm: { kind: "anthropic", apiKey: "sk-ant-own" }, jev: { apiKey: "ts-own" } });
+    if (!saved.ok) throw new Error(saved.error);
+    const read = readManaged({ by: "Host", llm: { kind: "custom", baseUrl: "https://host.example/llm/model/", apiKey: "proxy-token-1234" }, voice: { kind: "openai", baseUrl: "https://host.example/llm/voice", apiKey: "proxy-token-1234" }, jev: null });
+    if (!read.ok) throw new Error(read.error);
+    const resolved = resolveSettings(saved.settings, { TYPESAFE_API_KEY: "ts-env" }, read.managed);
+    expect(resolved).toMatchObject({ llm: { kind: "custom", baseUrl: "https://host.example/llm/model", apiKey: "proxy-token-1234" }, voice: { kind: "openai", baseUrl: "https://host.example/llm/voice" }, jev: null });
+    expect(resolved.models.voice).toBe("gpt-live-1");
+    expect(describeSettings(saved.settings, {}, read.managed)).toMatchObject({ managed: { by: "Host" }, llm: { kind: "custom", baseUrl: null, keyHint: "managed", source: "managed" }, voice: { source: "managed" }, jev: null });
+    expect(readManaged({ by: "Host", llm: null, voice: null, jev: { apiKey: "t", baseUrl: "https://host.example/llm/router" } })).toEqual({ ok: true, managed: { by: "Host", llm: null, voice: null, jev: { apiKey: "t", baseUrl: "https://host.example/llm/router" } } });
+    expect(readManaged({ by: "", llm: null, voice: null, jev: null }).ok).toBe(false);
+    expect(readManaged({ by: "Host", llm: null }).ok).toBe(false);
   });
 });

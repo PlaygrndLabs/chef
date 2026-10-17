@@ -1,9 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
-import { applyUpdate, describeSettings, NO_SETTINGS, resolveSettings, type AppSettings, type Resolved } from "@chef/adapters/settings";
+import { applyUpdate, describeSettings, MANAGED_PARTS, NO_SETTINGS, readManaged, resolveSettings, type AppSettings, type Managed, type Resolved } from "@chef/adapters/settings";
 import type { ProjectActivity, ProjectEntry } from "@chef/adapters/projects";
 import type { GitHubAppCredentials } from "@chef/adapters/github-app";
 import type { SharedInstructions } from "@chef/adapters/guidance";
-import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type SaveResult, type StoredAgents } from "@chef/core";
+import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type SaveResult, type SpendPart, type StoredAgents } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, homeOrigin, passwordProblem, sessionCookie, type Access, type Caller, type Credential, type StoredPassword } from "./access.ts";
 import { deploymentGrant, deploymentKey, mintGrant, readGrantRequest, viewGrant, type Grant, type GrantView } from "./grants.ts";
@@ -11,6 +11,7 @@ import { mintShare, readShareRequest, SHARE_ROUTE, SHARES_ROUTE, targetOf, viewS
 import { DurableStore } from "./do-store.ts";
 
 const SETTINGS = "providers";
+const MANAGED = "providers/managed";
 const PASSWORD = "password";
 const SEALED = "access/sealed";
 const GRANT = "access/grant/";
@@ -41,6 +42,15 @@ export class Settings extends DurableObject<Env> {
 
   async write(settings: AppSettings): Promise<void> {
     await this.ctx.storage.put(SETTINGS, settings);
+  }
+
+  async managed(): Promise<Managed | null> {
+    return (await this.ctx.storage.get<Managed>(MANAGED)) ?? null;
+  }
+
+  async setManaged(managed: Managed | null): Promise<void> {
+    if (managed) await this.ctx.storage.put(MANAGED, managed);
+    else await this.ctx.storage.delete(MANAGED);
   }
 
   async password(): Promise<StoredPassword | null> {
@@ -172,9 +182,9 @@ export class Settings extends DurableObject<Env> {
     return { caps: (await this.ctx.storage.get<Caps>(CAPS)) ?? NO_CAPS, ledger: ledger.month === month ? ledger : emptyLedger(month) };
   }
 
-  async recordSpend(project: string, by: string | null, micros: number, now: number): Promise<void> {
+  async recordSpend(project: string, by: string | null, micros: number, now: number, part: SpendPart = "model"): Promise<void> {
     const ledger = (await this.ctx.storage.get<Ledger>(LEDGER)) ?? emptyLedger(monthOf(now));
-    await this.ctx.storage.put(LEDGER, addSpend(ledger, monthOf(now), project, by, micros));
+    await this.ctx.storage.put(LEDGER, addSpend(ledger, monthOf(now), project, by, micros, part));
   }
 
   async spendBlocked(project: string, by: string | null, now: number): Promise<string | null> {
@@ -218,7 +228,9 @@ export function settingsStub(env: Env): DurableObjectStub<Settings> {
 }
 
 export async function currentSettings(env: Env): Promise<Resolved> {
-  return resolveSettings(await settingsStub(env).read(), env);
+  const settings = settingsStub(env);
+  const [saved, managed] = await Promise.all([settings.read(), settings.managed()]);
+  return resolveSettings(saved, env, managed);
 }
 
 export async function credential(env: Env): Promise<Credential | null> {
@@ -315,14 +327,29 @@ export async function sharesRequest(request: Request, env: Env, describe: Descri
   return Response.json({ error: "method not allowed" }, { status: 405 });
 }
 
-async function view(env: Env, saved: AppSettings) {
-  return { ...describeSettings(saved, env), password: deploymentPassword(env) ? "deployment" : (await settingsStub(env).password()) ? "app" : "none" };
+async function view(env: Env, saved: AppSettings, managed: Managed | null) {
+  return { ...describeSettings(saved, env, managed), password: deploymentPassword(env) ? "deployment" : (await settingsStub(env).password()) ? "app" : "none" };
+}
+
+export async function managedRequest(request: Request, env: Env, caller: Caller): Promise<Response> {
+  const settings = settingsStub(env);
+  if (request.method === "GET") return Response.json({ managed: (await settings.managed())?.by ?? null });
+  if (caller.kind !== "grant" || caller.grant.kind !== "controller") return Response.json({ error: "only a managing app can manage the model providers" }, { status: 403 });
+  if (request.method === "DELETE") {
+    await settings.setManaged(null);
+    return new Response(null, { status: 204 });
+  }
+  if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
+  const result = readManaged(await request.json().catch(() => null));
+  if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
+  await settings.setManaged(result.managed);
+  return Response.json({ managed: result.managed.by });
 }
 
 export async function settingsRequest(request: Request, env: Env): Promise<Response> {
   const settings = settingsStub(env);
-  const saved = await settings.read();
-  if (request.method === "GET") return Response.json(await view(env, saved));
+  const [saved, managed] = await Promise.all([settings.read(), settings.managed()]);
+  if (request.method === "GET") return Response.json(await view(env, saved, managed));
   if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (body && "password" in body) {
@@ -333,12 +360,13 @@ export async function settingsRequest(request: Request, env: Env): Promise<Respo
     if (Object.keys(rest).length > 0) return Response.json({ error: "change the password on its own" }, { status: 400 });
     const stored = await hashPassword(password as string);
     await settings.replacePassword(stored);
-    return Response.json(await view(env, saved), { headers: { "set-cookie": await sessionCookie({ kind: "app", ...stored }) } });
+    return Response.json(await view(env, saved, managed), { headers: { "set-cookie": await sessionCookie({ kind: "app", ...stored }) } });
   }
+  if (managed && body && MANAGED_PARTS.some((part) => part in body)) return Response.json({ error: `${managed.by} manages the model providers, so change them there` }, { status: 409 });
   const result = applyUpdate(saved, body);
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
   await settings.write(result.settings);
-  return Response.json(await view(env, result.settings));
+  return Response.json(await view(env, result.settings, managed));
 }
 
 export function agentStore(env: Env) {

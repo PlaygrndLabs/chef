@@ -9,7 +9,7 @@ import { LlmReviewer } from "@chef/adapters/llm-reviewer";
 import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai-reviewer";
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
-import { RealtimeHost } from "@chef/adapters/realtime";
+import { RealtimeHost, voiceUsage } from "@chef/adapters/realtime";
 import { APP_START_SECONDS, AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type AppStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PushedEvent, agentsOf, cloudflareView, engineOf, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
@@ -120,7 +120,7 @@ export class ProjectAgent extends Agent<Env> {
       {
         repos,
         coder: new SandboxCoder(env.SESSION, { model: settings.models.coder, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
-        classifier: settings.jev ? new JevClassifier(new TypeSafeClient({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL }), env.JEV_MODEL) : NO_CLASSIFIER,
+        classifier: settings.jev ? new JevClassifier(new TypeSafeClient({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL, ...(settings.jev.baseUrl ? { baseURL: settings.jev.baseUrl } : {}) }), env.JEV_MODEL, (model, usage) => spend.record(currentSpender(), model, usage, "router")) : NO_CLASSIFIER,
         planner: new LlmPlanner(llm, resolveModel(plannerRole.model, settings.models), withSkills(plannerRole.instructions, plannerRole.skills)),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
         apps,
@@ -693,12 +693,13 @@ export class ProjectAgent extends Agent<Env> {
       return null;
     };
     const { orchestrator, settings } = await this.build();
+    const spend = new EngineSpend(this.env, this.name);
     if (!settings.llm) return fail(NO_LLM);
     const voice = settings.voice;
     if (!voice) return fail("Live talk needs a voice key in Settings > Models.");
     const host =
       voice.kind === "openai"
-        ? new GptLiveHost({ apiKey: voice.apiKey, model: settings.models.voice, voice: this.env.VOICE, connect: workersConnect })
+        ? new GptLiveHost({ apiKey: voice.apiKey, model: settings.models.voice, voice: this.env.VOICE, connect: workersConnect, ...(voice.baseUrl ? { baseUrl: voice.baseUrl } : {}) })
         : new RealtimeHost({ baseUrl: voice.baseUrl, apiKey: voice.apiKey, model: settings.models.voice, voice: this.env.VOICE, connect: workersConnect });
     const target = {
       submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
@@ -716,6 +717,8 @@ export class ProjectAgent extends Agent<Env> {
         ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
         settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
         onEvent: (event) => {
+          const usage = voiceUsage(event);
+          if (usage) void spend.record(by, settings.models.voice, usage, "voice").catch(() => undefined);
           send(event);
           if (event.type === "error") console.error(`voice call on ${this.name} reported an error`, JSON.stringify(event["error"] ?? null));
           if (event.type === "session.closed") hangUp();

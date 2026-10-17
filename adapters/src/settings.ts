@@ -3,10 +3,18 @@ import { providerFromEnv, type LlmEnv, type LlmProvider } from "./anthropic.ts";
 import { LIVE_MODEL } from "./gpt-live.ts";
 import { REALTIME_MODEL } from "./realtime.ts";
 
-export type VoiceProvider = { readonly kind: "openai"; readonly apiKey: string } | { readonly kind: "custom"; readonly baseUrl: string; readonly apiKey: string };
+export type VoiceProvider = { readonly kind: "openai"; readonly apiKey: string; readonly baseUrl?: string } | { readonly kind: "custom"; readonly baseUrl: string; readonly apiKey: string };
 
 export interface JevSettings {
   readonly apiKey: string;
+  readonly baseUrl?: string;
+}
+
+export interface Managed {
+  readonly by: string;
+  readonly llm: LlmProvider | null;
+  readonly voice: VoiceProvider | null;
+  readonly jev: JevSettings | null;
 }
 
 export interface CloudflareSettings {
@@ -44,6 +52,7 @@ export interface SettingsEnv extends LlmEnv {
   readonly VOICE_BASE_URL?: string | undefined;
   readonly VOICE_API_KEY?: string | undefined;
   readonly TYPESAFE_API_KEY?: string | undefined;
+  readonly TYPESAFE_BASE_URL?: string | undefined;
   readonly CF_ACCOUNT_ID?: string | undefined;
   readonly CF_API_TOKEN?: string | undefined;
   readonly PLANNER_MODEL?: string | undefined;
@@ -75,7 +84,8 @@ function defaultVoiceModel(voice: VoiceProvider | null, env: SettingsEnv): strin
 }
 
 function jevFromEnv(env: SettingsEnv): JevSettings | null {
-  return env.TYPESAFE_API_KEY ? { apiKey: env.TYPESAFE_API_KEY } : null;
+  if (!env.TYPESAFE_API_KEY) return null;
+  return env.TYPESAFE_BASE_URL ? { apiKey: env.TYPESAFE_API_KEY, baseUrl: env.TYPESAFE_BASE_URL } : { apiKey: env.TYPESAFE_API_KEY };
 }
 
 function cloudflareFromEnv(env: SettingsEnv): CloudflareSettings | null {
@@ -87,12 +97,12 @@ function attemptsFromEnv(env: SettingsEnv): number {
   return Number.isInteger(value) && value >= 1 && value <= MAX_ATTEMPTS ? value : 1;
 }
 
-export function resolveSettings(saved: AppSettings, env: SettingsEnv): Resolved {
-  const voice = saved.voice ?? voiceFromEnv(env);
+export function resolveSettings(saved: AppSettings, env: SettingsEnv, managed: Managed | null = null): Resolved {
+  const voice = managed ? managed.voice : (saved.voice ?? voiceFromEnv(env));
   return {
-    llm: saved.llm ?? providerFromEnv(env),
+    llm: managed ? managed.llm : (saved.llm ?? providerFromEnv(env)),
     voice,
-    jev: saved.jev ?? jevFromEnv(env),
+    jev: managed ? managed.jev : (saved.jev ?? jevFromEnv(env)),
     cloudflare: saved.cloudflare ?? cloudflareFromEnv(env),
     models: {
       planner: saved.models?.planner ?? env.PLANNER_MODEL ?? DEFAULT_MODELS.planner,
@@ -120,6 +130,24 @@ const LlmInput = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal(
 const VoiceInput = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("openai"), apiKey: secret }), z.strictObject({ kind: z.literal("custom"), baseUrl, apiKey: secret })]);
 const JevInput = z.strictObject({ apiKey: secret });
 const CloudflareInput = z.strictObject({ accountId: z.string().trim().regex(/^[0-9a-f]{32}$/, "the account id is 32 hexadecimal characters"), apiToken: secret });
+const ManagedInput = z.strictObject({
+  by: z.string().trim().min(1, "say who manages the providers").max(60),
+  llm: LlmInput.nullable(),
+  voice: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("openai"), apiKey: secret, baseUrl: baseUrl.optional() }), z.strictObject({ kind: z.literal("custom"), baseUrl, apiKey: secret })]).nullable(),
+  jev: z.strictObject({ apiKey: secret, baseUrl: baseUrl.optional() }).nullable(),
+});
+
+export function readManaged(body: unknown): { ok: true; managed: Managed } | { ok: false; error: string } {
+  const parsed = ManagedInput.safeParse(body);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues.map((issue) => issue.message).join("; ") };
+  const { by, llm, voice, jev } = parsed.data;
+  const managedVoice: VoiceProvider | null = !voice ? null : voice.kind === "custom" ? voice : voice.baseUrl ? { kind: "openai", apiKey: voice.apiKey, baseUrl: voice.baseUrl } : { kind: "openai", apiKey: voice.apiKey };
+  const managedJev: JevSettings | null = !jev ? null : jev.baseUrl ? { apiKey: jev.apiKey, baseUrl: jev.baseUrl } : { apiKey: jev.apiKey };
+  return { ok: true, managed: { by, llm, voice: managedVoice, jev: managedJev } };
+}
+
+export const MANAGED_PARTS = ["llm", "voice", "jev"] as const;
+
 const ModelsInput = z.strictObject({ planner: model.optional(), reviewer: model.optional(), coder: model.optional(), voice: model.optional() }).transform((models): Partial<ModelSettings> => Object.fromEntries(Object.entries(models).filter(([, value]) => value !== undefined)));
 
 export const SettingsUpdate = z.strictObject({
@@ -149,7 +177,7 @@ export function applyUpdate(saved: AppSettings, body: unknown): { ok: true; sett
   };
 }
 
-export type Source = "app" | "deployment";
+export type Source = "app" | "deployment" | "managed";
 
 export interface ProviderView {
   readonly kind: string;
@@ -159,6 +187,7 @@ export interface ProviderView {
 }
 
 export interface SettingsView {
+  readonly managed: { readonly by: string } | null;
   readonly llm: ProviderView | null;
   readonly voice: ProviderView | null;
   readonly jev: { readonly keyHint: string; readonly source: Source } | null;
@@ -177,14 +206,19 @@ function view(saved: LlmProvider | VoiceProvider | null, fallback: LlmProvider |
   return { kind: provider.kind, baseUrl: provider.kind === "custom" ? provider.baseUrl : null, keyHint: keyHint(provider.apiKey), source: saved ? "app" : "deployment" };
 }
 
-export function describeSettings(stored: AppSettings, env: SettingsEnv): SettingsView {
+function managedView(provider: LlmProvider | VoiceProvider | null): ProviderView | null {
+  return provider ? { kind: provider.kind, baseUrl: null, keyHint: "managed", source: "managed" } : null;
+}
+
+export function describeSettings(stored: AppSettings, env: SettingsEnv, managed: Managed | null = null): SettingsView {
   const saved = { ...NO_SETTINGS, ...stored };
-  const resolved = resolveSettings(saved, env);
+  const resolved = resolveSettings(saved, env, managed);
   const source = (value: unknown): Source => (value ? "app" : "deployment");
   return {
-    llm: view(saved.llm, providerFromEnv(env)),
-    voice: view(saved.voice, voiceFromEnv(env)),
-    jev: resolved.jev ? { keyHint: keyHint(resolved.jev.apiKey), source: source(saved.jev) } : null,
+    managed: managed ? { by: managed.by } : null,
+    llm: managed ? managedView(managed.llm) : view(saved.llm, providerFromEnv(env)),
+    voice: managed ? managedView(managed.voice) : view(saved.voice, voiceFromEnv(env)),
+    jev: resolved.jev ? { keyHint: managed ? "managed" : keyHint(resolved.jev.apiKey), source: managed ? "managed" : source(saved.jev) } : null,
     cloudflare: resolved.cloudflare ? { accountId: resolved.cloudflare.accountId, keyHint: keyHint(resolved.cloudflare.apiToken), source: source(saved.cloudflare) } : null,
     models: { ...resolved.models, source: source(saved.models && Object.keys(saved.models).length > 0) },
     attempts: { value: resolved.attempts, source: source(saved.attempts) },

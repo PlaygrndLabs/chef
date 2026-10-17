@@ -8,7 +8,7 @@ import { sharedInstructionsRequest } from "@chef/adapters/guidance";
 import { loadProfiles } from "@chef/core";
 import { agentFiles } from "./embedded.gen.ts";
 import { projectOf } from "./routes.ts";
-import { access, agentStore, currentSettings, keysRequest, settingsRequest, settingsStub, sharedEnvRequest, sharesRequest } from "./settings.ts";
+import { access, agentStore, currentSettings, keysRequest, managedRequest, settingsRequest, settingsStub, sharedEnvRequest, sharesRequest } from "./settings.ts";
 import { limited, OPEN_SHARE, reaches, SHARE_HEADER, SHARE_PAGE, SHARE_ROUTE, SHARES_ROUTE, targetOf } from "./shares.ts";
 import { usageRequest } from "./usage.ts";
 
@@ -40,6 +40,7 @@ export default {
     if (url.pathname === "/api/keys" || url.pathname.startsWith("/api/keys/")) return keysRequest(request, env, caller);
     if (SHARES_ROUTE.test(url.pathname) || SHARE_ROUTE.test(url.pathname)) return sharesRequest(request, env, async (project, kind, id) => (await getAgentByName(env.PROJECT, project)).shareTarget(kind, id));
     if (url.pathname === "/api/settings") return settingsRequest(request, env);
+    if (url.pathname === "/api/settings/managed") return managedRequest(request, env, caller);
     if (url.pathname === "/api/env") return sharedEnvRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).sharedEnvironmentChanged());
     if (url.pathname === "/api/usage") return usageRequest(request, env, async (project) => (await getAgentByName(env.PROJECT, project)).budgetChanged());
     if (url.pathname === "/api/instructions") {

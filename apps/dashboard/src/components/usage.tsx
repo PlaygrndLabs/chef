@@ -10,6 +10,12 @@ const MICROS = 1_000_000;
 
 const useUsage = host.useUsage ?? (() => null);
 
+const PARTS = [
+  ["model", "Writing code"],
+  ["router", "Routing"],
+  ["voice", "Live talk"],
+] as const;
+
 export function money(micros: number): string {
   const value = micros / MICROS;
   return `$${value >= 100 ? Math.round(value).toLocaleString("en-US") : value.toFixed(2)}`;
@@ -81,9 +87,11 @@ export function UsageSection() {
   const { caps, ledger } = spending;
   const projects = [...new Set([...Object.keys(ledger.projects), ...Object.keys(caps.projects)])].sort((a, b) => (ledger.projects[b] ?? 0) - (ledger.projects[a] ?? 0));
   const save = async (update: Parameters<typeof usageApi.save>[0]) => setSpending(await usageApi.save(update));
+  const parts = PARTS.filter(([part]) => (ledger.parts?.[part] ?? 0) > 0);
   return (
     <>
-      <Group title={`${monthName(ledger.month)} so far`} note="What Chef's model calls cost, estimated from tokens at list prices. Your Cloudflare bill is separate. When a budget is reached, Chef pauses new work until the budget is raised or the next month starts.">
+      {host.UsageSummary ? <host.UsageSummary /> : null}
+      <Group title={`${monthName(ledger.month)} so far`} note="What Chef's model, routing and voice calls cost, estimated from tokens at list prices. Your Cloudflare bill is separate. When a budget is reached, Chef pauses new work until the budget is raised or the next month starts.">
         <div className="grid gap-2" data-current="org-spent">
           <div className="flex items-baseline justify-between text-sm">
             <span>
@@ -94,6 +102,18 @@ export function UsageSection() {
           <Bar spent={ledger.org} cap={caps.org} />
         </div>
       </Group>
+      {parts.length > 0 ? (
+        <Group title="By model" note="Writing code is Claude; routing is Jev; live talk is the voice model.">
+          <ul className="grid gap-1.5" id="part-spending">
+            {parts.map(([part, label]) => (
+              <li key={part} className="flex items-center gap-2 text-sm" data-part-spent={part}>
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                <span className="text-xs text-muted-foreground">{money(ledger.parts?.[part] ?? 0)}</span>
+              </li>
+            ))}
+          </ul>
+        </Group>
+      ) : null}
       <Group title="Projects" note="Each project's budget is set in its own settings, under General.">
         {projects.length === 0 ? (
           <p className="text-xs text-muted-foreground">No spending yet this month.</p>
