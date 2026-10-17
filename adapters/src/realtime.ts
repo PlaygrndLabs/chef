@@ -1,4 +1,4 @@
-import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceStream } from "@chef/core";
+import type { LiveCommand, LiveConnection, LiveEvent, TokenUsage, VoiceHost, VoiceStream } from "@chef/core";
 import { encodeBase64, type Connect, type SocketLike } from "./gpt-live.ts";
 
 export const REALTIME_MODEL = "gpt-realtime";
@@ -84,11 +84,32 @@ export function liveEvents(event: LiveEvent): LiveEvent[] {
     case "response.function_call_arguments.done":
       if (event["name"] !== REQUEST_TOOL || typeof event["call_id"] !== "string") return [];
       return [{ type: "session.delegation.created", delegation: { id: event["call_id"], target: "client", request: requestOf(event["arguments"]) }, offset_ms: null }];
+    case "response.done": {
+      const usage = (event["response"] as { usage?: unknown } | undefined)?.usage;
+      return usage ? [{ type: "session.usage", usage }] : [];
+    }
     case "error":
       return [event];
     default:
       return [];
   }
+}
+
+interface UsageDetails {
+  readonly audio_tokens?: unknown;
+  readonly cached_tokens?: unknown;
+}
+
+const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
+
+export function voiceUsage(event: LiveEvent): TokenUsage | null {
+  if (event.type !== "session.usage" && event.type !== "session.closed") return null;
+  const usage = event["usage"] as { input_tokens?: unknown; output_tokens?: unknown; input_token_details?: UsageDetails; output_token_details?: UsageDetails } | undefined;
+  if (!usage || typeof usage !== "object") return null;
+  const inputTokens = count(usage.input_tokens);
+  const outputTokens = count(usage.output_tokens);
+  if (inputTokens + outputTokens === 0) return null;
+  return { inputTokens, outputTokens, cachedInputTokens: count(usage.input_token_details?.cached_tokens), audioInputTokens: count(usage.input_token_details?.audio_tokens), audioOutputTokens: count(usage.output_token_details?.audio_tokens) };
 }
 
 export function bridge(socket: SocketLike, instructions: string, onEvent: (event: LiveEvent) => void): LiveConnection {

@@ -198,7 +198,7 @@ export function RouterTab({ view }: { readonly view: AgentsView }) {
           </li>
           <li className="rounded-lg bg-muted/50 p-3" data-jev={view.jev ? "on" : "off"}>
             <div className="font-medium">2. Jev</div>
-            <div className="text-xs text-muted-foreground">{view.jev ? "TypeSafe System One answers the three questions below in about 100 ms." : "Off: add a TypeSafe key in Settings > Router to use it."}</div>
+            <div className="text-xs text-muted-foreground">{view.jev ? "TypeSafe System One answers the three questions below in about 100 ms." : "Off: add a TypeSafe key in Settings > Models to use it."}</div>
           </li>
           <li className="rounded-lg bg-muted/50 p-3">
             <div className="font-medium">3. Planner</div>

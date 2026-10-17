@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { costMicros, readCap, type SpendGate, type TokenUsage } from "@chef/core";
+import { costMicros, readCap, type SpendGate, type SpendPart, type TokenUsage } from "@chef/core";
 import { settingsStub } from "./settings.ts";
 import { USER_HEADER } from "./access.ts";
 
@@ -29,9 +29,9 @@ export class EngineSpend implements SpendGate {
     return settingsStub(this.env).spendBlocked(this.project, by, Date.now());
   }
 
-  async record(by: string | null, model: string, usage: TokenUsage): Promise<void> {
+  async record(by: string | null, model: string, usage: TokenUsage, part: SpendPart = "model"): Promise<void> {
     const micros = costMicros(model, usage);
-    if (micros > 0) await settingsStub(this.env).recordSpend(this.project, by, micros, Date.now());
+    if (micros > 0) await settingsStub(this.env).recordSpend(this.project, by, micros, Date.now(), part);
   }
 
   scope<T>(by: string | null, work: () => Promise<T>): Promise<T> {

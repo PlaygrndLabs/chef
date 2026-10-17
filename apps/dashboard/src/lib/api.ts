@@ -21,7 +21,7 @@ export async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = (body: unknown): RequestInit => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
-export type Source = "app" | "deployment";
+export type Source = "app" | "deployment" | "managed";
 
 export interface ProviderView {
   readonly kind: string;
@@ -31,6 +31,7 @@ export interface ProviderView {
 }
 
 export interface SettingsView {
+  readonly managed: { readonly by: string } | null;
   readonly llm: ProviderView | null;
   readonly voice: ProviderView | null;
   readonly jev: { readonly keyHint: string; readonly source: Source } | null;
@@ -358,7 +359,7 @@ export interface ProjectBudget {
 
 export interface Spending {
   readonly caps: { readonly org: number | null; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>> };
-  readonly ledger: { readonly month: string; readonly org: number; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>> };
+  readonly ledger: { readonly month: string; readonly org: number; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>>; readonly parts?: Readonly<Partial<Record<"model" | "router" | "voice", number>>> };
 }
 
 export const usageApi = {

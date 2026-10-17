@@ -33,6 +33,11 @@ export interface HostShare {
   readonly onClose: () => void;
 }
 
+export interface HostModelKeys {
+  readonly onboarding: boolean;
+  readonly onSaved: () => void;
+}
+
 export interface Host {
   readonly start?: () => Promise<HostStart>;
   readonly Overlay?: ComponentType<{ readonly onLocked: () => void }>;
@@ -43,8 +48,10 @@ export interface Host {
   readonly MenuEnd?: ComponentType;
   readonly General?: ComponentType<{ readonly locked: boolean }>;
   readonly ModelHelp?: ComponentType;
+  readonly ModelKeys?: ComponentType<HostModelKeys>;
   readonly generalNote?: string;
   readonly useUsage?: () => HostUsage | null;
+  readonly UsageSummary?: ComponentType;
   readonly useProjectLevel?: (project: string) => ProjectLevel | null;
   readonly projectSections?: (project: string) => readonly SettingsSection[];
   readonly hiddenSections?: readonly string[];

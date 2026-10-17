@@ -196,6 +196,8 @@ describe("dashboard in a browser", () => {
       await claude.locator('[data-current="llm"] [data-key-hint]').waitFor();
       expect(await dialog.getByLabel("Voice model").inputValue()).toBe("gpt-realtime");
       expect(await dialog.locator('#settings-voice [data-current="voice"]').getAttribute("data-set")).toBe("no");
+      expect(await dialog.locator('[data-current="jev"] [data-key-hint]').getAttribute("data-key-hint")).toBe("…-key");
+      expect(await dialog.locator("#settings-jev").innerText()).toContain("comes from the deployment");
       expect(await dialog.getAttribute("data-section")).toBe("models");
       expect(await dialog.locator('[data-settings-nav="apps"] [aria-label="needs setup"]').count()).toBe(1);
       await dialog.locator('[data-settings-nav="apps"]').click();
@@ -204,9 +206,6 @@ describe("dashboard in a browser", () => {
       await cloudflare.getByLabel("API token").fill("cf-token-abcd1234");
       await cloudflare.getByRole("button", { name: "Save" }).click();
       await expect.poll(() => cloudflare.locator('[data-current="cloudflare"]').getAttribute("data-set"), { timeout: 10_000 }).toBe("yes");
-      await dialog.locator('[data-settings-nav="router"]').click();
-      expect(await dialog.locator('[data-current="jev"] [data-key-hint]').getAttribute("data-key-hint")).toBe("…-key");
-      expect(await dialog.locator("#settings-jev").innerText()).toContain("comes from the deployment");
       const settings = (await (await page.request.get(`${local.url}/api/settings`)).json()) as Record<string, unknown>;
       expect(settings["llm"]).toEqual({ kind: "custom", baseUrl: "https://llm.example", keyHint: "…5678", source: "app" });
       expect(settings["cloudflare"]).toEqual({ accountId: "0123456789abcdef0123456789abcdef", keyHint: "…1234", source: "app" });
