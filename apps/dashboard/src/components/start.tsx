@@ -116,10 +116,22 @@ function ConnectModel(props: { readonly app: ReturnType<typeof useSettings>; rea
       return false;
     }
   };
-  return (
-    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 pt-12 pb-16 text-center sm:pt-20" data-onboarding="model">
+  const heading = (
+    <>
       <div className="kicker text-brand">{props.first ? "Step 1 of 2" : "One thing first"}</div>
       <h1 className="text-xl font-medium tracking-tight">Connect a model</h1>
+    </>
+  );
+  if (host.ModelKeys)
+    return (
+      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 pt-12 pb-16 text-center sm:pt-20" data-onboarding="model">
+        {heading}
+        <host.ModelKeys onboarding onSaved={() => void settingsApi.get().then(props.app.setSettings, () => undefined)} />
+      </div>
+    );
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 pt-12 pb-16 text-center sm:pt-20" data-onboarding="model">
+      {heading}
       <p className="text-muted-foreground">Chef plans, writes and reviews code with Claude. Paste your Anthropic API key, or the base URL and key of any Anthropic-compatible provider. The key stays on your Chef.</p>
       <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="kicker inline-flex w-fit items-center gap-1 text-brand hover:underline">
         Get an Anthropic API key

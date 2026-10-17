@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { endpoint, RealtimeHost, REQUEST_TOOL, startRealtimeSession } from "../../src/realtime.ts";
+import { endpoint, liveEvents, RealtimeHost, REQUEST_TOOL, startRealtimeSession, voiceUsage } from "../../src/realtime.ts";
 import type { SocketLike } from "../../src/gpt-live.ts";
 
 class FakeSocket implements SocketLike {
@@ -119,5 +119,18 @@ describe("realtime endpoints", () => {
     expect(endpoint("https://gateway.example//v1", "/realtime/calls")).toBe("https://gateway.example/v1/realtime/calls");
     expect(endpoint("https://gateway.example/v1/", "/realtime?model=gpt-realtime")).toBe("https://gateway.example/v1/realtime?model=gpt-realtime");
     expect(endpoint("https://api.openai.com/v1", "/realtime?call_id=c1")).toBe("https://api.openai.com/v1/realtime?call_id=c1");
+  });
+});
+
+describe("voice usage", () => {
+  it("reads token usage from a finished Realtime response and from a closed GPT Live session", () => {
+    const usage = { input_tokens: 120, output_tokens: 80, input_token_details: { audio_tokens: 100, cached_tokens: 10 }, output_token_details: { audio_tokens: 70 } };
+    const [event] = liveEvents({ type: "response.done", response: { usage } });
+    expect(event).toEqual({ type: "session.usage", usage });
+    expect(voiceUsage(event as never)).toEqual({ inputTokens: 120, outputTokens: 80, cachedInputTokens: 10, audioInputTokens: 100, audioOutputTokens: 70 });
+    expect(voiceUsage({ type: "session.closed", usage: { input_tokens: 5, output_tokens: 1 } })).toEqual({ inputTokens: 5, outputTokens: 1, cachedInputTokens: 0, audioInputTokens: 0, audioOutputTokens: 0 });
+    expect(voiceUsage({ type: "session.closed", usage: {} })).toBeNull();
+    expect(voiceUsage({ type: "session.closed" })).toBeNull();
+    expect(liveEvents({ type: "response.done", response: {} })).toEqual([]);
   });
 });

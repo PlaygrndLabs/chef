@@ -2,11 +2,17 @@ export interface TokenUsage {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly cachedInputTokens?: number;
+  readonly audioInputTokens?: number;
+  readonly audioOutputTokens?: number;
 }
+
+export const SPEND_PARTS = ["model", "router", "voice"] as const;
+
+export type SpendPart = (typeof SPEND_PARTS)[number];
 
 export interface SpendGate {
   blocked(by: string | null): Promise<string | null>;
-  record(by: string | null, model: string, usage: TokenUsage): Promise<void>;
+  record(by: string | null, model: string, usage: TokenUsage, part?: SpendPart): Promise<void>;
   scope<T>(by: string | null, work: () => Promise<T>): Promise<T>;
 }
 
@@ -21,6 +27,7 @@ export interface Ledger {
   readonly org: number;
   readonly projects: Readonly<Record<string, number>>;
   readonly members: Readonly<Record<string, number>>;
+  readonly parts?: Readonly<Partial<Record<SpendPart, number>>>;
 }
 
 export const NO_CAPS: Caps = { org: null, projects: {}, members: {} };
@@ -28,12 +35,17 @@ export const NO_CAPS: Caps = { org: null, projects: {}, members: {} };
 interface Price {
   readonly input: number;
   readonly output: number;
+  readonly audioInput?: number;
+  readonly audioOutput?: number;
 }
 
 const PRICES: readonly (readonly [RegExp, Price])[] = [
   [/haiku/i, { input: 1, output: 5 }],
   [/sonnet/i, { input: 2, output: 10 }],
   [/opus/i, { input: 4, output: 20 }],
+  [/^jev/i, { input: 0.042, output: 0 }],
+  [/realtime-mini/i, { input: 0.6, output: 2.4, audioInput: 10, audioOutput: 20 }],
+  [/realtime|live/i, { input: 4, output: 16, audioInput: 32, audioOutput: 64 }],
 ];
 
 const FALLBACK: Price = { input: 4, output: 20 };
@@ -45,7 +57,11 @@ export function priceOf(model: string): Price {
 export function costMicros(model: string, usage: TokenUsage): number {
   const price = priceOf(model);
   const cached = Math.min(usage.cachedInputTokens ?? 0, usage.inputTokens);
-  return Math.round((usage.inputTokens - cached) * price.input + cached * price.input * 0.1 + usage.outputTokens * price.output);
+  const audioIn = Math.min(usage.audioInputTokens ?? 0, usage.inputTokens - cached);
+  const audioOut = Math.min(usage.audioOutputTokens ?? 0, usage.outputTokens);
+  const input = (usage.inputTokens - cached - audioIn) * price.input + audioIn * (price.audioInput ?? price.input) + cached * price.input * 0.1;
+  const output = (usage.outputTokens - audioOut) * price.output + audioOut * (price.audioOutput ?? price.output);
+  return Math.round(input + output);
 }
 
 export function monthOf(now: number): string {
@@ -56,13 +72,14 @@ export function emptyLedger(month: string): Ledger {
   return { month, org: 0, projects: {}, members: {} };
 }
 
-export function addSpend(ledger: Ledger, month: string, project: string, by: string | null, micros: number): Ledger {
+export function addSpend(ledger: Ledger, month: string, project: string, by: string | null, micros: number, part: SpendPart = "model"): Ledger {
   const base = ledger.month === month ? ledger : emptyLedger(month);
   return {
     month,
     org: base.org + micros,
     projects: { ...base.projects, [project]: (base.projects[project] ?? 0) + micros },
     members: by ? { ...base.members, [by]: (base.members[by] ?? 0) + micros } : base.members,
+    parts: { ...base.parts, [part]: (base.parts?.[part] ?? 0) + micros },
   };
 }
 

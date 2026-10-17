@@ -9,13 +9,20 @@ describe("model spend", () => {
     expect(costMicros("some-gateway-model", { inputTokens: 1_000_000, outputTokens: 0 })).toBe(4_000_000);
   });
 
+  it("prices routing and live talk, with audio at its own rate", () => {
+    expect(costMicros("jev-1.13.0", { inputTokens: 1_000_000, outputTokens: 500 })).toBe(42_000);
+    expect(costMicros("gpt-realtime", { inputTokens: 1_000_000, outputTokens: 1_000_000, audioInputTokens: 1_000_000, audioOutputTokens: 1_000_000 })).toBe(96_000_000);
+    expect(costMicros("gpt-live-1", { inputTokens: 2_000_000, outputTokens: 0, audioInputTokens: 1_000_000 })).toBe(36_000_000);
+  });
+
   it("adds spend to the org, the project and the person, and starts over each month", () => {
     let ledger = emptyLedger("2026-10");
     ledger = addSpend(ledger, "2026-10", "shop", "usr_a", 5);
     ledger = addSpend(ledger, "2026-10", "shop", null, 3);
     ledger = addSpend(ledger, "2026-10", "blog", "usr_a", 2);
-    expect(ledger).toEqual({ month: "2026-10", org: 10, projects: { shop: 8, blog: 2 }, members: { usr_a: 7 } });
-    expect(addSpend(ledger, "2026-11", "shop", null, 1)).toEqual({ month: "2026-11", org: 1, projects: { shop: 1 }, members: {} });
+    ledger = addSpend(ledger, "2026-10", "blog", null, 4, "voice");
+    expect(ledger).toEqual({ month: "2026-10", org: 14, projects: { shop: 8, blog: 6 }, members: { usr_a: 7 }, parts: { model: 10, voice: 4 } });
+    expect(addSpend(ledger, "2026-11", "shop", null, 1, "router")).toEqual({ month: "2026-11", org: 1, projects: { shop: 1 }, members: {}, parts: { router: 1 } });
     expect(monthOf(Date.UTC(2026, 9, 31, 23, 59))).toBe("2026-10");
   });
 
