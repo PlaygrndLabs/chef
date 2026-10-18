@@ -35,7 +35,7 @@ export default {
     const url = new URL(incoming.url);
     if (caller.kind === "grant" && limited(caller.grant)) {
       const target = targetOf(caller.grant);
-      if (url.pathname === OPEN_SHARE && incoming.method === "GET" && target) return Response.json({ ...target, name: caller.grant.name, expiresAt: caller.grant.expiresAt, entry: await (await getAgentByName(env.PROJECT, target.project)).shareEntry(target.id).catch(() => null) });
+      if (url.pathname === OPEN_SHARE && incoming.method === "GET" && target) return Response.json({ ...target, name: caller.grant.name, expiresAt: caller.grant.expiresAt, entry: await shareEntry(env, url.origin, target.project, target.id) });
       if (!reaches(caller.grant, incoming.method, url.pathname)) return Response.json({ error: "this link opens only what was shared with it" }, { status: 403 });
     }
     const request = shared(trusted(incoming, caller), caller);
@@ -66,6 +66,14 @@ export default {
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
+
+async function shareEntry(env: Env, origin: string, project: string, id: string): Promise<string | null> {
+  if (id === "main") return null;
+  const response = await projectStub(env, project, new Request(`${origin}/api/projects/${project}/sessions/${id}`)).catch(() => null);
+  const body = (response?.ok ? await response.json().catch(() => null) : null) as { record?: { plan?: { feature?: { entrypoint?: unknown } } } } | null;
+  const entry = body?.record?.plan?.feature?.entrypoint;
+  return typeof entry === "string" ? entry : null;
+}
 
 function shared(request: Request, caller: Caller): Request {
   if (caller.kind !== "grant" || caller.grant.kind !== "share") return request;

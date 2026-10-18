@@ -413,12 +413,6 @@ export class ProjectAgent extends Agent<Env> {
     return appResponse(state, { target: id, path, asState, now, ...(enter ? { enter } : {}) });
   }
 
-  async shareEntry(id: string): Promise<string | null> {
-    if (id === "main") return null;
-    const { orchestrator } = await this.build();
-    return (await orchestrator.sessions()).find((s) => s.id === id)?.plan.feature.entrypoint ?? null;
-  }
-
   async shareTarget(kind: ShareKind, id: string): Promise<{ readonly name: string; readonly scopes: readonly string[] } | { readonly error: string }> {
     const { orchestrator } = await this.build();
     if (kind === "app" && id === "main") return { name: `${this.name} main`, scopes: [appScope(this.name, id)] };

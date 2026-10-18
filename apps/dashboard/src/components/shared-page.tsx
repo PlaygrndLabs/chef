@@ -118,8 +118,35 @@ function SharedMessages({ api, project, record }: { readonly api: SharedApi; rea
   );
 }
 
+const TABS = ["app", "messages", "changes", "commits"] as const;
+type SharedTab = (typeof TABS)[number];
+
+function tabInUrl(): SharedTab {
+  const asked = new URLSearchParams(location.search).get("tab");
+  return TABS.find((t) => t === asked) ?? "app";
+}
+
+function useSharedTab(): readonly [SharedTab, (value: string) => void] {
+  const [tab, setTab] = useState<SharedTab>(tabInUrl);
+  useEffect(() => {
+    const back = () => setTab(tabInUrl());
+    window.addEventListener("popstate", back);
+    return () => window.removeEventListener("popstate", back);
+  }, []);
+  const open = (value: string) => {
+    const next = TABS.find((t) => t === value) ?? "app";
+    const url = new URL(location.href);
+    if (next === "app") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", next);
+    history.pushState(null, "", url);
+    setTab(next);
+  };
+  return [tab, open];
+}
+
 function SharedView({ api }: { readonly api: SharedApi }) {
   const [shared, setShared] = useState<Shared | null>(null);
+  const [tab, openTab] = useSharedTab();
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     api
@@ -142,7 +169,7 @@ function SharedView({ api }: { readonly api: SharedApi }) {
         <span className="hidden text-xs text-muted-foreground sm:inline">Shared with you to look at</span>
       </header>
       {record ? (
-        <Tabs defaultValue="app" className="flex min-h-0 flex-1 flex-col gap-0">
+        <Tabs value={tab} onValueChange={openTab} className="flex min-h-0 flex-1 flex-col gap-0">
           <div className="flex shrink-0 items-center border-b px-3 py-2">
             <TabsList className="h-8">
               <TabsTrigger value="app">App</TabsTrigger>

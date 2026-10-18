@@ -6,6 +6,7 @@ describe("project routes", () => {
     expect(projectOf("/api/projects/treetest/features/edit-todo-items")).toBe("treetest");
     expect(projectOf("/api/projects/treetest/sessions/s1/retry")).toBe("treetest");
     expect(projectOf("/api/projects/treetest/sessions/s1/cloudflare")).toBe("treetest");
+    expect(projectOf("/api/projects/treetest/sessions/s1/events")).toBe("treetest");
     expect(projectOf("/api/projects/treetest/history")).toBe("treetest");
     expect(projectOf("/api/projects/treetest/history/0123abc")).toBe("treetest");
     expect(projectOf("/app/treetest/s1a2b3c4")).toBe("treetest");
