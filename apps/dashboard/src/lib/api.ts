@@ -233,6 +233,7 @@ export interface InstalledRepository {
 export interface GitHubView {
   readonly available?: false;
   readonly app: GitHubAppView | null;
+  readonly shared?: boolean;
   readonly repositories: readonly InstalledRepository[];
   readonly error?: string;
 }

@@ -128,41 +128,25 @@ export async function appJwt(app: Pick<GitHubAppCredentials, "id" | "pem">, nowM
 
 const tokens = new Map<string, { readonly token: string; readonly expires: number }>();
 
-export class GitHubApp {
-  private readonly fetcher: typeof fetch;
-  private readonly api: string;
-  private readonly now: () => number;
+export interface GitHubBroker {
+  readonly url: string;
+  readonly key: string;
+}
 
-  constructor(
-    readonly credentials: GitHubAppCredentials,
-    options: GitHubAppOptions = {},
-  ) {
+export abstract class GitHubAccess {
+  protected readonly fetcher: typeof fetch;
+  protected readonly api: string;
+  protected readonly now: () => number;
+
+  constructor(options: GitHubAppOptions = {}) {
     this.fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
     this.api = options.api ?? API;
     this.now = options.now ?? Date.now;
   }
 
-  private async asApp(path: string, init: RequestInit = {}): Promise<Response> {
-    const jwt = await appJwt(this.credentials, this.now());
-    return this.fetcher(`${this.api}${path}`, { ...init, headers: headers(`Bearer ${jwt}`) });
-  }
-
-  async installationToken(installation: number): Promise<string> {
-    const key = `${this.credentials.id}:${installation}`;
-    const cached = tokens.get(key);
-    if (cached && cached.expires - TOKEN_MARGIN_MS > this.now()) return cached.token;
-    const response = await this.asApp(`/app/installations/${installation}/access_tokens`, { method: "POST" });
-    if (!response.ok) throw await failed(response, "getting a GitHub access token");
-    const body = (await response.json()) as { token: string; expires_at: string };
-    tokens.set(key, { token: body.token, expires: Date.parse(body.expires_at) });
-    return body.token;
-  }
-
-  async installations(): Promise<number[]> {
-    const response = await this.asApp("/app/installations?per_page=100");
-    if (!response.ok) throw await failed(response, "listing the app's installations");
-    return ((await response.json()) as { id: number }[]).map((i) => i.id);
-  }
+  abstract readonly identity: string;
+  abstract installations(): Promise<number[]>;
+  abstract installationToken(installation: number): Promise<string>;
 
   async repositories(): Promise<InstalledRepository[]> {
     const found: InstalledRepository[] = [];
@@ -183,4 +167,105 @@ export class GitHubApp {
     const name = `${owner}/${repo}`.toLowerCase();
     return (await this.repositories()).find((r) => r.fullName.toLowerCase() === name)?.installation ?? null;
   }
+
+  protected cachedToken(key: string): string | null {
+    const cached = tokens.get(key);
+    return cached && cached.expires - TOKEN_MARGIN_MS > this.now() ? cached.token : null;
+  }
+}
+
+export class GitHubApp extends GitHubAccess {
+  readonly identity: string;
+
+  constructor(
+    readonly credentials: GitHubAppCredentials,
+    options: GitHubAppOptions = {},
+  ) {
+    super(options);
+    this.identity = `app:${credentials.id}`;
+  }
+
+  private async asApp(path: string, init: RequestInit = {}): Promise<Response> {
+    const jwt = await appJwt(this.credentials, this.now());
+    return this.fetcher(`${this.api}${path}`, { ...init, headers: headers(`Bearer ${jwt}`) });
+  }
+
+  async installationToken(installation: number): Promise<string> {
+    const key = `${this.identity}:${installation}`;
+    const cached = this.cachedToken(key);
+    if (cached) return cached;
+    const response = await this.asApp(`/app/installations/${installation}/access_tokens`, { method: "POST" });
+    if (!response.ok) throw await failed(response, "getting a GitHub access token");
+    const body = (await response.json()) as { token: string; expires_at: string };
+    tokens.set(key, { token: body.token, expires: Date.parse(body.expires_at) });
+    return body.token;
+  }
+
+  async installations(): Promise<number[]> {
+    const response = await this.asApp("/app/installations?per_page=100");
+    if (!response.ok) throw await failed(response, "listing the app's installations");
+    return ((await response.json()) as { id: number }[]).map((i) => i.id);
+  }
+}
+
+export class BrokeredGitHub extends GitHubAccess {
+  readonly identity: string;
+
+  constructor(
+    readonly broker: GitHubBroker,
+    options: GitHubAppOptions = {},
+  ) {
+    super(options);
+    this.identity = `broker:${broker.url}:${broker.key.slice(-8)}`;
+  }
+
+  private call(path: string, init: RequestInit = {}): Promise<Response> {
+    return this.fetcher(`${this.broker.url}${path}`, { ...init, headers: { ...headers(`Bearer ${this.broker.key}`), "content-type": "application/json" } });
+  }
+
+  async describe(): Promise<{ readonly app: GitHubAppView; readonly installations: number[] }> {
+    const response = await this.call("");
+    if (!response.ok) throw await failed(response, "asking the shared GitHub app what it can reach");
+    return readShared(await response.json());
+  }
+
+  async installations(): Promise<number[]> {
+    return (await this.describe()).installations;
+  }
+
+  async installationToken(installation: number): Promise<string> {
+    const key = `${this.identity}:${installation}`;
+    const cached = this.cachedToken(key);
+    if (cached) return cached;
+    const response = await this.call("/token", { method: "POST", body: JSON.stringify({ installation }) });
+    if (!response.ok) throw await failed(response, "getting a GitHub access token");
+    const body = (await response.json()) as { token?: unknown; expiresAt?: unknown };
+    if (typeof body.token !== "string" || typeof body.expiresAt !== "string") throw new Error("the shared GitHub app answered without a token");
+    tokens.set(key, { token: body.token, expires: Date.parse(body.expiresAt) });
+    return body.token;
+  }
+}
+
+function readShared(body: unknown): { readonly app: GitHubAppView; readonly installations: number[] } {
+  const input = (body ?? {}) as { app?: Record<string, unknown>; installations?: unknown };
+  const app = input.app ?? {};
+  const text = (key: string) => (typeof app[key] === "string" ? (app[key] as string) : "");
+  if (!text("slug") || !text("installUrl")) throw new Error("the shared GitHub app answered without its name");
+  const installations = Array.isArray(input.installations) ? input.installations.filter((id): id is number => Number.isInteger(id) && (id as number) > 0) : [];
+  return { app: { slug: text("slug"), name: text("name") || text("slug"), owner: text("owner"), htmlUrl: text("htmlUrl"), installUrl: text("installUrl") }, installations };
+}
+
+export function readBroker(body: unknown): GitHubBroker | string {
+  const input = (body ?? {}) as { url?: unknown; key?: unknown };
+  if (typeof input.url !== "string" || typeof input.key !== "string") return "send the url and key of the shared GitHub app";
+  let url: URL;
+  try {
+    url = new URL(input.url);
+  } catch {
+    return "that url is not a web address";
+  }
+  if (url.protocol !== "https:" || url.search || url.hash) return "the url must be a plain https address";
+  const key = input.key.trim();
+  if (key.length < 16 || key.length > 300) return "the key must be 16 to 300 characters";
+  return { url: url.toString().replace(/\/$/, ""), key };
 }
