@@ -14,7 +14,8 @@ describe("phase 5 voice front end on fakes", () => {
     const host = new ScriptedVoiceHost();
     const call = await startVoiceCall({ host, target: w.orchestrator, spec: readSpec((await w.orchestrator.mainTree()).tree), ids: new SequentialIds() });
     expect(call.sessionId).toBe("voice1");
-    expect(host.instructions[0]).toContain("Delegate to the client");
+    expect(host.instructions[0]).toContain("You are Chef");
+    expect(host.instructions[0]).toContain("never say you are passing, forwarding or handing a request on");
     call.sendAudio(new Uint8Array([1, 2]));
     expect(host.audio).toEqual([new Uint8Array([1, 2])]);
 
@@ -25,7 +26,8 @@ describe("phase 5 voice front end on fakes", () => {
     expect(request?.prompt).toBe("Add an item to a to-do list.");
     const spoken = w.bus.log.find((e) => e.type === "voice.request");
     expect(spoken).toMatchObject({ type: "voice.request", voiceSessionId: call.sessionId, intent: "new_feature", featureId: "todo-add" });
-    expect(host.spoken()[0]).toContain("Started a new feature, todo-add");
+    expect(host.spoken()[0]).toContain("I started a new feature, todo-add");
+    expect(w.bus.log.find((e) => e.type === "route.decided")).toMatchObject({ spoken: true });
     const sessionId = request?.result?.sessionId as string;
     expect((await w.orchestrator.run(sessionId)).machine.state).toBe("merged");
 
@@ -104,6 +106,54 @@ describe("phase 5 voice front end on fakes", () => {
       { speaker: "you", text: "Why did it fail?" },
       { speaker: "chef", text: "Its checks did not pass." },
       { speaker: "chef", text: "Want me to try again?" },
+    ]);
+  });
+
+  it("finishes a request still in progress when the call ends and puts the answer in the chat", async () => {
+    const turns: { speaker: string; text: string }[] = [];
+    let emit: (event: LiveEvent) => void = () => {};
+    let closed = false;
+    const sent: LiveCommand[] = [];
+    const host: VoiceHost = {
+      model: "fake",
+      start: async (input) => {
+        emit = input.onEvent;
+        return {
+          sessionId: "v7",
+          connection: {
+            send: (command) => {
+              if (closed) throw new Error("socket closed");
+              sent.push(command);
+            },
+            close: async () => {
+              closed = true;
+            },
+          },
+          sendAudio: () => {},
+        };
+      },
+    };
+    let release: () => void = () => {};
+    const answered = new Promise<void>((resolve) => (release = resolve));
+    const target = {
+      submitSpoken: async (text: string) => {
+        await answered;
+        return { decision: { intent: "question" as const, featureId: null, changeKind: null, via: "rules" as const, confidence: 1, reason: "test" }, sessionId: null, sessionIds: [], answer: { text: `Next, add ${text.toLowerCase()}.`, sources: [] } };
+      },
+      recordSpoken: async (turn: { speaker: string; text: string }) => {
+        turns.push({ speaker: turn.speaker, text: turn.text });
+      },
+    };
+    const call = await startVoiceCall({ host, target, spec: [], context: "Your chat with the person so far:\nPerson: hi", ids: new SequentialIds() });
+    emit({ type: "session.input_transcript.done", item_id: "i1", transcript: "What should we build next?" });
+    emit({ type: "session.delegation.created", delegation: { id: "d1", target: "client", request: "Search" } });
+    const hung = call.hangUp();
+    release();
+    await hung;
+    expect(sent).toEqual([]);
+    expect(turns).toEqual([
+      { speaker: "you", text: "What should we build next?" },
+      { speaker: "chef", text: "Next, add search." },
     ]);
   });
 });

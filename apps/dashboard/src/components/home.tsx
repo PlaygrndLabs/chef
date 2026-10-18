@@ -314,7 +314,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
         const question = route.decision.intent === "question";
         const answer = answers[index] || (question ? answerFor(messages, route.prompt) : "");
         const parts = new Set(own.map((s) => s.featureId)).size;
-        const voiced = data.live.voice.some((v) => v.prompt === route.prompt && v.at >= route.at && v.at - route.at < VOICE_MATCH_MS);
+        const voiced = route.spoken === true || data.live.voice.some((v) => v.prompt === route.prompt && v.at >= route.at && v.at - route.at < VOICE_MATCH_MS);
         return { ...route, sessions: own, voiced, waiting: question && !answer && now - route.at < ANSWER_WAIT_MS, reply: answer || replyFor(route.decision, title, parts > 1 ? own.length / parts : own.length, parts) };
       });
   const said = spokenTurns(data.live.spoken, talk, selection.project);
@@ -402,7 +402,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
                 turn ? (
                   <Said key={turn.key} speaker={turn.speaker} text={turn.text} live={turn.live} />
                 ) : item && item.voiced ? (
-                  item.sessions.length > 0 ? <Reply key={`${item.at}-${item.prompt}`} text="" sessions={item.sessions} /> : null
+                  item.sessions.length > 0 || item.waiting ? <Reply key={`${item.at}-${item.prompt}`} text="" sessions={item.sessions} waiting={item.waiting} /> : null
                 ) : item ? (
                   <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
                     <You>

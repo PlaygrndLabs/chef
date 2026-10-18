@@ -2,7 +2,7 @@ import type { LiveCommand, LiveConnection, LiveEvent, TokenUsage, VoiceHost, Voi
 import { encodeBase64, type Connect, type SocketLike } from "./gpt-live.ts";
 
 export const REALTIME_MODEL = "gpt-realtime";
-export const REQUEST_TOOL = "chef_request";
+export const REQUEST_TOOL = "work_on_project";
 
 export interface RealtimeOptions {
   readonly baseUrl: string;
@@ -12,7 +12,7 @@ export interface RealtimeOptions {
   readonly voice?: string;
 }
 
-const TOOL_RULE = `You cannot build, change or look up anything yourself: the only way is the ${REQUEST_TOOL} tool. Call it with the user's request in their own words as soon as they ask for anything, even a short or vague request such as "add an item to a todo list"; never ask for details first, since Chef works them out. Never say you will pass something on without calling the tool in that same turn. Then speak the result it returns. Call the builder "Chef", never "the client".`;
+const TOOL_RULE = `You build, change and look things up in this project only through the ${REQUEST_TOOL} tool, so it is how you yourself act, not someone you ask. Call it with the person's request in their own words as soon as they ask for anything, even a short or vague request such as "add an item to a todo list"; never ask for details first, since you work them out while you build. Never say you will do or check something without calling the tool in that same turn, and never mention the tool. Then say the result it returns as your own, in the first person.`;
 
 export function realtimeSession(options: { readonly model?: string; readonly voice?: string; readonly instructions: string }): Record<string, unknown> {
   return {
@@ -28,7 +28,7 @@ export function realtimeSession(options: { readonly model?: string; readonly voi
       {
         type: "function",
         name: REQUEST_TOOL,
-        description: "Hand a request to build, change or fix something, or a question about the project, to Chef. Returns what Chef did.",
+        description: "Do what the person asked in this project: build, add, change or fix something, or find the answer to a question about the project. Returns what you did or found.",
         parameters: { type: "object", properties: { request: { type: "string", description: "The user's request, in their words." } }, required: ["request"] },
       },
     ],
