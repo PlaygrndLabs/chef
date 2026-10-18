@@ -1,6 +1,6 @@
 import { createPublicKey, generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { appJwt, appManifest, appName, convertManifest, GitHubApp, installUrl, manifestAction, type GitHubAppCredentials } from "../../src/github-app.ts";
+import { appJwt, appManifest, appName, BrokeredGitHub, convertManifest, GitHubApp, installUrl, manifestAction, readBroker, type GitHubAppCredentials } from "../../src/github-app.ts";
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs1", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
 
@@ -79,5 +79,42 @@ describe("chef's GitHub App", () => {
     const token = await app.installationToken(1);
     expect(calls.filter((c) => c.includes("access_tokens"))).toHaveLength(3);
     expect(await app.installationToken(1)).toBe(token);
+  });
+
+  it("takes short-lived tokens from a shared app's broker, never its private key", async () => {
+    const calls: string[] = [];
+    let now = 1_700_000_000_000;
+    const fetcher = (async (url: string, init: RequestInit = {}) => {
+      const auth = new Headers(init.headers).get("authorization") ?? "";
+      calls.push(`${init.method ?? "GET"} ${url}`);
+      if (url.startsWith("https://site.example.com/github/broker")) expect(auth).toBe("Bearer broker-key-0123456789");
+      if (url === "https://site.example.com/github/broker") return Response.json({ app: { slug: "chef-shared", name: "Chef", owner: "acme", htmlUrl: "https://github.com/apps/chef-shared", installUrl: "https://site.example.com/github/install" }, installations: [5, "x", -1] });
+      if (url === "https://site.example.com/github/broker/token") {
+        expect(JSON.parse(String(init.body))).toEqual({ installation: 5 });
+        return Response.json({ token: `tok-5-${calls.length}`, expiresAt: new Date(now + 3_600_000).toISOString() });
+      }
+      if (url.startsWith("https://api.github.com/installation/repositories")) {
+        expect(auth).toMatch(/^token tok-5-/);
+        return Response.json({ total_count: 1, repositories: [{ full_name: "acme/web", html_url: "https://github.com/acme/web", default_branch: "main", private: true }] });
+      }
+      return new Response("nope", { status: 404 });
+    }) as unknown as typeof fetch;
+    const shared = new BrokeredGitHub({ url: "https://site.example.com/github/broker", key: "broker-key-0123456789" }, { fetcher, now: () => now });
+    expect((await shared.describe()).app).toEqual({ slug: "chef-shared", name: "Chef", owner: "acme", htmlUrl: "https://github.com/apps/chef-shared", installUrl: "https://site.example.com/github/install" });
+    expect(await shared.repositories()).toEqual([{ fullName: "acme/web", url: "https://github.com/acme/web", defaultBranch: "main", private: true, installation: 5 }]);
+    expect(await shared.installationFor("ACME", "web")).toBe(5);
+    expect(calls.filter((c) => c.endsWith("/token"))).toHaveLength(1);
+    now += 56 * 60_000;
+    await shared.installationToken(5);
+    expect(calls.filter((c) => c.endsWith("/token"))).toHaveLength(2);
+    expect(new BrokeredGitHub({ url: "https://site.example.com/github/broker", key: "another-key-9876543210" }).identity).not.toBe(shared.identity);
+  });
+
+  it("accepts only a plain https broker address and a real key", () => {
+    expect(readBroker({ url: "https://site.example.com/github/broker/", key: " broker-key-0123456789 " })).toEqual({ url: "https://site.example.com/github/broker", key: "broker-key-0123456789" });
+    expect(readBroker({ url: "http://site.example.com/github/broker", key: "broker-key-0123456789" })).toBe("the url must be a plain https address");
+    expect(readBroker({ url: "https://site.example.com/b?x=1", key: "broker-key-0123456789" })).toBe("the url must be a plain https address");
+    expect(readBroker({ url: "https://site.example.com/b", key: "short" })).toBe("the key must be 16 to 300 characters");
+    expect(readBroker(null)).toBe("send the url and key of the shared GitHub app");
   });
 });

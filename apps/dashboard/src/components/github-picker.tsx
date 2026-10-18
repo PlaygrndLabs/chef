@@ -29,10 +29,15 @@ export function GitHubPicker(props: { readonly returnTo: string; readonly github
   if (!github.app)
     return (
       <div className="grid gap-2.5 rounded-lg border p-3" data-github="none">
-        <p className="text-xs text-muted-foreground">Chef sends you to GitHub, where you pick the repositories it may use, then brings you back here. The first time, GitHub also asks you to create Chef&apos;s own app for this deployment.</p>
-        <Field label="GitHub organization that owns the repositories (leave empty for your own account)">
-          <Input value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="your-org" aria-label="GitHub organization" autoComplete="off" />
-        </Field>
+        <p className="text-xs text-muted-foreground">
+          Chef sends you to GitHub, where you pick the repositories it may use, then brings you back here.{github.shared ? null : <> The first time, GitHub also asks you to create Chef&apos;s own app for this deployment.</>}
+        </p>
+        {github.error ? <p className="text-xs text-bad">{github.error}</p> : null}
+        {github.shared ? null : (
+          <Field label="GitHub organization that owns the repositories (leave empty for your own account)">
+            <Input value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="your-org" aria-label="GitHub organization" autoComplete="off" />
+          </Field>
+        )}
         <div className="flex justify-end">
           <Button type="button" size="sm" onClick={() => location.assign(githubApi.connectUrl(returnTo, organization.trim() || undefined))}>
             Connect GitHub
@@ -63,10 +68,10 @@ export function GitHubPicker(props: { readonly returnTo: string; readonly github
           type="button"
           className="underline"
           onClick={() => {
-            if (confirm(`Forget ${github.app?.name ?? "chef's GitHub app"}? Projects linked through it stop syncing until you connect GitHub again. Delete the app in GitHub's developer settings too.`)) props.onForget();
+            if (confirm(github.shared ? "Disconnect GitHub? Projects linked to its repositories stop syncing until you connect again." : `Forget ${github.app?.name ?? "chef's GitHub app"}? Projects linked through it stop syncing until you connect GitHub again. Delete the app in GitHub's developer settings too.`)) props.onForget();
           }}
         >
-          Use another GitHub account
+          {github.shared ? "Disconnect GitHub" : "Use another GitHub account"}
         </button>
       </p>
     </div>
