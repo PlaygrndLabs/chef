@@ -1,0 +1,43 @@
+name: projects
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type chef-dev to delete every project on chef-dev the way Project settings > Delete project does; leave empty to only list them
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  projects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
+      CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
+      DELETE: ${{ inputs.confirm == 'chef-dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: List the projects, and delete them when confirmed
+        run: |
+          set -euo pipefail
+          auth=$(bash .github/scripts/sign-in.sh "$CHEF_URL")
+          names=$(curl -fsS -m 60 -H "$auth" "$CHEF_URL/api/projects" | jq -r '.projects[].name')
+          echo "projects on chef-dev: $(echo $names)"
+          if [ "$DELETE" != "true" ]; then echo "dry run: nothing deleted. Run again with confirm set to chef-dev to delete these."; exit 0; fi
+          failed=""
+          for name in $names; do
+            for attempt in 1 2 3; do
+              code=$(curl -sS -m 600 -o "$RUNNER_TEMP/out.json" -w '%{http_code}' -X DELETE -H "$auth" -H 'content-type: application/json' -d "$(jq -n --arg n "$name" '{confirm: $n}')" "$CHEF_URL/api/projects/$name")
+              echo "$name: $code $(jq -c . "$RUNNER_TEMP/out.json" 2>/dev/null || cat "$RUNNER_TEMP/out.json")"
+              case "$code" in 200|404) break ;; esac
+              [ "$attempt" = 3 ] && failed="$failed $name"
+              sleep 30
+            done
+          done
+          left=$(curl -fsS -m 60 -H "$auth" "$CHEF_URL/api/projects" | jq -r '.projects[].name')
+          echo "projects left: ${left:-none}"
+          [ -z "$failed" ] && [ -z "$left" ]
