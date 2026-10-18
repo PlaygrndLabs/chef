@@ -68,10 +68,25 @@ function StartSidebar(props: { readonly app: AppSettings; readonly onSettings: (
   );
 }
 
-function RecentProjects(props: { readonly projects: readonly RecentProject[]; readonly onOpen: (name: string) => void; readonly onNew: () => void; readonly onAll: () => void }) {
+function NeedsModel(props: { readonly onConnect: () => void }) {
+  return (
+    <div className="flex flex-col gap-3 border border-dashed px-4 py-3 sm:flex-row sm:items-center" id="needs-model" data-onboarding="model">
+      <div className="grid min-w-0 flex-1 gap-1">
+        <div className="kicker text-brand">One thing first</div>
+        <p className="text-sm text-muted-foreground">Connect a model so Chef can plan, write and review code. Your projects stay as they are.</p>
+      </div>
+      <Button onClick={props.onConnect} className="shrink-0">
+        Connect a model
+      </Button>
+    </div>
+  );
+}
+
+function RecentProjects(props: { readonly projects: readonly RecentProject[]; readonly needsModel: boolean; readonly onConnect: () => void; readonly onOpen: (name: string) => void; readonly onNew: () => void; readonly onAll: () => void }) {
   const recent = props.projects.slice(0, RECENT);
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pt-12 pb-16 sm:px-6 sm:pt-20">
+      {props.needsModel ? <NeedsModel onConnect={props.onConnect} /> : null}
       <div className="flex items-end justify-between gap-4">
         <div className="grid gap-1.5">
           <div className="kicker">Recent</div>
@@ -106,7 +121,7 @@ function RecentProjects(props: { readonly projects: readonly RecentProject[]; re
   );
 }
 
-function ConnectModel(props: { readonly app: ReturnType<typeof useSettings>; readonly first: boolean }) {
+function ConnectModel(props: { readonly app: ReturnType<typeof useSettings> }) {
   const save: Save = async (update) => {
     try {
       props.app.setSettings(await settingsApi.save(update));
@@ -118,7 +133,7 @@ function ConnectModel(props: { readonly app: ReturnType<typeof useSettings>; rea
   };
   const heading = (
     <>
-      <div className="kicker text-brand">{props.first ? "Step 1 of 2" : "One thing first"}</div>
+      <div className="kicker text-brand">Step 1 of 2</div>
       <h1 className="text-xl font-medium tracking-tight">Connect a model</h1>
     </>
   );
@@ -210,9 +225,9 @@ export function Start(props: {
         setAdding(true);
       }
     : null;
-  const side = <StartSidebar app={app} onSettings={openSettings} onNew={onNew} projects={locked || needsModel ? [] : recent} onOpen={props.onOpen} />;
+  const side = <StartSidebar app={app} onSettings={openSettings} onNew={onNew} projects={locked ? [] : recent} onOpen={props.onOpen} />;
   return (
-    <div className="flex h-dvh overflow-hidden" data-view={locked ? "locked" : needsModel ? "onboarding" : any ? "start" : "setup"}>
+    <div className="flex h-dvh overflow-hidden" data-view={locked ? "locked" : any ? "start" : needsModel ? "onboarding" : "setup"}>
       <aside className="hidden w-64 shrink-0 border-r lg:block" aria-label="chef">
         {side}
       </aside>
@@ -226,10 +241,10 @@ export function Start(props: {
         <main className="min-h-0 flex-1 overflow-y-auto">
           {locked ? (
             props.locked
-          ) : app.available && app.settings === null ? null : needsModel ? (
-            <ConnectModel app={app} first={onboarding} />
-          ) : any ? (
-            <RecentProjects projects={recent} onOpen={props.onOpen} onNew={() => setAdding(true)} onAll={() => setSidebar(true)} />
+          ) : app.available && app.settings === null ? null : any ? (
+            <RecentProjects projects={recent} needsModel={needsModel} onConnect={() => openSettings("models")} onOpen={props.onOpen} onNew={() => setAdding(true)} onAll={() => setSidebar(true)} />
+          ) : needsModel ? (
+            <ConnectModel app={app} />
           ) : (
             <FirstProject fromGitHub={fromGitHub} step={stepped && onboarding} onCreated={props.onCreated} />
           )}
