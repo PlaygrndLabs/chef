@@ -220,6 +220,26 @@ describe("dashboard in a browser", () => {
     }
   });
 
+  it("keeps existing projects on the start page while no model is connected", async () => {
+    const local = await serve({ port: 0, real: false, assets: DIST, project: "shop", settings: { TYPESAFE_API_KEY: "ts-deployment-key" } });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.goto(local.url);
+      const start = page.locator('[data-view="start"]');
+      await start.waitFor({ timeout: 10_000 });
+      await start.locator('#sidebar-projects [data-project="shop"]').waitFor();
+      await start.locator('#recent-projects [data-project="shop"]').waitFor();
+      await start.locator("#needs-model").getByRole("button", { name: "Connect a model" }).click();
+      const dialog = page.locator('[data-dialog="settings"]');
+      await dialog.waitFor({ timeout: 10_000 });
+      expect(await dialog.getAttribute("data-section")).toBe("models");
+    } finally {
+      await browser.close();
+      await local.close();
+    }
+  });
+
   it("edits agents for every project and for one project, with history, and shows who works on a build", async () => {
     const local = await serve({ port: 0, real: false, assets: DIST, project: "shop" });
     const browser = await chromium.launch();

@@ -82,12 +82,13 @@ function Said({ speaker, text, live }: { readonly speaker: "you" | "chef"; reado
 }
 
 export function FeatureCard({ node }: { readonly node: SessionNode }) {
-  const { features, openSession } = useWorkspace();
-  const title = features.find((f) => f.id === node.featureId)?.title ?? node.record?.plan.feature.title ?? node.featureId;
+  const { data, features, openSession } = useWorkspace();
+  const feature = features.find((f) => f.id === node.featureId);
+  const title = feature?.title ?? node.record?.plan.feature.title ?? node.featureId;
   const tries = node.attempt && node.attempt.of > 1 && isActive(node.state) ? `Trying ${node.attempt.of} ways at once · ` : "";
-  const line = waitsForBudget(node) ? `Paused. ${waitsForBudget(node)}` : waitsForKey(node) ? `Needs ${node.needs.join(", ")}. Open it to add ${node.needs.length === 1 ? "the key" : "the keys"}.` : waitsForMerge(node) ? "Passed every check. Open it to merge it into main." : `${tries}${activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null)}`;
+  const line = data.ready && !feature ? "Removed from the feature list since" : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)}` : waitsForKey(node) ? `Needs ${node.needs.join(", ")}. Open it to add ${node.needs.length === 1 ? "the key" : "the keys"}.` : waitsForMerge(node) ? "Passed every check. Open it to merge it into main." : `${tries}${activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null)}`;
   return (
-    <button type="button" onClick={() => openSession(node.id)} data-session={node.id} data-state={node.state} className="flex w-full items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:bg-muted/60">
+    <button type="button" onClick={() => openSession(node.id)} data-session={node.id} data-state={node.state} data-removed={data.ready && !feature ? "" : undefined} className="flex w-full items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:bg-muted/60">
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{title}</span>
         <span className="block truncate text-sm text-muted-foreground">{line}</span>
