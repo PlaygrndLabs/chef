@@ -12,9 +12,7 @@
 
 **Build apps with AI, in your own Cloudflare account.** Tell Chef what you want. It plans the work, builds every feature in its own sandbox with the whole app running there, and merges it once the checks pass.
 
-<p align="center"><strong><a href="https://chef.playgrndlabs.com">Sign in with Cloudflare and start building →</a></strong></p>
-
-<p align="center"><a href="https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"></a></p>
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef)
 
 ## Why Chef
 
@@ -32,6 +30,8 @@ Chef takes that work off your plate, so you spend your time on what to build, no
 - **Your keys stay yours.** Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.
 - **Or use your subscription.** Have a Claude subscription but no API key? [sub2api](https://github.com/PlaygrndLabs/sub2api) turns it into your own API on Cloudflare, so you can make an API key on your subscription and use it in Chef.
 - **GitHub when you want it.** Projects live in your Cloudflare account. Connect GitHub only if you want a repo kept in sync.
+
+You can also start at [chef.playgrndlabs.com](https://chef.playgrndlabs.com): sign in with Cloudflare and Chef sets itself up in your account.
 
 ## Under the hood
 
