@@ -12,7 +12,7 @@ export interface RealtimeOptions {
   readonly voice?: string;
 }
 
-const TOOL_RULE = `You build, change and look things up in this project only through the ${REQUEST_TOOL} tool, so it is how you yourself act, not someone you ask. Call it with the person's request in their own words as soon as they ask for anything, even a short or vague request such as "add an item to a todo list"; never ask for details first, since you work them out while you build. Never say you will do or check something without calling the tool in that same turn, and never mention the tool. Then say the result it returns as your own, in the first person.`;
+const TOOL_RULE = `You build, change and look things up in this project only through the ${REQUEST_TOOL} tool, so it is how you yourself act, not someone you ask. Call it with the person's request in their own words as soon as they ask for anything, even a short or vague request such as "add an item to a todo list"; never ask for details first, since you work them out while you build. Anything you say about this project (what it has, what it needs, suggestions, progress) comes from the tool's result, never from your own guesses, so call it before you answer such a question. Never say you will do or check something without calling the tool in that same turn, and never mention the tool. Then say the result it returns as your own, in the first person.`;
 
 export function realtimeSession(options: { readonly model?: string; readonly voice?: string; readonly instructions: string }): Record<string, unknown> {
   return {
