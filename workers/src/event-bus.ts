@@ -1,5 +1,7 @@
 import type { EventBus, ChefEvent } from "@chef/core";
 
+const PAGE = 500;
+
 export class DurableEventBus implements EventBus {
   private readonly listeners = new Set<(event: ChefEvent) => void>();
 
@@ -26,7 +28,20 @@ export class DurableEventBus implements EventBus {
     return (await this.storage.get<number>("event-seq")) ?? 0;
   }
 
-  async since(after: number, limit = 500): Promise<{ seq: number; event: ChefEvent }[]> {
+  async ofSession(sessionId: string, after: number, scan = 2000): Promise<{ readonly entries: { seq: number; event: ChefEvent }[]; readonly after: number; readonly done: boolean }> {
+    const entries: { seq: number; event: ChefEvent }[] = [];
+    let cursor = after;
+    for (let read = 0; read < scan; ) {
+      const page = await this.since(cursor);
+      for (const entry of page) if ("sessionId" in entry.event && entry.event.sessionId === sessionId) entries.push(entry);
+      cursor = page.at(-1)?.seq ?? cursor;
+      if (page.length < PAGE) return { entries, after: cursor, done: true };
+      read += page.length;
+    }
+    return { entries, after: cursor, done: false };
+  }
+
+  async since(after: number, limit = PAGE): Promise<{ seq: number; event: ChefEvent }[]> {
     const entries = await this.storage.list<ChefEvent>({ prefix: "event/", start: `event/${String(after + 1).padStart(10, "0")}`, limit });
     return [...entries].map(([key, event]) => ({ seq: Number(key.slice(6)), event }));
   }

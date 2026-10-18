@@ -94,6 +94,8 @@ describe("dashboard in a browser", () => {
       const shared = guest.locator('[data-view="shared"][data-shared="session"]');
       await shared.waitFor({ timeout: 10_000 });
       expect(await shared.locator("h1").innerText()).toBe(await page.locator('[data-view="feature"] h1').innerText());
+      await guest.getByRole("tab", { name: "Messages" }).click();
+      await expect.poll(() => guest.locator("[data-messages] > *").count(), { timeout: 10_000 }).toBeGreaterThan(1);
       await guest.getByRole("tab", { name: "Changes" }).click();
       await expect.poll(() => guest.getByRole("tabpanel", { name: "Changes" }).innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");
       expect(await guest.locator("#chat").count()).toBe(0);

@@ -320,11 +320,12 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   private async sessionRequest(request: Request, id: string, action: string | null): Promise<Response> {
-    const { orchestrator } = await this.build();
+    const { orchestrator, bus } = await this.build();
     try {
       if (request.method === "GET" && action === null) return Response.json({ record: await orchestrator.session(id), budget: DEFAULT_BUDGET });
       if (request.method === "GET" && action === "turns") return Response.json(await orchestrator.turns(id));
       if (request.method === "GET" && action === "changes") return Response.json(await orchestrator.changes(id));
+      if (request.method === "GET" && action === "events") return Response.json(await bus.ofSession(id, Number(new URL(request.url).searchParams.get("after") ?? 0)));
       if (request.method === "GET" && action === "cloudflare") return Response.json(await this.cloudflare(id));
       if (request.method === "POST" && action === "drop") {
         const { reason } = (await request.json().catch(() => ({}))) as { reason?: string };
@@ -410,6 +411,12 @@ export class ProjectAgent extends Agent<Env> {
     const now = Date.now();
     const enter = state.status === "ready" ? await appEntry(state.url, await this.appKey(), { path, now, cookieSeconds: viaShare ? SHARE_COOKIE_SECONDS : OWNER_COOKIE_SECONDS }) : undefined;
     return appResponse(state, { target: id, path, asState, now, ...(enter ? { enter } : {}) });
+  }
+
+  async shareEntry(id: string): Promise<string | null> {
+    if (id === "main") return null;
+    const { orchestrator } = await this.build();
+    return (await orchestrator.sessions()).find((s) => s.id === id)?.plan.feature.entrypoint ?? null;
   }
 
   async shareTarget(kind: ShareKind, id: string): Promise<{ readonly name: string; readonly scopes: readonly string[] } | { readonly error: string }> {

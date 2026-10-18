@@ -122,6 +122,11 @@ export async function serve(options: { readonly port: number; readonly project?:
       if (request.method === "GET" && sub === null) return Response.json({ record: await w.orchestrator.session(id), budget: DEFAULT_BUDGET });
       if (request.method === "GET" && sub === "turns") return Response.json(await w.orchestrator.turns(id));
       if (request.method === "GET" && sub === "changes") return Response.json(await w.orchestrator.changes(id));
+      if (request.method === "GET" && sub === "events") {
+        const after = Number(new URL(request.url).searchParams.get("after") ?? 0);
+        const entries = w.bus.log.map((event, i) => ({ seq: i + 1, event })).filter((entry) => entry.seq > after && "sessionId" in entry.event && entry.event.sessionId === id);
+        return Response.json({ entries, after: w.bus.log.length, done: true });
+      }
       if (request.method === "GET" && sub === "cloudflare") return Response.json(await localCloudflare(id));
       if (request.method === "POST" && sub === "drop") return Response.json({ state: (await w.orchestrator.drop(id, (await body())["reason"]?.trim() || undefined)).machine.state }, { status: 202 });
       if (request.method === "POST" && sub === "retry") {
@@ -221,10 +226,11 @@ export async function serve(options: { readonly port: number; readonly project?:
     shares.set(token, share);
     return Response.json({ share, token }, { status: 201 });
   };
-  const sharedTarget = (request: Request): Response => {
+  const sharedTarget = async (request: Request): Promise<Response> => {
     const share = shares.get((request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, ""));
     if (!share) return Response.json({ error: "this API key is not valid" }, { status: 401 });
-    return Response.json({ kind: share.kind, project: share.project, id: share.id, name: share.name, expiresAt: share.expiresAt });
+    const entry = (await w.orchestrator.sessions()).find((record) => record.id === share.id)?.plan.feature.entrypoint ?? null;
+    return Response.json({ kind: share.kind, project: share.project, id: share.id, name: share.name, expiresAt: share.expiresAt, entry });
   };
 
   const agentStore = new MemoryStore();

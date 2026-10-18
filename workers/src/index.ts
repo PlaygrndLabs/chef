@@ -35,7 +35,7 @@ export default {
     const url = new URL(incoming.url);
     if (caller.kind === "grant" && limited(caller.grant)) {
       const target = targetOf(caller.grant);
-      if (url.pathname === OPEN_SHARE && incoming.method === "GET" && target) return Response.json({ ...target, name: caller.grant.name, expiresAt: caller.grant.expiresAt });
+      if (url.pathname === OPEN_SHARE && incoming.method === "GET" && target) return Response.json({ ...target, name: caller.grant.name, expiresAt: caller.grant.expiresAt, entry: await (await getAgentByName(env.PROJECT, target.project)).shareEntry(target.id).catch(() => null) });
       if (!reaches(caller.grant, incoming.method, url.pathname)) return Response.json({ error: "this link opens only what was shared with it" }, { status: 403 });
     }
     const request = shared(trusted(incoming, caller), caller);

@@ -1,28 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Share2, ShieldCheck, Trophy, X } from "lucide-react";
+import { Bot, Check, ChevronRight, Circle, GitBranch, GitFork, GitMerge, Loader2, Maximize2, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Share2, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChecksTab, DetailsTab, Empty, RoleWork, SessionApp } from "@/components/session-sections";
 import { KeyPrompt } from "@/components/environment";
 import { BranchView } from "@/components/history-view";
-import { KindBadges, PromptText, StatusDot, StatusPill } from "@/components/status";
+import { KindBadges, StatusDot, StatusPill } from "@/components/status";
 import { isActive } from "@/lib/events";
-import { clock, PLAIN_STATE, stateTone } from "@/lib/format";
+import { PLAIN_STATE, stateTone } from "@/lib/format";
 import { currentSession, heldBy, isChore, relationsOf, nodeStatus, waitsForBudget, waitsForKey, waitsForMerge, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
-import { activity, plainReason, progress, STAGES, updates, whatFailed, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
+import { activity, plainReason, progress, STAGES, updates, whatFailed, type Update } from "@/lib/progress";
 import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 import { ShareDialog } from "@/components/share-dialog";
+import { UpdateRow } from "@/components/update-row";
 import { host } from "@/host";
 
-const ICONS: Readonly<Record<UpdateIcon, typeof Check>> = { plan: ListChecks, test: FlaskConical, code: Code2, review: MessageSquareText, check: ShieldCheck, merged: GitMerge, alert: AlertTriangle, stop: OctagonX, sync: GitMerge, pick: Trophy };
-const TONE: Readonly<Record<UpdateTone, string>> = { ok: "text-ok", run: "text-run", bad: "text-bad", idle: "text-muted-foreground" };
 
 function Steps({ node }: { readonly node: SessionNode }) {
   const p = progress(node.state, node.live?.timeline ?? []);
@@ -114,54 +112,9 @@ function RoleHeader({ node, role }: { readonly node: SessionNode; readonly role:
   );
 }
 
-function UpdateRow({ update }: { readonly update: Update }) {
-  const [open, setOpen] = useState(false);
+function SessionUpdate({ update }: { readonly update: Update }) {
   const view = useAgents(useWorkspace().selection.project);
-  if (update.kind === "you")
-    return (
-      <div className="flex max-w-[80%] flex-col items-end gap-0.5 self-end">
-        {update.note ? <span className="text-xs text-muted-foreground">Your note for the next step</span> : null}
-        <div className="rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">
-          <PromptText text={update.text} />
-        </div>
-      </div>
-    );
-  const Icon = ICONS[update.icon];
-  return (
-    <div className="flex gap-3" data-review={update.mark.review} data-gate={update.mark.gate} data-tone={update.tone}>
-      <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg bg-muted", TONE[update.tone])}>{update.tone === "run" ? <Loader2 className="size-3.5 animate-spin" /> : <Icon className="size-3.5" />}</span>
-      <Collapsible open={open} onOpenChange={setOpen} className="min-w-0 flex-1 pt-0.5">
-        <div className="text-sm">{update.text}</div>
-        {update.detail ? <div className="truncate text-sm text-muted-foreground">{update.detail}</div> : null}
-        {update.tone === "run" && !open && update.tech.length ? (
-          <ul className="mt-1 flex flex-col gap-0.5 font-mono text-xs text-muted-foreground" data-live-actions>
-            {update.tech.slice(-3).map((line, i) => (
-              <li key={i} className="truncate">
-                {line}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{clock(update.at)}</span>
-          {update.role ? <span data-update-role={update.role}>{roleLabel(update.role, view)}</span> : null}
-          {update.tech.length ? (
-            <CollapsibleTrigger className="inline-flex items-center gap-0.5 hover:text-foreground">
-              {open ? "Hide" : `${update.tech.length} ${update.tech.length === 1 ? "action" : "actions"}`}
-              <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
-            </CollapsibleTrigger>
-          ) : null}
-        </div>
-        <CollapsibleContent>
-          <div className="mt-2 flex flex-col gap-0.5 rounded-lg bg-muted px-3 py-2 font-mono text-xs break-all">
-            {update.tech.map((line, i) => (
-              <span key={i}>{line}</span>
-            ))}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </div>
-  );
+  return <UpdateRow update={update} roleName={(role) => roleLabel(role, view)} />;
 }
 
 function MergePrompt({ node }: { readonly node: SessionNode }) {
@@ -429,7 +382,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
           <RoleHeader node={node} role={role} />
           <RoleWork node={node} role={role} />
           <h2 className="kicker -mb-2">What it did</h2>
-          {list.length ? list.map((u) => <UpdateRow key={u.key} update={u} />) : <p className="text-sm text-muted-foreground">Nothing from this role yet.</p>}
+          {list.length ? list.map((u) => <SessionUpdate key={u.key} update={u} />) : <p className="text-sm text-muted-foreground">Nothing from this role yet.</p>}
           <div ref={end} />
         </div>
       ) : (
@@ -451,7 +404,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
           ) : null}
           {list.length ? <h2 className="kicker -mb-2">What happened</h2> : null}
           {list.map((u) => (
-            <UpdateRow key={u.key} update={u} />
+            <SessionUpdate key={u.key} update={u} />
           ))}
           <div ref={end} />
         </div>
