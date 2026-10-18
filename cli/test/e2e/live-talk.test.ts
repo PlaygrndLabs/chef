@@ -64,7 +64,15 @@ describe("live talk in the chat", () => {
       await page.locator("#live-talk").waitFor({ state: "detached" });
       await chat.locator("textarea").waitFor();
       expect(await page.evaluate(() => (window as unknown as { __voice: MockVoice }).__voice.closed)).toBe(true);
+      const call = chat.locator('[data-call="closed"]');
+      await call.waitFor();
+      expect(await chat.locator("[data-spoken]").count()).toBe(0);
+      expect((await call.innerText()).toLowerCase()).toContain("live talk · 2 messages");
+      expect(await call.innerText()).toContain("Add a todo list");
+      await call.getByRole("button").click();
+      await chat.locator('[data-call="open"]').waitFor();
       expect(await chat.locator('[data-spoken="you"]').innerText()).toContain("Add a todo list");
+      expect(await chat.locator('[data-spoken="chef"]').innerText()).toContain("On it.");
 
       await chat.locator("#talk-button").click();
       await panel.waitFor({ timeout: 10_000 });
