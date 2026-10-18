@@ -29,6 +29,17 @@ describe("session machine", () => {
     expect(coding.feedback).toContain("no test named after AC2");
   });
 
+  it("sends disputed tests from coding back to testing without charging another attempt, then carries the gate log into coding", () => {
+    const disputed = run([{ type: "start" }, { type: "planned", withTests: true }, { type: "tests_committed" }, { type: "coded" }, { type: "review_approved" }, { type: "gate_failed", log: "AC6 red" }, { type: "tests_disputed", said: ["backend: the test contradicts the spec"] }]);
+    expect(disputed.state).toBe("testing");
+    expect(disputed.usage.attempts).toBe(2);
+    expect(disputed.feedback).toContain("AC6 red");
+    expect(disputed.feedback).toContain("- backend: the test contradicts the spec");
+    const coding = transition(disputed, { type: "tests_committed" }, DEFAULT_BUDGET, 0);
+    expect(coding.state).toBe("coding");
+    expect(coding.feedback).toContain("AC6 red");
+  });
+
   it("goes stuck when attempts run out", () => {
     const budget = { ...DEFAULT_BUDGET, maxAttempts: 1 };
     const m = run([{ type: "start" }, { type: "planned", withTests: false }, { type: "coded" }, { type: "review_rejected", reasons: ["no"] }], budget);

@@ -15,7 +15,7 @@ check_preview() {
   echo "$page" | head -c 2000; echo
   case "$page" in *"$CHECK_TEXT"*) echo "preview $CHECK_PATH shows $CHECK_TEXT"; return 0 ;; *) echo "preview $CHECK_PATH does not show $CHECK_TEXT"; return 1 ;; esac
 }
-curl -sS -m 120 -X POST -H "$auth" "$api/bootstrap"; echo
+curl -sS -m 300 -X POST -H "$auth" -H 'content-type: application/json' -d "$(jq -n --arg name "$PROJECT" '{name: $name}')" "$CHEF_URL/api/projects"; echo
 [ -n "${ENV_NOW:-}" ] && put_env "$ENV_NOW"
 later_done=""
 curl -sS -m 120 -X POST -H "$auth" -H 'content-type: application/json' -d "$(jq -n --arg prompt "$PROMPT" '{prompt: $prompt}')" "$api/prompts"; echo

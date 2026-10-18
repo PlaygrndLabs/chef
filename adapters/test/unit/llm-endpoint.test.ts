@@ -66,6 +66,17 @@ describe("llm endpoint", () => {
     expect(JSON.stringify(seen[0]?.body["messages"])).toContain("- features/todo/**");
   });
 
+  it("shows the reviewer the slice's unchanged files so code already on main counts", async () => {
+    const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false });
+    const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl), "reviewer-model", "Review the diff.");
+    const feature = { id: "todo-add", title: "Add", status: "building" as const, entrypoint: "POST /todos", revision: 2, shared: [], env: [], acceptance: [{ id: "AC1", text: "adds" }], body: "b" };
+    const verdict = await reviewer.review({ feature, diff: { "spec/features/todo-add.md": "revision 2" }, existing: { "features/todo-add/routes.ts": "export const add = 1", "features/todo-add/todo-add.test.ts": 'test("AC1: adds")' }, checksLog: "" });
+    expect(verdict).toMatchObject({ approve: true });
+    const prompt = JSON.stringify(seen[0]?.body["messages"]);
+    expect(prompt).toContain("Already in this feature's slice and unchanged by the diff");
+    expect(prompt).toContain("--- features/todo-add/routes.ts");
+  });
+
   it("reviews a change that rewrites a big lockfile without its contents", async () => {
     const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false });
     const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl), "reviewer-model", "Review the diff.", 1000);

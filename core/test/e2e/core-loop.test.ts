@@ -135,6 +135,26 @@ describe("phase 1 core loop on fakes", () => {
     expect(w.coder.turns.filter((t) => t.role === "backend").at(-1)?.prompt).toContain("outside your write scope");
   });
 
+  it("sends failing locked tests back to the test writer when the coders change nothing after a failed gate", async () => {
+    const base = scriptFromFixture(fixture("todo"));
+    const w = world({
+      presets: new Map([[PROMPT, todoSpec]]),
+      script: async (input, attempt) => (input.role === "backend" && attempt === 2 ? { changes: {}, summary: "The code follows the spec; AC1's test expects the opposite order." } : base(input, attempt)),
+    });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(PROMPT);
+    w.checks.failNext("test", "AC1 expected [b, a], got [a, b]");
+    const record = await w.orchestrator.run(sessionId as string);
+
+    expect(record.machine.state).toBe("merged");
+    const states = w.bus.log.filter((e) => e.type === "session.state").map((e) => e.type === "session.state" && `${e.to}:${e.reason}`);
+    expect(states).toContain("testing:tests_disputed");
+    const retest = w.coder.turns.filter((t) => t.role === "test")[1];
+    expect(retest?.prompt).toContain("the failing tests go back to the test writer");
+    expect(retest?.prompt).toContain("AC1 expected [b, a], got [a, b]");
+    expect(retest?.prompt).toContain("backend: The code follows the spec; AC1's test expects the opposite order.");
+  });
+
   it("rejects comments in code through the lint check", async () => {
     const base = scriptFromFixture(fixture("todo"));
     let commented = true;
