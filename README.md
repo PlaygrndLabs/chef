@@ -20,6 +20,8 @@ AI can write code fast. Everything around the code is still slow: starting and t
 
 Chef takes that work off your plate, so you spend your time on what to build, not on keeping the build running.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef)
+
 ## What Chef takes off your plate
 
 - **Sessions run themselves.** Each request becomes a session that Chef starts, tracks, keeps up to date and closes for you. Run many at once and none blocks another.
@@ -30,12 +32,6 @@ Chef takes that work off your plate, so you spend your time on what to build, no
 - **Your keys stay yours.** Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.
 - **Or use your subscription.** Have a Claude subscription but no API key? [sub2api](https://github.com/PlaygrndLabs/sub2api) turns it into your own API on Cloudflare, so you can make an API key on your subscription and use it in Chef.
 - **GitHub when you want it.** Projects live in your Cloudflare account. Connect GitHub only if you want a repo kept in sync.
-
-## Deploy to Cloudflare
-
-You can also deploy Chef to your Cloudflare account straight from this repo:
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef)
 
 ## Under the hood
 
