@@ -843,7 +843,7 @@ export class Orchestrator {
   }
 
   private async testing(record: SessionRecord): Promise<void> {
-    const item = this.nextItem(record, ["test"]) ?? (record.machine.reason === "review_rejected" ? (record.plan.items.find((i) => i.kind === "test") ?? null) : null);
+    const item = this.nextItem(record, ["test"]) ?? (record.machine.reason === "review_rejected" || record.machine.reason === "tests_disputed" ? (record.plan.items.find((i) => i.kind === "test") ?? null) : null);
     if (!item) return this.apply(record, { type: "tests_committed" });
     const outcome = await this.coderTurn(record, item, record.machine.feedback);
     if (outcome === "rejected") return;
@@ -861,13 +861,14 @@ export class Orchestrator {
     if (!item) return this.apply(record, { type: "fail", reason: "plan has no code work item" });
     const fixer = record.kind !== "chore" && this.config.profiles["conflict-resolver"] ? "conflict-resolver" : item.role;
     const turnItem: WorkItem = conflict ? { ...item, id: `${item.id}-conflict`, kind: "conflict", role: fixer } : item;
-    const outcome = await this.coderTurn(record, turnItem, record.machine.feedback);
+    const turn = await this.startTurn(record, turnItem, record.machine.feedback);
+    const outcome = await this.finishTurn(record, turnItem, turn);
     if (outcome === "rejected") return;
     record.lastCodeItem = item.id;
     const index = record.plan.items.indexOf(item);
     if (index >= record.cursor) record.cursor = index + 1;
     if (this.nextItem(record, BUILD_KINDS) || lanesBusy(record.lanes)) return;
-    await this.coded(record);
+    await this.coded(record, outcome === "empty" ? [said(item.role, turn.result.summary)] : []);
   }
 
   private async waitForParentFeature(record: SessionRecord): Promise<boolean> {
@@ -913,6 +914,8 @@ export class Orchestrator {
     const items = active.map((lane) => record.plan.items.find((i) => i.id === laneItem(lane)) as WorkItem);
     const started = await Promise.allSettled(active.map((lane, i) => this.startTurn(record, items[i] as WorkItem, lane.feedback ?? shared, { lane, steering })));
     const committed: Lane[] = [];
+    const unchanged: string[] = [];
+    let rejected = false;
     let failure: unknown = null;
     for (const [i, lane] of active.entries()) {
       const outcome = started[i] as PromiseSettledResult<StartedTurn>;
@@ -927,21 +930,27 @@ export class Orchestrator {
         failure ??= error;
         continue;
       }
-      if (result === "rejected") continue;
+      if (result === "rejected") {
+        rejected = true;
+        continue;
+      }
       lane.feedback = null;
       if (lane.done < lane.items.length) lane.done++;
       else lane.rework = false;
       if (result === "committed") {
         lane.unmerged = true;
         committed.push(lane);
-      } else await this.laneUpdate(record, lane, "unchanged");
+      } else {
+        unchanged.push(said(lane.role, outcome.value.result.summary));
+        await this.laneUpdate(record, lane, "unchanged");
+      }
     }
     if (committed.length) await this.mergeLanes(record, committed);
     if (failure) {
       await this.save(record);
       throw failure;
     }
-    if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(lanes)) await this.coded(record);
+    if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(lanes)) await this.coded(record, committed.length || rejected ? [] : unchanged);
     return true;
   }
 
@@ -999,7 +1008,8 @@ export class Orchestrator {
     await this.emit({ type: "lane.updated", sessionId: record.id, featureId: record.featureId, role: lane.role, branch: lane.branch, status, ...(commitId ? { commitId } : {}), ...(paths.length ? { paths } : {}) });
   }
 
-  private async coded(record: SessionRecord): Promise<void> {
+  private async coded(record: SessionRecord, unchanged: readonly string[] = []): Promise<void> {
+    if (unchanged.length && record.machine.reason === "gate_failed" && this.specialization.lockTests && record.plan.items.some((i) => i.kind === "test")) return this.apply(record, { type: "tests_disputed", said: unchanged });
     if (await this.appStarts(record)) await this.apply(record, { type: "coded" });
   }
 
@@ -2100,6 +2110,13 @@ const CODER_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["test", "code", "fix
 const BUILD_KINDS: readonly WorkItem["kind"][] = ["code", "fix", "refactor", "chore"];
 
 const MERGED_PROOFS = 6;
+
+const SAID_CHARS = 1500;
+
+function said(role: string, summary: string): string {
+  const text = summary.trim() || "(no reply)";
+  return `${role}: ${text.length > SAID_CHARS ? `${text.slice(0, SAID_CHARS)}…` : text}`;
+}
 
 const ADOPT_LIMIT = 20;
 const APP_TRIES = 3;

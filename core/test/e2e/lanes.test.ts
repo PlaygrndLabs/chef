@@ -134,6 +134,21 @@ describe("roles working in parallel inside one feature", () => {
     expect(record.machine.usage.attempts).toBe(2);
   });
 
+  it("sends the failing tests back to the test writer when no role changes anything after a failed gate", async () => {
+    const { script } = laneScript((input, attempt) => (input.lane && attempt === 2 ? {} : null));
+    const w = world({ script, deps: { planner: new LanePlanner(["backend", "frontend"]) }, config: { specialization: { laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) } } });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(prompt);
+    w.checks.failNext("test", "AC1 expected 201, got 200");
+    const record = await w.orchestrator.run(sessionId as string);
+
+    expect(record.machine.state).toBe("merged");
+    const retest = w.coder.turns.filter((t) => t.role === "test")[1];
+    expect(retest?.prompt).toContain("AC1 expected 201, got 200");
+    expect(retest?.prompt).toContain("- backend: backend turn 2");
+    expect(retest?.prompt).toContain("- frontend: frontend turn 2");
+  });
+
   it("asks every role to rework its part when the reviewer asks for changes", async () => {
     class OnceRejecting extends RuleReviewer {
       private rejected = false;

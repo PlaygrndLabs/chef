@@ -64,10 +64,10 @@ export type Update =
       role?: string | null;
     };
 
-type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "app" | "retry" | "reopen" | null; round: number; lane?: string; open?: boolean; outcome?: LaneStatus };
+type Step = Extract<Update, { kind: "chef" }> & { phase: SessionState; said: string; last: string; after: "review" | "gate" | "dispute" | "app" | "retry" | "reopen" | null; round: number; lane?: string; open?: boolean; outcome?: LaneStatus };
 
 const PHASES: ReadonlySet<SessionState> = new Set(["planning", "testing", "coding", "reviewing", "gating"]);
-const AFTER: Readonly<Record<string, Step["after"]>> = { review_rejected: "review", gate_failed: "gate", app_failed: "app", retried: "retry", reopened: "reopen" };
+const AFTER: Readonly<Record<string, Step["after"]>> = { review_rejected: "review", gate_failed: "gate", tests_disputed: "dispute", app_failed: "app", retried: "retry", reopened: "reopen" };
 const ICON: Readonly<Partial<Record<SessionState, UpdateIcon>>> = { planning: "plan", testing: "test", coding: "code", reviewing: "review", gating: "check" };
 
 function laneHeadline(step: Step, running: boolean): string {
@@ -84,6 +84,7 @@ function headline(step: Step, running: boolean): string {
       return running ? "Planning the feature" : "Planned the feature";
     case "testing":
       if (step.after === "review") return running ? "Updating the tests the reviewer asked about" : "Updated the tests the reviewer asked about";
+      if (step.after === "dispute") return running ? "Checking the failing tests against the spec" : "Checked the failing tests against the spec";
       return running ? "Writing the tests" : "Wrote the tests";
     case "coding":
       if (step.after === "review") return running ? "Fixing what the reviewer asked for" : "Fixed what the reviewer asked for";
