@@ -251,6 +251,7 @@ const ANSWER_WAIT_MS = 10 * 60_000;
 
 interface SaidTurn {
   readonly key: string;
+  readonly call: string;
   readonly speaker: "you" | "chef";
   readonly text: string;
   readonly at: number;
@@ -261,9 +262,54 @@ export function spokenTurns(saved: readonly { readonly voiceSessionId: string; r
   const mine = talk.project === project ? talk.sessionId : null;
   const on = talk.phase !== "off" && talk.project === project;
   const local = mine !== null && (on || !saved.some((t) => t.voiceSessionId === mine));
-  const kept = saved.filter((t) => !(local && t.voiceSessionId === mine)).map((t, i) => ({ key: `${t.voiceSessionId}-${i}`, speaker: t.speaker, text: t.text, at: t.startedAt, live: false }));
-  const heard = talk.project === project && (local || (on && mine === null)) ? talk.heard.filter((h) => h.text.trim()).map((h, i) => ({ key: `live-${i}`, speaker: h.speaker, text: h.text.trim(), at: h.at, live: on })) : [];
+  const kept = saved.filter((t) => !(local && t.voiceSessionId === mine)).map((t, i) => ({ key: `${t.voiceSessionId}-${i}`, call: t.voiceSessionId, speaker: t.speaker, text: t.text, at: t.startedAt, live: false }));
+  const heard = talk.project === project && (local || (on && mine === null)) ? talk.heard.filter((h) => h.text.trim()).map((h, i) => ({ key: `live-${i}`, call: mine ?? "live", speaker: h.speaker, text: h.text.trim(), at: h.at, live: on })) : [];
   return [...kept, ...heard];
+}
+
+interface TimelineEntry<T extends { readonly voiced: boolean; readonly sessions: readonly SessionNode[] }> {
+  readonly at: number;
+  readonly item: T | null;
+  readonly turn: SaidTurn | null;
+}
+
+type Block<T extends { readonly voiced: boolean; readonly sessions: readonly SessionNode[] }> = { readonly kind: "entry"; readonly entry: TimelineEntry<T> } | { readonly kind: "call"; readonly call: string; readonly entries: TimelineEntry<T>[] };
+
+export function calls<T extends { readonly voiced: boolean; readonly sessions: readonly SessionNode[] }>(timeline: readonly TimelineEntry<T>[]): Block<T>[] {
+  const blocks: Block<T>[] = [];
+  for (const entry of timeline) {
+    const last = blocks.at(-1);
+    const open = last?.kind === "call" ? last : null;
+    if (entry.turn && !entry.turn.live) {
+      if (open && open.call === entry.turn.call) open.entries.push(entry);
+      else blocks.push({ kind: "call", call: entry.turn.call, entries: [entry] });
+    } else if (entry.item?.voiced && open) open.entries.push(entry);
+    else blocks.push({ kind: "entry", entry });
+  }
+  return blocks;
+}
+
+function Call<T extends { readonly voiced: boolean; readonly sessions: readonly SessionNode[] }>({ entries, render }: { readonly entries: readonly TimelineEntry<T>[]; readonly render: (entry: TimelineEntry<T>) => React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const turns = entries.flatMap((e) => (e.turn ? [e.turn] : []));
+  const builds = new Set(entries.flatMap((e) => e.item?.sessions.map((s) => s.featureId) ?? [])).size;
+  const first = turns.find((t) => t.speaker === "you")?.text ?? turns[0]?.text ?? "";
+  const facts = [`${turns.length} ${turns.length === 1 ? "message" : "messages"}`, builds ? `${builds} ${builds === 1 ? "build" : "builds"}` : null].filter(Boolean).join(" · ");
+  return (
+    <div className="flex flex-col gap-5" data-call={open ? "open" : "closed"}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 rounded-xl border border-dashed px-4 py-3 text-left text-sm hover:bg-muted/60">
+        <AudioLines className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block font-mono text-xs tracking-wide text-muted-foreground uppercase">Live talk · {facts}</span>
+          <span className="block truncate" dir="auto">
+            {first}
+          </span>
+        </span>
+        <ChevronRight className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+      </button>
+      {open ? entries.map(render) : null}
+    </div>
+  );
 }
 
 interface ChatMessage {
@@ -387,6 +433,19 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
     }
     startLive(selection.project).catch((error: unknown) => toast.error("Live talk did not start", { description: plainVoiceError(error) }));
   };
+  const entry = ({ item, turn }: TimelineEntry<(typeof history)[number]>) =>
+    turn ? (
+      <Said key={turn.key} speaker={turn.speaker} text={turn.text} live={turn.live} />
+    ) : item && item.voiced ? (
+      item.sessions.length > 0 || item.waiting ? <Reply key={`${item.at}-${item.prompt}`} text="" sessions={item.sessions} waiting={item.waiting} /> : null
+    ) : item ? (
+      <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
+        <You>
+          <PromptText text={stripFeatureTag(item.prompt).text} />
+        </You>
+        <Reply text={item.reply} sessions={item.sessions} waiting={item.waiting} />
+      </div>
+    ) : null;
   const busy = agent.isRunning || sessions.some((s) => isActive(s.state));
   return (
     <div className="@container relative flex h-full min-h-0 flex-col" data-view="project" id="chat">
@@ -399,19 +458,12 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
             <>
               {welcome ? <Welcome onExample={(text) => setDraft((d) => ({ text, n: (d?.n ?? 0) + 1 }))} /> : null}
               {overview !== null && !welcome && !introduced && history.length === 0 && pending.length === 0 && said.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature in the list, or describe a new one below.</p> : null}
-              {timeline.map(({ item, turn }) =>
-                turn ? (
-                  <Said key={turn.key} speaker={turn.speaker} text={turn.text} live={turn.live} />
-                ) : item && item.voiced ? (
-                  item.sessions.length > 0 || item.waiting ? <Reply key={`${item.at}-${item.prompt}`} text="" sessions={item.sessions} waiting={item.waiting} /> : null
-                ) : item ? (
-                  <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
-                    <You>
-                      <PromptText text={stripFeatureTag(item.prompt).text} />
-                    </You>
-                    <Reply text={item.reply} sessions={item.sessions} waiting={item.waiting} />
-                  </div>
-                ) : null,
+              {calls(timeline).map((block) =>
+                block.kind === "call" ? (
+                  <Call key={block.entries[0]?.turn?.key ?? block.call} entries={block.entries} render={entry} />
+                ) : (
+                  entry(block.entry)
+                ),
               )}
               {pending.map(({ prompt, failed, reason }) => (
                 <div key={`pending-${prompt}`} className="flex flex-col gap-4" data-pending={failed ? "failed" : "sending"}>
