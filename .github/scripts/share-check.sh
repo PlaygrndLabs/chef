@@ -22,6 +22,7 @@ bearer="authorization: Bearer $token"
 test "$(curl -fsS -H "$bearer" "$url/api/share" | jq -r .id)" = "$session"
 test "$(code -H "$bearer" "$url/api/projects/$project/sessions/$session")" = 200
 test "$(code -H "$bearer" "$url/api/projects/$project/sessions/$session/changes")" = 200
+test "$(code -H "$bearer" "$url/api/projects/$project/sessions/$session/events")" = 200
 test "$(code -H "$bearer" "$url/api/projects")" = 403
 test "$(code -H "$bearer" "$url/api/projects/$project/spec")" = 403
 test "$(code -H "$bearer" -X POST "$url/api/projects/$project/sessions/$session/steer")" = 403
