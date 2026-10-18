@@ -30,6 +30,7 @@ import { applyGuidanceEdit, projectGuidance, renderGuidance, withGuidance, type 
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
 import { projectRuleProblems, renderRule, rulePath } from "../checks/project-rules.ts";
 import { failuresOf, newFailuresOnly, type MainFailures } from "../checks/baseline.ts";
+import { matchesScope } from "../util/glob.ts";
 import { hashHex } from "../util/hash.ts";
 import type { ExternalRemote } from "../ports/external-git.ts";
 import { ExternalSync, type ExternalSyncOptions } from "../sync/external.ts";
@@ -1020,7 +1021,9 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     const base = await this.commitOf(this.canonical, record.baseMain);
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: "reviewer", kind: "review", model: this.deps.reviewer.model ?? "reviewer" });
-    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "", scope: this.reviewScope(record, head.tree), ...(record.kind === "chore" ? { chore: true } : {}), ...(usesChefTemplate(head.tree) ? {} : { ownStructure: true }), ...(await this.guidanceField(head.tree)) });
+    const diff = diffTrees(base.tree, head.tree);
+    const scope = this.reviewScope(record, head.tree);
+    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff, ...(record.kind === "chore" ? { chore: true } : { existing: unchangedIn(head.tree, diff, scope) }), checksLog: record.machine.feedback ?? "", scope, ...(usesChefTemplate(head.tree) ? {} : { ownStructure: true }), ...(await this.guidanceField(head.tree)) });
     record.verdict = { ...verdict, commitId: head.id };
     await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons, model: verdict.model, head: head.id, base: base.id });
     if (verdict.approve) await this.apply(record, { type: "review_approved" });
@@ -2195,6 +2198,10 @@ function appTrouble(app: SessionApp | null): string {
   if (app?.status === "no-stack") return "this branch has no compose file (compose.yaml or docker-compose.yml), so Chef cannot start its app to prove the feature";
   if (app?.error) return `the app did not start: ${app.error}`;
   return "the app is not running";
+}
+
+function unchangedIn(tree: Tree, diff: FileChanges, scope: readonly string[]): FileChanges {
+  return Object.fromEntries(Object.entries(tree).filter(([path]) => !(path in diff) && matchesScope(path, scope)));
 }
 
 function sameNames(a: readonly string[], b: readonly string[]): boolean {

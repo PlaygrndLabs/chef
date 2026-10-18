@@ -80,6 +80,9 @@ describe("splitting a request into features", () => {
     expect(review?.feature.parent).toBe("todo-add");
     expect(review?.scope).toEqual(expect.arrayContaining(["features/let-people-delete-item/**", "features/todo-add/**"]));
     expect(review?.scope?.some((pattern) => pattern.startsWith("!"))).toBe(false);
+    const unchanged = Object.keys(review?.existing ?? {});
+    expect(unchanged).toEqual(expect.arrayContaining(["features/todo-add/index.ts", "features/todo-add/todo-add.test.ts"]));
+    expect(unchanged.some((path) => path in (review?.diff ?? {}))).toBe(false);
   });
 });
 

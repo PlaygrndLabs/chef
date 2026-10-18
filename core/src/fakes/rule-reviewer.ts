@@ -12,14 +12,15 @@ export class RuleReviewer implements Reviewer {
     const reasons: string[] = [];
     let retest = false;
     const isTest = (path: string) => (input.ownStructure ? matchesScope(path, [...TEST_GLOBS, "!spec/features/**"]) : path.endsWith(".test.ts"));
-    const tests = Object.entries(input.diff).filter(([path, content]) => isTest(path) && content !== null);
+    const files = { ...input.existing, ...input.diff };
+    const tests = Object.entries(files).filter(([path, content]) => isTest(path) && content !== null);
     const allTests = tests.map(([, content]) => content).join("\n");
     for (const criterion of input.feature.acceptance) {
       if (allTests.includes(`${criterion.id}:`)) continue;
       reasons.push(`no test named after ${criterion.id} (${criterion.text})`);
       retest = true;
     }
-    const touched = Object.keys(input.diff);
+    const touched = Object.keys(files);
     if (input.ownStructure) {
       if (!touched.some((p) => !isTest(p) && !p.startsWith("spec/features/"))) reasons.push("no implementation outside the tests");
     } else if (!touched.some((p) => p.startsWith(`features/${input.feature.id}/`) && !p.endsWith(".test.ts"))) reasons.push(`no implementation under features/${input.feature.id}/`);

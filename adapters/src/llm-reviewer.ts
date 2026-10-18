@@ -21,11 +21,12 @@ export class LlmReviewer implements Reviewer {
   async review(input: ReviewInput): Promise<ReviewVerdict> {
     const diff = renderDiff(input.diff);
     if (diff.length > this.maxDiffChars) return { approve: false, reasons: [`diff is ${diff.length} characters; split the feature so a review fits in ${this.maxDiffChars}`], model: this.model };
+    const existing = renderExisting(input.existing, this.maxDiffChars - diff.length);
     const result = await structured(this.llm, {
       model: this.model,
       system: withGuidance(this.system, input.guidance),
       schema: VerdictSchema,
-      prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `Spec:\n${JSON.stringify(input.feature, null, 2)}${renderScope(input.scope)}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}`,
+      prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `Spec:\n${JSON.stringify(input.feature, null, 2)}${renderScope(input.scope)}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}${existing}`,
     });
     return { approve: result.approve && result.reasons.length === 0, reasons: result.reasons, retest: result.retest, model: this.model };
   }
@@ -50,6 +51,13 @@ export class LlmReviewer implements Reviewer {
 function renderScope(scope: readonly string[] | undefined): string {
   if (!scope?.length) return "";
   return `\n\nThis feature's slice: the paths it may change. chef blocks writes anywhere else, so never reject a change for touching these:\n${scope.map((pattern) => `- ${pattern}`).join("\n")}`;
+}
+
+function renderExisting(existing: FileChanges | undefined, budget: number): string {
+  const files = renderDiff(existing ?? {});
+  if (!files) return "";
+  const shown = files.length > budget ? `${files.slice(0, Math.max(0, budget))}\n(cut off: the rest of these files did not fit)` : files;
+  return `\n\nAlready in this feature's slice and unchanged by the diff, so what they do counts toward the criteria:\n${shown}`;
 }
 
 function renderDiff(diff: FileChanges): string {
