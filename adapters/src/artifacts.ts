@@ -1,6 +1,6 @@
 import git, { type HttpClient, type TreeEntry } from "isomorphic-git";
 import webHttp from "isomorphic-git/http/web";
-import { applyChanges, threeWayMerge, type Author, type Commit, type CommitInput, type MergeInput, type MergeOutcome, type PushedEvent, type RepoHost, type RepoInfo, type RepoToken, type TokenScope, type Tree } from "@chef/core";
+import { applyChanges, threeWayMerge, type Author, type Commit, type CommitInput, type CommitSummary, type MergeInput, type MergeOutcome, type PushedEvent, type RepoHost, type RepoInfo, type RepoToken, type TokenScope, type Tree } from "@chef/core";
 import { MemoryFs } from "./memory-fs.ts";
 
 const NOTE_ATTEMPTS = 8;
@@ -310,6 +310,21 @@ export class ArtifactsRepoHost implements RepoHost {
     });
   }
 
+  async history(repo: string, ref: string, limit = 50): Promise<CommitSummary[]> {
+    const read = this.control.read;
+    if (read) {
+      const entries = await read.log(repo, shortRef(ref), limit).catch(() => []);
+      if (entries.length > 0) return entries.map((e) => ({ id: e.hash, parents: [...e.parents], message: e.message.trimEnd(), author: { name: e.author.name, email: e.author.email }, timestamp: e.authoredAt * 1000 }));
+    }
+    return this.withRead(repo, async (secret, cached) => {
+      await this.fetchRefs(cached, secret, [fullRef(ref)]);
+      const head = await this.localRef(cached, `refs/remotes/origin/${shortRef(ref)}`);
+      if (!head) return [];
+      const entries = await git.log({ fs: cached.fs, gitdir: GITDIR, ref: head, depth: limit });
+      return entries.map((e) => ({ id: e.oid, parents: e.commit.parent, message: e.commit.message.trimEnd(), author: { name: e.commit.author.name, email: e.commit.author.email }, timestamp: e.commit.author.timestamp * 1000 }));
+    });
+  }
+
   async commit(token: RepoToken, input: CommitInput): Promise<Commit> {
     const cached = await this.repo(token.repo);
     await this.fetchRefs(cached, tokenSecret(token.secret), [fullRef(input.ref)]);
@@ -346,7 +361,7 @@ export class ArtifactsRepoHost implements RepoHost {
       return { status: "fast-forward", commitId: theirs };
     }
     if (ours === theirs || (await git.isDescendent({ fs: cached.fs, gitdir: GITDIR, oid: ours, ancestor: theirs, depth: -1 }))) return { status: "up-to-date", commitId: ours };
-    if (await git.isDescendent({ fs: cached.fs, gitdir: GITDIR, oid: theirs, ancestor: ours, depth: -1 })) {
+    if (!input.noFastForward && (await git.isDescendent({ fs: cached.fs, gitdir: GITDIR, oid: theirs, ancestor: ours, depth: -1 }))) {
       await this.push(cached, token, input.into, theirs, false, ours);
       await this.copyNotes(cached, token, input.from.repo, theirs);
       return { status: "fast-forward", commitId: theirs };

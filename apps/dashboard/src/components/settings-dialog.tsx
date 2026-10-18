@@ -101,6 +101,25 @@ function JevForm(props: { readonly settings: SettingsView; readonly save: Save }
   );
 }
 
+function ManagedList(props: { readonly settings: SettingsView }) {
+  const { llm, jev, voice } = props.settings;
+  const rows: readonly (readonly [string, boolean])[] = [
+    ["Claude", llm !== null],
+    ["Router: Jev", jev !== null],
+    ["Voice: GPT Live", voice !== null],
+  ];
+  return (
+    <ul className="grid gap-1 text-xs" data-managed="providers">
+      {rows.map(([name, on]) => (
+        <li key={name} className="flex justify-between gap-2">
+          <span>{name}</span>
+          <span className="text-muted-foreground">{on ? "Ready" : "Not set up"}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function PasswordForm(props: { readonly settings: SettingsView; readonly save: Save }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -226,13 +245,8 @@ export function SettingsDialog(props: {
     }
   };
   const loading = () => <p className="text-xs text-muted-foreground">Loading…</p>;
-  const jev = settings ? (
-    <Group title="Fast routing with Jev (optional)" note="A TypeSafe key lets Jev decide in about 100ms. Without it Claude decides.">
-      <JevForm settings={settings} save={save} />
-    </Group>
-  ) : null;
   const agents = (section: AgentSection, before?: ReactNode) => () => <AgentsSection project={null} section={section} item={props.item} nav={nav} before={before} />;
-  const needsSettings = new Set(["models", "previews"]);
+  const needsSettings = new Set(["models", "apps"]);
   const all: SettingsSection[] = [
     {
       id: "general",
@@ -265,18 +279,31 @@ export function SettingsDialog(props: {
       label: "Models",
       icon: Cpu,
       attention: missing.includes("models"),
-      note: "The provider and models every project uses. Keys stay on your Chef; only their last four characters come back here.",
+      note: host.ModelKeys || settings?.managed ? "The models every project uses, for writing code, routing requests and live talk." : "The provider and models every project uses. Keys stay on your Chef; only their last four characters come back here.",
       render: () =>
         settings ? (
           <>
-            <Group title="Claude" note="Plans, writes and reviews code. Use your Anthropic API key, or any Anthropic-compatible provider with its base URL and key.">
-              <ProviderForm key={`llm-${settings.llm?.kind ?? "none"}`} part="llm" choices={MODEL_CHOICES} current={settings.llm} save={save} />
-            </Group>
+            {host.ModelKeys ? (
+              <host.ModelKeys onboarding={false} onSaved={() => void settingsApi.get().then(onChange, () => undefined)} />
+            ) : settings.managed ? (
+              <Group title="Providers" note={`${settings.managed.by} manages the providers for Claude, routing and voice.`}>
+                <ManagedList settings={settings} />
+              </Group>
+            ) : (
+              <>
+                <Group title="Claude" note="Plans, writes and reviews code. Use your Anthropic API key, or any Anthropic-compatible provider with its base URL and key.">
+                  <ProviderForm key={`llm-${settings.llm?.kind ?? "none"}`} part="llm" choices={MODEL_CHOICES} current={settings.llm} save={save} />
+                </Group>
+                <Group title="Router: Jev (optional)" note="Jev decides where each request goes in about 100 ms with your TypeSafe key. Without it Claude decides.">
+                  <JevForm settings={settings} save={save} />
+                </Group>
+                <Group title="Voice: GPT Live (optional)" note="Live talk with Chef. Use your OpenAI key for GPT Live, or a provider that serves the OpenAI Realtime API.">
+                  <ProviderForm key={`voice-${settings.voice?.kind ?? "none"}`} part="voice" choices={VOICE_CHOICES} current={settings.voice} save={save} />
+                </Group>
+              </>
+            )}
             <Group title="Models" note="Model ids your providers accept, and how many tries race on each new feature. The voice model is the one you talk to in live talk. A role can pick its own model in Agents.">
               <ModelsForm key={JSON.stringify([settings.models, settings.attempts])} settings={settings} save={save} />
-            </Group>
-            <Group title="Voice (optional)" note="Live talk with Chef. Use an OpenAI key, or a provider that serves the OpenAI Realtime API.">
-              <ProviderForm key={`voice-${settings.voice?.kind ?? "none"}`} part="voice" choices={VOICE_CHOICES} current={settings.voice} save={save} />
             </Group>
           </>
         ) : (
@@ -297,21 +324,21 @@ export function SettingsDialog(props: {
       label: "Router",
       icon: Route,
       fill: true,
-      render: agents("router", <div className="mx-auto max-w-3xl px-4 pt-5 sm:px-6"><div className="rounded-xl border p-4">{jev}</div></div>),
+      render: agents("router"),
     },
     {
       id: "environment",
       label: "Environment",
       icon: KeyRound,
-      note: "Keys and settings every project's app gets at runtime. A project can set its own value for any of them. Previews get the values; agents only see the names.",
+      note: "Keys and settings every project's app gets at runtime. A project can set its own value for any of them. Running apps get the values; agents only see the names.",
       render: () => <EnvironmentForm api={sharedEnvApi} />,
     },
     {
-      id: "previews",
-      label: "Previews",
+      id: "apps",
+      label: "Apps",
       icon: Cloud,
-      attention: missing.includes("previews"),
-      note: "Every feature gets a live preview on your Cloudflare account.",
+      attention: missing.includes("apps"),
+      note: "Each branch runs its app in its own sandbox on your Cloudflare account, and Chef's router gives every running app its own address.",
       render: () =>
         settings ? (
           <Group title="Cloudflare" note="The token needs permission to edit Workers.">

@@ -1,12 +1,12 @@
 import type { ChefEvent } from "../events/events.ts";
-import { applyChanges, changedPaths, diffTrees, type Author, type Commit, type FileChanges, type Resolver, type Tree } from "../git/tree.ts";
+import { applyChanges, changedPaths, diffTrees, type Author, type Commit, type CommitSummary, type FileChanges, type Resolver, type Tree } from "../git/tree.ts";
 import { NOTES_NAMESPACE, PROOF_NAMESPACE, parseNote, renderNote, type TurnNote } from "../notes/notes.ts";
 import type { CheckResult, CheckRunner, ProofRecord, ProofRunner } from "../ports/check-runner.ts";
 import type { Classifier } from "../ports/classifier.ts";
 import { TurnRunning, type Coder, type CoderEvent, type CoderTurnResult } from "../ports/coder.ts";
 import type { EventBus } from "../ports/event-bus.ts";
 import { chorePlan, choreId, withTestItem, type Plan, type Planner, type SplitPart, type WorkItem } from "../ports/planner.ts";
-import type { PreviewHost } from "../ports/preview-host.ts";
+import type { AppHost, AppRun } from "../ports/app-host.ts";
 import type { PushedEvent, RepoHost, RepoToken } from "../ports/repo-host.ts";
 import type { MemoryDoc, MemoryHit, MemoryIndex } from "../ports/memory-index.ts";
 import type { PickCandidate, Reviewer } from "../ports/reviewer.ts";
@@ -17,22 +17,25 @@ import { DEFAULT_ROUTER_CONFIG, Router, withoutCommand, type RouterConfig } from
 import { chatContext, needsCompacting, plainSummary, readChatMemory, renderConversation, splitForCompacting, type ChatMemory } from "../router/conversation.ts";
 import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type RejectionRule, type SessionEvent } from "../session/machine.ts";
 import { laneBrief, laneItem, laneOwner, lanesBusy, lanesNamedIn, planLanes, type Lane, type LaneLayoutFor, type LaneStatus } from "../session/lanes.ts";
-import type { PendingTurn, SessionRecord } from "../session/record.ts";
+import type { PendingTurn, SessionApp, SessionRecord } from "../session/record.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
+import { applyMapEdit, describeEntries, FEATURES_DIR, isMapRequest, mapAsSpec, mapChanges, mergedEntryChanges, nameOf, wasMapped, placeMapped, readFeatureMap, renderMapOutline, type FeatureMap, type MapEdit, type MapEntry } from "../features/index.ts";
 import { arrange, arrangedSpec, arrangementProblem, markRemoved, placed, subtreeOf, type FeatureArrangement, type FeatureLayout, type KnownFeature } from "../spec/layout.ts";
 import { missingEnv, renderEnvironment, type EnvVar } from "../env/env.ts";
-import { Archiver, MainWriter, Mutex, PreviewPublisher } from "./capabilities.ts";
+import { Archiver, MainWriter, Mutex } from "./capabilities.ts";
 import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderLesson, renderRecall, MEMORY_DIR } from "../memory/memory.ts";
 import { applyGuidanceEdit, projectGuidance, renderGuidance, withGuidance, type EditResult, type GuidanceEdit } from "../guidance/guidance.ts";
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
 import { projectRuleProblems, renderRule, rulePath } from "../checks/project-rules.ts";
+import { failuresOf, newFailuresOnly, type MainFailures } from "../checks/baseline.ts";
 import { hashHex } from "../util/hash.ts";
 import type { ExternalRemote } from "../ports/external-git.ts";
 import { ExternalSync, type ExternalSyncOptions } from "../sync/external.ts";
 import { quietSetup, type SetupProgress } from "../setup/progress.ts";
 import type { SpendGate } from "../usage/budget.ts";
+import { entryPath, structureGuidance, usesChefTemplate } from "../structure/structure.ts";
 
 export interface Deps {
   readonly repos: RepoHost;
@@ -40,7 +43,7 @@ export interface Deps {
   readonly classifier: Classifier;
   readonly planner: Planner;
   readonly reviewer: Reviewer;
-  readonly previews: PreviewHost;
+  readonly apps: AppHost;
   readonly checks: CheckRunner;
   readonly proofs: ProofRunner;
   readonly bus: EventBus;
@@ -49,6 +52,7 @@ export interface Deps {
   readonly store: KeyValueStore;
   readonly memory: MemoryIndex;
   readonly spend?: SpendGate;
+  readonly background?: (work: () => Promise<void>) => void;
 }
 
 export type Generators = Readonly<Record<string, (tree: Tree) => string>>;
@@ -72,10 +76,15 @@ export interface ProjectConfig {
   readonly budget?: Budget;
   readonly router?: RouterConfig;
   readonly tokenTtlSeconds?: number;
-  readonly previewLink?: (key: string) => string;
+  readonly appLink?: (sessionId: string) => string;
   readonly environment?: () => Promise<readonly EnvVar[]>;
   readonly instructions?: () => Promise<string>;
+  readonly merge?: () => Promise<MergeMode>;
 }
+
+export const MERGE_MODES = ["auto", "manual"] as const;
+
+export type MergeMode = (typeof MERGE_MODES)[number];
 
 export interface SubmitResult {
   readonly decision: RouteDecision;
@@ -115,10 +124,39 @@ export interface SessionChanges {
   readonly files: readonly { readonly path: string; readonly before: string | null; readonly after: string | null }[];
 }
 
+export interface HistoryEntry {
+  readonly id: string;
+  readonly parents: readonly string[];
+  readonly message: string;
+  readonly author: string;
+  readonly timestamp: number;
+  readonly note: { readonly feature: string; readonly session: string; readonly role: string; readonly kind: string; readonly prompt: string } | null;
+}
+
+export interface MainHistory {
+  readonly head: string | null;
+  readonly commits: readonly HistoryEntry[];
+  readonly more: boolean;
+}
+
+export interface SessionHistory {
+  readonly branch: string;
+  readonly from: string | null;
+  readonly head: string | null;
+  readonly merged: string | null;
+  readonly upstream: { readonly session: string; readonly feature: string; readonly branch: string } | null;
+  readonly into: string | null;
+  readonly commits: readonly HistoryEntry[];
+}
+
+export interface CommitChanges {
+  readonly commit: HistoryEntry;
+  readonly files: SessionChanges["files"];
+}
+
 export class Orchestrator {
   readonly canonical: string;
   private readonly router: Router;
-  private readonly previews: PreviewPublisher;
   private readonly main: MainWriter;
   private readonly archiver: Archiver;
   private readonly mergeQueue = new Mutex();
@@ -130,6 +168,7 @@ export class Orchestrator {
   private readonly unsubscribe: () => void;
   private readonly running = new Set<string>();
   private readonly syncAfterRun = new Set<string>();
+  private readonly mainFailures = new Map<string, Promise<MainFailures>>();
 
   constructor(
     private readonly deps: Deps,
@@ -138,7 +177,6 @@ export class Orchestrator {
     this.canonical = config.name;
     this.router = new Router({ classifier: deps.classifier, planner: deps.planner }, config.router ?? DEFAULT_ROUTER_CONFIG);
     this.ttl = config.tokenTtlSeconds ?? 900;
-    this.previews = new PreviewPublisher(deps.repos, this.canonical, this.ttl);
     this.main = new MainWriter(deps.repos, this.canonical, this.ttl);
     this.archiver = new Archiver(deps.repos, this.canonical, this.ttl);
     this.budget = config.budget ?? DEFAULT_BUDGET;
@@ -213,10 +251,14 @@ export class Orchestrator {
   }
 
   private async submitAs(prompt: string, attemptsWanted: number | undefined, by: string | null): Promise<SubmitResult> {
+    if (isMapRequest(prompt)) return this.mapRequest(prompt);
     const { tree } = await this.mainTree();
     const spec = arrangedSpec(readSpec(tree), await this.layout());
+    const map = readFeatureMap(tree);
+    const routing = [...spec, ...mapAsSpec(map, new Set(spec.map((f) => f.id)))];
+    const outline = map.features.length ? renderMapOutline(map) : "";
     const chat = renderConversation(await this.chatMemory());
-    const decision = await this.router.route(prompt, spec);
+    const decision = await this.router.route(prompt, routing);
     await this.emit({ type: "route.decided", prompt, decision });
     if (decision.intent === "question") {
       const answer = await this.answer(prompt);
@@ -224,10 +266,28 @@ export class Orchestrator {
       await this.remember(prompt, answer.text);
       return { decision, sessionId: null, sessionIds: [], answer };
     }
+    let started: { readonly result: SubmitResult; readonly reply: string };
+    try {
+      started = await this.start(prompt, decision, { routing, spec, outline, chat }, attemptsWanted, by);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      await this.emit({ type: "route.failed", prompt, error: reason });
+      await this.remember(prompt, `I could not start this, so nothing is being built for it: ${reason}. Send it again to retry.`);
+      throw error;
+    }
+    await this.remember(prompt, started.reply);
+    return started.result;
+  }
+
+  private async start(prompt: string, decision: RouteDecision, context: { readonly routing: readonly FeatureSpec[]; readonly spec: readonly FeatureSpec[]; readonly outline: string; readonly chat: string }, attemptsWanted: number | undefined, by: string | null): Promise<{ readonly result: SubmitResult; readonly reply: string }> {
+    const { routing, spec, outline, chat } = context;
     const chore = decision.intent === "chore";
     const hotfix = decision.hotfix === true;
-    const parts = chore ? null : await this.router.split(prompt, spec, decision, chat);
-    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, parts.length > 1 ? part.prompt : prompt, chat)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat)];
+    const known = new Set(routing.map((f) => f.id));
+    const building = (await this.sessions()).filter((s) => !isTerminal(s.machine.state) && !known.has(s.featureId)).map((s) => s.plan.feature);
+    const withBuilding = [...routing, ...building.filter((f, i) => building.findIndex((g) => g.id === f.id) === i)];
+    const parts = chore ? null : await this.router.split(prompt, withBuilding, decision, chat, outline);
+    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, withBuilding, parts.length > 1 ? part.prompt : prompt, chat, outline)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat, outline)];
     const attempts = chore || hotfix ? 1 : Math.max(1, Math.floor(attemptsWanted ?? this.specialization.attempts));
     const created: string[] = [];
     for (const [at, plan] of plans.entries()) {
@@ -237,8 +297,8 @@ export class Orchestrator {
       created.push(...(await this.createSessions(prompt, own, plan, attempts, { chore, hotfix, ask, by })));
     }
     const first = plans[0]?.feature.id;
-    await this.remember(prompt, `${chore ? "Started a chore" : plans.length > 1 ? "Split it into features" : decision.intent === "change_feature" ? "Changing the feature" : "Started the feature"}: ${plans.map((p) => `${p.feature.title} (${p.feature.id})`).join(", ")}`);
-    return { decision, sessionId: created[0] ?? null, sessionIds: created, ...(first ? { featureId: first } : {}) };
+    const reply = `${chore ? "Started a chore" : plans.length > 1 ? "Split it into features" : decision.intent === "change_feature" ? "Changing the feature" : "Started the feature"}: ${plans.map((p) => `${p.feature.title} (${p.feature.id})`).join(", ")}`;
+    return { reply, result: { decision, sessionId: created[0] ?? null, sessionIds: created, ...(first ? { featureId: first } : {}) } };
   }
 
   async chatMemory(): Promise<ChatMemory> {
@@ -260,14 +320,75 @@ export class Orchestrator {
     return { summary, turns: recent, summarized: (memory.summarized ?? 0) + older.length };
   }
 
-  private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], prompt: string, chat: string): Promise<Plan> {
+  private async planPart(part: SplitPart, decision: RouteDecision, spec: readonly FeatureSpec[], known: readonly FeatureSpec[], prompt: string, chat: string, map = ""): Promise<Plan> {
     if (part.kind === "change") {
-      const existing = spec.find((f) => f.id === part.featureId);
-      const plan = await this.planFeature(prompt, { ...decision, intent: "change_feature", featureId: part.featureId, changeKind: part.changeKind }, spec, null, chat);
+      const existing = known.find((f) => f.id === part.featureId);
+      const plan = await this.planFeature(prompt, { ...decision, intent: "change_feature", featureId: part.featureId, changeKind: part.changeKind }, spec, null, chat, map);
       return withParent(plan, existing?.parent ?? null);
     }
-    const plan = await this.planFeature(prompt, { ...decision, intent: "new_feature", featureId: null, changeKind: null }, spec, part.parent, chat);
+    const plan = await this.planFeature(prompt, { ...decision, intent: "new_feature", featureId: null, changeKind: null }, spec, part.parent, chat, map);
     return withParent(plan, part.parent);
+  }
+
+  private async mapRequest(prompt: string): Promise<SubmitResult> {
+    const decision: RouteDecision = { intent: "question", featureId: null, changeKind: null, via: "rules", confidence: 1, reason: "map the project's current features" };
+    await this.emit({ type: "route.decided", prompt, decision });
+    let text: string;
+    try {
+      const { added } = await this.mapFeatures();
+      text = added.length ? `I explored the code and added ${added.length === 1 ? "1 feature to the feature list with how to reach it" : `${added.length} features to the feature list, each with how to reach it`}:\n${describeEntries(added)}` : "The feature list already has every feature I could find in the code.";
+    } catch (error) {
+      text = `I could not map the features: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    const sources = [FEATURES_DIR];
+    await this.emit({ type: "question.answered", prompt, answer: text, sources });
+    await this.remember(prompt, text);
+    return { decision, sessionId: null, sessionIds: [], answer: { text, sources } };
+  }
+
+  async featureMap(): Promise<{ readonly commitId: string | null; readonly map: FeatureMap }> {
+    const { commitId, tree } = await this.mainTree();
+    return { commitId, map: readFeatureMap(tree) };
+  }
+
+  async mapFeatures(): Promise<{ readonly added: readonly MapEntry[]; readonly commitId: string | null }> {
+    if (!this.deps.planner.mapFeatures) throw new ControlError("the planner in use cannot explore code");
+    const { commitId, tree } = await this.mainTree();
+    if (!commitId) throw new ControlError("the project has no main branch yet");
+    const mapped = await this.deps.planner.mapFeatures({ project: this.config.name, tree, map: renderMapOutline(readFeatureMap(tree), { paths: true }), ...(await this.guidanceField()) });
+    const outcome = await this.mergeQueue.run(async () => {
+      const main = await this.mainTree();
+      if (!main.commitId) throw new ControlError("the project has no main branch yet");
+      const placed = placeMapped(readFeatureMap(main.tree), mapped);
+      const changes = mapChanges(wasMapped(main.tree) ? placed : { ...placed, start: placed.start ?? "" });
+      if (Object.keys(changes).length === 0) return { added: [], commitId: null };
+      const message = placed.entries.length === 0 ? "Feature list: how to start the project" : `Feature list: map ${placed.entries.length === 1 ? "1 current feature" : `${placed.entries.length} current features`}`;
+      return { added: placed.entries, commitId: await this.commitMain(main.commitId, changes, message), message };
+    });
+    if (outcome.commitId && "message" in outcome) await this.emit({ type: "features.changed", commitId: outcome.commitId, message: outcome.message, ids: outcome.added.map((e) => e.id) });
+    return { added: outcome.added, commitId: outcome.commitId };
+  }
+
+  async editFeatureMap(edit: MapEdit): Promise<{ readonly commitId: string | null; readonly id: string | null }> {
+    const outcome = await this.mergeQueue.run(async () => {
+      const { commitId, tree } = await this.mainTree();
+      if (!commitId) throw new ControlError("the project has no main branch yet");
+      const result = applyMapEdit(tree, edit);
+      if (!result.ok) throw new ControlError(result.error);
+      if (Object.keys(result.changes).length === 0) return { commitId, id: result.id, message: "" };
+      return { commitId: await this.commitMain(commitId, result.changes, result.message), id: result.id, message: result.message };
+    });
+    if (outcome.message) await this.emit({ type: "features.changed", commitId: outcome.commitId, message: outcome.message, ids: outcome.id ? [outcome.id] : [] });
+    return { commitId: outcome.commitId, id: outcome.id };
+  }
+
+  private async commitMain(parent: string, changes: FileChanges, message: string): Promise<string> {
+    const token = await this.deps.repos.createToken(this.canonical, "write", this.ttl);
+    try {
+      return (await this.deps.repos.commit(token, { ref: "main", parent, changes, message, author: this.config.author })).id;
+    } finally {
+      await this.deps.repos.revokeToken(token);
+    }
   }
 
   private async createSessions(prompt: string, decision: RouteDecision, plan: Plan, attempts: number, options: { readonly chore: boolean; readonly hotfix: boolean; readonly ask: string | null; readonly by: string | null }): Promise<string[]> {
@@ -290,8 +411,8 @@ export class Orchestrator {
         head: null,
         baseMain: null,
         commits: [],
-        preview: null,
-        firstPreviewCommit: null,
+        app: null,
+        firstAppCommit: null,
         verdict: null,
         lastCodeItem: null,
         syncPending: false,
@@ -303,7 +424,6 @@ export class Orchestrator {
         ...(by ? { requestedBy: by } : {}),
         parent,
         history: [],
-        previewKey: attempts > 1 ? `${plan.feature.id}--${sessionId}` : plan.feature.id,
         createdAt: now,
         updatedAt: now,
       };
@@ -313,14 +433,17 @@ export class Orchestrator {
     return ids;
   }
 
-  private async planFeature(prompt: string, decision: RouteDecision, spec: readonly FeatureSpec[], parent: string | null = null, chat = ""): Promise<Plan> {
+  private async planFeature(prompt: string, decision: RouteDecision, spec: readonly FeatureSpec[], parent: string | null = null, chat = "", map = ""): Promise<Plan> {
     const roles = Object.values(this.config.profiles)
       .filter((p) => p.plannable)
       .map((p) => ({ role: p.role, description: p.description }));
     const intent = decision.intent === "change_feature" ? "change_feature" : "new_feature";
     const request = withoutCommand(prompt);
-    const planned = described(await this.deps.planner.plan({ prompt: request, intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), spec, roles, env: await this.environment(), ...(await this.guidanceField()) }), request);
-    return this.config.profiles["test"] ? withTestItem(planned, "test") : planned;
+    const { tree } = await this.mainTree();
+    const result = await this.deps.planner.plan({ prompt: request, intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), ...(map ? { map } : {}), spec, roles, env: await this.environment(), ...(usesChefTemplate(tree) ? {} : { ownStructure: true }), ...(await this.guidanceField(tree)) });
+    const mappedOnly = decision.featureId && !spec.some((f) => f.id === decision.featureId) ? decision.featureId : null;
+    const planned = described(mappedOnly ? renamed(result, mappedOnly) : result, request);
+    return this.config.profiles["test"] ? withTestItem(planned, "test", usesChefTemplate(tree)) : planned;
   }
 
   private async planChore(prompt: string, spec: readonly FeatureSpec[]): Promise<Plan> {
@@ -367,6 +490,43 @@ export class Orchestrator {
     return record;
   }
 
+  async newVersion(id: string, prompt: string | null = null, by: string | null = null): Promise<SessionRecord> {
+    const source = await this.session(id);
+    if (isTerminal(source.machine.state)) throw new ControlError(`session ${id} is ${source.machine.state}, so ask for a change instead`);
+    if (source.kind === "chore") throw new ControlError("a chore has no versions");
+    const live = await this.versionsOf(source);
+    const ask = prompt?.trim() || null;
+    const [created] = await this.createSessions(ask ?? source.rootPrompt, source.decision, source.plan, 1, { chore: false, hotfix: false, ask, by });
+    const record = await this.session(created as string);
+    if (source.version === undefined) {
+      source.version = 1;
+      await this.save(source);
+    }
+    record.version = Math.max(1, ...live.map((s) => s.version ?? 1)) + 1;
+    await this.save(record);
+    await this.emit({ type: "session.versioned", sessionId: record.id, featureId: record.featureId, from: source.id, version: record.version });
+    if (ask) await this.steer(record.id, ask);
+    return record;
+  }
+
+  private async versionsOf(record: SessionRecord): Promise<SessionRecord[]> {
+    return (await this.sessions()).filter((s) => s.featureId === record.featureId && (s.id === record.id || s.version !== undefined) && !isTerminal(s.machine.state));
+  }
+
+  private async rivalsOf(record: SessionRecord): Promise<SessionRecord[]> {
+    if (record.version === undefined) return [];
+    return (await this.versionsOf(record)).filter((s) => s.id !== record.id && s.version !== undefined);
+  }
+
+  async approveMerge(id: string): Promise<SessionRecord> {
+    const record = await this.session(id);
+    if (record.machine.state !== "gating" || !record.ready || record.ready.approved) throw new ControlError(`session ${id} is not waiting to be merged`);
+    record.ready = { ...record.ready, approved: true };
+    await this.emit({ type: "session.ready", sessionId: id, featureId: record.featureId, commitId: null });
+    await this.save(record);
+    return record;
+  }
+
   async retry(id: string, guidance: string): Promise<SessionRecord> {
     const record = await this.session(id);
     if (record.machine.state !== "stuck") throw new ControlError(`only a stuck session can be retried, and ${id} is ${record.machine.state}`);
@@ -409,14 +569,16 @@ export class Orchestrator {
       const head = await this.deps.repos.resolveRef(this.canonical, "main");
       if (!head) return { commitId: null, reverted: false };
       const tree = (await this.commitOf(this.canonical, head)).tree;
-      const doomed = Object.keys(tree).filter((path) => featureIds.some((id) => path === specPath(id) || path.startsWith(`features/${id}/`)));
+      const mapped = readFeatureMap(tree).features.filter((f) => featureIds.includes(f.name)).map((f) => `${FEATURES_DIR}/${f.id}/`);
+      const slices = usesChefTemplate(tree);
+      const doomed = Object.keys(tree).filter((path) => featureIds.some((id) => path === specPath(id) || (slices && path.startsWith(`features/${id}/`))) || mapped.some((dir) => path.startsWith(dir)));
       if (doomed.length === 0) return { commitId: null, reverted: false };
       const removed = this.regenerate(applyChanges(tree, Object.fromEntries(doomed.map((path) => [path, null]))));
-      const changes = diffTrees(tree, applyChanges(removed, gardenFeatureMap(removed)));
+      const changes = diffTrees(tree, slices ? applyChanges(removed, gardenFeatureMap(removed)) : removed);
       const token = await this.deps.repos.createToken(this.canonical, "write", this.ttl);
       try {
         const commit = await this.deps.repos.commit(token, { ref: "main", parent: head, changes, message: `Remove ${featureIds.join(", ")}`, author: this.config.author });
-        const verified = await this.verifyMain(commit.id);
+        const verified = await this.verifyMain(commit.id, head);
         if (verified.ok) return { commitId: commit.id, reverted: false };
         await this.revertLocked(featureId, commit.id, head, verified.log, [`Delete ${featureId}`]);
         return { commitId: commit.id, reverted: true };
@@ -434,7 +596,9 @@ export class Orchestrator {
   private async knownFeatures(layout: FeatureLayout): Promise<KnownFeature[]> {
     const known = new Map<string, KnownFeature>();
     for (const record of await this.sessions()) known.set(record.featureId, { id: record.featureId, title: record.plan.feature.title, parent: record.plan.feature.parent ?? null });
-    for (const f of readSpec((await this.mainTree()).tree)) known.set(f.id, { id: f.id, title: f.title, parent: f.parent ?? null });
+    const { tree } = await this.mainTree();
+    for (const f of readSpec(tree)) known.set(f.id, { id: f.id, title: f.title, parent: f.parent ?? null });
+    for (const f of readFeatureMap(tree).features) known.set(f.name, { id: f.name, title: f.title, parent: f.parent ? nameOf(f.parent) : null });
     return [...known.values()].filter((f) => layout[f.id]?.removedAt === undefined).map((f) => placed(f, layout));
   }
 
@@ -443,7 +607,7 @@ export class Orchestrator {
     const ids = record.commits.slice(-limit).reverse();
     return Promise.all(
       ids.map(async (commitId) => {
-        const repo = this.repoOf(record);
+        const repo = await this.repoOf(record);
         const commit = await this.deps.repos.readCommit(repo, commitId);
         const note = parseNote(await this.deps.repos.readNote(repo, NOTES_NAMESPACE, commitId));
         return { commitId, message: commit?.message ?? "", timestamp: commit?.timestamp ?? null, note: note ? { role: note.role, kind: note.kind, prompt: note.prompt, model: note.model, paths: note.paths } : null };
@@ -453,13 +617,62 @@ export class Orchestrator {
 
   async changes(id: string, maxChars = 100_000): Promise<SessionChanges> {
     const record = await this.session(id);
-    const from = record.merge?.mainBefore ?? record.baseMain;
+    const from = record.merge?.mainBefore ?? (record.upstream ? (record.upstreamBase ?? null) : record.baseMain);
     if (!record.head || !from) return { base: from, head: record.head, files: [] };
-    const head = await this.commitOf(this.repoOf(record), record.head);
-    const base = await this.commitOf(this.canonical, from);
+    const repo = await this.repoOf(record);
+    const head = await this.commitOf(repo, record.head);
+    const base = await this.commitOf(record.upstream || record.merge?.into ? repo : this.canonical, from);
     const clip = (text: string | undefined) => (text === undefined ? null : text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text);
     const files = changedPaths(diffTrees(base.tree, head.tree)).map((path) => ({ path, before: clip(base.tree[path]), after: clip(head.tree[path]) }));
     return { base: base.id, head: head.id, files };
+  }
+
+  async history(limit = 50): Promise<MainHistory> {
+    const head = await this.deps.repos.resolveRef(this.canonical, "main");
+    if (!head) return { head: null, commits: [], more: false };
+    const commits = await this.deps.repos.history(this.canonical, "main", limit + 1);
+    return { head, commits: await Promise.all(commits.slice(0, limit).map((c) => this.historyEntry(c))), more: commits.length > limit };
+  }
+
+  async commitChanges(id: string, maxChars = 100_000): Promise<CommitChanges | null> {
+    return this.changesIn(this.canonical, id, maxChars);
+  }
+
+  async sessionHistory(id: string): Promise<SessionHistory> {
+    const record = await this.session(id);
+    const repo = await this.repoOf(record);
+    const commits = (await Promise.all([...record.commits].reverse().map((c) => this.deps.repos.readCommit(repo, c)))).filter((c): c is Commit => c !== null);
+    const upstream = record.upstream ? await this.session(record.upstream).catch(() => null) : null;
+    return {
+      branch: record.fork,
+      from: commits.at(-1)?.parents[0] ?? record.upstreamBase ?? record.baseMain,
+      head: record.head,
+      merged: record.merge?.commitId ?? null,
+      upstream: upstream ? { session: upstream.id, feature: upstream.featureId, branch: upstream.fork } : null,
+      into: record.merge?.into ?? null,
+      commits: await Promise.all(commits.map((c) => this.historyEntry(c, repo))),
+    };
+  }
+
+  async sessionCommit(id: string, commitId: string, maxChars = 100_000): Promise<CommitChanges | null> {
+    const record = await this.session(id);
+    if (!record.commits.includes(commitId)) return null;
+    return this.changesIn(await this.repoOf(record), commitId, maxChars);
+  }
+
+  private async changesIn(repo: string, id: string, maxChars: number): Promise<CommitChanges | null> {
+    const commit = await this.deps.repos.readCommit(repo, id);
+    if (!commit) return null;
+    const parent = commit.parents[0] ? await this.deps.repos.readCommit(repo, commit.parents[0]) : null;
+    const before = parent?.tree ?? {};
+    const clip = (text: string | undefined) => (text === undefined ? null : text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text);
+    const files = changedPaths(diffTrees(before, commit.tree)).map((path) => ({ path, before: clip(before[path]), after: clip(commit.tree[path]) }));
+    return { commit: await this.historyEntry(commit, repo), files };
+  }
+
+  private async historyEntry(commit: CommitSummary, repo = this.canonical): Promise<HistoryEntry> {
+    const note = parseNote(await this.deps.repos.readNote(repo, NOTES_NAMESPACE, commit.id).catch(() => null));
+    return { id: commit.id, parents: commit.parents, message: commit.message, author: commit.author.name, timestamp: commit.timestamp, note: note ? { feature: note.feature, session: note.session, role: note.role, kind: note.kind, prompt: note.prompt } : null };
   }
 
   async drain(maxRounds = 200): Promise<SessionRecord[]> {
@@ -496,12 +709,14 @@ export class Orchestrator {
       if (isTerminal(record.machine.state)) return;
       if (await this.waitForBudget(record)) return await this.save(record);
       try {
+        await this.settleApp(record);
         if (record.head && record.machine.state !== "queued") await this.adoptForkHead(record);
-        if (record.syncPending && record.head && record.machine.state !== "queued") {
+        if (record.syncPending && record.head && record.machine.state !== "queued" && !record.upstream) {
           record.syncPending = false;
           const synced = await this.syncFromMain(record);
           if (synced === "conflict") return await this.save(record);
         }
+        if (record.upstream && record.head && record.machine.state !== "queued" && (await this.followUpstream(record)) === "conflict") return await this.save(record);
         await (this.deps.spend ? this.deps.spend.scope(record.requestedBy ?? null, () => this.advance(record)) : this.advance(record));
         if (await this.deps.store.get<number | null>(`retry/${id}`)) await this.deps.store.put(`retry/${id}`, null);
       } catch (error) {
@@ -539,10 +754,62 @@ export class Orchestrator {
   }
 
   private async startSession(record: SessionRecord): Promise<void> {
-    await this.deps.repos.fork(this.canonical, record.fork);
+    const found = await this.upstreamOf(record);
+    if (found === "wait") return;
+    const upstream = found ? await this.branchFrom(found, record) : null;
+    if (!upstream) await this.deps.repos.fork(this.canonical, record.fork);
     record.head = await this.deps.repos.resolveRef(record.fork, "main");
-    record.baseMain = record.head;
+    record.baseMain = upstream ? upstream.baseMain : record.head;
+    record.upstream = upstream?.id ?? null;
+    record.upstreamBase = upstream ? record.head : null;
     await this.apply(record, { type: "start" });
+  }
+
+  private async branchFrom(upstream: SessionRecord, record: SessionRecord): Promise<SessionRecord | null> {
+    try {
+      await this.deps.repos.fork(upstream.fork, record.fork);
+      return upstream;
+    } catch (error) {
+      if (isTerminal((await this.session(upstream.id)).machine.state)) return null;
+      throw error;
+    }
+  }
+
+  private async upstreamOf(record: SessionRecord): Promise<SessionRecord | "wait" | null> {
+    const parent = record.plan.feature.parent;
+    if (!parent || parent === record.featureId || record.kind === "chore") return null;
+    const open = (await this.sessions()).filter((s) => s.featureId === parent && s.id !== record.id && !isTerminal(s.machine.state));
+    if (open.length !== 1) return null;
+    const [only] = open as [SessionRecord];
+    return only.head ? only : "wait";
+  }
+
+  private async activeUpstream(record: SessionRecord): Promise<SessionRecord | "dropped" | "stuck" | null> {
+    let id = record.upstream ?? null;
+    for (let depth = 0; id && depth < 20; depth++) {
+      const upstream = await this.session(id).catch(() => null);
+      if (!upstream) return null;
+      if (upstream.machine.state === "dropped") return "dropped";
+      if (upstream.machine.state === "stuck") return "stuck";
+      if (upstream.machine.state !== "merged") return upstream;
+      id = upstream.merge?.into ?? null;
+    }
+    return null;
+  }
+
+  private async followUpstream(record: SessionRecord): Promise<"synced" | "up-to-date" | "conflict"> {
+    const upstream = await this.activeUpstream(record);
+    if (upstream === "dropped" || upstream === "stuck") return "up-to-date";
+    if (upstream === null) {
+      record.upstream = null;
+      record.upstreamBase = null;
+      return this.syncFromMain(record);
+    }
+    if (upstream.id !== record.upstream) {
+      record.upstream = upstream.id;
+      record.upstreamBase = null;
+    }
+    return this.syncFromUpstream(record, upstream);
   }
 
   private async planning(record: SessionRecord): Promise<void> {
@@ -576,6 +843,7 @@ export class Orchestrator {
   }
 
   private async coding(record: SessionRecord): Promise<void> {
+    if (await this.waitForParentFeature(record)) return;
     const conflict = record.machine.reason === "conflict";
     if (!conflict && (await this.laneRound(record))) return;
     let item = this.nextItem(record, BUILD_KINDS);
@@ -590,14 +858,27 @@ export class Orchestrator {
     const index = record.plan.items.indexOf(item);
     if (index >= record.cursor) record.cursor = index + 1;
     if (this.nextItem(record, BUILD_KINDS) || lanesBusy(record.lanes)) return;
-    await this.apply(record, { type: "coded" });
+    await this.coded(record);
+  }
+
+  private async waitForParentFeature(record: SessionRecord): Promise<boolean> {
+    const parent = record.plan.feature.parent;
+    const upstream = parent && record.upstream ? await this.activeUpstream(record) : null;
+    const live = upstream && typeof upstream !== "string" ? upstream : null;
+    const tree = live ? (await this.commitOf(record.fork, record.head)).tree : null;
+    const waiting = live !== null && tree !== null && (usesChefTemplate(tree) ? !tree[`features/${parent}/index.ts`] : !live.lastCodeItem);
+    const by = waiting ? (live?.id ?? null) : null;
+    if ((record.heldBy ?? null) === by) return by !== null;
+    record.heldBy = by;
+    await this.emit({ type: "session.held", sessionId: record.id, featureId: record.featureId, by });
+    return by !== null;
   }
 
   private async laneRound(record: SessionRecord): Promise<boolean> {
     const leftover = (record.lanes ?? []).filter((lane) => lane.unmerged);
     if (leftover.length) {
       await this.mergeLanes(record, leftover);
-      if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(record.lanes)) await this.apply(record, { type: "coded" });
+      if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(record.lanes)) await this.coded(record);
       return true;
     }
     if (!record.lanes) {
@@ -651,7 +932,7 @@ export class Orchestrator {
       await this.save(record);
       throw failure;
     }
-    if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(lanes)) await this.apply(record, { type: "coded" });
+    if (record.machine.state === "coding" && record.machine.reason !== "conflict" && !lanesBusy(lanes)) await this.coded(record);
     return true;
   }
 
@@ -659,6 +940,7 @@ export class Orchestrator {
     const layoutFor = this.specialization.laneLayout;
     if (!layoutFor) return lanes;
     const head = await this.commitOf(record.fork, record.head);
+    if (!usesChefTemplate(head.tree)) return lanes;
     const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
     const layout = layoutFor(feature, lanes.map((l) => l.role), head.tree);
     if (!layout) return lanes;
@@ -700,7 +982,7 @@ export class Orchestrator {
         await this.laneUpdate(record, lane, paths.length ? "conflict" : "merged", outcome.commitId, paths);
       }
     });
-    await this.publishPreview(record);
+    await this.runApp(record);
     if (conflicts.size > 0 && record.machine.state === "coding") await this.apply(record, { type: "conflict", paths: [...conflicts].sort(), between: (record.lanes ?? []).map((l) => l.role) });
   }
 
@@ -708,11 +990,29 @@ export class Orchestrator {
     await this.emit({ type: "lane.updated", sessionId: record.id, featureId: record.featureId, role: lane.role, branch: lane.branch, status, ...(commitId ? { commitId } : {}), ...(paths.length ? { paths } : {}) });
   }
 
+  private async coded(record: SessionRecord): Promise<void> {
+    if (await this.appStarts(record)) await this.apply(record, { type: "coded" });
+  }
+
+  private async appStarts(record: SessionRecord): Promise<boolean> {
+    const app = await this.appAtHead(record);
+    if (app?.status !== "failed" || app.commitId !== record.head) return true;
+    await this.apply(record, { type: "app_failed", log: app.error ?? "the app did not start" });
+    return false;
+  }
+
+  private async appAtHead(record: SessionRecord): Promise<SessionApp | null> {
+    await this.settleApp(record);
+    if (record.head && (record.app?.commitId !== record.head || record.app.status === "starting")) await this.runApp(record, true);
+    return record.app;
+  }
+
   private async reviewing(record: SessionRecord): Promise<void> {
+    if (!(await this.appStarts(record))) return;
     const head = await this.commitOf(record.fork, record.head);
     const base = await this.commitOf(this.canonical, record.baseMain);
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: "reviewer", kind: "review", model: this.deps.reviewer.model ?? "reviewer" });
-    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "", scope: this.reviewScope(record, head.tree), ...(record.kind === "chore" ? { chore: true } : {}), ...(await this.guidanceField()) });
+    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff: diffTrees(base.tree, head.tree), checksLog: record.machine.feedback ?? "", scope: this.reviewScope(record, head.tree), ...(record.kind === "chore" ? { chore: true } : {}), ...(usesChefTemplate(head.tree) ? {} : { ownStructure: true }), ...(await this.guidanceField(head.tree)) });
     record.verdict = { ...verdict, commitId: head.id };
     await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons, model: verdict.model, head: head.id, base: base.id });
     if (verdict.approve) await this.apply(record, { type: "review_approved" });
@@ -722,9 +1022,10 @@ export class Orchestrator {
   private reviewScope(record: SessionRecord, tree: Tree): string[] {
     const feature = readSpec(tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
     const roles = new Set(record.plan.items.map((i) => i.role));
+    const template = usesChefTemplate(tree);
     const scope = [...roles].flatMap((role) => {
       const profile = this.config.profiles[role];
-      return profile ? scopeFor(profile, feature) : [];
+      return profile ? scopeFor(profile, feature, template) : [];
     });
     return [...new Set(scope.filter((pattern) => !pattern.startsWith("!")))];
   }
@@ -784,13 +1085,14 @@ export class Orchestrator {
     return this.config.environment ? this.config.environment() : [];
   }
 
-  async guidance(): Promise<string> {
+  async guidance(tree?: Tree): Promise<string> {
     const shared = this.config.instructions ? await this.config.instructions() : "";
-    return renderGuidance(shared, projectGuidance((await this.mainTree()).tree));
+    const main = (await this.mainTree()).tree;
+    return [renderGuidance(shared, projectGuidance(main)), structureGuidance(tree ?? main)].filter(Boolean).join("\n\n");
   }
 
-  private async guidanceField(): Promise<{ guidance?: string }> {
-    const guidance = await this.guidance();
+  private async guidanceField(tree?: Tree): Promise<{ guidance?: string }> {
+    const guidance = await this.guidance(tree);
     return guidance ? { guidance } : {};
   }
 
@@ -822,17 +1124,60 @@ export class Orchestrator {
         return;
       }
     }
-    const outcome = await this.gate(record);
+    const upstream = await this.activeUpstream(record);
+    if (upstream === "dropped") return await this.apply(record, { type: "fail", reason: "The build this one branched from was stopped, so its work has nowhere to go. Start it over to build it on main." });
+    if (upstream === "stuck") {
+      const by = record.upstream ?? null;
+      if ((record.heldBy ?? null) !== by) {
+        record.heldBy = by;
+        await this.emit({ type: "session.held", sessionId: record.id, featureId: record.featureId, by });
+      }
+      return;
+    }
+    const outcome = upstream ? await this.gateInto(record, upstream) : await this.gate(record);
     if (outcome.requeue) return;
+    record.ready = null;
     await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: outcome.ok, checks: outcome.checks });
     if (record.machine.state !== "gating") return;
     if (outcome.ok) {
       await this.apply(record, { type: "gate_passed" });
+      for (const rival of await this.rivalsOf(record)) await this.drop(rival.id, `version ${record.version ?? 1} was merged instead`);
+      if (record.merge?.into && upstream) {
+        await this.emit({ type: "branch.merged", sessionId: record.id, featureId: record.featureId, into: record.merge.into, intoFeature: upstream.featureId, commitId: record.merge.commitId });
+        return;
+      }
       await this.emit({ type: "main.merged", sessionId: record.id, featureId: record.featureId, commitId: outcome.reverted?.commitId ?? (record.baseMain as string) });
       if (outcome.reverted) await this.reopen(record, outcome.reverted.revertId, outcome.reverted.log);
     } else {
       await this.apply(record, { type: "gate_failed", log: formatChecks(outcome.checks.filter((c) => !c.ok)) });
     }
+  }
+
+  private failingOnMain(commitId: string): Promise<MainFailures> {
+    const known = this.mainFailures.get(commitId);
+    if (known) return known;
+    const found = this.commitOf(this.canonical, commitId).then(async (commit) => failuresOf(await this.deps.checks.run({ repo: this.canonical, commitId, tree: commit.tree })));
+    found.catch(() => this.mainFailures.delete(commitId));
+    this.mainFailures.set(commitId, found);
+    return found;
+  }
+
+  private async newFailures(results: readonly CheckResult[], mainCommit: string | null): Promise<CheckResult[]> {
+    if (!mainCommit || results.every((r) => r.ok)) return [...results];
+    return newFailuresOnly(results, await this.failingOnMain(mainCommit));
+  }
+
+  private async gateChecks(record: SessionRecord, head: Commit): Promise<CheckResult[]> {
+    const checks: CheckResult[] = await this.newFailures(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }), record.baseMain);
+    checks.push(await this.scopeCheck(record));
+    if (this.specialization.lockTests) checks.push(await this.lockedCheck(record));
+    checks.push(await this.verdictCheck(record));
+    checks.push(await this.proofCheck(record, head));
+    return checks;
+  }
+
+  private async mergeMode(): Promise<MergeMode> {
+    return this.config.merge ? this.config.merge() : "auto";
   }
 
   private async heldForHotfix(record: SessionRecord): Promise<boolean> {
@@ -843,16 +1188,86 @@ export class Orchestrator {
     return hotfix !== null;
   }
 
+  private async waitForPerson(record: SessionRecord, head: string, checks: CheckResult[]): Promise<GateOutcome> {
+    if (record.ready?.commitId === head) return { ok: false, checks, requeue: true };
+    record.ready = { commitId: head, checks, approved: false };
+    await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: true, checks });
+    await this.emit({ type: "session.ready", sessionId: record.id, featureId: record.featureId, commitId: head });
+    return { ok: false, checks, requeue: true };
+  }
+
+  private async gateInto(record: SessionRecord, upstream: SessionRecord): Promise<GateOutcome> {
+    const synced = await this.syncFromUpstream(record, upstream);
+    if (synced === "conflict") return { ok: false, checks: [], requeue: true };
+    const head = await this.commitOf(record.fork, record.head);
+    const checks = record.ready?.commitId === head.id ? record.ready.checks : await this.gateChecks(record, head);
+    if (checks.some((c) => !c.ok)) return { ok: false, checks };
+    if (record.ready?.approved !== true && (await this.rivalsOf(record)).length > 0) return this.waitForPerson(record, head.id, checks);
+    return this.mergeQueue.run(async () => {
+      if (this.running.has(upstream.id)) return { ok: false, checks, requeue: true };
+      this.running.add(upstream.id);
+      try {
+        const parent = await this.session(upstream.id);
+        const before = await this.deps.repos.resolveRef(parent.fork, "main");
+        if (isTerminal(parent.machine.state) || Object.keys(parent.turns ?? {}).length > 0 || !before || before !== parent.head) {
+          record.ready = { commitId: head.id, checks, approved: true };
+          return { ok: false, checks, requeue: true };
+        }
+        if (before !== record.upstreamBase) {
+          record.ready = { commitId: head.id, checks, approved: true };
+          return { ok: false, checks, requeue: true };
+        }
+        await this.markMerged(record);
+        const outcome = await this.withToken(parent.fork, (token) => this.deps.repos.merge(token, { into: "main", from: { repo: record.fork, ref: "main" }, message: `Merge ${record.featureId} (${record.id}) into ${parent.featureId}`, author: this.config.author, resolvers: this.resolvers, noFastForward: true }));
+        if (outcome.status !== "merged") return { ok: false, checks, requeue: true };
+        await this.withToken(parent.fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "merge", workItem: null, prompt: `Merge ${record.featureId} into ${parent.featureId}`, runId: this.deps.ids.next("run"), model: "chef-sync", paths: [] })) }));
+        parent.head = outcome.commitId;
+        parent.commits.push(outcome.commitId);
+        await this.save(parent);
+        await this.runApp(parent);
+        await this.save(parent);
+        record.merge = { commitId: outcome.commitId, mainBefore: before, into: parent.id };
+        return { ok: true, checks };
+      } finally {
+        this.running.delete(upstream.id);
+      }
+    });
+  }
+
+  private async syncFromUpstream(record: SessionRecord, upstream: SessionRecord): Promise<"synced" | "up-to-date" | "conflict"> {
+    const head = await this.deps.repos.resolveRef(upstream.fork, "main");
+    if (!head || head === record.upstreamBase) return "up-to-date";
+    const outcome = await this.withToken(record.fork, (token) =>
+      this.deps.repos.merge(token, { into: "main", from: { repo: upstream.fork, ref: "main" }, message: `Merge ${upstream.featureId} into ${record.fork}`, author: this.config.author, resolvers: this.resolvers, onConflict: "commit-markers" }),
+    );
+    if (outcome.status === "conflict") throw new Error(`merge of ${upstream.fork} into ${record.fork} failed on ${outcome.paths.join(", ")}`);
+    record.upstreamBase = head;
+    record.baseMain = upstream.baseMain;
+    if (outcome.status === "up-to-date") return "up-to-date";
+    record.head = outcome.commitId;
+    if (outcome.status === "merged" || outcome.status === "conflicted") {
+      const paths = outcome.status === "conflicted" ? outcome.paths : [];
+      record.commits.push(outcome.commitId);
+      await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: outcome.commitId, note: renderNote(this.note(record, { role: "sync", kind: "sync", workItem: null, prompt: `Merge ${upstream.featureId} ${head}`, runId: this.deps.ids.next("run"), model: "chef-sync", paths })) }));
+    }
+    if (outcome.status === "conflicted") {
+      await this.emit({ type: "sync.conflict", sessionId: record.id, featureId: record.featureId, paths: outcome.paths, mainCommit: head });
+      await this.apply(record, { type: "conflict", paths: outcome.paths });
+      return "conflict";
+    }
+    await this.emit({ type: "sync.merged", sessionId: record.id, featureId: record.featureId, commitId: outcome.commitId, mainCommit: head });
+    await this.runApp(record);
+    return "synced";
+  }
+
   async gate(record: SessionRecord): Promise<GateOutcome> {
     const synced = await this.syncFromMain(record);
     if (synced === "conflict") return { ok: false, checks: [], requeue: true };
     const head = await this.commitOf(record.fork, record.head);
-    const checks: CheckResult[] = [...(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }))];
-    checks.push(await this.scopeCheck(record));
-    if (this.specialization.lockTests) checks.push(await this.lockedCheck(record));
-    checks.push(await this.verdictCheck(record));
-    checks.push(await this.proofCheck(record, head));
+    const approved = record.ready?.approved === true;
+    const checks = approved && record.ready?.commitId === head.id ? record.ready.checks : await this.gateChecks(record, head);
     if (checks.some((c) => !c.ok)) return { ok: false, checks };
+    if (!approved && ((await this.mergeMode()) === "manual" || (await this.rivalsOf(record)).length > 0)) return this.waitForPerson(record, head.id, checks);
     return this.mergeQueue.run(async () => {
       const mainHead = await this.deps.repos.resolveRef(this.canonical, "main");
       if (!mainHead || mainHead !== record.baseMain) {
@@ -867,7 +1282,7 @@ export class Orchestrator {
       }
       record.baseMain = outcome.commitId;
       record.merge = { commitId: outcome.commitId, mainBefore: mainHead };
-      const verified = await this.verifyMain(outcome.commitId);
+      const verified = await this.verifyMain(outcome.commitId, mainHead);
       if (verified.ok) {
         await this.syncMemory();
         return { ok: true, checks };
@@ -878,10 +1293,10 @@ export class Orchestrator {
     });
   }
 
-  private async verifyMain(commitId: string): Promise<{ ok: boolean; log: string }> {
+  private async verifyMain(commitId: string, mainBefore: string): Promise<{ ok: boolean; log: string }> {
     const commit = await this.commitOf(this.canonical, commitId);
-    const results = await this.deps.checks.run({ repo: this.canonical, commitId, tree: commit.tree });
-    const map = featureMapProblems(commit.tree);
+    const results = await this.newFailures(await this.deps.checks.run({ repo: this.canonical, commitId, tree: commit.tree }), mainBefore);
+    const map = usesChefTemplate(commit.tree) ? featureMapProblems(commit.tree) : [];
     const failed = [...results, { name: "feature-map", ok: map.length === 0, log: map.join("\n") || "feature map matches the code" }].filter((c) => !c.ok);
     return { ok: failed.length === 0, log: failed.length ? `main went red after merging ${commitId.slice(0, 12)}\n\n${formatChecks(failed)}` : "main green" };
   }
@@ -985,7 +1400,11 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     const path = specPath(record.featureId);
     const current = readSpec(head.tree).find((f) => f.id === record.featureId);
-    if (!current || current.status === "merged") return;
+    const listed = record.kind === "chore" ? {} : mergedEntryChanges(head.tree, arrangedSpec([current ?? record.plan.feature], await this.layout())[0] ?? record.plan.feature);
+    if (!current || current.status === "merged") {
+      if (Object.keys(listed).length) await this.commitTurn(record, { changes: listed, role: "gardener", kind: "spec_change", workItem: null, prompt: `Mark ${record.featureId} current in the feature list`, model: "chef-gardener", runId: this.deps.ids.next("run"), message: `features: mark ${record.featureId} current` }, undefined, false);
+      return;
+    }
     const updated: FeatureSpec = { ...current, status: "merged" };
     const tree = applyChanges(head.tree, { [path]: renderFeature(updated) });
     const memoryPath = featureMemoryPath(record.featureId);
@@ -998,7 +1417,7 @@ export class Orchestrator {
     const memory = renderFeatureMemory(tree[memoryPath], { feature: updated, sessionId: record.id, parent: record.parent, rootPrompt: record.rootPrompt, attempt: record.attempt, turns, feedback: record.history });
     const corrections = [...(await this.deps.store.list<Correction | null>("corrections/")).entries()].filter(([key, c]) => !key.startsWith("corrections/pending/") && c !== null).map(([, c]) => c as Correction);
     const mined = mineRules(corrections, tree);
-    const changes: Record<string, string | null> = { [path]: renderFeature(updated), ...gardenFeatureMap(tree), [memoryPath]: memory };
+    const changes: Record<string, string | null> = { [path]: renderFeature(updated), ...(usesChefTemplate(tree) ? gardenFeatureMap(tree) : {}), ...listed, [memoryPath]: memory };
     for (const { rule } of mined) changes[rulePath(rule.id)] = renderRule(rule);
     await this.commitTurn(record, {
       changes,
@@ -1009,7 +1428,7 @@ export class Orchestrator {
       model: "chef-gardener",
       runId: this.deps.ids.next("run"),
       message: `spec: mark ${record.featureId} merged`,
-    });
+    }, undefined, false);
     await this.emit({ type: "memory.recorded", featureId: record.featureId, path: memoryPath, kind: "feature" });
     for (const { rule, sessions } of mined) await this.emit({ type: "lint.rule.added", sessionId: record.id, featureId: record.featureId, ruleId: rule.id, message: rule.message, sessions, evidence: rule.evidence });
   }
@@ -1048,7 +1467,11 @@ export class Orchestrator {
     const hits = await this.deps.memory.query(question, 5);
     const sources = hits.map((h) => h.doc.path);
     const builds = buildsDoc(await this.sessions());
-    if (this.deps.planner.answer) return { text: await this.deps.planner.answer({ question, context: builds ? [...hits, { doc: builds, score: 0 }] : hits }), sources };
+    if (this.deps.planner.answer) {
+      const map = readFeatureMap((await this.mainTree()).tree);
+      const outline = map.features.length || map.start ? renderMapOutline(map, { paths: true }) : "";
+      return { text: await this.deps.planner.answer({ question, context: builds ? [...hits, { doc: builds, score: 0 }] : hits, ...(outline ? { map: outline } : {}) }), sources };
+    }
     const text = hits.length ? hits.map((h) => `${h.doc.path}: ${(h.doc.text.split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? "").trim()}`).join("\n") : "Nothing in the project memory answers that yet.";
     return { text, sources };
   }
@@ -1080,7 +1503,6 @@ export class Orchestrator {
 
   private async scopeCheck(record: SessionRecord): Promise<CheckResult> {
     const problems: string[] = [];
-    const generated = new Set(Object.keys(this.config.generated));
     for (const commitId of record.commits) {
       const commit = await this.commitOf(record.fork, commitId);
       if (commit.parents.length !== 1) continue;
@@ -1091,6 +1513,8 @@ export class Orchestrator {
       }
       if (SKIPPED_KINDS.has(note.kind)) continue;
       const parent = await this.commitOf(record.fork, commit.parents[0] as string);
+      const template = usesChefTemplate(parent.tree);
+      const generated = this.generatedPaths(parent.tree);
       const paths = changedPaths(diffTrees(parent.tree, commit.tree)).filter((p) => !generated.has(p));
       const profile = this.config.profiles[note.role];
       if (!profile) {
@@ -1098,7 +1522,7 @@ export class Orchestrator {
         continue;
       }
       const feature = readSpec(commit.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
-      const outside = outOfScope(paths, scopeFor(profile, feature));
+      const outside = outOfScope(paths, scopeFor(profile, feature, template));
       if (outside.length > 0) problems.push(`${commitId.slice(0, 12)} (${note.role}) wrote outside its scope: ${outside.join(", ")}`);
     }
     return { name: "write-scope", ok: problems.length === 0, log: problems.join("\n") || `${record.commits.length} commits inside their roles' scopes` };
@@ -1161,10 +1585,6 @@ export class Orchestrator {
       await this.emit({ type: "attempt.picked", featureId: record.featureId, group: record.attempt.group, winner: verdict.sessionId, candidates: candidates.map((c) => ({ sessionId: c.sessionId, passed: c.crossTests.passed, total: c.crossTests.total })), reasons: verdict.reasons, model: verdict.model });
       return verdict.sessionId;
     });
-    if (winner === record.id && record.previewKey !== record.featureId) {
-      record.previewKey = record.featureId;
-      await this.publishPreview(record);
-    }
     return winner;
   }
 
@@ -1179,7 +1599,8 @@ export class Orchestrator {
           if (other === entry) continue;
           for (const [path, content] of testsOf(other)) extra[path.replace(/\.test\.ts$/, `.attempt${other.record.attempt.index}.test.ts`)] = content;
         }
-        const tree = focusTests(this.regenerate(applyChanges(entry.head.tree, extra)), entry.record.featureId);
+        const merged = this.regenerate(applyChanges(entry.head.tree, extra));
+        const tree = usesChefTemplate(merged) ? focusTests(merged, entry.record.featureId) : merged;
         const names = Object.entries(tree).filter(([path]) => path.startsWith(prefix(entry.record)) && path.endsWith(".test.ts")).flatMap(([, content]) => testNames(content));
         const results = await this.deps.checks.run({ repo: entry.record.fork, commitId: `${entry.head.id}+cross`, tree });
         const test = results.find((r) => r.name === "test");
@@ -1190,28 +1611,49 @@ export class Orchestrator {
   }
 
   private async proofCheck(record: SessionRecord, head: Commit): Promise<CheckResult> {
-    if (!record.preview || record.preview.commitId !== head.id) await this.publishPreview(record);
-    const preview = record.preview;
-    if (!preview) return { name: "proof", ok: false, log: "no preview deployment" };
-    if (record.kind === "chore") return this.choreProof(record, head, preview.url);
+    if (record.app?.status !== "running" || record.app.commitId !== head.id) await this.runApp(record, true);
+    const app = record.app;
+    const template = usesChefTemplate(head.tree);
+    if (!template && app?.status === "no-stack") return { name: "proof", ok: true, log: "this branch has no compose file, so it has no running app to prove; the repository's own checks are the proof" };
+    if (app?.status !== "running" || !app.local) return { name: "proof", ok: false, log: appTrouble(app) };
+    if (!template) return this.answerProof(record, head, app.local);
+    if (record.kind === "chore") return this.choreProof(record, head, app.local);
     const flow = featureFlow(readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature);
-    const proof = await this.deps.proofs.prove({ repo: record.fork, feature: record.featureId, flow, url: preview.url, commitId: head.id, tree: head.tree });
+    const proof = await this.deps.proofs.prove({ repo: record.fork, feature: record.featureId, flow, url: app.local, commitId: head.id, tree: head.tree });
     await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: PROOF_NAMESPACE, commitId: head.id, note: `${JSON.stringify(proof, null, 2)}\n` }));
     const stored = await this.deps.repos.readNote(record.fork, PROOF_NAMESPACE, head.id);
-    const ok = proof.ok && stored !== null;
-    return { name: "proof", ok, log: proof.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${s.name}: ${s.detail}`).join("\n") || "no proof steps" };
+    const merged = await this.proveMerged(record, head, app.local);
+    const ok = proof.ok && stored !== null && merged.every((p) => p.ok);
+    const own = proof.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${s.name}: ${s.detail}`).join("\n") || "no proof steps";
+    return { name: "proof", ok, log: merged.length ? `${own}\n\nMerged features proved again on this branch:\n${proofLines(merged)}` : own };
+  }
+
+  private async proveMerged(record: SessionRecord, head: Commit, url: string): Promise<ProofRecord[]> {
+    const live = readSpec(head.tree)
+      .filter((f) => f.status === "merged" && f.id !== record.featureId && head.tree[`features/${featureFlow(f)}/flow.ts`] !== undefined)
+      .slice(0, MERGED_PROOFS);
+    const proofs: ProofRecord[] = [];
+    for (const feature of live) proofs.push(await this.deps.proofs.prove({ repo: record.fork, feature: feature.id, flow: featureFlow(feature), url, commitId: head.id, tree: head.tree }));
+    return proofs;
+  }
+
+  private async answerProof(record: SessionRecord, head: Commit, url: string): Promise<CheckResult> {
+    const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
+    const path = record.kind === "chore" ? "/" : entryPath(feature.entrypoint);
+    const probe = this.deps.proofs.probe;
+    if (!probe) return { name: "proof", ok: true, log: "this project has its own structure, so there is no Chef flow to drive, and this proof runner cannot open its app; the repository's own checks are the proof" };
+    const proof = await probe.call(this.deps.proofs, { repo: record.fork, feature: record.featureId, url, path, commitId: head.id });
+    await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: PROOF_NAMESPACE, commitId: head.id, note: `${JSON.stringify(proof, null, 2)}\n` }));
+    const stored = await this.deps.repos.readNote(record.fork, PROOF_NAMESPACE, head.id);
+    const log = proof.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${s.name}: ${s.detail}`).join("\n") || "no proof steps";
+    return { name: "proof", ok: proof.ok && stored !== null, log: `this project has its own structure, so there is no Chef flow to drive; Chef checked that the running app answers at ${path}\n${log}` };
   }
 
   private async choreProof(record: SessionRecord, head: Commit, url: string): Promise<CheckResult> {
-    const live = readSpec(head.tree)
-      .filter((f) => f.status === "merged" && head.tree[`features/${featureFlow(f)}/flow.ts`] !== undefined)
-      .slice(0, CHORE_PROOFS);
-    const proofs: ProofRecord[] = [];
-    for (const feature of live) proofs.push(await this.deps.proofs.prove({ repo: record.fork, feature: feature.id, flow: featureFlow(feature), url, commitId: head.id, tree: head.tree }));
+    const proofs = await this.proveMerged(record, head, url);
     const ok = proofs.every((p) => p.ok);
     await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: PROOF_NAMESPACE, commitId: head.id, note: `${JSON.stringify({ chore: record.featureId, url, commitId: head.id, ok, proofs }, null, 2)}\n` }));
-    const log = proofs.flatMap((p) => p.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${p.feature} ${s.name}: ${s.detail}`)).join("\n");
-    return { name: "proof", ok, log: log || "no live features to prove yet" };
+    return { name: "proof", ok, log: proofLines(proofs) || "no live features to prove yet" };
   }
 
   private async adoptForkHead(record: SessionRecord): Promise<void> {
@@ -1224,9 +1666,20 @@ export class Orchestrator {
       cursor = (await this.commitOf(record.fork, cursor)).parents[0];
     }
     if (cursor !== record.head) return;
+    for (const commitId of adopted) await this.recoverNote(record.fork, commitId);
     record.head = forkHead;
     record.commits.push(...adopted.filter((id) => !record.commits.includes(id)));
-    await this.publishPreview(record);
+    await this.runApp(record);
+  }
+
+  private async recoverNote(fork: string, commitId: string): Promise<void> {
+    if (await this.deps.repos.readNote(fork, NOTES_NAMESPACE, commitId)) return;
+    const commit = await this.commitOf(fork, commitId);
+    const key = pendingNoteKey(fork, commit.parents[0] ?? null);
+    const pending = await this.deps.store.get<PendingNote | null>(key);
+    if (pending?.message !== commit.message) return;
+    await this.withToken(fork, (token) => this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId, note: pending.note }));
+    await this.deps.store.put(key, null);
   }
 
   private async syncFromMain(record: SessionRecord): Promise<"synced" | "up-to-date" | "conflict"> {
@@ -1250,7 +1703,7 @@ export class Orchestrator {
       return "conflict";
     }
     await this.emit({ type: "sync.merged", sessionId: record.id, featureId: record.featureId, commitId: outcome.commitId, mainCommit: mainHead });
-    await this.publishPreview(record);
+    await this.runApp(record);
     return "synced";
   }
 
@@ -1264,7 +1717,7 @@ export class Orchestrator {
     if (!profile) throw new Error(`no agent profile for role ${item.role}`);
     const head = await this.commitOf(record.fork, lane?.head ?? record.head);
     const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
-    const scope = scopeFor(profile, feature);
+    const scope = scopeFor(profile, feature, usesChefTemplate(head.tree));
     const tag = lane ? { lane: lane.role } : {};
     const onEvent = (event: CoderEvent) => void this.emit({ type: "coder.event", sessionId: record.id, featureId: record.featureId, event, ...tag });
     const slot = lane?.role ?? MAIN_TURN;
@@ -1275,7 +1728,7 @@ export class Orchestrator {
       if (resumed) return { head, feature, scope, prompt: resumed.prompt, result: resumed.result };
       restarts = pending.restarts + 1;
     }
-    const guidance = await this.guidance();
+    const guidance = await this.guidance(head.tree);
     const agent = customAgent(profile, record.featureId, scope, guidance);
     const readToken = await this.deps.repos.createToken(record.fork, "read", this.ttl);
     const info = await this.deps.repos.info(record.fork);
@@ -1285,7 +1738,7 @@ export class Orchestrator {
     if (steering.length && !context.steering) await this.deps.store.put(`steer/${record.id}`, []);
     const notes = steering.length ? `A person added notes for this turn:\n${steering.map((n) => `- ${n}`).join("\n")}` : null;
     const brief = lane && record.lanes ? laneBrief(lane, record.lanes, record.plan.items, record.featureId) : null;
-    const prompt = [item.prompt, brief, feedback, notes, renderEnvironment(await this.environment(), feature), renderRecall(recalled)].filter(Boolean).join("\n\n");
+    const prompt = [item.prompt, brief, feedback, notes, renderEnvironment(await this.environment(), feature, usesChefTemplate(head.tree)), renderRecall(recalled)].filter(Boolean).join("\n\n");
     const turnId = this.deps.coder.resumeTurn ? await this.holdTurn(record, slot, { id: this.deps.ids.next("turn"), item: item.id, startedAt: this.deps.clock.now(), restarts }, prompt) : undefined;
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: item.role, kind: item.kind, model: profile.model, ...tag });
     if (lane) await this.laneUpdate(record, lane, "working");
@@ -1356,7 +1809,7 @@ export class Orchestrator {
     const { head, feature, scope, prompt, result } = turn;
     record.machine = addTokens(record.machine, result.usage.inputTokens + result.usage.outputTokens);
     await this.deps.spend?.record(record.requestedBy ?? null, result.model, result.usage);
-    const generated = new Set(Object.keys(this.config.generated));
+    const generated = this.generatedPaths(head.tree);
     const paths = changedPaths(result.changes).filter((p) => !generated.has(p));
     const outside = outOfScope(paths, scope);
     if (outside.length > 0) return this.reject(record, item.role, "write-scope", outside, scope, undefined, result.changes, [], lane);
@@ -1402,7 +1855,7 @@ export class Orchestrator {
 
   private async redCheck(record: SessionRecord, head: Commit, candidate: Tree, feature: FeatureSpec): Promise<{ paths: string[]; detail: string; passing: string[] } | null> {
     const stub = this.specialization.stub;
-    if (!stub) return null;
+    if (!stub || !usesChefTemplate(candidate)) return null;
     const tests = changedPaths(diffTrees(head.tree, candidate)).filter((p) => p.endsWith(".test.ts") && candidate[p] !== undefined);
     if (tests.length === 0) return null;
     const fresh = tests.flatMap((p) => {
@@ -1421,17 +1874,21 @@ export class Orchestrator {
     return { paths: tests, detail: `Passing without an implementation:\n${passing.map((n) => `- ${n}`).join("\n")}`, passing };
   }
 
-  private async commitTurn(record: SessionRecord, turn: { changes: FileChanges; role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; message: string }, lane?: Lane): Promise<void> {
+  private async commitTurn(record: SessionRecord, turn: { changes: FileChanges; role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; message: string }, lane?: Lane, app = true): Promise<void> {
     await this.withToken(record.fork, async (token) => {
-      const commit = await this.deps.repos.commit(token, { ref: lane?.branch ?? "main", parent: lane ? lane.head : record.head, changes: turn.changes, message: turn.message, author: this.config.author });
-      const note = this.note(record, { ...turn, paths: changedPaths(turn.changes) });
-      await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: commit.id, note: renderNote(note) });
+      const parent = lane ? lane.head : record.head;
+      const note = renderNote(this.note(record, { ...turn, paths: changedPaths(turn.changes) }));
+      const pending = pendingNoteKey(record.fork, parent);
+      await this.deps.store.put<PendingNote>(pending, { message: turn.message, note });
+      const commit = await this.deps.repos.commit(token, { ref: lane?.branch ?? "main", parent, changes: turn.changes, message: turn.message, author: this.config.author });
+      await this.deps.repos.addNote(token, { namespace: NOTES_NAMESPACE, commitId: commit.id, note });
+      await this.deps.store.put(pending, null);
       if (lane) lane.head = commit.id;
       else record.head = commit.id;
       record.commits.push(commit.id);
       await this.emit({ type: "commit.created", sessionId: record.id, featureId: record.featureId, repo: record.fork, commitId: commit.id, role: turn.role, message: turn.message, ...(lane ? { lane: lane.role } : {}) });
     });
-    if (!lane) await this.publishPreview(record);
+    if (!lane && app) await this.runApp(record);
   }
 
   private note(record: SessionRecord, turn: { role: string; kind: TurnNote["kind"]; workItem: string | null; prompt: string; model: string; runId: string; paths: readonly string[] }): TurnNote {
@@ -1452,14 +1909,53 @@ export class Orchestrator {
     };
   }
 
-  private async publishPreview(record: SessionRecord): Promise<void> {
-    if (!record.head) return;
-    const branch = await this.previews.publish(record.previewKey, record.head, record.fork);
-    const deployment = await this.deps.previews.deploy({ repo: this.canonical, branch, commitId: record.head });
-    const link = this.config.previewLink?.(record.previewKey);
-    record.preview = { url: deployment.url, commitId: record.head, ...(link ? { link } : {}) };
-    record.firstPreviewCommit ??= record.head;
-    await this.emit({ type: "preview.updated", sessionId: record.id, featureId: record.featureId, url: deployment.url, commitId: record.head, ...(link ? { link } : {}) });
+  private async runApp(record: SessionRecord, wait = false): Promise<void> {
+    const commitId = record.head;
+    if (!commitId) return;
+    const url = record.app?.url ?? null;
+    await this.showApp(record, { status: "starting", url, local: null, commitId });
+    await this.deps.store.put(`app/${record.id}/wanted`, commitId);
+    const background = this.deps.background;
+    if (wait || !background) {
+      const run = await this.startApp(record.id, record.fork, commitId, url);
+      await this.showApp(record, run);
+      if (run.status === "running") record.firstAppCommit ??= commitId;
+      return;
+    }
+    const { id, featureId } = record;
+    background(async () => {
+      const run = await this.startApp(id, record.fork, commitId, url);
+      if ((await this.deps.store.get<string | null>(`app/${id}/wanted`)) !== commitId) return;
+      await this.deps.store.put(`app/${id}`, run);
+      const link = this.config.appLink?.(id);
+      await this.emit({ type: "app.updated", sessionId: id, featureId, status: run.status, url: run.url, commitId: run.commitId, ...(run.error ? { error: run.error } : {}), ...(link ? { link } : {}) });
+    });
+  }
+
+  private async startApp(target: string, repo: string, commitId: string, url: string | null): Promise<AppRun> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.deps.apps.run({ target, repo, ref: "main", commitId });
+      } catch (error) {
+        if (transient(error) && attempt < APP_TRIES) continue;
+        return { status: "failed", url, local: null, commitId, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  }
+
+  private async settleApp(record: SessionRecord): Promise<void> {
+    if (record.app?.status !== "starting") return;
+    const run = await this.deps.store.get<AppRun | null>(`app/${record.id}`);
+    if (!run || run.commitId !== record.app.commitId) return;
+    const link = this.config.appLink?.(record.id);
+    record.app = { ...run, ...(link ? { link } : {}) };
+    if (run.status === "running") record.firstAppCommit ??= run.commitId;
+  }
+
+  private async showApp(record: SessionRecord, app: Omit<SessionApp, "link">): Promise<void> {
+    const link = this.config.appLink?.(record.id);
+    record.app = { ...app, ...(link ? { link } : {}) };
+    await this.emit({ type: "app.updated", sessionId: record.id, featureId: record.featureId, status: app.status, url: app.url, commitId: app.commitId, ...(app.error ? { error: app.error } : {}), ...(link ? { link } : {}) });
   }
 
   private onPush(event: PushedEvent): void {
@@ -1484,7 +1980,12 @@ export class Orchestrator {
     return record.plan.items.slice(record.cursor).find((i) => kinds.includes(i.kind)) ?? null;
   }
 
+  private generatedPaths(tree: Tree): Set<string> {
+    return new Set(usesChefTemplate(tree) ? Object.keys(this.config.generated) : []);
+  }
+
   private regenerate(tree: Tree): Tree {
+    if (!usesChefTemplate(tree)) return tree;
     let next = tree;
     for (const [path, generate] of Object.entries(this.config.generated)) next = applyChanges(next, { [path]: generate(next) });
     return next;
@@ -1509,6 +2010,7 @@ export class Orchestrator {
   private async apply(record: SessionRecord, event: SessionEvent): Promise<void> {
     const from = record.machine.state;
     record.machine = transition(record.machine, event, this.budget, this.deps.clock.now());
+    record.revision = (record.revision ?? 0) + 1;
     if (RETRY_EVENTS.has(event.type) && record.machine.feedback) record.history = [...record.history, record.machine.feedback.slice(0, 400)].slice(-20);
     record.updatedAt = this.deps.clock.now();
     await this.emit({ type: "session.state", sessionId: record.id, featureId: record.featureId, from, to: record.machine.state, reason: record.machine.reason });
@@ -1517,6 +2019,10 @@ export class Orchestrator {
 
   private async save(record: SessionRecord): Promise<void> {
     const stored = await this.deps.store.get<SessionRecord>(`session/${record.id}`);
+    if (stored && isTerminal(stored.machine.state) && (stored.revision ?? 0) > (record.revision ?? 0)) {
+      Object.assign(record, stored);
+      return;
+    }
     if (stored?.syncPending && !this.running.has(record.id)) record.syncPending = true;
     if (this.syncAfterRun.delete(record.id)) record.syncPending = true;
     const state = record.machine.state;
@@ -1551,8 +2057,12 @@ export class Orchestrator {
     }
   }
 
-  private repoOf(record: SessionRecord): string {
-    return record.forkDeleted ? this.canonical : record.fork;
+  private async repoOf(record: SessionRecord, depth = 0): Promise<string> {
+    if (!record.forkDeleted) return record.fork;
+    const into = record.merge?.into;
+    if (!into || depth > 20) return this.canonical;
+    const upstream = await this.session(into).catch(() => null);
+    return upstream ? this.repoOf(upstream, depth + 1) : this.canonical;
   }
 
   private async emit(event: DistributiveOmit<ChefEvent, "project" | "at">): Promise<void> {
@@ -1562,7 +2072,7 @@ export class Orchestrator {
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
-const RETRY_EVENTS: ReadonlySet<SessionEvent["type"]> = new Set(["review_rejected", "gate_failed", "turn_rejected", "reopened", "conflict"]);
+const RETRY_EVENTS: ReadonlySet<SessionEvent["type"]> = new Set(["review_rejected", "gate_failed", "app_failed", "turn_rejected", "reopened", "conflict"]);
 
 const SKIPPED_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["sync", "merge", "scaffold"]);
 
@@ -1578,9 +2088,16 @@ const CODER_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["test", "code", "fix
 
 const BUILD_KINDS: readonly WorkItem["kind"][] = ["code", "fix", "refactor", "chore"];
 
-const CHORE_PROOFS = 6;
+const MERGED_PROOFS = 6;
 
 const ADOPT_LIMIT = 20;
+const APP_TRIES = 3;
+
+type PendingNote = { readonly message: string; readonly note: string };
+
+function pendingNoteKey(fork: string, parent: string | null): string {
+  return `note/${fork}/${parent ?? "root"}`;
+}
 
 const SETUP_LOG_FILES = 60;
 
@@ -1595,9 +2112,13 @@ function uniqueIds(plans: readonly Plan[]): Plan[] {
     let id = plan.feature.id;
     for (let n = 2; taken.has(id); n++) id = `${plan.feature.id.slice(0, 36)}-${n}`;
     taken.add(id);
-    if (id === plan.feature.id) return plan;
-    return { ...plan, feature: { ...plan.feature, id }, items: plan.items.map((item) => ({ ...item, id: item.id.replace(plan.feature.id, id), featureId: id })) };
+    return renamed(plan, id);
   });
+}
+
+function renamed(plan: Plan, id: string): Plan {
+  if (id === plan.feature.id) return plan;
+  return { ...plan, feature: { ...plan.feature, id }, items: plan.items.map((item) => ({ ...item, id: item.id.replace(plan.feature.id, id), featureId: id })) };
 }
 
 function partDecision(decision: RouteDecision, part: SplitPart, featureId: string): RouteDecision {
@@ -1623,6 +2144,10 @@ function scoreCases(test: CheckResult | undefined, names: readonly string[]): { 
   const expected = new Set(names);
   const passed = test.cases.filter((c) => c.ok && expected.has(c.name)).length;
   return { passed: Math.min(passed, names.length), total: names.length };
+}
+
+function proofLines(proofs: readonly ProofRecord[]): string {
+  return proofs.flatMap((p) => p.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${p.feature} ${s.name}: ${s.detail}`)).join("\n");
 }
 
 function formatChecks(checks: readonly CheckResult[]): string {
@@ -1651,11 +2176,17 @@ const TURN_RESTARTS = 3;
 
 export function transient(error: unknown): boolean {
   if ((error as { retryable?: unknown } | null)?.retryable === true) return true;
-  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded)|container service disconnected|sandbox container (stopped|did not start)|HTTP Error: (429|5\d\d)|git clone failed: .*(hung up|early EOF|RPC failed|returned error: (429|5\d\d)|connection reset|timed out)/i.test((error as Error | null)?.message ?? "");
+  return /reset because its code was updated|network connection lost|durable object .*(reset|overloaded|no longer active)|container service disconnected|sandbox container (stopped|did not start)|HTTP Error: (429|5\d\d)|git clone failed: .*(hung up|early EOF|RPC failed|returned error: (429|5\d\d)|connection reset|timed out)/i.test((error as Error | null)?.message ?? "");
 }
 
 export function runnable(record: SessionRecord): boolean {
-  return !isTerminal(record.machine.state) && !record.needs?.length && !record.overBudget;
+  return !isTerminal(record.machine.state) && !record.needs?.length && !record.overBudget && !(record.ready && !record.ready.approved);
+}
+
+function appTrouble(app: SessionApp | null): string {
+  if (app?.status === "no-stack") return "this branch has no compose file (compose.yaml or docker-compose.yml), so Chef cannot start its app to prove the feature";
+  if (app?.error) return `the app did not start: ${app.error}`;
+  return "the app is not running";
 }
 
 function sameNames(a: readonly string[], b: readonly string[]): boolean {

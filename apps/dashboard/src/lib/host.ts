@@ -27,10 +27,15 @@ export interface HostUsage {
 
 export interface HostShare {
   readonly project: string;
-  readonly kind: "session" | "preview";
+  readonly kind: "session" | "app";
   readonly id: string;
   readonly title: string;
   readonly onClose: () => void;
+}
+
+export interface HostModelKeys {
+  readonly onboarding: boolean;
+  readonly onSaved: () => void;
 }
 
 export interface Host {
@@ -43,8 +48,10 @@ export interface Host {
   readonly MenuEnd?: ComponentType;
   readonly General?: ComponentType<{ readonly locked: boolean }>;
   readonly ModelHelp?: ComponentType;
+  readonly ModelKeys?: ComponentType<HostModelKeys>;
   readonly generalNote?: string;
   readonly useUsage?: () => HostUsage | null;
+  readonly UsageSummary?: ComponentType;
   readonly useProjectLevel?: (project: string) => ProjectLevel | null;
   readonly projectSections?: (project: string) => readonly SettingsSection[];
   readonly hiddenSections?: readonly string[];

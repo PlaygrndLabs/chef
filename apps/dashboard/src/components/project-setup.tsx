@@ -34,7 +34,7 @@ function Field(props: { readonly label: string; readonly children: ReactNode }) 
 function otherLink(url: string, branch: string, token: string): GitLinkUpdate {
   const github = /^https:\/\/github\.com\//.test(url);
   const mode = token ? (github ? "pull-request" : "branch") : "off";
-  return { url, branch: branch || "main", mode, syncBranch: "chef", ...(token ? { token } : {}) };
+  return { url, ...(branch ? { branch } : {}), mode, syncBranch: "chef", ...(token ? { token } : {}) };
 }
 
 interface Plan {
@@ -102,21 +102,22 @@ function SetupLog(props: { readonly run: Run; readonly open: boolean; readonly o
 function Progress(props: { readonly plan: Plan; readonly run: Run; readonly created: boolean; readonly onOpen: () => void; readonly onBack: () => void }) {
   const { plan, run, created } = props;
   const api = useMemo(() => projectApi(plan.name), [plan.name]);
-  const { state } = useOverview(created ? api : idle);
+  const reads = plan.repository !== null;
+  const { state } = useOverview(created && reads ? api : idle);
   const read: StepState = state?.status === "ready" ? "done" : state?.status === "failed" ? "failed" : created ? "run" : "wait";
   const [logOpen, setLogOpen] = useState(false);
   const [readSince, setReadSince] = useState<number | null>(null);
-  const busy = !run.error && (!created || read === "run");
+  const busy = !run.error && (!created || (reads && read === "run"));
   const now = useNow(busy ? 200 : 60_000);
   useEffect(() => {
-    if (created && (state?.status === "ready" || state?.status === "none")) props.onOpen();
-  }, [created, state?.status]);
+    if (created && (!reads || state?.status === "ready" || state?.status === "none")) props.onOpen();
+  }, [created, reads, state?.status]);
   useEffect(() => {
     if (run.error) setLogOpen(true);
   }, [run.error]);
   useEffect(() => {
-    if (created && readSince === null) setReadSince(Date.now());
-  }, [created, readSince]);
+    if (created && reads && readSince === null) setReadSince(Date.now());
+  }, [created, reads, readSince]);
   const fallback = plan.repository ? `Copy ${plan.repository} into Chef and link it` : `Create ${plan.name} from Chef's starter app`;
   const steps = stepsOf(run, created, fallback, now);
   const readEnd = state?.status === "ready" || state?.status === "failed" ? state.at : null;
@@ -138,7 +139,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
             {step.state === "failed" && run.error ? <span className="block text-xs text-bad">{run.error}</span> : null}
           </Step>
         ))}
-        {!run.error ? (
+        {reads && !run.error ? (
           <Step state={read} took={readSince === null ? null : readEnd !== null ? seconds(Math.max(0, readEnd - readSince)) : now - readSince >= 1000 ? seconds(now - readSince) : null}>
             Read the code and suggest first tasks
             {state?.status === "failed" ? <span className="block text-xs text-bad">{state.error}</span> : null}
@@ -155,7 +156,7 @@ function Progress(props: { readonly plan: Plan; readonly run: Run; readonly crea
         </div>
       ) : created ? (
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">{read === "failed" ? "You can still open the project and ask Chef to read it again later." : "Chef keeps reading if you open the project now."}</p>
+          <p className="text-xs text-muted-foreground">{!reads ? "" : read === "failed" ? "You can still open the project and ask Chef to read it again later." : "Chef keeps reading if you open the project now."}</p>
           <Button type="button" size="sm" variant={read === "failed" ? "default" : "outline"} onClick={props.onOpen}>
             Open {plan.name}
           </Button>
@@ -177,7 +178,7 @@ export function NewProjectForm(props: { readonly onCreated: (name: string) => vo
   const [github, setGitHub] = useState<GitHubView | null>(null);
   const [picked, setPicked] = useState<InstalledRepository | null>(null);
   const [url, setUrl] = useState("");
-  const [branch, setBranch] = useState("main");
+  const [branch, setBranch] = useState("");
   const [token, setToken] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [created, setCreated] = useState(false);
@@ -276,7 +277,7 @@ export function NewProjectForm(props: { readonly onCreated: (name: string) => vo
           </Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Its main branch">
-              <Input value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Main branch" />
+              <Input value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Main branch" placeholder="Its default branch" />
             </Field>
             <Field label="Access token">
               <Input value={token} onChange={(e) => setToken(e.target.value)} aria-label="Access token" type="password" autoComplete="off" placeholder="Needed to send work back" />
@@ -313,7 +314,7 @@ export function NewProjectDialog(props: { readonly open: boolean; readonly onOpe
       <DialogContent className="sm:max-w-md" data-dialog="new-project">
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
-          <DialogDescription>Each project is its own app with its own features and previews. Start fresh or bring code you already have.</DialogDescription>
+          <DialogDescription>Each project is its own app with its own features, each running in its own sandbox. Start fresh or bring code you already have.</DialogDescription>
         </DialogHeader>
         {props.open ? (
           <NewProjectForm

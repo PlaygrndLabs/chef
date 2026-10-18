@@ -6,7 +6,7 @@ import { fixture, scriptFromFixture, templateTree, todoSpec, world } from "../ha
 const PROMPT = "Add an item to a todo list";
 
 describe("phase 1 core loop on fakes", () => {
-  it("takes one prompt to canonical main with proof, notes and a preview from the first commit", async () => {
+  it("takes one prompt to canonical main with proof, notes and a running app from the first commit", async () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]) });
     const initial = await w.orchestrator.bootstrap(templateTree());
     const { decision, sessionId } = await w.orchestrator.submit(PROMPT);
@@ -37,14 +37,32 @@ describe("phase 1 core loop on fakes", () => {
     const started = w.bus.log.flatMap((e) => (e.type === "agent.started" ? [e.role] : []));
     expect([...new Set(started)]).toEqual(["planner", "test", "backend", "reviewer"]);
 
-    expect(record.firstPreviewCommit).toBe(record.commits[0]);
-    expect(w.previews.deployments[0]?.commitId).toBe(record.commits[0]);
-    expect(w.bus.log.find((e) => e.type === "preview.updated")).toBeDefined();
+    expect(record.firstAppCommit).toBe(record.commits[0]);
+    expect(w.apps.runs[0]).toMatchObject({ target: record.id, repo: record.fork, commitId: record.commits[0] });
+    expect(w.bus.log.find((e) => e.type === "app.updated" && e.status === "running")).toBeDefined();
+    expect(w.proofs.proofs.at(-1)?.url).toBe(`http://${record.id}.local.example`);
 
     const proofCommit = w.proofs.proofs.at(-1)?.commitId as string;
     const proof = JSON.parse((await w.repos.readNote("demo", PROOF_NAMESPACE, proofCommit)) ?? "null");
     expect(proof.ok).toBe(true);
     expect(proof.steps.map((s: { name: string }) => s.name)).toEqual(["AC1: add an item", "AC2: see the item in the list", "AC3: an empty item is rejected"]);
+  });
+
+  it("moves on while a branch app starts in the background, and proves the app of the head it merges", async () => {
+    const queued: (() => Promise<void>)[] = [];
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]), deps: { background: (work) => void queued.push(work) } });
+    await w.orchestrator.bootstrap(templateTree());
+    const { sessionId } = await w.orchestrator.submit(PROMPT);
+    const record = await w.orchestrator.run(sessionId as string);
+    expect(record.machine.state).toBe("merged");
+    expect(queued.length).toBeGreaterThan(0);
+    expect(w.apps.runs).toHaveLength(1);
+    const proven = w.proofs.proofs.at(-1)?.commitId;
+    expect(w.apps.runs[0]?.commitId).toBe(proven);
+    const gardener = record.commits.at(-1);
+    expect(proven).not.toBe(gardener);
+    for (const work of queued) await work();
+    expect(w.apps.runs.map((r) => r.commitId)).not.toContain(gardener);
   });
 
   it("never hands a coder a write token or any token for canonical main", async () => {
@@ -85,8 +103,8 @@ describe("phase 1 core loop on fakes", () => {
   it("marks a feature stuck when the attempt budget runs out, without blocking anything", async () => {
     const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]), config: { budget: { maxAttempts: 2, maxTokens: 1e9, maxMillis: 1e12 } } });
     const initial = await w.orchestrator.bootstrap(templateTree());
-    w.checks.failNext("test", "still red", 10);
     const { sessionId } = await w.orchestrator.submit(PROMPT);
+    w.checks.failNext("test", "still red", 10, (await w.orchestrator.session(sessionId as string)).fork);
     const record = await w.orchestrator.run(sessionId as string);
     expect(record.machine.state).toBe("stuck");
     expect(record.machine.reason).toMatch(/attempt budget/);

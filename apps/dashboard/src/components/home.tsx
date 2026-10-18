@@ -7,10 +7,11 @@ import { Composer } from "@/components/composer";
 import { LivePanel } from "@/components/live-talk";
 import { ChatSkeleton } from "@/components/loading";
 import { Button } from "@/components/ui/button";
-import { StatusPill } from "@/components/status";
-import { statusOf, waitsForBudget, waitsForKey, type FeatureStatus, type SessionNode } from "@/lib/model";
+import { PromptText, StatusPill } from "@/components/status";
+import { nodeStatus, waitsForBudget, waitsForKey, waitsForMerge, type FeatureStatus, type SessionNode } from "@/lib/model";
 import { activity, stripFeatureTag } from "@/lib/progress";
-import { isActive } from "@/lib/events";
+import { isActive, routeAnswers } from "@/lib/events";
+import { useNow } from "@/lib/live";
 import { sendError } from "@/lib/send";
 import type { OverviewState, Suggestion } from "@/lib/api";
 import { useOverview } from "@/lib/overview";
@@ -84,26 +85,26 @@ export function FeatureCard({ node }: { readonly node: SessionNode }) {
   const { features, openSession } = useWorkspace();
   const title = features.find((f) => f.id === node.featureId)?.title ?? node.record?.plan.feature.title ?? node.featureId;
   const tries = node.attempt && node.attempt.of > 1 && isActive(node.state) ? `Trying ${node.attempt.of} ways at once · ` : "";
-  const line = waitsForBudget(node) ? `Paused. ${waitsForBudget(node)}` : waitsForKey(node) ? `Needs ${node.needs.join(", ")}. Open it to add ${node.needs.length === 1 ? "the key" : "the keys"}.` : `${tries}${activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null)}`;
+  const line = waitsForBudget(node) ? `Paused. ${waitsForBudget(node)}` : waitsForKey(node) ? `Needs ${node.needs.join(", ")}. Open it to add ${node.needs.length === 1 ? "the key" : "the keys"}.` : waitsForMerge(node) ? "Passed every check. Open it to merge it into main." : `${tries}${activity(node.state, node.live?.timeline ?? [], node.live?.stuck ?? null)}`;
   return (
     <button type="button" onClick={() => openSession(node.id)} data-session={node.id} data-state={node.state} className="flex w-full items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:bg-muted/60">
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{title}</span>
         <span className="block truncate text-sm text-muted-foreground">{line}</span>
       </span>
-      <StatusPill status={statusOf(node.state)} />
+      <StatusPill status={nodeStatus(node)} />
       <ChevronRight className="size-4 text-muted-foreground" />
     </button>
   );
 }
 
-const RANK: Readonly<Record<FeatureStatus, number>> = { merged: 0, building: 1, stuck: 2, proposed: 3, dropped: 4 };
+const RANK: Readonly<Record<FeatureStatus, number>> = { merged: 0, done: 1, ready: 2, building: 3, stuck: 4, proposed: 5, dropped: 6 };
 
 export function onePerFeature(sessions: readonly SessionNode[]): SessionNode[] {
   const best = new Map<string, SessionNode>();
   for (const s of sessions) {
     const current = best.get(s.featureId);
-    if (!current || RANK[statusOf(s.state)] < RANK[statusOf(current.state)]) best.set(s.featureId, s);
+    if (!current || RANK[nodeStatus(s)] < RANK[nodeStatus(current)]) best.set(s.featureId, s);
   }
   return [...best.values()];
 }
@@ -112,19 +113,26 @@ function replyFor(decision: RouteDecision, title: string | null, attempts: numbe
   if (decision.intent === "question") return "No answer was saved for this question.";
   if (parts > 1) return `On it. This is ${parts} features, so Chef builds them at the same time.`;
   const parallel = attempts > 1 ? ` I'm trying ${attempts} approaches at once and will keep the best one.` : "";
-  const hotfix = decision.hotfix ? " It's a hotfix, so it goes live before other builds." : "";
-  if (decision.intent === "chore") return `On it. This is a chore outside any one feature, so every live feature gets checked again before it goes live.${hotfix}`;
+  const hotfix = decision.hotfix ? " It's a hotfix, so it is merged before other builds." : "";
+  if (decision.intent === "chore") return `On it. This is a chore outside any one feature, so every merged feature gets checked again before it is merged.${hotfix}`;
   if (decision.intent === "change_feature") return `On it. This changes ${title ?? "an existing feature"}.${hotfix || parallel}`;
   return `On it. This is a new feature.${hotfix || parallel}`;
 }
 
-function Reply({ text, sessions }: { readonly text: string; readonly sessions: readonly SessionNode[] }) {
+function Reply({ text, sessions, waiting = false }: { readonly text: string; readonly sessions: readonly SessionNode[]; readonly waiting?: boolean }) {
   const shown = onePerFeature(sessions);
   return (
     <div className="flex gap-3">
       <Avatar />
       <div className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5">
-        {text ? <p className="text-sm whitespace-pre-wrap">{text}</p> : null}
+        {waiting ? (
+          <p className="flex items-center gap-3 text-sm text-muted-foreground" data-answer="waiting">
+            Looking into it
+            <Loader2 className="size-4 animate-spin" />
+          </p>
+        ) : text ? (
+          <p className="text-sm whitespace-pre-wrap">{text}</p>
+        ) : null}
         {shown.map((s) => (
           <FeatureCard key={s.id} node={s} />
         ))}
@@ -138,7 +146,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
     <div className="flex flex-col items-center gap-3 pt-12 pb-4 text-center @lg:pt-20" data-view="welcome">
       <Wordmark className="mb-2 h-11" />
       <h2 className="text-xl font-medium tracking-tight">What should we build?</h2>
-      <p className="max-w-md text-muted-foreground">Describe a feature in plain words. Chef plans it, writes the tests and the code, checks it, and puts it live.</p>
+      <p className="max-w-md text-muted-foreground">Describe a feature in plain words. Chef plans it, writes the tests and the code, checks it, and merges it into main.</p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
         {EXAMPLES.map((e) => (
           <button key={e} type="button" onClick={() => onExample(e)} className="border px-3.5 py-1.5 text-sm hover:bg-muted">
@@ -150,7 +158,7 @@ function Welcome({ onExample }: { readonly onExample: (text: string) => void }) 
         {[
           ["Describe it", "Type or talk. One sentence is enough."],
           ["Chef builds it", "In its own sandbox, with tests and a review."],
-          ["Try it live", "Every feature gets its own preview link."],
+          ["Try it", "Every feature runs as its own app, with the whole stack."],
         ].map(([title, text], i) => (
           <li key={title} className="rounded-xl border p-4">
             <span className="mb-2.5 block font-mono text-xs text-brand">{String(i + 1).padStart(2, "0")}</span>
@@ -238,6 +246,7 @@ function OverviewMessage(props: { readonly state: OverviewState; readonly starte
 }
 
 const VOICE_MATCH_MS = 120_000;
+const ANSWER_WAIT_MS = 10 * 60_000;
 
 interface SaidTurn {
   readonly key: string;
@@ -295,22 +304,24 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
   useSent();
   const messages = agent.messages as unknown as readonly ChatMessage[];
   const routes = data.live.routes;
+  const answers = routeAnswers(data.live);
+  const now = useNow(10_000);
 
   const history = routes.map((route, index, list) => {
         const next = list[index + 1]?.at ?? Number.POSITIVE_INFINITY;
-        const own = sessions.filter((s) => s.record?.rootPrompt === route.prompt && s.createdAt >= route.at - 2000 && s.createdAt < next);
+        const own = sessions.filter((s) => s.record?.rootPrompt === route.prompt && (s.version ?? 1) === 1 && s.createdAt >= route.at - 2000 && s.createdAt < next);
         const title = features.find((f) => f.id === (own[0]?.featureId ?? route.decision.featureId))?.title ?? null;
-        const stored = data.live.answers.find((a) => a.prompt === route.prompt && a.at >= route.at && a.at < next)?.answer ?? "";
-        const answer = route.decision.intent === "question" ? stored || answerFor(messages, route.prompt) : "";
+        const question = route.decision.intent === "question";
+        const answer = answers[index] || (question ? answerFor(messages, route.prompt) : "");
         const parts = new Set(own.map((s) => s.featureId)).size;
         const voiced = data.live.voice.some((v) => v.prompt === route.prompt && v.at >= route.at && v.at - route.at < VOICE_MATCH_MS);
-        return { ...route, sessions: own, voiced, reply: answer || replyFor(route.decision, title, parts > 1 ? own.length / parts : own.length, parts) };
+        return { ...route, sessions: own, voiced, waiting: question && !answer && now - route.at < ANSWER_WAIT_MS, reply: answer || replyFor(route.decision, title, parts > 1 ? own.length / parts : own.length, parts) };
       });
   const said = spokenTurns(data.live.spoken, talk, selection.project);
   const timeline = [...history.map((item) => ({ at: item.at, item, turn: null })), ...said.map((turn) => ({ at: turn.at, item: null, turn }))].sort((a, b) => a.at - b.at);
   const pending = [...sentHere].filter(([prompt, sent]) => routes.filter((r) => r.prompt === prompt).length <= sent.seen).map(([prompt, sent]) => ({ prompt, failed: sent.failed, reason: sent.reason ?? null }));
 
-  const loading = !data.ready || overview === null;
+  const loading = !data.loaded.events || !data.loaded.records;
   useLayoutEffect(() => {
     if (!loading && (history.length || pending.length || said.length)) end.current?.scrollIntoView({ block: "end" });
   }, [loading, messages.length, history.length, pending.length, said.length, said[said.length - 1]?.text, talk.phase]);
@@ -365,7 +376,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
       });
   };
   const introduced = overview !== null && overview.status !== "none";
-  const welcome = !loading && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0 && said.length === 0;
+  const welcome = !loading && overview !== null && !introduced && history.length === 0 && pending.length === 0 && sessions.length === 0 && said.length === 0;
   const live = talk.phase !== "off" && talk.project === selection.project;
   const viewOnly = useProjectLevel(selection.project) === "view";
   const goLive = () => {
@@ -380,13 +391,13 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
     <div className="@container relative flex h-full min-h-0 flex-col" data-view="project" id="chat">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 py-8 sm:px-6">
+          {overview && introduced ? <OverviewMessage state={overview} started={started} onStart={start} onReadAgain={() => void readAgain().catch((error: unknown) => toast.error("Could not start reading", { description: error instanceof Error ? error.message : String(error) }))} /> : null}
           {loading ? (
             <ChatSkeleton />
           ) : (
             <>
               {welcome ? <Welcome onExample={(text) => setDraft((d) => ({ text, n: (d?.n ?? 0) + 1 }))} /> : null}
-              {overview && introduced ? <OverviewMessage state={overview} started={started} onStart={start} onReadAgain={() => void readAgain().catch((error: unknown) => toast.error("Could not start reading", { description: error instanceof Error ? error.message : String(error) }))} /> : null}
-              {!welcome && !introduced && history.length === 0 && pending.length === 0 && said.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature in the list, or describe a new one below.</p> : null}
+              {overview !== null && !welcome && !introduced && history.length === 0 && pending.length === 0 && said.length === 0 ? <p className="py-10 text-center text-muted-foreground">Pick a feature in the list, or describe a new one below.</p> : null}
               {timeline.map(({ item, turn }) =>
                 turn ? (
                   <Said key={turn.key} speaker={turn.speaker} text={turn.text} live={turn.live} />
@@ -394,14 +405,18 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
                   item.sessions.length > 0 ? <Reply key={`${item.at}-${item.prompt}`} text="" sessions={item.sessions} /> : null
                 ) : item ? (
                   <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
-                    <You>{stripFeatureTag(item.prompt).text}</You>
-                    <Reply text={item.reply} sessions={item.sessions} />
+                    <You>
+                      <PromptText text={stripFeatureTag(item.prompt).text} />
+                    </You>
+                    <Reply text={item.reply} sessions={item.sessions} waiting={item.waiting} />
                   </div>
                 ) : null,
               )}
               {pending.map(({ prompt, failed, reason }) => (
                 <div key={`pending-${prompt}`} className="flex flex-col gap-4" data-pending={failed ? "failed" : "sending"}>
-                  <You>{prompt}</You>
+                  <You>
+                    <PromptText text={prompt} />
+                  </You>
                   <div className="flex items-center gap-3">
                     <Avatar />
                     {failed ? (

@@ -5,7 +5,7 @@ import { laneSummary } from "../../src/lib/agents.ts";
 import type { SessionNode } from "../../src/lib/model.ts";
 
 function node(state: SessionNode["state"], live: Partial<SessionLive>, lanes: SessionRecord["lanes"]): SessionNode {
-  return { id: "s1", featureId: "todo", state, attempt: null, parent: null, createdAt: 0, updatedAt: 0, needs: [], budget: null, live: { commits: [], lanes: [], ...live } as SessionLive, record: { lanes } as SessionRecord };
+  return { id: "s1", featureId: "todo", state, attempt: null, parent: null, createdAt: 0, updatedAt: 0, needs: [], budget: null, ready: null, live: { commits: [], lanes: [], ...live } as SessionLive, record: { lanes } as SessionRecord, into: null, version: null };
 }
 
 const lanes = [
@@ -23,8 +23,8 @@ describe("one role's lane", () => {
     expect(laneSummary(node("coding", {}, lanes), "frontend")).toMatchObject({ branch: "lane/frontend", status: "Waiting for its turn", steps: { done: 0, of: 1 }, owns: [] });
   });
 
-  it("says when the work went live or was cut off", () => {
-    expect(laneSummary(node("merged", {}, lanes), "backend")?.status).toBe("Its work went live with the feature");
+  it("says when the work was merged or was cut off", () => {
+    expect(laneSummary(node("merged", {}, lanes), "backend")?.status).toBe("Its work was merged with the feature");
     const stopped = node("stuck", { lanes: [{ role: "frontend", branch: "lane/frontend", items: 1, status: "working", commits: 0, at: 1 }] }, lanes);
     expect(laneSummary(stopped, "frontend")?.status).toBe("Was working when Chef stopped");
   });

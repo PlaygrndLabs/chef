@@ -8,7 +8,7 @@ import { REPO_ROOT } from "../../src/world.ts";
 const DIST = join(REPO_ROOT, "apps", "dashboard", "dist");
 
 describe("dashboard in a browser", () => {
-  it("starts with no projects, creates one, sends a chat message through CopilotKit, follows the feature until it goes live and opens it", async () => {
+  it("starts with no projects, creates one, sends a chat message through CopilotKit, follows the feature until it is merged and opens it", async () => {
     expect(existsSync(join(DIST, "index.html")), "run pnpm build first").toBe(true);
     const local = await serve({ port: 0, real: false, assets: DIST });
     const browser = await chromium.launch();
@@ -19,7 +19,7 @@ describe("dashboard in a browser", () => {
       await page.goto(local.url);
       const setup = page.locator('[data-view="setup"]');
       await setup.waitFor({ timeout: 10_000 });
-      expect(await setup.innerText()).toContain("Create your first project");
+      await setup.getByText("Create your first project").waitFor({ timeout: 10_000 });
       await setup.getByLabel("Project name").fill("shop");
       await setup.getByRole("button", { name: "Create project" }).click();
       await page.getByRole("button", { name: "Switch project" }).click();
@@ -34,11 +34,12 @@ describe("dashboard in a browser", () => {
       await page.locator("#home-link").click();
       const start = page.locator('[data-view="start"]');
       await start.waitFor({ timeout: 10_000 });
-      expect(await start.locator('[data-project="shop"]').innerText()).toContain("Last opened");
+      expect(await start.locator('#recent-projects [data-project="shop"]').innerText()).toMatch(/Opened/i);
+      await start.locator('#sidebar-projects [data-project="shop"]').waitFor();
       await start.locator("#start-new-project").click();
       await page.locator('[data-dialog="new-project"]').waitFor();
       await page.keyboard.press("Escape");
-      await start.locator('[data-project="shop"]').click();
+      await start.locator('#recent-projects [data-project="shop"]').click();
       await page.locator("#chat textarea").waitFor();
       expect(new URL(page.url()).searchParams.get("project")).toBe("shop");
       const input = page.locator("#chat textarea");
@@ -46,27 +47,32 @@ describe("dashboard in a browser", () => {
       await input.press("Enter");
       const card = page.locator('#chat [data-session="s1"][data-state="merged"]');
       await card.waitFor({ timeout: 60_000 });
-      expect(await card.innerText()).toContain("Live");
+      expect(await card.innerText()).toContain("Merged");
+      expect(await card.innerText()).toContain("merged into main");
       expect(await page.locator("#chat").innerText()).toContain("On it. This is a new feature.");
       await expect.poll(() => page.locator('#features [data-session="s1"]').getAttribute("data-state"), { timeout: 10_000 }).toBe("merged");
-      await page.locator('#features [data-feature="todo-add"][data-status="merged"][data-group="live"]').waitFor();
+      await page.locator('#features [data-feature="todo-add"][data-status="merged"][data-group="merged"]').waitFor();
       expect(await page.locator('#project-bar [data-chip="working"]').innerText()).toContain("Nothing running");
-      expect(await page.locator('[data-view="no-tab"]').count()).toBe(1);
+      expect(await page.locator('#sessions [data-view="main"]').count()).toBe(1);
+      expect(await page.locator('#sessions [data-tab=":main"]').getAttribute("aria-selected")).toBe("true");
+      expect(await page.locator('#sessions [aria-label="Close main"]').count()).toBe(0);
       await card.click();
       const feature = page.locator('[data-view="feature"][data-state="merged"]');
       await feature.waitFor({ timeout: 10_000 });
-      expect(await page.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
+      expect(await page.getByRole("tab", { name: "App", exact: true }).getAttribute("aria-selected")).toBe("true");
       expect(await page.locator('#sessions [data-tab="todo-add"]').getAttribute("aria-selected")).toBe("true");
       expect(new URL(page.url()).searchParams.get("session")).toBe("s1");
       await page.getByRole("tab", { name: "Messages" }).click();
       await feature.locator('[data-review="approved"]').waitFor();
       await feature.locator('[data-gate="passed"]').waitFor();
-      expect(await feature.innerText()).toContain("Went live");
+      expect(await feature.innerText()).toContain("Merged into main");
       expect(await feature.locator("textarea").count()).toBe(0);
       await page.getByRole("tab", { name: "Checks" }).click();
       await page.getByRole("tabpanel", { name: "Checks" }).locator('[data-check][data-ok="true"]').first().waitFor({ timeout: 10_000 });
       await page.getByRole("tab", { name: "Changes" }).click();
-      await expect.poll(() => page.getByRole("tabpanel", { name: "Changes" }).innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");
+      const branch = page.getByRole("tabpanel", { name: "Changes" });
+      await branch.locator('[data-commit=":all"]').click();
+      await expect.poll(() => branch.innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");
       expect(await page.getByRole("separator", { name: "Resize the chat" }).count()).toBe(1);
       await page.getByRole("button", { name: "Open large" }).click();
       await page.getByRole("dialog").getByRole("tabpanel", { name: "Changes" }).waitFor({ timeout: 10_000 });
@@ -103,17 +109,22 @@ describe("dashboard in a browser", () => {
       expect(await page.locator("#chat").innerText()).toContain("On it. This is 2 features");
       await page.locator('#features [data-feature="shout"]').click();
       await page.locator('[data-view="feature"][data-feature="shout"]').waitFor({ timeout: 10_000 });
-      expect(await page.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
-      expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual(["todo-add", "shout"]);
-      const ownPreview = page.locator("#sessions").getByRole("tabpanel", { name: "Preview" });
-      expect(await ownPreview.locator('iframe[title="Preview"]').getAttribute("src")).toMatch(/^https:\/\/shout-/);
-      expect(await ownPreview.innerText()).toContain("This is the app as this session left it");
+      expect(await page.getByRole("tab", { name: "App", exact: true }).getAttribute("aria-selected")).toBe("true");
+      expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual([":main", "todo-add", "shout"]);
+      await page.locator("#sessions").getByRole("tabpanel", { name: "App" }).waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "Close Shout a phrase" }).click();
       await page.locator('[data-view="feature"][data-feature="todo-add"]').waitFor({ timeout: 10_000 });
 
-      await page.locator("#live-app-row").click();
-      await page.locator('[data-view="live"]').waitFor({ timeout: 10_000 });
-      expect(await page.locator('[data-tab=":live"]').innerText()).toContain("main");
+      await page.locator("#main-app-row").click();
+      await page.locator('[data-view="main"]').waitFor({ timeout: 10_000 });
+      expect(await page.locator('[data-tab=":main"]').innerText()).toContain("main");
+      await page.getByRole("tab", { name: "History" }).click();
+      await page.locator('[data-view="history"] [data-commit]').first().waitFor({ timeout: 10_000 });
+      await page.locator('[data-view="history"] [data-commit][aria-current="true"]').waitFor();
+      await page.locator('[data-view="history"] [data-commit]').first().click();
+      await page.locator("[data-commit-detail] [data-file]").first().waitFor({ timeout: 10_000 });
+      await page.locator("[data-commit-detail] [data-diff]").waitFor();
+      await page.getByRole("tab", { name: "App", exact: true }).click();
 
       await page.locator('#features [data-feature="reverse"]').dblclick();
       const title = page.getByRole("textbox", { name: /^New name for/ });
@@ -121,7 +132,7 @@ describe("dashboard in a browser", () => {
       await title.press("Enter");
       await page.locator('#features [data-feature="reverse"]', { hasText: "Flip the list" }).waitFor({ timeout: 10_000 });
 
-      await page.locator('#features [data-feature="reverse"]').dragTo(page.locator("#live-app-row"));
+      await page.locator('#features [data-feature="reverse"]').dragTo(page.locator("#main-app-row"));
       await page.locator('#features > ul > li > div [data-feature="reverse"]').waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "More for Flip the list" }).click();
       await page.getByRole("menuitem", { name: "Move under" }).hover();
@@ -185,17 +196,16 @@ describe("dashboard in a browser", () => {
       await claude.locator('[data-current="llm"] [data-key-hint]').waitFor();
       expect(await dialog.getByLabel("Voice model").inputValue()).toBe("gpt-realtime");
       expect(await dialog.locator('#settings-voice [data-current="voice"]').getAttribute("data-set")).toBe("no");
+      expect(await dialog.locator('[data-current="jev"] [data-key-hint]').getAttribute("data-key-hint")).toBe("…-key");
+      expect(await dialog.locator("#settings-jev").innerText()).toContain("comes from the deployment");
       expect(await dialog.getAttribute("data-section")).toBe("models");
-      expect(await dialog.locator('[data-settings-nav="previews"] [aria-label="needs setup"]').count()).toBe(1);
-      await dialog.locator('[data-settings-nav="previews"]').click();
+      expect(await dialog.locator('[data-settings-nav="apps"] [aria-label="needs setup"]').count()).toBe(1);
+      await dialog.locator('[data-settings-nav="apps"]').click();
       const cloudflare = dialog.locator("#settings-cloudflare");
       await cloudflare.getByLabel("Account id").fill("0123456789abcdef0123456789abcdef");
       await cloudflare.getByLabel("API token").fill("cf-token-abcd1234");
       await cloudflare.getByRole("button", { name: "Save" }).click();
       await expect.poll(() => cloudflare.locator('[data-current="cloudflare"]').getAttribute("data-set"), { timeout: 10_000 }).toBe("yes");
-      await dialog.locator('[data-settings-nav="router"]').click();
-      expect(await dialog.locator('[data-current="jev"] [data-key-hint]').getAttribute("data-key-hint")).toBe("…-key");
-      expect(await dialog.locator("#settings-jev").innerText()).toContain("comes from the deployment");
       const settings = (await (await page.request.get(`${local.url}/api/settings`)).json()) as Record<string, unknown>;
       expect(settings["llm"]).toEqual({ kind: "custom", baseUrl: "https://llm.example", keyHint: "…5678", source: "app" });
       expect(settings["cloudflare"]).toEqual({ accountId: "0123456789abcdef0123456789abcdef", keyHint: "…1234", source: "app" });
@@ -352,6 +362,11 @@ describe("dashboard in a browser", () => {
       const feature = page.locator('[data-view="feature"]');
       await feature.locator("[data-team]").waitFor({ timeout: 10_000 });
       expect(await feature.locator("header [data-chore]").count()).toBe(1);
+      const asked = feature.locator('[data-command="chore"]').first();
+      await asked.waitFor({ timeout: 10_000 });
+      const bubble = await asked.locator("xpath=..").innerText();
+      expect(bubble).toContain("Explain how to run the tests in the README");
+      expect(bubble).not.toContain("/chore");
       expect(await feature.locator("[data-team] [data-member]").evaluateAll((items) => items.map((i) => i.getAttribute("data-member")))).toEqual(["chore", "reviewer"]);
 
       await page.goto(`${local.url}/?project=shop&settings=app.router`);

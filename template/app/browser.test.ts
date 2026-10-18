@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { json, type Feature } from "../shared/http.ts";
-import { closeBrowser, openPage } from "./browser.ts";
+import { closeBrowser, openPage, STEP_TIMEOUT_MS } from "./browser.ts";
 
 const page = `<!doctype html><html><body><label for="name">Name</label><input id="name"><button>Save</button><p role="status"></p>
 <script>
@@ -28,5 +28,13 @@ test("drives a feature page in a real browser against the app", async () => {
   await tab.getByRole("button", { name: "Save" }).click();
   await tab.getByRole("status").filter({ hasText: "Ada" }).waitFor();
   assert.equal(await tab.getByRole("status").textContent(), "Ada");
+  await close();
+});
+
+test("a step on a page that is not built yet fails within the step timeout", async () => {
+  const { page: tab, close } = await openPage([], "/missing");
+  const started = Date.now();
+  await assert.rejects(tab.getByRole("button", { name: "Save" }).click());
+  assert.ok(Date.now() - started < STEP_TIMEOUT_MS * 2);
   await close();
 });

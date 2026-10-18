@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject } from "../../src/lib/events.ts";
 import { featureNodes, featureTree, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
-import { activity, plainReason, progress, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
+import { activity, plainReason, progress, splitCommands, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
 import { teamOf } from "../../src/lib/agents.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
@@ -25,7 +25,8 @@ describe("project event state", () => {
       { type: "coder.event", sessionId: "s1", featureId: "todo-add", event: { type: "assistant.message_delta", delta: "ing route" } },
       { type: "coder.event", sessionId: "s1", featureId: "todo-add", event: { type: "tool.execution_start", tool: "Edit", detail: "features/todo-add/index.ts" } },
       { type: "commit.created", sessionId: "s1", featureId: "todo-add", repo: "demo--todo-add--s1", commitId: "c1", role: "backend", message: "m" },
-      { type: "preview.updated", sessionId: "s1", featureId: "todo-add", url: "https://p.example", commitId: "c1" },
+      { type: "app.updated", sessionId: "s1", featureId: "todo-add", status: "starting", url: null, commitId: "c1" },
+      { type: "app.updated", sessionId: "s1", featureId: "todo-add", status: "running", url: "https://s1.example", commitId: "c1", link: "/app/demo/s1" },
       { type: "review.verdict", sessionId: "s1", featureId: "todo-add", approve: true, reasons: ["ok"], model: "m", head: "c1", base: "b" },
       { type: "gate.result", sessionId: "s1", featureId: "todo-add", ok: true, checks: [{ name: "lint", ok: true, log: "" }] },
       { type: "main.merged", sessionId: "s1", featureId: "todo-add", commitId: "m1" },
@@ -34,11 +35,23 @@ describe("project event state", () => {
     const s = state.sessions["s1"];
     expect(s?.state).toBe("merged");
     expect(s?.merged).toBe("m1");
-    expect(s?.timeline.map((t) => t.kind)).toEqual(["created", "state", "text", "tool", "commit", "preview", "review", "gate", "merged", "state"]);
+    expect(s?.timeline.map((t) => t.kind)).toEqual(["created", "state", "text", "tool", "commit", "app", "app", "review", "gate", "merged", "state"]);
     expect(s?.timeline.find((t) => t.kind === "text")).toMatchObject({ text: "Adding route", phase: "coding" });
-    expect(state.previews["todo-add"]?.url).toBe("https://p.example");
+    expect(state.apps["todo-add"]).toMatchObject({ status: "running", url: "https://s1.example", sessionId: "s1", link: "/app/demo/s1" });
+    expect(s?.app).toMatchObject({ status: "running", commitId: "c1" });
     expect(state.log.some((e) => e.type === "coder.event" && e.summary === "text")).toBe(false);
     expect(state.merges.map((m) => m.featureId)).toEqual(["todo-add"]);
+  });
+
+  it("notes when a branch has no compose file and when main's app changes", () => {
+    const state = run([
+      { type: "session.state", sessionId: "s2", featureId: "todo-edit", from: "queued", to: "coding", reason: "planned" },
+      { type: "app.updated", sessionId: "s2", featureId: "todo-edit", status: "no-stack", url: null, commitId: "c2abcdef" },
+      { type: "main-app.updated", status: "failed", commitId: "m2abcdef", url: null, error: "port 3000 never answered" },
+    ]);
+    expect(state.sessions["s2"]?.app).toMatchObject({ status: "no-stack", url: null });
+    expect(state.log.slice(1).map((e) => e.summary)).toEqual(["app no-stack at c2abcde", "main app failed at m2abcde: port 3000 never answered"]);
+    expect(updates(state.sessions["s2"]?.timeline ?? [], "coding").flatMap((u) => (u.kind === "chef" ? u.tech : []))).toContain("no compose file at c2abcde, so the app cannot start");
   });
 
   it("follows roles that work at the same time on their own branches", () => {
@@ -68,7 +81,7 @@ describe("project event state", () => {
       ["backend", "ok", "Did its part", ""],
       ["frontend", "run", "Working on its part on its own branch", "Drawing the page"],
     ]);
-    const node = { id: "s1", featureId: "todo", state: "coding", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], budget: null, live: s, record: undefined } as const;
+    const node = { id: "s1", featureId: "todo", state: "coding", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], budget: null, ready: null, live: s, record: undefined, into: null, version: null } as const;
     const team = teamOf(node);
     expect(team.filter((m) => m.branch).map((m) => [m.role, m.state, m.branch])).toEqual([["backend", "done", "lane/backend"], ["frontend", "working", "lane/frontend"]]);
     const both = run([...events.slice(0, -2)]);
@@ -139,9 +152,55 @@ describe("feature map", () => {
     expect(tree.map((n) => n.feature.id)).toEqual(["todo", "notes"]);
     expect(tree[0]?.children.map((n) => [n.feature.id, n.group])).toEqual([
       ["todo-edit", "working"],
-      ["todo-delete", "live"],
+      ["todo-delete", "merged"],
     ]);
     expect(featureTree([{ ...(nodes.find((n) => n.id === "todo") as (typeof nodes)[number]), parent: "todo-delete" }, ...nodes.filter((n) => n.id !== "todo")]).map((n) => n.feature.id).sort()).toEqual(["notes", "todo"]);
+  });
+});
+
+describe("feature list from the feature map", () => {
+  it("lists mapped features without sessions under their map parent, with current, wish and working marks", () => {
+    const state = run([
+      { type: "session.created", sessionId: "s1", featureId: "share", fork: "f1", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s1", featureId: "share", from: "queued", to: "coding", reason: "planned" },
+    ]);
+    const feature = (id: string, title: string, state: "current" | "wish") => ({ id, name: id.split("/").at(-1) as string, parent: id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : null, title, state, specs: "", path: "" });
+    const map = { start: "Run it.", features: [feature("boards", "Boards", "current"), feature("boards/share", "Share a board", "wish"), feature("boards/archive", "Archive", "wish")] };
+    const nodes = featureNodes(state, [], [], {}, map);
+    const tree = featureTree(nodes);
+    expect(tree.map((n) => [n.feature.id, n.feature.mark, n.session])).toEqual([["boards", "current", null]]);
+    expect(tree[0]?.children.map((n) => [n.feature.id, n.feature.mark])).toEqual([
+      ["share", "working"],
+      ["archive", "wish"],
+    ]);
+  });
+});
+
+describe("child builds merged into their parent", () => {
+  it("calls a child Done while its parent still builds, and Merged once the parent reaches main", () => {
+    const record = (id: string, featureId: string, state: SessionRecord["machine"]["state"], into?: string) => ({ id, featureId, machine: { state }, attempt: null, parent: null, createdAt: 1, updatedAt: 1, plan: { feature: { id: featureId, title: featureId } }, ...(into ? { merge: { commitId: "m", mainBefore: "b", into } } : {}) }) as unknown as SessionRecord;
+    const building = [record("s1", "notes", "coding"), record("s2", "tags", "merged", "s1")];
+    const child = featureNodes(emptyProject(), building, []).find((f) => f.id === "tags");
+    expect(child?.status).toBe("done");
+    expect(child?.sessions[0]?.into).toBe("notes");
+    const live = [record("s1", "notes", "merged"), record("s2", "tags", "merged", "s1")];
+    expect(featureNodes(emptyProject(), live, []).find((f) => f.id === "tags")?.status).toBe("merged");
+    const items = run([{ type: "branch.merged", sessionId: "s2", featureId: "tags", into: "s1", intoFeature: "notes", commitId: "m1" }]).sessions["s2"]?.timeline ?? [];
+    expect(updates(items, "merged").map((u) => (u.kind === "chef" ? u.text : u.text))).toEqual(["Done, merged into its parent feature"]);
+  });
+});
+
+describe("versions of one feature", () => {
+  it("shows each open version as its own node, with a child tied to the version it branched from", () => {
+    const record = (id: string, featureId: string, state: SessionRecord["machine"]["state"], extra: object = {}) => ({ id, featureId, machine: { state }, attempt: null, parent: null, createdAt: Number(id.slice(1)), updatedAt: 1, plan: { feature: { id: featureId, title: featureId, ...(featureId === "tags" ? { parent: "notes" } : {}) } }, ...extra }) as unknown as SessionRecord;
+    const records = [record("s1", "notes", "coding", { version: 1 }), record("s2", "notes", "coding", { version: 2 }), record("s3", "tags", "coding", { upstream: "s2" })];
+    const tree = featureTree(featureNodes(emptyProject(), records, []));
+    expect(tree.map((n) => [n.feature.id, n.version, n.session?.id, n.children.map((c) => c.feature.id)])).toEqual([
+      ["notes", 1, "s1", []],
+      ["notes", 2, "s2", ["tags"]],
+    ]);
+    const one = featureTree(featureNodes(emptyProject(), [records[0] as SessionRecord, record("s2", "notes", "dropped", { version: 2 })], []));
+    expect(one.map((n) => [n.feature.id, n.version, n.session?.id])).toEqual([["notes", null, "s1"]]);
   });
 });
 
@@ -173,7 +232,7 @@ describe("plain progress", () => {
       to("gating", "merged", "gate_passed"),
     ]);
     const texts = updates(items, "merged").map((u) => u.kind === "chef" ? u.text : u.text);
-    expect(texts).toEqual(["Wrote the code", "A reviewer asked for changes: missing test", "Fixed what the reviewer asked for (try 2)", "A reviewer approved the change", "Passed all 2 checks", "Went live"]);
+    expect(texts).toEqual(["Wrote the code", "A reviewer asked for changes: missing test", "Fixed what the reviewer asked for (try 2)", "A reviewer approved the change", "Passed all 2 checks", "Merged into main"]);
     expect(progress("merged", items)).toMatchObject({ stage: 4, done: true });
   });
 
@@ -203,7 +262,7 @@ describe("builds by status and how they relate", () => {
     ]);
     const nodes = sessionNodes(state, []);
     const groups = groupSessions(nodes);
-    expect(Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.map((n) => n.id)]))).toEqual({ "needs-you": ["s3"], working: ["s2"], live: ["s1"], stopped: ["s4"] });
+    expect(Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.map((n) => n.id)]))).toEqual({ "needs-you": ["s3"], working: ["s2"], merged: ["s1"], stopped: ["s4"] });
     const s2 = nodes.find((n) => n.id === "s2");
     if (!s2) throw new Error("no s2");
     const r = relationsOf(s2, nodes);
@@ -217,6 +276,10 @@ describe("builds by status and how they relate", () => {
     expect(plainReason("gate failed")).toBe("gate failed");
     expect(stripFeatureTag("#shout make it louder")).toEqual({ text: "make it louder", feature: "shout" });
     expect(stripFeatureTag("Add a page")).toEqual({ text: "Add a page", feature: null });
+    expect(splitCommands("/chore Dockerize the project")).toEqual({ commands: ["chore"], text: "Dockerize the project" });
+    expect(splitCommands("/hotfix /chore bump node")).toEqual({ commands: ["hotfix", "chore"], text: "bump node" });
+    expect(splitCommands("use /chore for chores")).toEqual({ commands: [], text: "use /chore for chores" });
+    expect(splitCommands("/chores later")).toEqual({ commands: [], text: "/chores later" });
   });
 });
 

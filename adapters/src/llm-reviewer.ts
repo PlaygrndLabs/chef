@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { withGuidance, type FileChanges, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
+import { isLockfile, withGuidance, type FileChanges, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
 const VerdictSchema = z.object({ approve: z.boolean(), reasons: z.array(z.string()), retest: z.boolean() });
@@ -8,7 +8,7 @@ const PickSchema = z.object({ sessionId: z.string(), reasons: z.array(z.string()
 
 const PICK_SYSTEM = `You pick one of several competing attempts at the same chef feature. Each attempt's code was run against the tests written by every attempt; prefer the attempt that passes the most of them, then the one that best matches the spec, then the smaller diff. Answer with the chosen sessionId and one line per reason.`;
 
-const CHORE_NOTE = "This is a chore: maintenance outside any one feature, not a feature build, so there is no spec and no new tests are expected. Approve if the diff does the task, changes no feature's behavior, and weakens no test. Never set retest for a chore.";
+const CHORE_NOTE = "This is a chore: maintenance outside any one feature, not a feature build, so there is no spec and no new tests are expected. Approve if the diff does the task, changes no feature's behavior, and weakens no test. Reject work the task does not ask for, such as Docker, CI or dependency changes in a task about something else, and name the files to take out. Never set retest for a chore.";
 
 export class LlmReviewer implements Reviewer {
   constructor(
@@ -54,7 +54,7 @@ function renderScope(scope: readonly string[] | undefined): string {
 
 function renderDiff(diff: FileChanges): string {
   return Object.entries(diff)
-    .map(([path, content]) => (content === null ? `--- deleted ${path}` : `--- ${path}\n${content}`))
+    .map(([path, content]) => (content === null ? `--- deleted ${path}` : isLockfile(path) ? `--- ${path} (lockfile the package manager wrote, ${content.length} characters, not shown)` : `--- ${path}\n${content}`))
     .join("\n\n")
     .trim();
 }

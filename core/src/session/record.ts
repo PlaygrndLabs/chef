@@ -1,3 +1,5 @@
+import type { AppStatus } from "../ports/app-host.ts";
+import type { CheckResult } from "../ports/check-runner.ts";
 import type { Plan } from "../ports/planner.ts";
 import type { ReviewVerdict } from "../ports/reviewer.ts";
 import type { RouteDecision } from "../router/decision.ts";
@@ -11,6 +13,15 @@ export interface PendingTurn {
   readonly restarts: number;
 }
 
+export interface SessionApp {
+  readonly status: AppStatus;
+  readonly url: string | null;
+  readonly local: string | null;
+  readonly commitId: string;
+  readonly error?: string;
+  readonly link?: string;
+}
+
 export interface SessionRecord {
   readonly id: string;
   readonly project: string;
@@ -21,21 +32,25 @@ export interface SessionRecord {
   plan: Plan;
   cursor: number;
   machine: MachineState;
+  revision?: number;
   head: string | null;
   baseMain: string | null;
   commits: string[];
-  preview: { url: string; commitId: string; link?: string } | null;
-  firstPreviewCommit: string | null;
+  app: SessionApp | null;
+  firstAppCommit: string | null;
   verdict: (ReviewVerdict & { commitId: string }) | null;
   lastCodeItem: string | null;
   syncPending: boolean;
-  merge: { commitId: string; mainBefore: string } | null;
+  merge: { commitId: string; mainBefore: string; into?: string } | null;
+  upstream?: string | null;
+  upstreamBase?: string | null;
+  version?: number;
+  ready?: { commitId: string; checks: CheckResult[]; approved: boolean } | null;
   readonly attempt: { readonly group: string; readonly index: number; readonly of: number };
   readonly kind?: "feature" | "chore";
   readonly hotfix?: boolean;
   readonly ask?: string;
   heldBy?: string | null;
-  previewKey: string;
   readonly parent: string | null;
   history: string[];
   needs?: readonly string[];

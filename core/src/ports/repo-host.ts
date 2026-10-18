@@ -1,4 +1,4 @@
-import type { Author, Commit, FileChanges, Resolver } from "../git/tree.ts";
+import type { Author, Commit, CommitSummary, FileChanges, Resolver } from "../git/tree.ts";
 
 export type TokenScope = "read" | "write";
 
@@ -38,6 +38,7 @@ export interface MergeInput {
   readonly author: Author;
   readonly resolvers?: Readonly<Record<string, Resolver>>;
   readonly onConflict?: "fail" | "commit-markers";
+  readonly noFastForward?: boolean;
 }
 
 export interface PushedEvent {
@@ -58,6 +59,7 @@ export interface RepoHost {
   resolveRef(repo: string, ref: string): Promise<string | null>;
   readCommit(repo: string, id: string): Promise<Commit | null>;
   log(repo: string, ref: string, limit?: number): Promise<Commit[]>;
+  history(repo: string, ref: string, limit?: number): Promise<CommitSummary[]>;
   commit(token: RepoToken, input: CommitInput): Promise<Commit>;
   pushRef(token: RepoToken, input: { ref: string; commitId: string; fromRepo?: string; force?: boolean }): Promise<PushedEvent>;
   merge(token: RepoToken, input: MergeInput): Promise<MergeOutcome>;

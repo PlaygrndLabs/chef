@@ -4,23 +4,24 @@ This is the goal for anyone, person or coding agent, working in this repository.
 
 ## One-line goal
 
-Chef is an AI app builder that runs on a person's own Cloudflare account: they describe what they want in one chat, and Chef splits it into features, builds each one in its own session with tests, review and a live preview, and merges it into the project's `main`, which is always online at the project's live address.
+Chef is an AI app builder that runs on a person's own Cloudflare account: they describe what they want in one chat, and Chef splits it into features, builds each one in its own session with tests, review and its own running app, and merges it into the project's `main`, whose running app is the release candidate. Chef is the development environment; the person connects their own repository to wherever they run production.
 
 ## What Chef is
 
-- **The person's own engine.** Chef deploys its engine (the Chef Worker, `workers/`) on the person's Cloudflare account with `chef deploy` or the Deploy to Cloudflare button. Agents, sandboxes, repositories, keys and previews all run there. Chef runs on Cloudflare only.
+- **The person's own engine.** Chef deploys its engine (the Chef Worker, `workers/`) on the person's Cloudflare account with `chef deploy` or the Deploy to Cloudflare button. Agents, sandboxes, repositories, keys and running apps all run there. Chef runs on Cloudflare only.
 - **The spec is the memory, git is the state, chat is just input.**
-- **One chat, many sessions.** The project page has the feature tree on the left, session tabs in the middle (each opens on its preview), and the main chat on the right, the only place a person asks for work. The chat keeps a running summary of older messages, like a project's main thread.
-- **Every feature is a session.** A feature is one spec entry with one live preview. The router splits a request into independent parts that build in parallel, and a part that adds a capability becomes a child feature under the one it builds on. A session is a Durable Object plus its own Artifacts fork named `<project>--<feature>--<session>`.
+- **One chat, many sessions.** The project page has the feature list on the left, session tabs in the middle (each opens on its running app), and the main chat on the right, the only place a person asks for work. The main row on top opens main's running app and the History of `main`, with every commit's changed files and diffs. Each session's Changes tab shows its own branch. Branches follow the feature list from top to bottom (`main -> parent -> child`): a sub-feature branches from its parent's open build, takes in the parent's new commits before every step, and merges back into the parent when it is done; a feature with no open parent does the same with `main`, on its own or when someone presses Merge, as the project's settings say. To try a different direction, a person starts another version of a feature, with its own branch and sandbox; open versions show as their own rows until a person merges one and the others are archived.
+- **Features are first-class.** A project's feature list is a feature map in its repository (`.chef/features/`): each feature has a title, a state (current or wish) and the steps to reach it from its parent, and needs no session to exist. Chef can explore an imported project and fill the map with the features it already has.
+- **Every feature is a session.** A feature is one spec entry with one running app. The router splits a request into independent parts that build in parallel, and a part that adds a capability becomes a child feature under the one it builds on. A session is a Durable Object plus its own Artifacts fork named `<project>--<feature>--<session>`.
 - **Roles work side by side.** When a plan has build steps for several roles (frontend, backend, designer and others), each role works on its own `lane/<role>` branch in its own sandbox, and Chef merges the lanes after each round.
 - **Every turn is a commit.** Each accepted agent turn is one commit with the prompt, run id, model, role and spec revision in git notes under `refs/notes/chef`.
-- **Previews and a live address.** After each commit the session head goes to `preview/<feature>`, and `wrangler preview` in the sandbox publishes it as a Preview of the project's Worker. Previews sleep when idle and wake on the next visit. The project's `main` is deployed to its own Worker on every merge and never sleeps.
+- **Every branch runs in its sandbox.** A session's sandbox is the development environment of its branch: the agents' files and commands, and the project's whole stack started from its compose file with Docker. After each commit the app runs the new code, at its own private address through Chef's app router. `main` runs the same way in its own sandbox, as the release candidate. Nothing of the app is deployed to Cloudflare, and there are no long-living deployments: an idle sandbox sleeps and starts again on the next visit.
 - **Continuous sync.** Every push to `main` is merged into every active fork between turns. A conflict becomes a task for the same session or the conflict-resolver.
-- **Only the merge gate writes to `main`.** It runs typecheck, lint, tests, spec lint, write scopes, locked tests, a reviewer verdict and a proof of the feature's flow on its preview. A merge that turns `main` red is reverted and its session reopens with the failure.
+- **Only the merge gate writes to `main`.** It runs typecheck, lint, tests, spec lint, write scopes, locked tests, a reviewer verdict and a proof of the feature's flow on the branch's running app. A merge that turns `main` red is reverted and its session reopens with the failure.
 - **Routing.** Rules first, then Jev (TypeSafe AI's System One model) answers typed choice questions with calibrated confidence, then the planner when confidence is low or the feature is new. Jev never writes text.
 - **Guidance and memory.** Instructions shared by every project and each project's `GOAL.md` and `AGENTS.md` reach the planner, every coder turn and the reviewer. Each turn also recalls the most relevant documents from the project's memory (`memory/**/*.md`), which people can read and edit in Project settings.
 - **The coder** is the Claude Agent SDK in a Cloudflare Sandbox on the fork's checkout. It reaches Claude through the person's own model provider (an Anthropic API key or any Anthropic-compatible provider), the same one the planner and reviewer use.
-- **Keys stay in the account.** Project keys are sealed in the project's Durable Object; agents see names only, previews and the live app get the values.
+- **Keys stay in the account.** Project keys are sealed in the project's Durable Object; agents see names only, and running apps get the values.
 - **GitHub is optional.** Work always runs on Artifacts. A project can link a repository through Chef's own GitHub App to keep it in sync; Chef never pushes to its main branch.
 - **Streaming.** Sessions reach the app through CopilotKit (AG-UI) and the project's live event socket.
 
@@ -53,11 +54,11 @@ spec/        Chef's own feature map
 
 ## Where it stands
 
-Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the tree, tabs and chat project page, request splitting into child features, parallel role lanes, per-project live addresses, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default.
+Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the feature list, tabs and chat project page, request splitting into child features, parallel role lanes, a running app per branch, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default.
 
 ## Definition of done
 
-- A new person goes from deploying Chef on their Cloudflare account to a merged feature at their project's live address, with no step outside Chef beyond the deploy and adding a model key.
+- A new person goes from deploying Chef on their Cloudflare account to a merged feature running in main's app, with no step outside Chef beyond the deploy and adding a model key.
 - Several features requested in one message build in parallel and all reach `main` with tests, review and proof.
 - Steps a person takes per merged feature, measured by the dashboard, are zero.
 

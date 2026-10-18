@@ -3,7 +3,7 @@ export type * from "./coder.ts";
 export type * from "./classifier.ts";
 export type * from "./planner.ts";
 export type * from "./reviewer.ts";
-export type * from "./preview-host.ts";
+export type * from "./app-host.ts";
 export type * from "./check-runner.ts";
 export type * from "./event-bus.ts";
 export type * from "./runtime.ts";

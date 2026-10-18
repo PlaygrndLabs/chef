@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readSetupStream, SETUP_STREAM, SetupError, setupResponse, type SetupEvent } from "@chef/core";
-import { projectsRequest, removeProjectRequest, type ProjectEntry, type ProjectRegistry } from "../../src/projects.ts";
+import { activityNote, projectsRequest, removeProjectRequest, type ProjectEntry, type ProjectRegistry } from "../../src/projects.ts";
 
 function registry(initial: ProjectEntry[] = []): ProjectRegistry & { list: ProjectEntry[] } {
   const list = [...initial];
@@ -21,6 +21,20 @@ describe("project list", () => {
   it("starts empty", async () => {
     const response = await projectsRequest(new Request("https://chef.test/api/projects"), registry(), async () => Response.json({}));
     expect(await response.json()).toEqual({ projects: [] });
+  });
+
+  it("lists each project with its latest activity", async () => {
+    const projects = { ...registry([{ name: "shop", createdAt: 1 }, { name: "blog", createdAt: 2 }]), activity: async () => ({ shop: { at: 9, note: "Merged Checkout into main" } }) };
+    const response = await projectsRequest(new Request("https://chef.test/api/projects"), projects, async () => Response.json({}));
+    expect(await response.json()).toEqual({ projects: [{ name: "shop", createdAt: 1, updatedAt: 9, note: "Merged Checkout into main" }, { name: "blog", createdAt: 2 }] });
+  });
+
+  it("describes the events people care about in one line", () => {
+    const base = { project: "shop", at: 5 } as const;
+    expect(activityNote({ ...base, type: "main.merged", sessionId: "s1", featureId: "checkout", commitId: "c1" }, "Checkout")).toBe("Merged Checkout into main");
+    expect(activityNote({ ...base, type: "session.needs", sessionId: "s1", featureId: "checkout", names: ["STRIPE_KEY"] }, "Checkout")).toBe("Checkout needs STRIPE_KEY");
+    expect(activityNote({ ...base, type: "main.reverted", featureId: "checkout", revertedCommit: "c1", commitId: "c2", log: "" }, null)).toBe("Undid a change on main");
+    expect(activityNote({ ...base, type: "main-app.updated", status: "running", commitId: "c2", url: null }, "Checkout")).toBeNull();
   });
 
   it("creates the project from the template and lists it", async () => {

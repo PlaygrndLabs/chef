@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
 import type { CloudflareFact, CloudflareKind, CloudflareResource, CloudflareView } from "@chef/core";
 import { roleLabel, useAgents } from "@/lib/agents";
+import { appLink, MAIN_APP } from "@/lib/app-view";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 
@@ -12,7 +13,7 @@ const KIND: Readonly<Record<CloudflareKind, string>> = {
   repo: "Artifacts",
   branch: "Artifacts",
   container: "Container",
-  preview: "Workers",
+  app: "Container",
   worker: "Workers",
   "durable-object": "Durable Objects",
   workflow: "Workflows",
@@ -37,13 +38,14 @@ function CopyButton({ value, label }: { readonly value: string; readonly label: 
   );
 }
 
-function Fact({ fact }: { readonly fact: CloudflareFact }) {
+function Fact({ fact, app }: { readonly fact: CloudflareFact; readonly app: string | null }) {
+  const href = fact.href ? (app ?? fact.href) : null;
   return (
     <div className="contents">
       <dt className="text-muted-foreground">{fact.label}</dt>
       <dd className="flex min-w-0 items-center gap-1.5">
-        {fact.href ? (
-          <a href={fact.href} target="_blank" rel="noreferrer" className="min-w-0 truncate font-mono underline-offset-2 hover:underline">
+        {href ? (
+          <a href={href} target="_blank" rel="noreferrer" className="min-w-0 truncate font-mono underline-offset-2 hover:underline">
             {fact.value}
           </a>
         ) : (
@@ -80,7 +82,10 @@ function UsedBy({ roles }: { readonly roles: readonly string[] }) {
   );
 }
 
-function Resource({ resource, showRoles }: { readonly resource: CloudflareResource; readonly showRoles: boolean }) {
+function Resource({ resource, showRoles, session }: { readonly resource: CloudflareResource; readonly showRoles: boolean; readonly session: string | null }) {
+  const { selection } = useWorkspace();
+  const id = resource.key === "main-app" ? MAIN_APP : session;
+  const app = resource.kind === "app" && id ? appLink(selection.project, id) : null;
   return (
     <li className="flex flex-col gap-1.5 py-3 dash-b last:border-b-0" data-cf={resource.key} data-cf-kind={resource.kind} data-cf-roles={resource.roles.join(" ") || undefined}>
       <div className="flex min-w-0 items-center gap-2">
@@ -112,7 +117,7 @@ function Resource({ resource, showRoles }: { readonly resource: CloudflareResour
       {resource.facts.length ? (
         <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
           {resource.facts.map((fact) => (
-            <Fact key={fact.label} fact={fact} />
+            <Fact key={fact.label} fact={fact} app={app} />
           ))}
         </dl>
       ) : null}
@@ -121,20 +126,20 @@ function Resource({ resource, showRoles }: { readonly resource: CloudflareResour
   );
 }
 
-export function CloudflareList({ resources, showRoles = true, className }: { readonly resources: readonly CloudflareResource[]; readonly showRoles?: boolean; readonly className?: string }) {
+export function CloudflareList({ resources, session, showRoles = true, className }: { readonly resources: readonly CloudflareResource[]; readonly session: string | null; readonly showRoles?: boolean; readonly className?: string }) {
   return (
     <ul className={cn("flex flex-col dash-t", className)} data-cloudflare>
       {resources.map((r) => (
-        <Resource key={r.key} resource={r} showRoles={showRoles} />
+        <Resource key={r.key} resource={r} showRoles={showRoles} session={session} />
       ))}
     </ul>
   );
 }
 
-export function CloudflareSections({ view, loading, error }: { readonly view: CloudflareView | null; readonly loading: boolean; readonly error: string | null }) {
+export function CloudflareSections({ view, loading, error, session }: { readonly view: CloudflareView | null; readonly loading: boolean; readonly error: string | null; readonly session: string }) {
   if (loading && !view) return <Skeleton className="h-40" />;
   if (!view) return <p className="text-sm text-muted-foreground">Could not read the Cloudflare details{error ? `: ${error}` : ""}.</p>;
-  const session = view.resources.filter((r) => r.group === "session");
+  const own = view.resources.filter((r) => r.group === "session");
   const project = view.resources.filter((r) => r.group === "project");
   return (
     <div className="flex flex-col gap-5">
@@ -143,11 +148,11 @@ export function CloudflareSections({ view, loading, error }: { readonly view: Cl
       </p>
       <div className="flex flex-col gap-1">
         <h4 className="kicker">This build</h4>
-        <CloudflareList resources={session} />
+        <CloudflareList resources={own} session={session} />
       </div>
       <div className="flex flex-col gap-1">
         <h4 className="kicker">Shared by the project</h4>
-        <CloudflareList resources={project} />
+        <CloudflareList resources={project} session={session} />
       </div>
     </div>
   );

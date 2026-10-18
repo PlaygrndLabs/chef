@@ -7,7 +7,7 @@ const facts: CloudflareFacts = {
   accountId: "acc1",
   engine: "chef-dev",
   project: "fresh",
-  projectWorker: "chef-dev-fresh",
+  router: "chef-dev-app",
   projectObject: "id-fresh",
   namespaces: { SessionAgent: "ns-session", ProjectAgent: "ns-project" },
   containerApp: { name: "chef-dev-sessionagent", id: "app1" },
@@ -21,9 +21,9 @@ const facts: CloudflareFacts = {
     lanes: [{ role: "frontend", branch: "lane/frontend", head: "cccccccccccccccc" }],
   },
   agents: { sandbox: ["test"], engine: ["planner", "reviewer"] },
-  sandboxes: { session: box("s-1", true), lanes: { frontend: box("s-1--frontend") }, preview: box("preview-todo") },
-  preview: { name: "todo", branch: "preview/todo", url: "https://todo-chef-dev-fresh.acme.workers.dev", versionId: "v1", commitId: "bbbbbbbbbbbbbbbb", awake: true },
-  live: { url: "https://chef-dev-fresh.acme.workers.dev", commitId: "aaaaaaaaaaaaaaaa", status: "ready" },
+  sandboxes: { session: box("s-1", true), lanes: { frontend: box("s-1--frontend") }, main: box("fresh--main") },
+  app: { name: "s-1-fresh", url: "https://s-1-fresh-chef-dev-app.acme.workers.dev", status: "running", commitId: "bbbbbbbbbbbbbbbb" },
+  mainApp: { url: "https://main-fresh-chef-dev-app.acme.workers.dev", commitId: "aaaaaaaaaaaaaaaa", status: "starting" },
 };
 
 describe("Cloudflare view of a session", () => {
@@ -46,12 +46,13 @@ describe("Cloudflare view of a session", () => {
     expect(byKey["sandbox"]?.facts.find((f) => f.label === "Application")?.value).toBe("chef-dev-sessionagent · app1");
     expect(byKey["sandbox:frontend"]).toMatchObject({ roles: ["frontend"], state: { tone: "idle" } });
     expect(byKey["branch:frontend"]).toMatchObject({ roles: ["frontend"], name: "lane/frontend" });
-    expect(byKey["preview"]?.facts.find((f) => f.label === "Version")?.value).toBe("v1");
-    expect(byKey["preview"]?.dashboard).toBe("https://dash.cloudflare.com/acc1/workers/services/view/chef-dev-fresh/production/deployments");
-    expect(byKey["project-worker"]?.state?.text).toBe("Live");
+    expect(byKey["app"]?.facts.find((f) => f.label === "URL")?.value).toBe("https://s-1-fresh-chef-dev-app.acme.workers.dev");
+    expect(byKey["app"]?.state).toEqual({ tone: "ok", text: "Running" });
+    expect(byKey["app"]?.dashboard).toBe("https://dash.cloudflare.com/acc1/workers/services/view/chef-dev-app/production/deployments");
+    expect(byKey["main-app"]?.state?.text).toBe("Starting");
     expect(byKey["workflow"]?.name).toBe("chef-dev-upstream-sync");
     expect(byKey["memory"]?.name).toBe("chef-dev-memory");
-    expect(view.resources.filter((r) => r.group === "project").map((r) => r.key)).toEqual(["project-worker", "main", "engine", "project-object", "workflow", "memory"]);
+    expect(view.resources.filter((r) => r.group === "project").map((r) => r.key)).toEqual(["sandbox:main", "main-app", "router", "main", "engine", "project-object", "workflow", "memory"]);
   });
 
   it("says which agents use each resource", () => {

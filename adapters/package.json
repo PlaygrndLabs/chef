@@ -10,6 +10,7 @@
     "./artifacts": "./src/artifacts.ts",
     "./external-git": "./src/external-git.ts",
     "./project-explorer": "./src/project-explorer.ts",
+    "./feature-mapper": "./src/feature-mapper.ts",
     "./github-app": "./src/github-app.ts",
     "./anthropic": "./src/anthropic.ts",
     "./settings": "./src/settings.ts",
@@ -20,8 +21,8 @@
     "./realtime": "./src/realtime.ts",
     "./workers-ai-reviewer": "./src/workers-ai-reviewer.ts",
     "./agui": "./src/agui.ts",
-    "./preview-page": "./src/preview-page.ts",
-    "./preview-gate": "./src/preview-gate.ts",
+    "./app-page": "./src/app-page.ts",
+    "./app-gate": "./src/app-gate.ts",
     "./projects": "./src/projects.ts",
     "./agents": "./src/agents.ts",
     "./guidance": "./src/guidance.ts"

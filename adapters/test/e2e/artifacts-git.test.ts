@@ -12,7 +12,7 @@ beforeAll(() => server.start());
 afterAll(() => server.stop());
 
 describe("ArtifactsRepoHost over real git smart HTTP", () => {
-  it("commits, merges, pushes previews and notes through git", async () => {
+  it("commits, merges, pushes branches and notes through git", async () => {
     const host = new ArtifactsRepoHost(server.control());
     await host.createRepo("p1", { defaultBranch: "main" });
     const write = await host.createToken("p1", "write", 600);
@@ -31,8 +31,8 @@ describe("ArtifactsRepoHost over real git smart HTTP", () => {
     expect(merged?.tree["a.txt"]).toBe("ONE\ntwo\nTHREE\n");
     expect(merged?.parents).toEqual([onFork.id, onMain.id]);
 
-    await host.pushRef(write, { ref: "preview/f", commitId: merged?.id as string, fromRepo: "p1--f--s1", force: true });
-    expect(await host.resolveRef("p1", "preview/f")).toBe(merged?.id);
+    await host.pushRef(write, { ref: "archive/f", commitId: merged?.id as string, fromRepo: "p1--f--s1", force: true });
+    expect(await host.resolveRef("p1", "archive/f")).toBe(merged?.id);
     expect(server.gitNotes("p1", NOTES_NAMESPACE, onFork.id)).toContain('"hello"');
 
     const read = await host.createToken("p1", "read", 600);
@@ -76,11 +76,30 @@ describe("ArtifactsRepoHost over real git smart HTTP", () => {
     expect(log).toContain("spec: mark todo-add merged");
     const head = log.split("\n")[0]?.split(" ")[0] as string;
     expect(parseNote(server.gitNotes("demo-git", NOTES_NAMESPACE, head))?.rootPrompt).toBe(PROMPT);
-    expect(server.gitLog("demo-git", "preview/todo-add").split("\n")[0]).toContain(head);
   });
 });
 
 describe("ArtifactsRepoHost with the Artifacts read API and a small cache", () => {
+  it("lists a branch's history without reading trees, through the read API or over git", async () => {
+    const control = server.control({ read: true });
+    const host = new ArtifactsRepoHost(control);
+    await host.createRepo("lines", { defaultBranch: "main" });
+    const write = await host.createToken("lines", "write", 600);
+    const author = { name: "t", email: "ma.karimi76@gmail.com" };
+    const first = await host.commit(write, { ref: "main", parent: null, changes: { "a.txt": "a\n" }, message: "init", author });
+    const second = await host.commit(write, { ref: "main", parent: first.id, changes: { "a.txt": "A\n" }, message: "second\n\nbody", author });
+    const expected = [
+      { id: second.id, parents: [first.id], message: "second\n\nbody", author, timestamp: second.timestamp },
+      { id: first.id, parents: [], message: "init", author, timestamp: first.timestamp },
+    ];
+
+    const reader = new ArtifactsRepoHost(control);
+    expect(await reader.history("lines", "main")).toEqual(expected);
+    expect(reader.cachedRepos).toEqual([]);
+    expect(await new ArtifactsRepoHost(server.control()).history("lines", "main")).toEqual(expected);
+    expect(await reader.history("lines", "main", 1)).toEqual(expected.slice(0, 1));
+  });
+
   it("reads commits, logs and notes through the read API and agrees with git", async () => {
     const control = server.control({ read: true });
     const host = new ArtifactsRepoHost(control);

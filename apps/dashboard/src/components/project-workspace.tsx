@@ -16,7 +16,7 @@ import { currentSession, featureNodes, sessionNodes } from "@/lib/model";
 import { rememberProject, returningToNewProject } from "@/lib/projects";
 import type { Selection, SettingsScope } from "@/lib/selection";
 import { useSettings } from "@/lib/settings";
-import { LIVE_TAB, useTabs } from "@/lib/tabs";
+import { MAIN_TAB, useTabs } from "@/lib/tabs";
 import { WorkspaceContext, type Workspace } from "@/lib/workspace";
 
 export const MainView = preloadable(() => import("@/components/main-view").then((m) => m.MainView));
@@ -41,7 +41,7 @@ function focusComposerSoon() {
 }
 
 function tabPlace(id: string): Partial<Selection> {
-  if (id === LIVE_TAB) return { view: "live", feature: null, session: null, panel: null };
+  if (id === MAIN_TAB) return { view: "main", feature: null, session: null, panel: null };
   return { view: "feature", feature: id, session: null, panel: null };
 }
 
@@ -78,14 +78,14 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const data = useProject(project);
   const api = useMemo(() => projectApi(project), [project]);
   const sessions = useMemo(() => sessionNodes(data.live, data.records), [data.live, data.version, data.records]);
-  const features = useMemo(() => featureNodes(data.live, data.records, data.spec?.features ?? [], data.spec?.layout), [data.live, data.version, data.records, data.spec]);
+  const features = useMemo(() => featureNodes(data.live, data.records, data.spec?.features ?? [], data.spec?.layout, data.spec?.map ?? null), [data.live, data.version, data.records, data.spec]);
   const picked = selection.session ? (sessions.find((s) => s.id === selection.session) ?? null) : null;
   const featureId = selection.view === "feature" ? (selection.feature ?? picked?.featureId ?? null) : null;
   const feature = featureId ? (features.find((f) => f.id === featureId) ?? null) : null;
   const session = feature ? currentSession(feature, selection.session) : null;
-  const activeTab = selection.view === "live" ? LIVE_TAB : (featureId ?? (selection.view === "feature" ? selection.session : null));
-  const { tabs, close, keep } = useTabs(project, activeTab);
   const compact = useMediaQuery("(max-width: 1023px)");
+  const activeTab = selection.view === "main" ? MAIN_TAB : (featureId ?? (selection.view === "feature" ? selection.session : compact ? null : MAIN_TAB));
+  const { tabs, close, keep } = useTabs(project, activeTab);
   const width = useWindowWidth();
   const [palette, setPalette] = useState(false);
   const [treeSheet, setTreeSheet] = useState(false);
@@ -102,7 +102,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const chat = Math.min(Math.max(chatWidth, CHAT.min), chatMax);
 
   useEffect(() => {
-    if (data.ready) keep((id) => id === LIVE_TAB || features.some((f) => f.id === id));
+    if (data.ready) keep((id) => features.some((f) => f.id === id));
   }, [data.ready, features, keep]);
 
   const openSettings = useCallback(
@@ -124,7 +124,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
       feature,
       session,
       projects,
-      panelExpanded: expanded && feature !== null,
+      panelExpanded: expanded && (feature !== null || activeTab === MAIN_TAB),
       expandPanel: setExpanded,
       addProject: () => {
         setTreeSheet(false);
@@ -139,8 +139,8 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
         select({ view: "feature", feature: id, session: null, panel: null });
         setTreeSheet(false);
       },
-      openLive: () => {
-        select({ view: "live", feature: null, session: null, panel: null });
+      openMain: () => {
+        select({ view: "main", feature: null, session: null, panel: null });
         setTreeSheet(false);
       },
       tabs,
@@ -150,7 +150,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
         const next = close(id);
         if (id !== activeTab) return;
         setExpanded(false);
-        select(next === null ? { view: "project", feature: null, session: null, panel: null } : tabPlace(next));
+        select(next === MAIN_TAB && compact ? { view: "project", feature: null, session: null, panel: null } : tabPlace(next));
       },
       focusComposer: () => {
         setTreeSheet(false);
@@ -193,7 +193,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
     [],
   );
 
-  const showTabs = !(expanded && feature !== null);
+  const showTabs = !(expanded && (feature !== null || activeTab === MAIN_TAB));
   return (
     <WorkspaceContext.Provider value={workspace}>
       <Shown />
@@ -244,9 +244,9 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
           </Sheet>
         </>
       ) : null}
-      <Dialog open={expanded && feature !== null} onOpenChange={setExpanded}>
+      <Dialog open={expanded && (feature !== null || activeTab === MAIN_TAB)} onOpenChange={setExpanded}>
         <DialogContent showCloseButton={false} className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none" aria-describedby={undefined}>
-          <DialogTitle className="sr-only">{feature?.title ?? "Feature"}</DialogTitle>
+          <DialogTitle className="sr-only">{feature?.title ?? (activeTab === MAIN_TAB ? "main" : "Feature")}</DialogTitle>
           <TabContent />
         </DialogContent>
       </Dialog>

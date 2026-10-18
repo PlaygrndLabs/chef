@@ -1,10 +1,10 @@
 # Self-hosting Chef
 
-Chef runs on Cloudflare: the dashboard, projects, agents, sandboxes, previews and repos all live in your Cloudflare account, so work goes on when no browser is open. You use it from any browser.
+Chef runs on Cloudflare: the dashboard, projects, agents, sandboxes with your running apps, and repos all live in your Cloudflare account, so work goes on when no browser is open. You use it from any browser.
 
 ## What you need
 
-- A Cloudflare account on the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) ($5 a month), with Containers and Artifacts available. Sandboxes and previews run there.
+- A Cloudflare account on the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) ($5 a month), with Containers and Artifacts available. Sandboxes run there, each with Docker and the whole app of one branch.
 - A model provider: an Anthropic API key, or any Anthropic-compatible provider (base URL and key). You add it in Settings after the deploy.
 - To deploy from the command line: Node 22.18 or later, pnpm 10, git and Docker (to build the sandbox image).
 
@@ -12,10 +12,11 @@ Chef runs on Cloudflare: the dashboard, projects, agents, sandboxes, previews an
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/PlaygrndLabs/chef)
 
-1. Press the button. Cloudflare copies Chef into a new repository on your GitHub or GitLab account and connects it to Workers Builds.
+1. Press the button. Cloudflare copies Chef into a new repository on your GitHub or GitLab account and connects it to Workers Builds. If you give the Worker another name than `chef`, its Artifacts namespace, Workflow, memory index and app router take that name too, so several Chefs can share an account.
 2. Set `CHEF_PASSWORD`, the password you will sign in with. Use at least 8 characters; `openssl rand -base64 24` makes a good one. If you leave the example value, Chef ignores it and asks the first visitor to pick a password.
 3. Deploy. The build runs Chef's `deploy` script (`pnpm run deploy`): it builds the dashboard and the sandbox image, creates the memory index if it is missing, and deploys the Worker with its Durable Objects, container, Workflow and Artifacts namespace.
-4. Open `https://chef.<your-subdomain>.workers.dev`, sign in, and fill in Settings: your model provider and the Cloudflare account for previews. Then create your first project.
+4. The API token Workers Builds makes can edit Workers Scripts, KV and R2 only, so the first build stops with a message about the token. Open the Worker's Settings > Builds to see which token it uses, add Containers, Artifacts and Vectorize (Edit) to it under My Profile > API Tokens, and retry the build.
+5. Open `https://<worker name>.<your-subdomain>.workers.dev`, sign in, and fill in Settings: your model provider and the Cloudflare account that gives running apps their addresses. Then create your first project.
 
 To update, pull this repository into your copy and push; Workers Builds deploys every push to its `main` branch:
 
@@ -47,7 +48,7 @@ Any secret from [Settings](#settings) that the repository has is passed to the W
 
 ## More than one Chef in an account
 
-`pnpm run deploy --name <name>`, or the `deploy` workflow's `name` input, deploys a separate Chef with its own Artifacts namespace (`<name>`), Workflow (`<name>-upstream-sync`), memory index (`<name>-memory`) and project Workers (`<name>-<project>`). It is how changes to Chef itself are tried on Cloudflare before they reach the main deploy. The `cleanup` workflow removes such a copy and everything it created.
+`pnpm run deploy --name <name>`, or the `deploy` workflow's `name` input, deploys a separate Chef with its own Artifacts namespace (`<name>`), Workflow (`<name>-upstream-sync`), memory index (`<name>-memory`) and app router (`<name>-app`). It is how changes to Chef itself are tried on Cloudflare before they reach the main deploy. The `cleanup` workflow removes such a copy and everything it created.
 
 ## Scripts and the API
 
@@ -68,7 +69,7 @@ A self-hosted Chef is set up from its own dashboard, like any other app. On the 
 | Tab | What it holds | Needed | Same thing as a Worker secret |
 | --- | --- | --- | --- |
 | Model | Claude through your Anthropic API key, or any Anthropic-compatible provider (base URL and key); the planner, reviewer and coder model ids; parallel attempts per feature | Yes | `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`; `PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `ATTEMPTS` |
-| Previews | Cloudflare account id and an API token that can edit Workers, for each feature's live preview | Yes | `CF_ACCOUNT_ID`, `CF_API_TOKEN` |
+| App addresses | Cloudflare account id and an API token that can edit Workers, for the small router that gives each branch's running app its address | Yes | `CF_ACCOUNT_ID`, `CF_API_TOKEN` |
 | Voice | An OpenAI key (GPT-Live), or a provider that serves the OpenAI Realtime API (base URL with `/v1`, and key) | No | `OPENAI_API_KEY`, or `VOICE_BASE_URL` and `VOICE_API_KEY` |
 | Routing | A TypeSafe key, so Jev routes requests in about 100ms; without it Claude routes them | No | `TYPESAFE_API_KEY` |
 | Password | The password for signing in from a browser | For browsers | `CHEF_PASSWORD` |

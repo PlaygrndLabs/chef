@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, Budget, CloudflareView, FeatureArrangement, FeatureLayout, FeatureSpec, LearnedRule, LiveStatus, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureMap, FeatureSpec, MapEdit, LearnedRule, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionHistory, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -21,7 +21,7 @@ export async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = (body: unknown): RequestInit => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
-export type Source = "app" | "deployment";
+export type Source = "app" | "deployment" | "managed";
 
 export interface ProviderView {
   readonly kind: string;
@@ -31,6 +31,7 @@ export interface ProviderView {
 }
 
 export interface SettingsView {
+  readonly managed: { readonly by: string } | null;
   readonly llm: ProviderView | null;
   readonly voice: ProviderView | null;
   readonly jev: { readonly keyHint: string; readonly source: Source } | null;
@@ -71,7 +72,7 @@ export const keysApi = {
   },
 };
 
-export type ShareKind = "session" | "preview";
+export type ShareKind = "session" | "app";
 
 export interface ShareView {
   readonly shareId: string;
@@ -92,8 +93,8 @@ export function sharesApi(project: string) {
       const response = await fetch(`/api/shares/${shareId}`, { method: "DELETE" });
       if (!response.ok) throw new ApiError(((await response.json().catch(() => ({}))) as { error?: string }).error ?? `${response.status} ${response.statusText}`, response.status);
     },
-    endPreviewLinks: async () => {
-      const response = await fetch(`/api/projects/${project}/preview-key`, { method: "POST" });
+    closeOpenApps: async () => {
+      const response = await fetch(`/api/projects/${project}/app-key`, { method: "POST" });
       if (!response.ok) throw new ApiError(((await response.json().catch(() => ({}))) as { error?: string }).error ?? `${response.status} ${response.statusText}`, response.status);
     },
   };
@@ -125,7 +126,7 @@ export function sharedApi(input: { readonly base: string; readonly headers?: Rea
     session: (project: string, id: string) => call<{ record: SessionRecord }>(`${base}/api/projects/${project}/sessions/${id}`, init()),
     turns: (project: string, id: string) => call<SessionTurn[]>(`${base}/api/projects/${project}/sessions/${id}/turns`, init()),
     changes: (project: string, id: string) => call<SessionChanges>(`${base}/api/projects/${project}/sessions/${id}/changes`, init()),
-    previewState: (link: string, retry: boolean) => fetch(`${base}${link}?state=1${retry ? "&retry=1" : ""}`, init()).catch(() => null),
+    appState: (link: string, retry: boolean) => fetch(`${base}${link}?state=1${retry ? "&retry=1" : ""}`, init()).catch(() => null),
   };
 }
 
@@ -152,6 +153,8 @@ export function agentsApi(project: string | null) {
 export interface ProjectEntry {
   readonly name: string;
   readonly createdAt: number;
+  readonly updatedAt?: number;
+  readonly note?: string;
 }
 
 export interface NewProject {
@@ -253,14 +256,15 @@ export interface GitLinkView {
 }
 
 export interface ProjectSettingsView {
-  readonly previewIdleMinutes: number;
+  readonly appIdleMinutes: number;
   readonly attempts?: number | null;
+  readonly merge?: "auto" | "manual";
   readonly git: GitLinkView | null;
 }
 
 export interface GitLinkUpdate {
   readonly url: string;
-  readonly branch: string;
+  readonly branch?: string;
   readonly token?: string;
   readonly github?: boolean;
   readonly mode: OutboundMode;
@@ -268,8 +272,9 @@ export interface GitLinkUpdate {
 }
 
 export interface ProjectSettingsUpdate {
-  readonly previewIdleMinutes?: number | null;
+  readonly appIdleMinutes?: number | null;
   readonly attempts?: number | null;
+  readonly merge?: "auto" | "manual";
   readonly git?: GitLinkUpdate | null;
 }
 
@@ -330,8 +335,8 @@ export interface MemoryView {
   readonly rules: readonly LearnedRule[];
 }
 
-export interface LiveApp {
-  readonly status: LiveStatus;
+export interface MainApp {
+  readonly status: AppStatus;
   readonly commitId: string;
   readonly url: string | null;
   readonly error?: string;
@@ -341,8 +346,10 @@ export interface LiveApp {
 export interface ProjectSpec {
   readonly commitId: string | null;
   readonly features: readonly FeatureSpec[];
-  readonly live?: LiveApp | null;
+  readonly map?: FeatureMap;
+  readonly mainApp?: MainApp | null;
   readonly layout?: FeatureLayout;
+  readonly fresh?: boolean;
 }
 
 export interface ProjectBudget {
@@ -353,7 +360,7 @@ export interface ProjectBudget {
 
 export interface Spending {
   readonly caps: { readonly org: number | null; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>> };
-  readonly ledger: { readonly month: string; readonly org: number; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>> };
+  readonly ledger: { readonly month: string; readonly org: number; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>>; readonly parts?: Readonly<Partial<Record<"model" | "router" | "voice", number>>> };
 }
 
 export const usageApi = {
@@ -365,16 +372,21 @@ export function projectApi(project: string) {
   const base = `/api/projects/${project}`;
   return {
     spec: () => call<ProjectSpec>(`${base}/spec`),
-    redeployLive: () => call<{ ok: boolean }>(`${base}/live`, { method: "POST" }),
+    restartMainApp: () => call<{ ok: boolean }>(`${base}/main-app`, { method: "POST" }),
     arrange: (id: string, change: FeatureArrangement) => call<{ layout: FeatureLayout }>(`${base}/features/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(change) }),
+    editMap: (edit: MapEdit) => call<{ commitId: string | null; id: string | null }>(`${base}/feature-map`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(edit) }),
     removeFeature: (id: string) => call<{ featureIds: string[]; commitId: string | null }>(`${base}/features/${id}`, { method: "DELETE" }),
     sessions: () => call<SessionRecord[]>(`${base}/sessions`),
     session: (id: string) => call<{ record: SessionRecord; budget: Budget }>(`${base}/sessions/${id}`),
     turns: (id: string) => call<SessionTurn[]>(`${base}/sessions/${id}/turns`),
     changes: (id: string) => call<SessionChanges>(`${base}/sessions/${id}/changes`),
+    sessionHistory: (id: string) => call<SessionHistory>(`${base}/sessions/${id}/history`),
+    sessionCommit: (id: string, commit: string) => call<CommitChanges>(`${base}/sessions/${id}/history/${commit}`),
     cloudflare: (id: string) => call<CloudflareView>(`${base}/sessions/${id}/cloudflare`),
     drop: (id: string, reason: string) => call<{ state: string }>(`${base}/sessions/${id}/drop`, post({ reason })),
     retry: (id: string, guidance: string) => call<{ state: string }>(`${base}/sessions/${id}/retry`, post({ guidance })),
+    merge: (id: string) => call<{ state: string }>(`${base}/sessions/${id}/merge`, post({})),
+    newVersion: (id: string, prompt?: string) => call<{ sessionId: string; version: number | null }>(`${base}/sessions/${id}/version`, post(prompt ? { prompt } : {})),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
     route: (prompt: string) => call<RouteDecision>(`${base}/route`, post({ prompt })),
@@ -383,6 +395,8 @@ export function projectApi(project: string) {
     saveBudget: (cap: number | null) => call<ProjectBudget>(`${base}/budget`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ cap }) }),
     saveSettings: (update: ProjectSettingsUpdate) => call<ProjectSettingsView>(`${base}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),
     git: () => call<{ settings: GitLinkView | null; state: SyncState | null }>(`${base}/git`),
+    history: (limit: number) => call<MainHistory>(`${base}/history?limit=${limit}`),
+    commit: (id: string) => call<CommitChanges>(`${base}/history/${id}`),
     syncGit: () => call<{ ok: boolean }>(`${base}/git/sync`, { method: "POST" }),
     env: () => call<ProjectEnvView>(`${base}/env`),
     saveEnv: (update: EnvUpdate) => call<ProjectEnvView>(`${base}/env`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(update) }),

@@ -9,8 +9,8 @@ const SPLITS = new Map([
   [
     EDIT_AND_DELETE,
     [
-      { kind: "new", prompt: "Let people delete an item from the todo list", parent: "todo-add" },
-      { kind: "new", prompt: "Let people edit an item in the todo list", parent: "todo-add" },
+      { kind: "new", prompt: "Let people delete an item from the todo list", parent: "todo-add", path: "Press Delete next to an item." },
+      { kind: "new", prompt: "Let people edit an item in the todo list", parent: "todo-add", path: "Press Edit next to an item." },
     ] as const,
   ],
 ]);
@@ -25,7 +25,7 @@ async function todoWithParts() {
   return { w, remove, edit };
 }
 
-describe("arranging the feature tree", () => {
+describe("arranging the feature list", () => {
   it("renames and moves features, and the router sees the new names and places", async () => {
     const { w, edit } = await todoWithParts();
     await w.orchestrator.arrange("todo-add", { title: "Todo list" });

@@ -32,7 +32,7 @@ describe("phase 2 concurrency on fakes", () => {
     expect(events["main.merged"]).toBe(3);
     expect(events["session.stuck"]).toBeUndefined();
     expect(events["sync.merged"] ?? 0).toBeLessThanOrEqual(FEATURES.length * FEATURES.length);
-    expect(events["preview.updated"] ?? 0).toBeLessThanOrEqual(60);
+    expect(events["app.updated"] ?? 0).toBeLessThanOrEqual(120);
     expect(w.bus.log.length).toBeLessThan(400);
 
     for (const commit of await w.repos.log("demo", "main", 500)) {

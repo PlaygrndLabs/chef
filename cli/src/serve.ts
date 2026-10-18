@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, runnable, agentsOf, cloudflareView, previewBranch, previewName, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
+import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, SessionPump, agentsOf, cloudflareView, type CloudflareView, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { newToken } from "@chef/core/access";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";
@@ -24,7 +24,7 @@ export const TODO_CLOUD_PROMPT = "Add an item to a todo list that also syncs to 
 export const TODO_SPLIT_PROMPT = "Let people shout and reverse their todo items";
 
 function splits(): Map<string, readonly SplitPart[]> {
-  return new Map([[TODO_SPLIT_PROMPT, BENCH_ITEMS.filter((item) => item.id === "shout" || item.id === "reverse").map((item): SplitPart => ({ kind: "new", prompt: promptFor(item), parent: "todo-add" }))]]);
+  return new Map([[TODO_SPLIT_PROMPT, BENCH_ITEMS.filter((item) => item.id === "shout" || item.id === "reverse").map((item): SplitPart => ({ kind: "new", prompt: promptFor(item), parent: "todo-add", path: `Use ${item.id} on an item.` }))]]);
 }
 
 const TYPES: Readonly<Record<string, string>> = {
@@ -63,17 +63,11 @@ export async function serve(options: { readonly port: number; readonly project?:
   let shared: StoredEnv = {};
   let instructions: SharedInstructions | null = null;
   const cipher = await aesCipher(envKeyBytes(newEnvKey()));
-  const w = localWorld({ script: script(), presets: presets(), splits: splits(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), instructions: async () => instructions?.text ?? "", ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
+  const w = localWorld({ script: script(), presets: presets(), splits: splits(), real: options.real, config: { environment: async () => envNames(mergeEnv(shared, env)), instructions: async () => instructions?.text ?? "", merge: async () => readProjectSettings(projectSettings).merge, ...(options.attempts ? { specialization: { ...DEFAULT_SPECIALIZATION, attempts: options.attempts } } : {}) } });
   await w.orchestrator.bootstrap(templateTree());
-  let driving: Promise<void> | null = null;
-  const drive = () => {
-    driving ??= (async () => {
-      while ((await w.orchestrator.sessions()).some(runnable)) await w.orchestrator.drain(1);
-    })()
-      .catch((error: unknown) => log(`drive failed: ${error instanceof Error ? error.message : String(error)}`))
-      .finally(() => {
-        driving = null;
-      });
+  const pump = new SessionPump();
+  const drive = (): void => {
+    pump.kick(w.orchestrator, () => setTimeout(drive, 10)).catch((error: unknown) => log(`drive failed: ${error instanceof Error ? error.message : String(error)}`));
   };
   const link: ChefLink = {
     cursor: async () => w.bus.log.length,
@@ -105,21 +99,20 @@ export async function serve(options: { readonly port: number; readonly project?:
     const record = await w.orchestrator.session(id);
     const name = record.project;
     const box = (sandbox: string): SandboxFacts => ({ name: sandbox, objectId: createHash("sha256").update(sandbox).digest("hex"), running: false, exit: null });
-    const branch = previewBranch(record.previewKey);
     return cloudflareView({
       accountId: null,
       engine: "chef",
       project: name,
-      projectWorker: name,
+      router: "chef-app",
       projectObject: createHash("sha256").update(name).digest("hex"),
       namespaces: {},
       containerApp: { name: "chef-sessionagent", id: null },
       main: { remote: null, commitId: (await w.orchestrator.mainTree()).commitId },
       session: { id, fork: record.fork, remote: null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: (record.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
       agents: agentsOf(record),
-      sandboxes: { session: box(id), lanes: Object.fromEntries((record.lanes ?? []).map((l) => [l.role, box(`${id}--${l.role}`)])), preview: null },
-      preview: { name: previewName(branch), branch, url: record.preview?.url ?? null, versionId: null, commitId: record.preview?.commitId ?? null, awake: false },
-      live: null,
+      sandboxes: { session: box(id), lanes: Object.fromEntries((record.lanes ?? []).map((l) => [l.role, box(`${id}--${l.role}`)])), main: null },
+      app: { name: `${id}-${name}`, url: record.app?.url ?? null, status: record.app?.status ?? null, commitId: record.app?.commitId ?? null },
+      mainApp: null,
     });
   };
 
@@ -135,6 +128,16 @@ export async function serve(options: { readonly port: number; readonly project?:
         const record = await w.orchestrator.retry(id, (await body())["guidance"] ?? "");
         drive();
         return Response.json({ state: record.machine.state }, { status: 202 });
+      }
+      if (request.method === "POST" && sub === "merge") {
+        const record = await w.orchestrator.approveMerge(id);
+        drive();
+        return Response.json({ state: record.machine.state }, { status: 202 });
+      }
+      if (request.method === "POST" && sub === "version") {
+        const record = await w.orchestrator.newVersion(id, (await body())["prompt"] ?? null);
+        drive();
+        return Response.json({ sessionId: record.id, version: record.version ?? null }, { status: 202 });
       }
       if (request.method === "POST" && sub === "steer") {
         const message = (await body())["message"]?.trim();
@@ -195,7 +198,7 @@ export async function serve(options: { readonly port: number; readonly project?:
 
   interface LocalShare {
     readonly shareId: string;
-    readonly kind: "session" | "preview";
+    readonly kind: "session" | "app";
     readonly project: string;
     readonly id: string;
     readonly name: string;
@@ -206,9 +209,9 @@ export async function serve(options: { readonly port: number; readonly project?:
   const shares = new Map<string, LocalShare>();
   const sharesRequest = async (request: Request, name: string): Promise<Response> => {
     if (request.method === "GET") return Response.json({ shares: [...shares.values()].filter((share) => share.project === name) });
-    const body = (await request.json().catch(() => ({}))) as { kind?: "session" | "preview"; id?: string; expiresInDays?: number | null };
-    if ((body.kind !== "session" && body.kind !== "preview") || !body.id) return Response.json({ error: "say what to share" }, { status: 400 });
-    const title = (await w.orchestrator.sessions()).find((record) => record.id === body.id || record.previewKey === body.id)?.plan.feature.title ?? body.id;
+    const body = (await request.json().catch(() => ({}))) as { kind?: "session" | "app"; id?: string; expiresInDays?: number | null };
+    if ((body.kind !== "session" && body.kind !== "app") || !body.id) return Response.json({ error: "say what to share" }, { status: 400 });
+    const title = (await w.orchestrator.sessions()).find((record) => record.id === body.id)?.plan.feature.title ?? body.id;
     const { id, token } = newToken();
     const now = Date.now();
     const share: LocalShare = { shareId: id, kind: body.kind, project: name, id: body.id, name: title, createdAt: now, expiresAt: body.expiresInDays ? now + body.expiresInDays * 86_400_000 : null, lastUsedAt: null };
@@ -266,8 +269,14 @@ export async function serve(options: { readonly port: number; readonly project?:
       }
       if (request.method === "GET" && action === "spec") {
         const main = await w.orchestrator.mainTree();
-        return Response.json({ commitId: main.commitId, features: readSpec(main.tree), layout: await w.orchestrator.layout() });
+        return Response.json({ commitId: main.commitId, features: readSpec(main.tree), map: readFeatureMap(main.tree), layout: await w.orchestrator.layout() });
       }
+      const featureMap = FEATURE_MAP_ROUTE.exec(url.pathname);
+      if (featureMap) return (await featureMapRequest(request, w.orchestrator, Boolean(featureMap[1]))).response;
+      const sessionHistory = SESSION_HISTORY_ROUTE.exec(url.pathname);
+      if (sessionHistory && request.method === "GET") return sessionHistoryResponse(w.orchestrator, sessionHistory[1] as string, sessionHistory[2] ?? null);
+      const history = HISTORY_ROUTE.exec(url.pathname);
+      if (history && request.method === "GET") return historyResponse(w.orchestrator, history[1] ?? null, url.searchParams.get("limit"));
       const feature = FEATURE_ROUTE.exec(url.pathname);
       if (feature) return (await featureRequest(request, w.orchestrator, feature[1] as string)).response;
       const session = action ? /^sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/.exec(action) : null;

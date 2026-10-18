@@ -8,6 +8,7 @@ import { boot } from "@/lib/boot";
 import { preloadable } from "@/lib/lazy";
 import { pickProject, rememberProject, useProjects } from "@/lib/projects";
 import { useSelection } from "@/lib/selection";
+import type { ProjectEntry } from "@/lib/api";
 
 const Start = preloadable(() => import("@/components/start").then((m) => m.Start));
 
@@ -32,9 +33,9 @@ function LoadFailed({ message, onRetry }: { readonly message: string; readonly o
   );
 }
 
-function ConnectedApp({ initial }: { readonly initial: readonly string[] | null }) {
+function ConnectedApp({ initial }: { readonly initial: readonly ProjectEntry[] | null }) {
   const [selection, select] = useSelection();
-  const { projects, failed, refresh } = useProjects(initial);
+  const { projects, entries, failed, refresh } = useProjects(initial);
   const opened = useCallback(
     (name: string) => {
       rememberProject(name);
@@ -50,12 +51,12 @@ function ConnectedApp({ initial }: { readonly initial: readonly string[] | null 
     },
     [select],
   );
-  if (projects === null) return failed ? <LoadFailed message={failed} onRetry={refresh} /> : null;
+  if (projects === null || entries === null) return failed ? <LoadFailed message={failed} onRetry={refresh} /> : null;
   const project = pickProject(projects, selection.project);
   if (project === null)
     return (
       <Suspense fallback={null}>
-        <Start projects={projects} selection={selection} select={select} onOpen={open} onCreated={opened} />
+        <Start projects={entries} selection={selection} select={select} onOpen={open} onCreated={opened} />
         <Shown />
       </Suspense>
     );

@@ -1,26 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Rocket, Share2, ShieldCheck, Trophy, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Circle, Code2, FlaskConical, GitBranch, GitFork, GitMerge, ListChecks, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, OctagonX, RotateCcw, Share2, ShieldCheck, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChangesTab, ChecksTab, DetailsTab, Empty, RoleWork, SessionPreview } from "@/components/session-sections";
+import { ChecksTab, DetailsTab, Empty, RoleWork, SessionApp } from "@/components/session-sections";
 import { KeyPrompt } from "@/components/environment";
-import { KindBadges, StatusDot, StatusPill } from "@/components/status";
+import { BranchView } from "@/components/history-view";
+import { KindBadges, PromptText, StatusDot, StatusPill } from "@/components/status";
 import { isActive } from "@/lib/events";
 import { clock, PLAIN_STATE, stateTone } from "@/lib/format";
-import { currentSession, heldBy, isChore, relationsOf, statusOf, waitsForBudget, waitsForKey, type FeatureNode, type SessionNode } from "@/lib/model";
+import { currentSession, heldBy, isChore, relationsOf, nodeStatus, waitsForBudget, waitsForKey, waitsForMerge, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
-import { activity, plainReason, progress, STAGES, updates, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
+import { activity, plainReason, progress, STAGES, updates, whatFailed, type Update, type UpdateIcon, type UpdateTone } from "@/lib/progress";
 import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 import { ShareDialog } from "@/components/share-dialog";
 import { host } from "@/host";
 
-const ICONS: Readonly<Record<UpdateIcon, typeof Check>> = { plan: ListChecks, test: FlaskConical, code: Code2, review: MessageSquareText, check: ShieldCheck, live: Rocket, alert: AlertTriangle, stop: OctagonX, sync: GitMerge, pick: Trophy };
+const ICONS: Readonly<Record<UpdateIcon, typeof Check>> = { plan: ListChecks, test: FlaskConical, code: Code2, review: MessageSquareText, check: ShieldCheck, merged: GitMerge, alert: AlertTriangle, stop: OctagonX, sync: GitMerge, pick: Trophy };
 const TONE: Readonly<Record<UpdateTone, string>> = { ok: "text-ok", run: "text-run", bad: "text-bad", idle: "text-muted-foreground" };
 
 function Steps({ node }: { readonly node: SessionNode }) {
@@ -120,7 +121,9 @@ function UpdateRow({ update }: { readonly update: Update }) {
     return (
       <div className="flex max-w-[80%] flex-col items-end gap-0.5 self-end">
         {update.note ? <span className="text-xs text-muted-foreground">Your note for the next step</span> : null}
-        <div className="rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">{update.text}</div>
+        <div className="rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">
+          <PromptText text={update.text} />
+        </div>
       </div>
     );
   const Icon = ICONS[update.icon];
@@ -161,11 +164,45 @@ function UpdateRow({ update }: { readonly update: Update }) {
   );
 }
 
+function MergePrompt({ node }: { readonly node: SessionNode }) {
+  const { api, data } = useWorkspace();
+  const [busy, setBusy] = useState(false);
+  const upstream = Boolean(node.record?.upstream);
+  const merge = async () => {
+    setBusy(true);
+    try {
+      await api.merge(node.id);
+      toast.success(upstream ? "Merging into its parent feature" : "Merging into main");
+      data.refresh();
+    } catch (error) {
+      toast.error("Could not merge", { description: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-3 border border-brand/30 bg-brand/5 p-4" data-merge-ready={node.id}>
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">Ready to merge</div>
+        <p className="text-sm text-muted-foreground">
+          {upstream ? "This build passed every check. Merging puts it on the branch of its parent feature, which takes it to main when it is done. If the parent changed since, Chef takes those changes in and checks again first." : "This build passed every check. Merging puts it on main, and main's app, the release candidate, runs it next. If main changed since, Chef takes those changes in and checks again first."}
+          {node.version !== null ? " The other versions of this feature stop and are archived." : ""}
+        </p>
+      </div>
+      <Button type="button" size="sm" onClick={() => void merge()} disabled={busy}>
+        <GitMerge />
+        {upstream ? "Merge into parent" : "Merge into main"}
+      </Button>
+    </div>
+  );
+}
+
 function NeedsYou({ node }: { readonly node: SessionNode }) {
   const { api, data, focusComposer } = useWorkspace();
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const feedback = node.record?.machine.feedback;
+  const reason = plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "");
+  const failed = whatFailed({ feedback: node.record?.machine.feedback, history: node.record?.history, verdict: node.live?.verdict ?? node.record?.verdict });
   const retry = async () => {
     setBusy(true);
     try {
@@ -181,24 +218,24 @@ function NeedsYou({ node }: { readonly node: SessionNode }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-bad/30 bg-bad/5 p-4" data-needs-you={node.id}>
       <div className="font-medium text-bad">Chef needs your help</div>
+      {reason ? (
+        <p className="text-sm" data-stuck-reason>
+          {reason}
+        </p>
+      ) : null}
+      {failed ? (
+        <section className="flex flex-col gap-1.5" data-what-failed>
+          <h4 className="kicker">What failed</h4>
+          <pre className="max-h-56 overflow-auto border border-dashed bg-background p-3 font-mono text-xs whitespace-pre-wrap">{failed}</pre>
+        </section>
+      ) : null}
       <p className="text-sm text-muted-foreground">
         Press Try again, tell Chef in the{" "}
         <button type="button" onClick={focusComposer} className="underline underline-offset-2 hover:text-foreground">
           chat
         </button>{" "}
-        what to do differently, or stop this build. The live app is not affected.
+        what to do differently, or stop this build. Main and its app are not affected.
       </p>
-      {feedback ? (
-        <Collapsible>
-          <CollapsibleTrigger className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground">
-            What failed
-            <ChevronDown className="size-3" />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-background p-3 font-mono text-xs whitespace-pre-wrap">{feedback}</pre>
-          </CollapsibleContent>
-        </Collapsible>
-      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => void retry()} disabled={busy}>
           {busy ? <Loader2 className="animate-spin" /> : <RotateCcw />}
@@ -229,7 +266,7 @@ function StopDialog({ node, open, onOpenChange }: { readonly node: SessionNode; 
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Stop building this?</AlertDialogTitle>
-          <AlertDialogDescription>Chef stops working on it and nothing goes live. The work so far is kept, and you can start over later.</AlertDialogDescription>
+          <AlertDialogDescription>Chef stops working on it and nothing is merged. The work so far is kept, and you can start over later.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep going</AlertDialogCancel>
@@ -280,7 +317,7 @@ function Related({ node }: { readonly node: SessionNode }) {
             </li>
           ))}
         </ol>
-        <p className="text-xs text-muted-foreground">{r.parent ? `This build continues from ${r.parent.id}. ` : ""}Each new build starts from the live app, so earlier work that went live is kept.</p>
+        <p className="text-xs text-muted-foreground">{r.parent ? `This build continues from ${r.parent.id}. ` : ""}Each new build starts from main, so earlier work that was merged is kept.</p>
       </div>
     </section>
   );
@@ -353,7 +390,7 @@ function PickReasons({ node }: { readonly node: SessionNode }) {
 }
 
 const SECTIONS: readonly { readonly value: PanelTab; readonly label: string }[] = [
-  { value: "preview", label: "Preview" },
+  { value: "app", label: "App" },
   { value: "messages", label: "Messages" },
   { value: "changes", label: "Changes" },
   { value: "checks", label: "Checks" },
@@ -371,7 +408,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
   const active = node ? isActive(node.state) : false;
   const held = node ? heldBy(node) : null;
   const criteria = feature.spec?.acceptance ?? [];
-  const isLive = node ? node.state === "merged" : feature.status === "merged";
+  const isMerged = node ? node.state === "merged" : feature.status === "merged";
   useEffect(() => {
     if (active) end.current?.scrollIntoView({ block: "end" });
   }, [list.length, node?.id, active]);
@@ -383,7 +420,7 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
             <TryTabs node={node} />
             <Steps node={node} />
             <Team node={node} />
-            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)} It goes on when the budget is raised or next month starts.` : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : held ? `Passed review. Waiting for hotfix ${held} to go live first.` : active ? activity(node.state, timeline, null) : p.now}</p>
+            <p className={cn("text-sm", p.failed && "font-medium text-bad")}>{node.state === "stuck" ? plainReason(node.live?.stuck ?? node.record?.machine.reason ?? "") || p.now : waitsForBudget(node) ? `Paused. ${waitsForBudget(node)} It goes on when the budget is raised or next month starts.` : waitsForKey(node) ? `Waiting for ${node.needs.join(", ")}` : waitsForMerge(node) ? "Passed every check. Waiting for you to merge it into main." : held ? `Passed review. Waiting for hotfix ${held} to be merged first.` : active ? activity(node.state, timeline, null) : p.now}</p>
           </div>
         </div>
       ) : null}
@@ -401,11 +438,11 @@ function Messages({ feature, node }: { readonly feature: FeatureNode; readonly n
           {node ? <Related node={node} /> : null}
           {criteria.length ? (
             <section className="flex flex-col gap-2.5" data-criteria>
-              <h2 className="kicker">{isLive ? "What it does" : "What it must do to go live"}</h2>
+              <h2 className="kicker">{isMerged ? "What it does" : "What it must do to be merged"}</h2>
               <ul className="flex flex-col gap-2">
                 {criteria.map((c) => (
                   <li key={c.id} className="flex gap-2.5">
-                    {isLive ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 border border-muted-foreground" />}
+                    {isMerged ? <Check className="mt-1 size-4 shrink-0 text-ok" strokeWidth={2.6} /> : <span className="mt-2 size-2 shrink-0 border border-muted-foreground" />}
                     <span>{c.text}</span>
                   </li>
                 ))}
@@ -427,7 +464,7 @@ function Scroll({ children }: { readonly children: React.ReactNode }) {
   return <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>;
 }
 
-function Sharing(props: { readonly project: string; readonly title: string; readonly session: string; readonly preview: string | null; readonly onClose: () => void }) {
+function Sharing(props: { readonly project: string; readonly title: string; readonly session: string; readonly onClose: () => void }) {
   const Custom = host.Share;
   if (Custom) return <Custom project={props.project} kind="session" id={props.session} title={props.title} onClose={props.onClose} />;
   return <ShareDialog target={props} open onOpenChange={(open) => (open ? undefined : props.onClose())} />;
@@ -438,7 +475,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
   const node = currentSession(feature, selection.session);
   const [stopping, setStopping] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const section = selection.panel ?? "preview";
+  const section = selection.panel ?? "app";
   const active = node ? isActive(node.state) : false;
   const chore = node ? isChore(node) : feature.id.startsWith("chore-") && !feature.onMain;
 
@@ -458,12 +495,13 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
     <Tabs value={section} onValueChange={(v) => select({ panel: v as PanelTab })} className="flex h-full min-h-0 flex-col gap-0 bg-background" data-view="feature" data-feature={feature.id} data-session={node?.id} data-state={node?.state}>
       <header className="flex h-12 shrink-0 items-center gap-2.5 px-4">
         <h1 className="min-w-0 truncate text-base font-medium">{feature.title}</h1>
-        <StatusPill status={node ? statusOf(node.state) : feature.status} />
+        <StatusPill status={node ? nodeStatus(node) : feature.status} />
         {node ? <KindBadges node={node} /> : null}
         {node ? (
           <span className="hidden truncate font-mono text-xs text-muted-foreground xl:inline" data-build-label>
             build {node.id}
             {node.attempt && node.attempt.of > 1 ? ` · try ${node.attempt.index} of ${node.attempt.of}` : ""}
+            {node.version !== null ? ` · version ${node.version}` : ""}
           </span>
         ) : null}
         <span className="flex-1" />
@@ -527,19 +565,19 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
           ))}
         </TabsList>
       </div>
-      {node?.state === "stuck" || (node && waitsForKey(node)) ? (
+      {node?.state === "stuck" || (node && (waitsForKey(node) || waitsForMerge(node))) ? (
         <div className="max-h-[45%] shrink-0 overflow-y-auto border-b p-3">
-          {node.state === "stuck" ? <NeedsYou node={node} /> : <KeyPrompt names={node.needs} api={api} onSaved={data.refresh} />}
+          {node.state === "stuck" ? <NeedsYou node={node} /> : waitsForKey(node) ? <KeyPrompt names={node.needs} api={api} onSaved={data.refresh} /> : <MergePrompt node={node} />}
         </div>
       ) : null}
-      <TabsContent value="preview" className="flex min-h-0 flex-1 flex-col p-4">
-        <SessionPreview feature={feature} node={node} />
+      <TabsContent value="app" className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+        <SessionApp feature={feature} node={node} />
       </TabsContent>
       <TabsContent value="messages" className="flex min-h-0 flex-1 flex-col">
         <Messages feature={feature} node={node} />
       </TabsContent>
       <TabsContent value="changes" className="flex min-h-0 flex-1 flex-col">
-        <Scroll>{node ? <ChangesTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>
+        {node ? <BranchView key={node.id} node={node} /> : <Scroll><Empty>Nothing built yet.</Empty></Scroll>}
       </TabsContent>
       <TabsContent value="checks" className="flex min-h-0 flex-1 flex-col">
         <Scroll>{node ? <ChecksTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>
@@ -548,7 +586,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
         <Scroll>{node ? <DetailsTab node={node} /> : <Empty>Nothing built yet.</Empty>}</Scroll>
       </TabsContent>
       {node ? <StopDialog node={node} open={stopping} onOpenChange={setStopping} /> : null}
-      {node && sharing ? <Sharing project={selection.project} title={feature.title} session={node.id} preview={node.record?.previewKey ?? null} onClose={() => setSharing(false)} /> : null}
+      {node && sharing ? <Sharing project={selection.project} title={feature.title} session={node.id} onClose={() => setSharing(false)} /> : null}
     </Tabs>
   );
 }

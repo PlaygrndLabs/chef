@@ -7,9 +7,11 @@ export interface TourOptions {
   readonly password?: string | undefined;
   readonly project?: string | undefined;
   readonly prompt?: string | undefined;
+  readonly repo?: string | undefined;
   readonly minutes: number;
   readonly everySeconds: number;
   readonly remove?: boolean;
+  readonly removeExisting?: boolean;
   readonly out: string;
   readonly log: (line: string) => void;
 }
@@ -35,11 +37,11 @@ export interface TourReport {
   featureRoute?: number;
   removed?: { readonly project: string; readonly listed: boolean; readonly ms: number };
   readonly sent: { readonly prompt: string; readonly answered: boolean; readonly retried: boolean }[];
-  readonly previewLoads: { readonly name: string; readonly loadedMs: number | null; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
+  readonly appLoads: { readonly name: string; readonly loadedMs: number | null; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
 }
 
 const SETTLE_MS = 15_000;
-const PREVIEW_LOAD_MS = 120_000;
+const APP_LOAD_MS = 120_000;
 const ROUTE_PROMPT = "Add a way to mark items as done";
 
 async function signIn(page: Page, url: string, password: string | undefined): Promise<void> {
@@ -76,10 +78,14 @@ async function json<T>(page: Page, path: string, init?: { method: string; data?:
   return (await response.json()) as T;
 }
 
-async function createInDialog(page: Page, project: string, report: TourReport, shot: (name: string) => Promise<void>): Promise<void> {
+async function createInDialog(page: Page, project: string, repo: string | undefined, report: TourReport, shot: (name: string) => Promise<void>): Promise<void> {
   await page.goto("/");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /new project/i }).first().click();
+  if (repo) {
+    await page.getByRole("radio", { name: "Other git host" }).click();
+    await page.getByLabel("Repository URL").fill(repo);
+  }
   await page.getByLabel("Project name").fill(project);
   await page.getByRole("button", { name: "Create project" }).click();
   const dialog = page.locator('[data-dialog="new-project"]');
@@ -116,14 +122,16 @@ export async function tour(options: TourOptions): Promise<TourReport> {
   const { chromium } = await import("playwright");
   mkdirSync(options.out, { recursive: true });
   const base = options.url.replace(/\/$/, "");
-  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, previewLoads: [], sent: [] };
+  const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, appLoads: [], sent: [] };
   const browser: Browser = await chromium.launch();
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
     const page = await context.newPage();
     page.on("pageerror", (error) => report.errors.push(`pageerror ${error.message}`));
     let leaving = false;
+    let deleting: string | null = null;
     page.on("response", (response) => {
+      if (deleting && response.status() === 409 && new RegExp(`/(api/projects|agents/project|app)/${deleting}[/?]`).test(response.url())) return;
       if (response.status() >= 400 && response.request().method() !== "HEAD") report.errors.push(`http ${response.status()} ${response.request().method()} ${response.url()}`);
     });
     page.on("console", (message) => {
@@ -154,9 +162,9 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       const timeline: { ms: number; phase: string; steps: string }[] = [];
       let loadedMs: number | null = null;
       let last = "";
-      while (Date.now() - started < PREVIEW_LOAD_MS) {
-        const phase = (await page.locator("[data-preview-load]").first().getAttribute("data-preview-load", { timeout: 100 }).catch(() => null)) ?? "none";
-        const steps = (await page.locator("[data-preview-load] [data-step]").allInnerTexts().catch(() => [] as string[])).map((step) => step.replace(/\s+/g, " ").trim()).join(" / ");
+      while (Date.now() - started < APP_LOAD_MS) {
+        const phase = (await page.locator("[data-app-load]").first().getAttribute("data-app-load", { timeout: 100 }).catch(() => null)) ?? "none";
+        const steps = (await page.locator("[data-app-load] [data-step]").allInnerTexts().catch(() => [] as string[])).map((step) => step.replace(/\s+/g, " ").trim()).join(" / ");
         if (`${phase}|${steps}` !== last) {
           last = `${phase}|${steps}`;
           timeline.push({ ms: Date.now() - started, phase, steps });
@@ -170,7 +178,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         } else loadedMs = null;
         await page.waitForTimeout(200);
       }
-      report.previewLoads.push({ name, loadedMs, timeline });
+      report.appLoads.push({ name, loadedMs, timeline });
       options.log(`${name}: ${loadedMs === null ? "did not load" : `loaded after ${loadedMs} ms`}; ${timeline.map((t) => `${t.ms}ms ${t.phase}`).join(", ")}`);
       await shot(`${name}-loaded`);
     };
@@ -190,7 +198,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     const project = options.project ?? report.projects[0];
     if (!project) return report;
     if (!report.projects.includes(project)) {
-      await createInDialog(page, project, report, shot).catch(async (error: unknown) => {
+      await createInDialog(page, project, options.repo, report, shot).catch(async (error: unknown) => {
         report.errors.push(`new project dialog ${error instanceof Error ? error.message : String(error)}`);
         await json(page, "/api/projects", { method: "POST", data: { name: project } }).catch(() => json(page, `/api/projects/${project}/bootstrap`, { method: "POST" }));
       });
@@ -199,8 +207,8 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     await go(`/?project=${project}`);
     await shot(`open-${project}`);
     const opened = (await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[])).at(-1);
-    if (opened) await watchLoad(`/?project=${project}&feature=${opened.featureId}&session=${opened.id}&panel=preview`, "preview-load");
-    await watchLoad(`/?project=${project}&view=live`, "live-load");
+    if (opened) await watchLoad(`/?project=${project}&feature=${opened.featureId}&session=${opened.id}&panel=app`, "app-load");
+    await watchLoad(`/?project=${project}&view=main`, "main-app-load");
     const routed = await json<{ intent: string; via: string; classifier?: { model: string; accepted: boolean } | null }>(page, `/api/projects/${project}/route`, { method: "POST", data: { prompt: ROUTE_PROMPT } }).catch((error: unknown) => {
       report.errors.push(`route ${error instanceof Error ? error.message : String(error)}`);
       return null;
@@ -234,7 +242,15 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     let round = 0;
     for (;;) {
       round++;
-      const sessions = await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[]);
+      const sessions = await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch((error: unknown) => {
+        report.errors.push(`round ${round}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2000));
+        return null;
+      });
+      if (!sessions) {
+        if (Date.now() > deadline) break;
+        await page.waitForTimeout(options.everySeconds * 1000);
+        continue;
+      }
       for (const s of sessions) report.states[s.id] = s.machine.state === "stuck" ? `stuck: ${s.machine.reason ?? ""} ${(s.machine.feedback ?? "").slice(0, 1500)}`.trim() : s.machine.state;
       const latest = sessions.at(-1);
       await go(`/?project=${project}`);
@@ -247,7 +263,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       if ((!running && (round > 1 || !options.prompt)) || Date.now() > deadline) {
         report.finished = !running;
         if (latest) {
-          for (const panel of ["preview", "messages", "changes", "details"]) {
+          for (const panel of ["app", "messages", "changes", "details"]) {
             await go(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=${panel}`);
             await shot(`final-${panel}`);
           }
@@ -286,8 +302,11 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     }
     writeFileSync(join(options.out, "events.jsonl"), events.map((e) => JSON.stringify(e)).join("\n"));
     if (options.remove) {
-      if (report.projects.includes(project)) report.errors.push(`remove: ${project} was there before the tour, so the tour left it`);
-      else await removeInSettings(page, project, report, shot).catch((error: unknown) => void report.errors.push(`remove: ${error instanceof Error ? error.message : String(error)}`));
+      if (report.projects.includes(project) && !(options.removeExisting && options.project)) report.errors.push(`remove: ${project} was there before the tour, so the tour left it`);
+      else {
+        deleting = project;
+        await removeInSettings(page, project, report, shot).catch((error: unknown) => void report.errors.push(`remove: ${error instanceof Error ? error.message : String(error)}`));
+      }
     }
     return report;
   } finally {

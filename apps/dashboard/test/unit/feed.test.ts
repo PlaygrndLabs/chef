@@ -115,6 +115,28 @@ describe("the live project feed", () => {
     stop();
   });
 
+  it("catches up over HTTP when the socket hangs without opening, and stops polling once it opens", async () => {
+    const timers: (() => void)[] = [];
+    let cleared = 0;
+    vi.stubGlobal("window", { setInterval: (tick: () => void) => ticks.push(tick), clearInterval: () => void cleared++, setTimeout: (run: () => void) => timers.push(run), clearTimeout: () => undefined });
+    const { fetch, calls } = serveEvents(3);
+    vi.stubGlobal("fetch", fetch);
+    const store = new Store();
+    const caughtUp = vi.fn();
+    const stop = connectFeed({ project: "shop", store, onEvents: () => undefined, onConnection: () => undefined, onCaughtUp: caughtUp });
+    await settle();
+    expect(calls).toEqual([]);
+    timers.forEach((run) => run());
+    for (let i = 0; i < 4; i++) await settle();
+    expect(calls).toEqual([0]);
+    expect(caughtUp).toHaveBeenCalledTimes(1);
+    expect(store.state.lastSeq).toBe(3);
+    expect(ticks).toHaveLength(1);
+    (FakeSocket.opened[0] as FakeSocket).emit("open");
+    expect(cleared).toBe(1);
+    stop();
+  });
+
   it("falls back to HTTP when the socket fails, and stays not ready until the server answers", async () => {
     let up = false;
     const { fetch } = serveEvents(1200);

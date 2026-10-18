@@ -4,8 +4,8 @@ import type { RouteDecision } from "../router/decision.ts";
 import type { LaneStatus } from "../session/lanes.ts";
 import type { RejectionRule, SessionState } from "../session/machine.ts";
 import type { AttemptScore } from "../ports/reviewer.ts";
+import type { AppStatus } from "../ports/app-host.ts";
 
-export type LiveStatus = "deploying" | "ready" | "failed";
 
 interface Base {
   readonly project: string;
@@ -16,6 +16,7 @@ export type ChefEvent = Base &
   (
     | { readonly type: "route.decided"; readonly prompt: string; readonly decision: RouteDecision }
     | { readonly type: "question.answered"; readonly prompt: string; readonly answer: string; readonly sources: readonly string[] }
+    | { readonly type: "route.failed"; readonly prompt: string; readonly error: string }
     | { readonly type: "session.created"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly reason: string; readonly attempt: { readonly group: string; readonly index: number; readonly of: number }; readonly parent: string | null; readonly kind?: "feature" | "chore"; readonly hotfix?: boolean }
     | { readonly type: "session.held"; readonly sessionId: string; readonly featureId: string; readonly by: string | null }
     | { readonly type: "session.state"; readonly sessionId: string; readonly featureId: string; readonly from: SessionState; readonly to: SessionState; readonly reason: string }
@@ -24,13 +25,16 @@ export type ChefEvent = Base &
     | { readonly type: "lanes.started"; readonly sessionId: string; readonly featureId: string; readonly lanes: readonly { readonly role: string; readonly branch: string; readonly items: number }[] }
     | { readonly type: "lane.updated"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly branch: string; readonly status: LaneStatus; readonly commitId?: string; readonly paths?: readonly string[] }
     | { readonly type: "commit.created"; readonly sessionId: string; readonly featureId: string; readonly repo: string; readonly commitId: string; readonly role: string; readonly message: string; readonly lane?: string }
-    | { readonly type: "preview.updated"; readonly sessionId: string; readonly featureId: string; readonly url: string; readonly commitId: string; readonly link?: string }
+    | { readonly type: "app.updated"; readonly sessionId: string; readonly featureId: string; readonly status: AppStatus; readonly url: string | null; readonly commitId: string; readonly error?: string; readonly link?: string }
     | { readonly type: "review.verdict"; readonly sessionId: string; readonly featureId: string; readonly approve: boolean; readonly reasons: readonly string[]; readonly model: string; readonly head: string; readonly base: string }
     | { readonly type: "gate.result"; readonly sessionId: string; readonly featureId: string; readonly ok: boolean; readonly checks: readonly CheckResult[] }
-    | { readonly type: "live.updated"; readonly status: LiveStatus; readonly commitId: string; readonly url: string | null; readonly error?: string }
+    | { readonly type: "main-app.updated"; readonly status: AppStatus; readonly commitId: string; readonly url: string | null; readonly error?: string }
     | { readonly type: "main.merged"; readonly sessionId: string; readonly featureId: string; readonly commitId: string }
+    | { readonly type: "branch.merged"; readonly sessionId: string; readonly featureId: string; readonly into: string; readonly intoFeature: string; readonly commitId: string }
+    | { readonly type: "session.versioned"; readonly sessionId: string; readonly featureId: string; readonly from: string; readonly version: number }
     | { readonly type: "chat.context"; readonly used: number; readonly limit: number; readonly turns: number; readonly summarized: number }
     | { readonly type: "feature.arranged"; readonly featureId: string; readonly title: string | null; readonly parent: string | null }
+    | { readonly type: "features.changed"; readonly commitId: string; readonly message: string; readonly ids: readonly string[] }
     | { readonly type: "features.removed"; readonly featureIds: readonly string[]; readonly commitId: string | null }
     | { readonly type: "main.reverted"; readonly featureId: string; readonly revertedCommit: string; readonly commitId: string; readonly log: string }
     | { readonly type: "sync.merged"; readonly sessionId: string; readonly featureId: string; readonly commitId: string; readonly mainCommit: string }
@@ -45,6 +49,7 @@ export type ChefEvent = Base &
     | { readonly type: "external.pull-request"; readonly url: string; readonly number: number; readonly branch: string; readonly features: readonly string[] }
     | { readonly type: "session.stuck"; readonly sessionId: string; readonly featureId: string; readonly reason: string }
     | { readonly type: "session.steered"; readonly sessionId: string; readonly featureId: string; readonly message: string }
+    | { readonly type: "session.ready"; readonly sessionId: string; readonly featureId: string; readonly commitId: string | null }
     | { readonly type: "session.needs"; readonly sessionId: string; readonly featureId: string; readonly names: readonly string[] }
     | { readonly type: "session.budget"; readonly sessionId: string; readonly featureId: string; readonly reason: string | null }
     | { readonly type: "turn.rejected"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly rule: RejectionRule; readonly paths: readonly string[]; readonly lane?: string }

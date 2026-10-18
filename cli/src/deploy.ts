@@ -32,8 +32,10 @@ export function parseJsonc(text: string): Json {
 
 const list = (value: unknown): Json[] => (Array.isArray(value) ? (value as Json[]) : []);
 
+export const DEFAULT_MEMORY_INDEX = `${BASE_NAME}-memory`;
+
 export function instanceConfig(base: Json, name: string): Json {
-  if (name === base["name"]) return base;
+  if (name === BASE_NAME && base["name"] === BASE_NAME) return base;
   const workflows = new Map(list(base["workflows"]).map((w) => [String(w["name"]), `${name}-${String(w["name"])}`]));
   const namespace = (n: unknown) => (n === BASE_NAME ? name : n);
   const triggers = base["triggers"] as Json | undefined;
@@ -42,7 +44,7 @@ export function instanceConfig(base: Json, name: string): Json {
     name,
     artifacts: list(base["artifacts"]).map((a) => ({ ...a, namespace: namespace(a["namespace"]) })),
     workflows: list(base["workflows"]).map((w) => ({ ...w, name: workflows.get(String(w["name"])) })),
-    vectorize: list(base["vectorize"]).map((v) => ({ ...v, index_name: `${name}-memory` })),
+    vectorize: list(base["vectorize"]).map((v) => ({ ...v, index_name: v["index_name"] === DEFAULT_MEMORY_INDEX ? `${name}-memory` : v["index_name"] })),
     ...(triggers
       ? {
           triggers: {
@@ -97,6 +99,15 @@ export async function ensureMemoryIndex(run: Runner, index: string, log: (line: 
   else log(`could not check or create the memory index ${index}; deploying anyway:\n${created.output.trim().split("\n").slice(-3).join("\n")}`);
 }
 
+export const TOKEN_HELP =
+  "Cloudflare refused this deploy's API token. Chef needs a token that can edit Workers Scripts, Containers, Artifacts and Vectorize. " +
+  "On a Deploy to Cloudflare button or Workers Builds deploy, open your Worker's Settings > Builds to see which token the build uses, " +
+  "add those permissions to it under My Profile > API Tokens, then retry the build.";
+
+export function refusedToken(output: string): boolean {
+  return /unauthorized|authentication error|not authorized|\b(code: ?10000|status 403)\b/i.test(output);
+}
+
 export interface DeployOptions {
   readonly name?: string;
   readonly image?: string;
@@ -131,11 +142,11 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
   const base = parseJsonc(readFileSync(baseFile, "utf8"));
   const name = options.name ?? String(base["name"]);
   let config = baseFile;
-  if (name !== base["name"] || options.image) {
+  if (name !== BASE_NAME || options.image) {
     config = join(REPO_ROOT, `.wrangler.${name}.jsonc`);
     const instance = instanceConfig(base, name);
     writeFileSync(config, `${JSON.stringify(options.image ? withImage(instance, options.image) : instance, null, 2)}\n`);
-    if (name !== base["name"]) log(`deploying a separate chef named ${name}, with its own repos, memory and previews`);
+    if (name !== BASE_NAME) log(`deploying a separate chef named ${name}, with its own repos, memory and app router`);
     if (options.image) log(`using the prebuilt sandbox image ${options.image}`);
   }
   const index = (list(parseJsonc(readFileSync(config, "utf8"))["vectorize"])[0]?.["index_name"] as string | undefined) ?? null;
@@ -155,6 +166,7 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
   } finally {
     if (secretsDir) rmSync(secretsDir, { recursive: true, force: true });
   }
+  if (result.code !== 0 && !options.dryRun && refusedToken(result.output)) log(`\n${TOKEN_HELP}`);
   const url = /https:\/\/[a-z0-9.-]+\.workers\.dev/.exec(result.output)?.[0] ?? null;
   if (result.code === 0 && url) log(`\nchef is live at ${url}\n${apiKey ? "It answers the new API key, which replaces any key an earlier deploy made." : "Open it in a browser."}`);
   return { code: result.code, url, config, apiKey: result.code === 0 ? apiKey : null };

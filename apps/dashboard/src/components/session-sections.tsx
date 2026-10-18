@@ -6,14 +6,17 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
-import { loadTone, PreviewFrame, usePreviewLoad } from "@/components/preview-frame";
+import { host as chefHost } from "@/host";
+import { toast } from "sonner";
+import { COMPOSE_PROMPT } from "@chef/core/app";
+import { AppFrame, loadTone, useAppLoad } from "@/components/app-frame";
 import { CloudflareList, CloudflareSections } from "@/components/cloudflare-resources";
 import { isActive } from "@/lib/events";
-import { ago, duration, previewHost, short, tokens } from "@/lib/format";
+import { ago, appHost, duration, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
-import { addressPath, entryPage, frameReport, pageChips, step, visit, type AppPage, type Trail } from "@/lib/preview";
+import { addressPath, appLink, builtPage, entryPage, frameReport, MAIN_APP, pageChips, step, visit, type AppPage, type Trail } from "@/lib/app-view";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -44,14 +47,20 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
   );
 }
 
-function PreviewTab({ url, link, commitId, start, live, merged = false }: { readonly url: string | null; readonly link: string | null; readonly commitId: string; readonly start: string; readonly live: boolean; readonly merged?: boolean }) {
+const useProjectLevel = chefHost.useProjectLevel ?? (() => null);
+
+function AppTab({ link, url, start, page = start, title, note, missing }: { readonly link: string; readonly url: string | null; readonly start: string; readonly page?: string; readonly title: string; readonly note: string; readonly missing: string }) {
   const [trail, setTrail] = useState<Trail>({ entries: [start], index: 0 });
   const [load, setLoad] = useState({ path: start, count: 0 });
-  const [pages, setPages] = useState<readonly AppPage[]>([]);
+  const [pages, setPages] = useState<readonly AppPage[] | null>(null);
+  const waiting = useRef(page === start ? null : page);
   const [draft, setDraft] = useState<string | null>(null);
+  const [askedCompose, setAskedCompose] = useState(false);
+  const { api, selection } = useWorkspace();
+  const viewOnly = useProjectLevel(selection.project) === "view";
   const frame = useRef<HTMLIFrameElement>(null);
-  const preview = usePreviewLoad({ link, url: url ?? "", path: load.path, count: load.count });
-  const { loaded } = preview;
+  const app = useAppLoad({ link, path: load.path, count: load.count, missing });
+  const { loaded } = app;
   useEffect(() => {
     const listen = (event: MessageEvent) => {
       if (!frame.current || event.source !== frame.current.contentWindow) return;
@@ -60,25 +69,34 @@ function PreviewTab({ url, link, commitId, start, live, merged = false }: { read
       loaded();
       setPages(report.pages);
       setTrail((current) => visit(current, report.path));
+      const wanted = builtPage(waiting.current, report, start);
+      waiting.current = null;
+      if (wanted) {
+        setTrail((current) => visit(current, wanted));
+        setLoad((current) => ({ path: wanted, count: current.count + 1 }));
+      }
     };
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
   }, []);
-  if (!url) return <Empty>The preview appears after Chef's first step.</Empty>;
   const path = trail.entries[trail.index] ?? "/";
-  const target = (to: string) => (to === "/" ? (link ?? url) : link ? `${link}?path=${encodeURIComponent(to)}` : `${url.replace(/\/$/, "")}${to}`);
+  const target = (to: string) => (to === "/" ? link : `${link}?path=${encodeURIComponent(to)}`);
+  const host = app.appUrl ?? url;
   const open = (to: string) => setLoad((current) => ({ path: to, count: current.count + 1 }));
   const go = (to: string) => {
+    waiting.current = null;
     setDraft(null);
     setTrail((current) => visit(current, to));
     open(to);
   };
   const move = (delta: number) => {
+    waiting.current = null;
     const next = step(trail, delta);
     setTrail(next);
     open(next.entries[next.index] ?? "/");
   };
   const shown = path.split(/[?#]/)[0];
+  const unbuilt = pages !== null && page !== "/" && !pages.some((p) => p.path === page);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <form
@@ -94,12 +112,12 @@ function PreviewTab({ url, link, commitId, start, live, merged = false }: { read
         <Button type="button" variant="ghost" size="icon-xs" disabled={trail.index >= trail.entries.length - 1} onClick={() => move(1)} aria-label="Forward">
           <ArrowRight />
         </Button>
-        <Button type="button" variant="ghost" size="icon-xs" onClick={() => open(path)} aria-label="Reload preview">
+        <Button type="button" variant="ghost" size="icon-xs" onClick={() => open(path)} aria-label="Reload the app">
           <RefreshCw />
         </Button>
         <span className="flex min-w-0 flex-1 items-center">
-          <StatusDot tone={loadTone(preview.load)} />
-          <span className="ml-2 max-w-[45%] shrink-0 truncate font-mono text-xs text-muted-foreground">{previewHost(url)}</span>
+          <StatusDot tone={loadTone(app.load)} />
+          {host ? <span className="ml-2 max-w-[45%] shrink-0 truncate font-mono text-xs text-muted-foreground">{appHost(host)}</span> : null}
           <input
             value={draft ?? path}
             onChange={(event) => setDraft(event.target.value)}
@@ -113,40 +131,52 @@ function PreviewTab({ url, link, commitId, start, live, merged = false }: { read
           />
         </span>
         <Button variant="ghost" size="icon-xs" asChild>
-          <a href={target(path)} target="_blank" rel="noreferrer" aria-label={live ? "Open the live app in a new tab" : "Open the preview in a new tab"}>
+          <a href={target(path)} target="_blank" rel="noreferrer" aria-label="Open the app in a new tab">
             <ExternalLink />
           </a>
         </Button>
       </form>
       <div className="flex flex-wrap items-center gap-1" data-pages>
         <span className="mr-1 text-xs text-muted-foreground">Pages</span>
-        {pageChips(pages, start).map((p) => (
-          <button key={p.path} type="button" title={p.title || undefined} onClick={() => go(p.path)} className={cn("h-6 rounded-md border px-1.5 font-mono text-[11px] hover:bg-muted", p.path === shown && "border-foreground/40 bg-muted")}>
+        {pageChips(pages ?? [], page).map((p) => (
+          <button key={p.path} type="button" title={unbuilt && p.path === page ? "This page isn't built yet" : p.title || undefined} onClick={() => go(p.path)} className={cn("h-6 rounded-md border px-1.5 font-mono text-[11px] hover:bg-muted", p.path === shown && "border-foreground/40 bg-muted", unbuilt && p.path === page && "border-dashed text-muted-foreground")} data-unbuilt={unbuilt && p.path === page ? true : undefined}>
             {p.path}
           </button>
         ))}
       </div>
-      <PreviewFrame
+      {unbuilt && shown !== page ? (
+        <p className="text-xs text-muted-foreground" data-page-unbuilt={page}>
+          The page <span className="font-mono">{page}</span> isn't built yet, so the app opens on its home page. It opens here by itself once this build has it.
+        </p>
+      ) : null}
+      <AppFrame
         ref={frame}
         key={load.count}
-        src={preview.ready ? target(load.path) : null}
-        title={live ? "Live app" : "Preview"}
-        load={preview.load}
-        preview={link !== null}
+        src={app.ready ? target(load.path) : null}
+        title={title}
+        load={app.load}
         path={load.path}
         onLoad={loaded}
         onRetry={() => {
-          preview.retryNext();
+          app.retryNext();
           open(path);
         }}
+        addCompose={
+          viewOnly
+            ? undefined
+            : {
+                asked: askedCompose,
+                onAsk: () => {
+                  setAskedCompose(true);
+                  api.prompt(COMPOSE_PROMPT).catch((error: unknown) => {
+                    setAskedCompose(false);
+                    toast.error("Could not ask Chef to dockerize the project", { description: error instanceof Error ? error.message : String(error) });
+                  });
+                },
+              }
+        }
       />
-      <p className="text-xs text-muted-foreground">
-        {live
-          ? `This is the live app, at ${short(commitId)}. Everything Chef merges shows up here.`
-          : merged
-            ? `This is the app as this session left it, at ${short(commitId)}. Its work is live now; the live app shows it together with everything else Chef merged. It sleeps when nobody opens it for a while and wakes up on the next visit.`
-            : `This preview updates after every step chef takes. Built from ${short(commitId)}. It sleeps when nobody opens it for a while and wakes up on the next visit.`}
-      </p>
+      <p className="text-xs text-muted-foreground">{note}</p>
     </div>
   );
 }
@@ -240,7 +270,7 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
         {cloudflare.loading && !cloudflare.data ? <Skeleton className="h-16" /> : null}
         {cloudflare.error ? <p className="text-sm text-muted-foreground">Could not read the Cloudflare details: {cloudflare.error}</p> : null}
         {cloudflare.data && !mineOnCloudflare.length ? <p className="text-sm text-muted-foreground">This role uses nothing on Cloudflare in this build.</p> : null}
-        {mineOnCloudflare.length ? <CloudflareList resources={mineOnCloudflare} showRoles={false} /> : null}
+        {mineOnCloudflare.length ? <CloudflareList resources={mineOnCloudflare} session={node.id} showRoles={false} /> : null}
       </Section>
       <Section title="Its commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
@@ -250,7 +280,7 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
       </Section>
       <Section title="Files it changed">
         {changes.loading && !changes.data ? <Skeleton className="h-16" /> : null}
-        {changes.data && !files.length ? <p className="text-sm text-muted-foreground">{lane ? "None of its files differ from the live app yet." : "This role changed no app files in this build."}</p> : null}
+        {changes.data && !files.length ? <p className="text-sm text-muted-foreground">{lane ? "None of its files differ from main yet." : "This role changed no app files in this build."}</p> : null}
         {files.length ? (
           <div className="overflow-hidden border" data-role-files>
             {files.map((f) => (
@@ -259,28 +289,6 @@ export function RoleWork({ node, role }: { readonly node: SessionNode; readonly 
           </div>
         ) : null}
       </Section>
-    </div>
-  );
-}
-
-export function ChangesTab({ node }: { readonly node: SessionNode }) {
-  const { api } = useWorkspace();
-  const head = node.live?.commits.at(-1)?.id ?? node.record?.head ?? "";
-  const changes = useFetch(() => api.changes(node.id), `${node.id}:${head}:${node.state}`, node.id);
-  if (changes.loading && !changes.data) return <Skeleton className="h-40" />;
-  if (changes.error) return <Empty>{changes.error}</Empty>;
-  const files = changes.data?.files ?? [];
-  if (!files.length) return <Empty>No code has changed yet.</Empty>;
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">
-        {files.length} {files.length === 1 ? "file" : "files"} changed compared with the live app.
-      </p>
-      <div className="overflow-hidden rounded-xl border">
-        {files.map((f) => (
-          <FileDiff key={f.path} path={f.path} before={f.before} after={f.after} />
-        ))}
-      </div>
     </div>
   );
 }
@@ -310,7 +318,7 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
   return (
     <div className="flex flex-col gap-6">
       <Section title="On Cloudflare">
-        <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} />
+        <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} session={node.id} />
       </Section>
       <Section title="Steps saved as commits">
         {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
@@ -381,32 +389,34 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
             ))}
           </div>
         ) : (
-          <Empty>Lint, types, tests and the live preview are checked before anything goes live.</Empty>
+          <Empty>Lint, types, tests and the running app are checked before anything is merged into main.</Empty>
         )}
       </Section>
     </div>
   );
 }
 
-export function SessionPreview({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
-  const preview = node?.live?.preview ?? node?.record?.preview ?? feature.preview ?? null;
-  return <PreviewTab key={preview?.url ?? ""} url={preview?.url ?? null} link={preview?.link ?? null} commitId={preview?.commitId ?? ""} start={entryPage(feature.spec?.entrypoint) ?? "/"} live={false} merged={node?.state === "merged"} />;
+const SLEEPS = "It sleeps when nobody opens it for a while and wakes up on the next visit.";
+
+export function SessionApp({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
+  const { data, selection } = useWorkspace();
+  const mainApp = data.spec?.mainApp ?? null;
+  const app = node ? (node.live?.app ?? node.record?.app ?? null) : feature.app;
+  const id = node?.id ?? feature.app?.sessionId ?? null;
+  const merged = node?.state === "merged";
+  const committed = Boolean(node?.record?.head ?? node?.live?.commits.length);
+  if (!id || (!app && !merged && !committed)) return <Empty>This build's app starts after Chef's first commit.</Empty>;
+  const commit = app ? ` It runs ${short(app.commitId)}.` : "";
+  const note = merged ? `This build is merged into main, so this is main's app, the release candidate, with this work together with everything else Chef merged. ${SLEEPS}` : `This is the app of this build's branch, with its whole stack running in the build's own sandbox. It starts again after every step Chef takes.${commit} ${SLEEPS}`;
+  const page = entryPage(feature.spec?.entrypoint) ?? "/";
+  return <AppTab key={merged ? `${id}:main:${mainApp?.status ?? ""}:${mainApp?.commitId ?? ""}` : `${id}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={merged ? page : "/"} page={page} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
 }
 
-export function LiveApp() {
+export function MainApp() {
   const { data, selection } = useWorkspace();
-  const live = data.spec?.live ?? null;
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-view="live">
-      <div className="flex items-center gap-2">
-        <h2 className="truncate text-sm font-medium">{selection.project}</h2>
-        <span className="font-mono text-xs text-muted-foreground">main {short(live?.commitId ?? data.spec?.commitId) || ""}</span>
-      </div>
-      {live?.url ? (
-        <PreviewTab key={live.url} url={live.url} link={null} commitId={live.commitId} start="/" live />
-      ) : (
-        <Empty>{live?.status === "failed" ? `The live app could not be updated: ${live.error ?? "unknown error"}` : live?.status === "deploying" ? "Chef is putting main on the live address." : "The live app appears here once main is deployed."}</Empty>
-      )}
-    </div>
-  );
+  const app = data.spec?.mainApp ?? null;
+  if (data.spec === null) return <Skeleton className="min-h-[320px] w-full flex-1 rounded-xl" aria-label="Loading main's app" />;
+  if (!data.spec.commitId) return <Empty>Main has no commit yet. Its app starts after the first one.</Empty>;
+  const note = `This is main's app, the release candidate, with its whole stack running in main's own sandbox${app ? ` at ${short(app.commitId)}` : ""}. Everything Chef merges shows up here. Your own production takes main from your repository. ${SLEEPS}`;
+  return <AppTab key={`${MAIN_APP}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, MAIN_APP)} url={app?.url ?? null} start="/" title="App of main" note={note} missing="Main has no commit yet, so it has no app to open." />;
 }

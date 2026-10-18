@@ -1,4 +1,4 @@
-import { applyChanges, threeWayMerge, type Commit, type Tree } from "../git/tree.ts";
+import { applyChanges, threeWayMerge, type Commit, type CommitSummary, type Tree } from "../git/tree.ts";
 import type { CommitInput, MergeInput, MergeOutcome, PushedEvent, RepoHost, RepoInfo, RepoToken, TokenScope } from "../ports/repo-host.ts";
 import type { Clock } from "../ports/runtime.ts";
 import { hashHex, stableStringify } from "../util/hash.ts";
@@ -81,6 +81,10 @@ export class MemoryRepoHost implements RepoHost {
     return this.objects.get(id) ?? null;
   }
 
+  async history(repo: string, ref: string, limit = 50): Promise<CommitSummary[]> {
+    return (await this.log(repo, ref, limit)).map(({ tree: _tree, ...summary }) => summary);
+  }
+
   async log(repo: string, ref: string, limit = 50): Promise<Commit[]> {
     const out: Commit[] = [];
     let id = this.repo(repo).refs.get(ref) ?? null;
@@ -124,7 +128,7 @@ export class MemoryRepoHost implements RepoHost {
       return { status: "fast-forward", commitId: theirs };
     }
     if (ours === theirs || this.isAncestor(theirs, ours)) return { status: "up-to-date", commitId: ours };
-    if (this.isAncestor(ours, theirs)) {
+    if (!input.noFastForward && this.isAncestor(ours, theirs)) {
       this.setRef(repo, input.into, theirs);
       return { status: "fast-forward", commitId: theirs };
     }

@@ -11,6 +11,7 @@ export type SessionEvent =
   | { readonly type: "review_rejected"; readonly reasons: readonly string[]; readonly retest?: boolean }
   | { readonly type: "gate_passed" }
   | { readonly type: "gate_failed"; readonly log: string }
+  | { readonly type: "app_failed"; readonly log: string }
   | { readonly type: "conflict"; readonly paths: readonly string[]; readonly between?: readonly string[] }
   | { readonly type: "turn_rejected"; readonly rule: RejectionRule; readonly paths: readonly string[]; readonly scope: readonly string[]; readonly detail?: string }
   | { readonly type: "reopened"; readonly log: string; readonly charged?: boolean }
@@ -50,6 +51,7 @@ const NEXT: Readonly<Record<SessionEvent["type"], Partial<Record<SessionState, S
   review_rejected: { reviewing: "coding" },
   gate_passed: { gating: "merged" },
   gate_failed: { gating: "coding" },
+  app_failed: { coding: "coding", reviewing: "coding" },
   conflict: { planning: "coding", testing: "coding", coding: "coding", reviewing: "coding", gating: "coding" },
   turn_rejected: { testing: "testing", coding: "coding" },
   reopened: { merged: "coding", stuck: "coding" },
@@ -83,14 +85,14 @@ export function transition(current: MachineState, event: SessionEvent, budget: B
   if (event.type === "planned" && current.state === "planning" && event.withTests) to = "testing";
   if (event.type === "review_rejected" && current.state === "reviewing" && event.retest) to = "testing";
   if (!to) throw new InvalidTransition(current.state, event.type);
-  const retry = event.type === "review_rejected" || event.type === "gate_failed" || event.type === "turn_rejected" || (event.type === "reopened" && event.charged !== false);
+  const retry = event.type === "review_rejected" || event.type === "gate_failed" || event.type === "app_failed" || event.type === "turn_rejected" || (event.type === "reopened" && event.charged !== false);
   const usage: Usage = event.type === "retried" ? { attempts: 1, tokens: 0, startedAt: now } : retry ? { ...current.usage, attempts: current.usage.attempts + 1 } : current.usage;
   const carried = (to === "coding" || to === "testing") && event.type !== "planned" && (event.type !== "tests_committed" || current.reason === "review_rejected");
   const feedback = event.type === "retried" ? retriedFeedback(event.guidance, current.feedback) : (feedbackOf(event) ?? (carried ? current.feedback : null));
   const reason = event.type === "fail" || event.type === "dropped" ? event.reason : event.type;
   if (to === "coding" || event.type === "turn_rejected" || event.type === "review_rejected") {
     const over = exceeded(usage, budget, now);
-    if (over) return { state: "stuck", usage, feedback, reason: over };
+    if (over) return { state: "stuck", usage, feedback, reason: event.type === "app_failed" ? `${over}; the app still does not start` : over };
   }
   return { state: to, usage, feedback, reason };
 }
@@ -101,6 +103,8 @@ function feedbackOf(event: SessionEvent): string | null {
       return `Reviewer rejected the change:\n${event.reasons.map((r) => `- ${r}`).join("\n")}`;
     case "gate_failed":
       return `Merge gate failed:\n${event.log}`;
+    case "app_failed":
+      return `The app did not start on the latest commit, so the change was not reviewed. Make it build and start again:\n${event.log}`;
     case "conflict":
       return event.between?.length
         ? `The ${event.between.join(", ")} roles worked at the same time and changed the same lines. Merging their branches produced conflicts in:\n${event.paths.map((p) => `- ${p}`).join("\n")}\nKeep what every role meant to do.`

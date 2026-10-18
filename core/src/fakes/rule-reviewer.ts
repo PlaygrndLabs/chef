@@ -1,4 +1,6 @@
 import type { PickCandidate, PickInput, PickVerdict, ReviewInput, ReviewVerdict, Reviewer } from "../ports/reviewer.ts";
+import { TEST_GLOBS } from "../structure/structure.ts";
+import { matchesScope } from "../util/glob.ts";
 
 export class RuleReviewer implements Reviewer {
   readonly model: string = "fake-rule-reviewer";
@@ -9,7 +11,8 @@ export class RuleReviewer implements Reviewer {
     if (input.chore) return this.reviewChore(input);
     const reasons: string[] = [];
     let retest = false;
-    const tests = Object.entries(input.diff).filter(([path, content]) => path.endsWith(".test.ts") && content !== null);
+    const isTest = (path: string) => (input.ownStructure ? matchesScope(path, [...TEST_GLOBS, "!spec/features/**"]) : path.endsWith(".test.ts"));
+    const tests = Object.entries(input.diff).filter(([path, content]) => isTest(path) && content !== null);
     const allTests = tests.map(([, content]) => content).join("\n");
     for (const criterion of input.feature.acceptance) {
       if (allTests.includes(`${criterion.id}:`)) continue;
@@ -17,7 +20,9 @@ export class RuleReviewer implements Reviewer {
       retest = true;
     }
     const touched = Object.keys(input.diff);
-    if (!touched.some((p) => p.startsWith(`features/${input.feature.id}/`) && !p.endsWith(".test.ts"))) reasons.push(`no implementation under features/${input.feature.id}/`);
+    if (input.ownStructure) {
+      if (!touched.some((p) => !isTest(p) && !p.startsWith("spec/features/"))) reasons.push("no implementation outside the tests");
+    } else if (!touched.some((p) => p.startsWith(`features/${input.feature.id}/`) && !p.endsWith(".test.ts"))) reasons.push(`no implementation under features/${input.feature.id}/`);
     for (const [path, content] of Object.entries(input.diff)) if (content?.includes("<<<<<<<")) reasons.push(`unresolved conflict markers in ${path}`);
     return { approve: reasons.length === 0, reasons, retest, model: this.model };
   }

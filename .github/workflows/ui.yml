@@ -7,6 +7,10 @@ on:
         description: Project to open (created when missing); empty opens the first one
         required: false
         default: ""
+      repo:
+        description: Repository URL to import when the tour creates the project (Other git host); empty starts fresh
+        required: false
+        default: ""
       prompt:
         description: Requests to type into the chat, one per line, each sent once the last one is answered; empty only looks around
         required: false
@@ -20,6 +24,11 @@ on:
         type: boolean
         required: false
         default: false
+      delete_existing:
+        description: Also delete the named project when it was there before this run (only a test project an earlier run created)
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -27,10 +36,12 @@ permissions:
 jobs:
   tour:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
       CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -40,18 +51,34 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @chef/cli exec playwright install --with-deps chromium
+      - name: Tail the Worker
+        working-directory: workers
+        run: |
+          mkdir -p ../results/tour
+          nohup npx wrangler tail chef-dev --format json > "$RUNNER_TEMP/tail.jsonl" 2> "$RUNNER_TEMP/tail.err" &
+          sleep 15
       - name: Walk through the deployed app and take screenshots
         run: |
           args=(--minutes "$MINUTES" --out results/tour)
           [ -n "$PROJECT" ] && args+=(--project "$PROJECT")
+          [ -n "$REPO" ] && args+=(--repo "$REPO")
           [ -n "$PROMPT" ] && args+=(--prompt "$PROMPT")
           [ "$DELETE" = "true" ] && args+=(--delete)
+          [ "$DELETE_EXISTING" = "true" ] && [ -n "$PROJECT" ] && args+=(--delete-existing)
           node --import tsx cli/src/bin.ts tour "${args[@]}"
         env:
           PROJECT: ${{ inputs.project }}
+          REPO: ${{ inputs.repo }}
           PROMPT: ${{ inputs.prompt }}
           MINUTES: ${{ inputs.minutes }}
           DELETE: ${{ inputs.delete }}
+          DELETE_EXISTING: ${{ inputs.delete_existing }}
+      - name: Worker logs
+        if: always()
+        run: |
+          jq -r 'select(.outcome != "ok" or (.logs | length) > 0 or (.exceptions | length) > 0) | [.eventTimestamp, .outcome, ((.event.request.url // .event.rpcMethod // "") | tostring), ((.exceptions // []) | map(.name + ": " + .message) | join(" | ")), ((.logs // []) | map(.message | map(tostring) | join(" ")) | join(" | "))] | @tsv' "$RUNNER_TEMP/tail.jsonl" | cut -c1-2000 > results/tour/worker.tsv || true
+          tail -20 "$RUNNER_TEMP/tail.err" >> results/tour/worker.tsv || true
+          tail -100 results/tour/worker.tsv
       - uses: actions/upload-artifact@v4
         if: always()
         with:

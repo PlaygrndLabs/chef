@@ -10,6 +10,8 @@ import { customAgent, outOfScope, type Profiles } from "../profiles/profile.ts";
 import type { SessionRecord } from "../session/record.ts";
 import { readSpec } from "../spec/lint.ts";
 import { quietSetup, type SetupProgress } from "../setup/progress.ts";
+import { structureGuidance } from "../structure/structure.ts";
+import { withGuidance } from "../guidance/guidance.ts";
 
 export const OUTBOUND_MODES = ["off", "branch", "pull-request", "feature-pull-requests"] as const;
 
@@ -18,7 +20,7 @@ export type OutboundMode = (typeof OUTBOUND_MODES)[number];
 export interface ExternalSyncOptions {
   readonly mode: OutboundMode;
   readonly syncBranch: string;
-  readonly previewLink?: (key: string) => string;
+  readonly mainAppLink?: string;
   readonly maxConflictTurns?: number;
 }
 
@@ -158,8 +160,9 @@ export class ExternalSync {
     if (!this.remote.pullRequest) return null;
     const features = await this.pending(mainHead);
     if (features.length === 0) return null;
-    const lines = features.map((f) => `- ${f.title} (\`${f.id}\`)${this.options.previewLink ? `: [preview](${this.options.previewLink(f.id)})` : ""}`);
-    const body = [`Chef built these features on Cloudflare and keeps this branch in sync with its main line.`, "", ...lines, "", `Merging this pull request brings them into \`${this.remote.branch}\`; Chef picks the merge up on its next sync.`].join("\n");
+    const lines = features.map((f) => `- ${f.title} (\`${f.id}\`)`);
+    const link = this.options.mainAppLink;
+    const body = [`Chef built these features and keeps this branch in sync with its main line.`, "", ...lines, ...(link ? ["", `Try them in Chef's running app of main: ${link}`] : []), "", `Merging this pull request brings them into \`${this.remote.branch}\`; Chef picks the merge up on its next sync.`].join("\n");
     const pr = await this.remote.pullRequest({ head: this.options.syncBranch, title: features.length === 1 ? `Chef: ${features[0]?.title}` : `Chef: ${features.length} features`, body });
     await this.save({ pullRequest: pr });
     await this.ctx.emit({ type: "external.pull-request", url: pr.url, number: pr.number, branch: this.options.syncBranch, features: features.map((f) => f.id) });
@@ -198,8 +201,8 @@ export class ExternalSync {
         return this.ctx.repos.commit(token, { ref, parent: externalHead, changes, message: `${session.plan.feature.title}\n\nBuilt by Chef in session ${session.id}.`, author: this.ctx.author });
       });
       await this.remote.push({ repo: this.ctx.canonical, ref, commitId: commit.id, branch, force: true });
-      const link = this.options.previewLink?.(session.featureId);
-      const body = [`Chef built **${session.plan.feature.title}** and it passed Chef's gate.`, "", ...session.plan.feature.acceptance.map((c) => `- ${c.text}`), ...(link ? ["", `Preview: ${link}`] : [])].join("\n");
+      const link = this.options.mainAppLink;
+      const body = [`Chef built **${session.plan.feature.title}** and it passed Chef's gate.`, "", ...session.plan.feature.acceptance.map((c) => `- ${c.text}`), ...(link ? ["", `Try it in Chef's running app of main: ${link}`] : [])].join("\n");
       const pr = await this.remote.pullRequest({ head: branch, title: `Chef: ${session.plan.feature.title}`, body });
       await this.ctx.emit({ type: "external.pull-request", url: pr.url, number: pr.number, branch, features: [session.featureId] });
       published[session.id] = session.merge.commitId;
@@ -278,9 +281,9 @@ export class ExternalSync {
         role: profile.role,
         model: profile.model,
         prompt,
-        instructions: profile.instructions.replaceAll("{feature}", "sync"),
+        instructions: withGuidance(profile.instructions.replaceAll("{feature}", "sync"), structureGuidance(tree)),
         writeScope: scope,
-        agent: customAgent(profile, "sync", scope),
+        agent: customAgent(profile, "sync", scope, structureGuidance(tree)),
         attempt: { index: 1, of: 1 },
         workspace: { repo: fork, remote: info?.remote ?? "", ref: "main", commitId, readToken: readToken.secret, tree },
         onEvent: () => undefined,

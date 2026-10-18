@@ -115,13 +115,13 @@ export class Router {
     return { ...decision, hotfix: true, changeKind: decision.intent === "change_feature" ? "bug" : decision.changeKind };
   }
 
-  async split(prompt: string, spec: readonly FeatureSpec[], decision: RouteDecision, conversation = ""): Promise<SplitPart[] | null> {
+  async split(prompt: string, spec: readonly FeatureSpec[], decision: RouteDecision, conversation = "", map = ""): Promise<SplitPart[] | null> {
     if (decision.via === "rules" || decision.hotfix || !this.deps.planner.split) return null;
     if (decision.intent !== "new_feature" && decision.intent !== "change_feature") return null;
     const intent = decision.intent;
     let parts: readonly SplitPart[];
     try {
-      parts = await this.deps.planner.split({ prompt: withoutCommand(prompt), spec, decision: { intent, featureId: decision.featureId, changeKind: decision.changeKind }, ...(conversation ? { conversation } : {}) });
+      parts = await this.deps.planner.split({ prompt: withoutCommand(prompt), spec, decision: { intent, featureId: decision.featureId, changeKind: decision.changeKind }, ...(conversation ? { conversation } : {}), ...(map ? { map } : {}) });
     } catch {
       return null;
     }
@@ -131,8 +131,9 @@ export class Router {
       .slice(0, MAX_PARTS)
       .map((part): SplitPart => {
         const text = part.prompt.trim();
-        if (part.kind === "change") return known.has(part.featureId) ? { kind: "change", prompt: text, featureId: part.featureId, changeKind: part.changeKind } : { kind: "new", prompt: text, parent: null };
-        return { kind: "new", prompt: text, parent: part.parent && known.has(part.parent) ? part.parent : null };
+        if (part.kind === "change") return known.has(part.featureId) ? { kind: "change", prompt: text, featureId: part.featureId, changeKind: part.changeKind } : { kind: "new", prompt: text, parent: null, path: null };
+        const path = part.path?.trim() || null;
+        return part.parent && path && known.has(part.parent) ? { kind: "new", prompt: text, parent: part.parent, path } : { kind: "new", prompt: text, parent: null, path: null };
       });
     return clean.length ? clean : null;
   }

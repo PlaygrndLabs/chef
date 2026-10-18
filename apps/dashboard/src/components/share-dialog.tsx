@@ -15,15 +15,14 @@ const LIFETIMES = [
 ] as const;
 
 const WHAT: Readonly<Record<ShareKind, { readonly label: string; readonly note: string }>> = {
-  session: { label: "This build", note: "Its preview, the code it changed and its commits." },
-  preview: { label: "Only the preview", note: "The running app, nothing about how it was built." },
+  session: { label: "This build", note: "Its running app, the code it changed and its commits." },
+  app: { label: "Only the app", note: "The running app, nothing about how it was built." },
 };
 
 export interface ShareTarget {
   readonly project: string;
   readonly title: string;
   readonly session: string;
-  readonly preview: string | null;
 }
 
 function describe(share: ShareView, now: number): string {
@@ -63,7 +62,7 @@ export function ShareDialog(props: { readonly target: ShareTarget; readonly open
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const [shares, setShares] = useState<readonly ShareView[] | null>(null);
-  const mine = (shares ?? []).filter((s) => (s.kind === "session" && s.id === target.session) || (s.kind === "preview" && s.id === target.preview));
+  const mine = (shares ?? []).filter((s) => (s.kind === "session" || s.kind === "app") && s.id === target.session);
   const load = () =>
     api
       .list()
@@ -75,11 +74,9 @@ export function ShareDialog(props: { readonly target: ShareTarget; readonly open
     void load();
   }, [props.open, target.project]);
   const make = async () => {
-    const id = kind === "session" ? target.session : target.preview;
-    if (!id) return;
     setBusy(true);
     try {
-      const { token } = await api.create({ kind, id, expiresInDays: days });
+      const { token } = await api.create({ kind, id: target.session, expiresInDays: days });
       setLink(shareLink(location.origin, token));
       void load();
     } catch (e) {
@@ -89,7 +86,7 @@ export function ShareDialog(props: { readonly target: ShareTarget; readonly open
     }
   };
   const revoke = async (share: ShareView) => {
-    if (!confirm("End this link? It stops opening anything at once; a preview someone already has open closes within an hour.")) return;
+    if (!confirm("End this link? It stops opening anything at once; an app someone already has open closes within an hour.")) return;
     try {
       await api.revoke(share.shareId);
       toast.success("Link ended");
@@ -99,10 +96,10 @@ export function ShareDialog(props: { readonly target: ShareTarget; readonly open
     }
   };
   const endAll = async () => {
-    if (!confirm("Close every open preview of this project? Everyone who has one open, from Chef or from a shared link, has to open it again. Do this after ending a link to shut it out at once.")) return;
+    if (!confirm("Close every open app of this project? Everyone who has one open, from Chef or from a shared link, has to open it again. Do this after ending a link to shut it out at once.")) return;
     try {
-      await api.endPreviewLinks();
-      toast.success("Every open preview was closed");
+      await api.closeOpenApps();
+      toast.success("Every open app was closed");
     } catch (e) {
       toast.error("Could not end them", { description: e instanceof Error ? e.message : String(e) });
     }
@@ -116,13 +113,12 @@ export function ShareDialog(props: { readonly target: ShareTarget; readonly open
         </DialogHeader>
         <div className="grid gap-4">
           <div className="grid gap-2" role="radiogroup" aria-label="What to share">
-            {(["session", "preview"] as const).map((k) => (
+            {(["session", "app"] as const).map((k) => (
               <button
                 key={k}
                 type="button"
                 role="radio"
                 aria-checked={kind === k}
-                disabled={k === "preview" && !target.preview}
                 onClick={() => setKind(k)}
                 className={cn("grid gap-0.5 border px-3 py-2 text-left hover:bg-muted disabled:opacity-50", kind === k && "border-primary")}
               >
@@ -160,7 +156,7 @@ export function ShareDialog(props: { readonly target: ShareTarget; readonly open
             </div>
           ) : null}
           <button type="button" onClick={() => void endAll()} className="w-fit text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-            Close every open preview of this project
+            Close every open app of this project
           </button>
         </div>
       </DialogContent>

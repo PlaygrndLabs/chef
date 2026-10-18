@@ -13,10 +13,11 @@ export interface SessionView {
   readonly featureId: string;
   readonly attempt: string;
   readonly state: SessionState;
-  readonly preview: string | null;
+  readonly app: string | null;
   readonly review: string | null;
   readonly gate: string | null;
   readonly merged: string | null;
+  readonly into?: string;
   readonly stuck: string | null;
   readonly commits: number;
 }
@@ -57,7 +58,7 @@ export class SessionStream {
     private readonly ids: () => string,
   ) {
     this.state = { prompt, intent: result.decision.intent, featureId: result.featureId ?? result.decision.featureId ?? null, sessions: {} };
-    for (const id of result.sessionIds) this.track(id, { id, featureId: this.state.featureId ?? "", attempt: "", state: "queued", preview: null, review: null, gate: null, merged: null, stuck: null, commits: 0 });
+    for (const id of result.sessionIds) this.track(id, { id, featureId: this.state.featureId ?? "", attempt: "", state: "queued", app: null, review: null, gate: null, merged: null, stuck: null, commits: 0 });
   }
 
   snapshot(): ChefState {
@@ -92,14 +93,16 @@ export class SessionStream {
         return this.coder(event.lane ? `${id}:${event.lane}` : id, event.event);
       case "commit.created":
         return this.update(id, { commits: view.commits + 1 });
-      case "preview.updated":
-        return this.update(id, { preview: event.link ?? event.url });
+      case "app.updated":
+        return event.status === "running" ? this.update(id, { app: event.link ?? event.url }) : [];
       case "review.verdict":
         return this.update(id, { review: event.approve ? "approved" : `rejected: ${event.reasons.join("; ")}` });
       case "gate.result":
         return this.update(id, { gate: event.ok ? "passed" : `failed: ${event.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")}` });
       case "main.merged":
         return this.update(id, { merged: event.commitId });
+      case "branch.merged":
+        return this.update(id, { merged: event.commitId, into: event.intoFeature });
       case "session.stuck":
         return this.update(id, { stuck: event.reason });
       default:
@@ -181,7 +184,7 @@ export function routeLine(result: SubmitResult): string {
 export function summaryLine(state: ChefState): string {
   return Object.values(state.sessions)
     .map((s) => {
-      if (s.state === "merged") return `${s.id} merged${s.merged ? ` as ${s.merged.slice(0, 12)}` : ""}${s.preview ? `; preview ${s.preview}` : ""}.`;
+      if (s.state === "merged") return `${s.id} merged into ${s.into ?? "main"}${s.merged ? ` as ${s.merged.slice(0, 12)}` : ""}${s.app ? `; app ${s.app}` : ""}.`;
       if (s.state === "stuck") return `${s.id} is stuck: ${s.stuck ?? "no reason recorded"}.`;
       return `${s.id} was dropped.`;
     })

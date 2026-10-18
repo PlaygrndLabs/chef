@@ -1,4 +1,4 @@
-import type { SessionState } from "@chef/core";
+import type { AppStatus, SessionState } from "@chef/core";
 
 export const short = (id: string | null | undefined, length = 7) => (id ? id.slice(0, length) : "");
 
@@ -52,7 +52,7 @@ export const PLAIN_STATE: Readonly<Record<SessionState, string>> = {
   coding: "Writing code",
   reviewing: "In review",
   gating: "Final checks",
-  merged: "Live",
+  merged: "Merged",
   stuck: "Needs you",
   dropped: "Stopped",
 };
@@ -81,6 +81,15 @@ export function stepIndex(state: SessionState): number {
   return STEP_INDEX[state] ?? 0;
 }
 
-export function previewHost(url: string): string {
+export function appHost(url: string): string {
   return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
+
+export const APP_STATUS_LABEL: Readonly<Record<AppStatus, string>> = {
+  starting: "Starting",
+  running: "Running",
+  failed: "Could not start",
+  "no-stack": "No compose file",
+};
+
+export const APP_TONE: Readonly<Record<AppStatus, Tone>> = { starting: "run", running: "ok", failed: "bad", "no-stack": "idle" };
