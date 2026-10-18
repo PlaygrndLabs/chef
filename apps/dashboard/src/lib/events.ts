@@ -87,7 +87,7 @@ export interface ProjectLive {
   lastAt: number;
   readonly sessions: Record<string, SessionLive>;
   readonly order: string[];
-  readonly routes: { readonly prompt: string; readonly decision: RouteDecision; readonly at: number }[];
+  readonly routes: { readonly prompt: string; readonly decision: RouteDecision; readonly at: number; readonly spoken?: true }[];
   readonly answers: { readonly prompt: string; readonly answer: string; readonly at: number }[];
   readonly merges: { readonly featureId: string; readonly sessionId: string; readonly commitId: string; readonly at: number }[];
   readonly reverts: { readonly featureId: string; readonly revertedCommit: string; readonly commitId: string; readonly log: string; readonly at: number }[];
@@ -242,7 +242,7 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
   if (event.type !== "coder.event" || event.event.type !== "assistant.message_delta") keep(state.log, { seq: entry.seq, at, type: event.type, sessionId, featureId, summary: summarize(event) }, LOG_LIMIT);
   switch (event.type) {
     case "route.decided":
-      keep(state.routes, { prompt: event.prompt, decision: event.decision, at }, 200);
+      keep(state.routes, { prompt: event.prompt, decision: event.decision, at, ...(event.spoken ? { spoken: true as const } : {}) }, 200);
       return true;
     case "question.answered":
       keep(state.answers, { prompt: event.prompt, answer: event.answer, at }, 200);

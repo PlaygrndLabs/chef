@@ -14,7 +14,7 @@ interface Base {
 
 export type ChefEvent = Base &
   (
-    | { readonly type: "route.decided"; readonly prompt: string; readonly decision: RouteDecision }
+    | { readonly type: "route.decided"; readonly prompt: string; readonly decision: RouteDecision; readonly spoken?: true }
     | { readonly type: "question.answered"; readonly prompt: string; readonly answer: string; readonly sources: readonly string[] }
     | { readonly type: "route.failed"; readonly prompt: string; readonly error: string }
     | { readonly type: "session.created"; readonly sessionId: string; readonly featureId: string; readonly fork: string; readonly reason: string; readonly attempt: { readonly group: string; readonly index: number; readonly of: number }; readonly parent: string | null; readonly kind?: "feature" | "chore"; readonly hotfix?: boolean }
