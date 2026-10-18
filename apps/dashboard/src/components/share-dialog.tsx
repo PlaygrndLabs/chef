@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, Trash2 } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -26,13 +26,14 @@ export interface ShareTarget {
 }
 
 function describe(share: ShareView, now: number): string {
-  const parts = [WHAT[share.kind].label, `made ${ago(share.createdAt, now)}`, share.lastUsedAt ? `opened ${ago(share.lastUsedAt, now)}` : "not opened yet"];
-  if (share.expiresAt) parts.push(share.expiresAt > now ? `ends ${new Date(share.expiresAt).toLocaleDateString()}` : "ended");
+  const parts = [`made ${ago(share.createdAt, now)}`, share.lastUsedAt ? `opened ${ago(share.lastUsedAt, now)}` : "not opened yet"];
+  parts.push(share.expiresAt ? `ends ${new Date(share.expiresAt).toLocaleDateString()}` : "no end");
   return parts.join(" · ");
 }
 
 function CopyLink({ link }: { readonly link: string }) {
   const [copied, setCopied] = useState(false);
+  useEffect(() => setCopied(false), [link]);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(link);
@@ -42,14 +43,11 @@ function CopyLink({ link }: { readonly link: string }) {
     }
   };
   return (
-    <div className="grid gap-2 border border-dashed p-3" data-new-share>
-      <p className="text-xs">Copy the link now. Chef keeps only a fingerprint of it and cannot show it again.</p>
-      <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 break-all font-mono text-[11px]">{link}</code>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="Copy the link" onClick={() => void copy()}>
-          {copied ? <Check className="text-ok" /> : <Copy />}
-        </Button>
-      </div>
+    <div className="flex items-center gap-2">
+      <code className="min-w-0 flex-1 break-all font-mono text-[11px]">{link}</code>
+      <Button type="button" size="icon-sm" variant="ghost" aria-label="Copy the link" onClick={() => void copy()}>
+        {copied ? <Check className="text-ok" /> : <Copy />}
+      </Button>
     </div>
   );
 }
@@ -60,39 +58,40 @@ export function ShareDialog(props: { readonly target: ShareTarget; readonly open
   const [kind, setKind] = useState<ShareKind>("session");
   const [days, setDays] = useState<number | null>(30);
   const [busy, setBusy] = useState(false);
-  const [link, setLink] = useState<string | null>(null);
   const [shares, setShares] = useState<readonly ShareView[] | null>(null);
-  const mine = (shares ?? []).filter((s) => (s.kind === "session" || s.kind === "app") && s.id === target.session);
+  const mine = (shares ?? []).filter((s) => s.id === target.session);
+  const current = mine.find((s) => s.kind === kind) ?? null;
   const load = () =>
     api
       .list()
       .then(setShares)
-      .catch((e: unknown) => toast.error("Could not load the links", { description: e instanceof Error ? e.message : String(e) }));
+      .catch((e: unknown) => toast.error("Could not load the link", { description: e instanceof Error ? e.message : String(e) }));
   useEffect(() => {
     if (!props.open) return;
-    setLink(null);
     void load();
   }, [props.open, target.project]);
   const make = async () => {
     setBusy(true);
     try {
-      const { token } = await api.create({ kind, id: target.session, expiresInDays: days });
-      setLink(shareLink(location.origin, token));
-      void load();
+      await api.create({ kind, id: target.session, expiresInDays: days });
+      await load();
     } catch (e) {
       toast.error("Could not make the link", { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
     }
   };
-  const revoke = async (share: ShareView) => {
-    if (!confirm("End this link? It stops opening anything at once; an app someone already has open closes within an hour.")) return;
+  const turnOff = async (share: ShareView) => {
+    if (!confirm("Turn off this link? It stops opening anything at once; an app someone already has open closes within an hour.")) return;
+    setBusy(true);
     try {
       await api.revoke(share.shareId);
-      toast.success("Link ended");
-      void load();
+      toast.success("Link turned off");
+      await load();
     } catch (e) {
-      toast.error("Could not end the link", { description: e instanceof Error ? e.message : String(e) });
+      toast.error("Could not turn off the link", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
     }
   };
   const endAll = async () => {
@@ -123,36 +122,35 @@ export function ShareDialog(props: { readonly target: ShareTarget; readonly open
                 className={cn("grid gap-0.5 border px-3 py-2 text-left hover:bg-muted disabled:opacity-50", kind === k && "border-primary")}
               >
                 <span className="text-sm">{WHAT[k].label}</span>
-                <span className="text-xs text-muted-foreground">{WHAT[k].note}</span>
+                <span className="text-xs text-muted-foreground">
+                  {WHAT[k].note}
+                  {mine.some((s) => s.kind === k) ? " Has a link." : ""}
+                </span>
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2">
-            <select value={days ?? ""} onChange={(e) => setDays(e.target.value ? Number(e.target.value) : null)} aria-label="How long the link works" className="h-8 border bg-background px-2 text-xs">
-              {LIFETIMES.map((lifetime) => (
-                <option key={lifetime.label} value={lifetime.days ?? ""}>
-                  {lifetime.label}
-                </option>
-              ))}
-            </select>
-            <Button type="button" size="sm" disabled={busy} onClick={() => void make()}>
-              Make a link
-            </Button>
-          </div>
-          {link ? <CopyLink link={link} /> : null}
-          {mine.length ? (
-            <div className="grid gap-1">
-              <h3 className="kicker">Links to this build</h3>
-              <ul className="divide-y divide-dashed">
-                {mine.map((share) => (
-                  <li key={share.shareId} className="flex items-center gap-2 py-2" data-share={share.shareId}>
-                    <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">{describe(share, Date.now())}</span>
-                    <Button type="button" size="icon-sm" variant="ghost" aria-label="End this link" title="End this link" onClick={() => void revoke(share)}>
-                      <Trash2 />
-                    </Button>
-                  </li>
+          {current ? (
+            <div className="grid gap-2 border border-dashed p-3" data-share={current.shareId}>
+              <CopyLink link={shareLink(location.origin, current.token)} />
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">{describe(current, Date.now())}</span>
+                <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void turnOff(current)}>
+                  Turn off
+                </Button>
+              </div>
+            </div>
+          ) : shares ? (
+            <div className="flex items-center gap-2">
+              <select value={days ?? ""} onChange={(e) => setDays(e.target.value ? Number(e.target.value) : null)} aria-label="How long the link works" className="h-8 border bg-background px-2 text-xs">
+                {LIFETIMES.map((lifetime) => (
+                  <option key={lifetime.label} value={lifetime.days ?? ""}>
+                    {lifetime.label}
+                  </option>
                 ))}
-              </ul>
+              </select>
+              <Button type="button" size="sm" disabled={busy} onClick={() => void make()}>
+                Make a link
+              </Button>
             </div>
           ) : null}
           <button type="button" onClick={() => void endAll()} className="w-fit text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">

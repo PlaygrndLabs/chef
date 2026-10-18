@@ -14,8 +14,14 @@ export interface ShareRequest {
   readonly expiresAt: number | null;
 }
 
+export interface ShareGrant extends Grant {
+  readonly kind: "share";
+  readonly token: string;
+}
+
 export interface ShareView extends ShareTarget {
   readonly shareId: string;
+  readonly token: string;
   readonly name: string;
   readonly createdAt: number;
   readonly expiresAt: number | null;
@@ -86,12 +92,22 @@ export function readShareRequest(body: unknown, now: number): ShareRequest | str
   return { kind, id, expiresAt: days === null ? null : now + days * DAY_MS };
 }
 
-export async function mintShare(request: ShareRequest, target: { readonly name: string; readonly scopes: readonly string[] }, now: number): Promise<{ readonly grant: Grant; readonly token: string }> {
-  return mintGrant({ name: target.name.slice(0, 60) || request.id, kind: "share", expiresAt: request.expiresAt }, now, target.scopes);
+export async function mintShare(request: ShareRequest, target: { readonly name: string; readonly scopes: readonly string[] }, now: number): Promise<ShareGrant> {
+  const { grant, token } = await mintGrant({ name: target.name.slice(0, 60) || request.id, kind: "share", expiresAt: request.expiresAt }, now, target.scopes);
+  return { ...grant, kind: "share", token };
+}
+
+export function isShareGrant(grant: Grant): grant is ShareGrant {
+  return grant.kind === "share" && typeof (grant as Partial<ShareGrant>).token === "string" && targetOf(grant) !== null;
+}
+
+export function sameTarget(grant: Grant, other: ShareTarget): boolean {
+  const target = grant.kind === "share" ? targetOf(grant) : null;
+  return target !== null && target.kind === other.kind && target.project === other.project && target.id === other.id;
 }
 
 export function viewShare(grant: Grant, lastUsedAt: number | null): ShareView | null {
   const target = targetOf(grant);
-  if (grant.kind !== "share" || !target) return null;
-  return { ...target, shareId: grant.id, name: grant.name, createdAt: grant.createdAt, expiresAt: grant.expiresAt, lastUsedAt };
+  if (!isShareGrant(grant) || !target) return null;
+  return { ...target, shareId: grant.id, token: grant.token, name: grant.name, createdAt: grant.createdAt, expiresAt: grant.expiresAt, lastUsedAt };
 }

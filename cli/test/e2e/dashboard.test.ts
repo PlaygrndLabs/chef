@@ -82,9 +82,12 @@ describe("dashboard in a browser", () => {
       await page.locator('[data-view="feature"] [data-action="share"]').click();
       const share = page.locator('[data-dialog="share"]');
       await share.getByRole("button", { name: "Make a link" }).click();
-      const link = await share.locator("[data-new-share] code").innerText();
+      const link = await share.locator("[data-share] code").innerText();
       expect(link).toMatch(/\/s#chef_[a-z0-9]{12}_[A-Za-z0-9_-]{43}$/);
-      await share.locator("[data-share]").first().waitFor({ timeout: 10_000 });
+      await page.keyboard.press("Escape");
+      await page.locator('[data-view="feature"] [data-action="share"]').click();
+      expect(await share.locator("[data-share] code").innerText()).toBe(link);
+      expect(await share.getByRole("button", { name: "Make a link" }).count()).toBe(0);
       await page.keyboard.press("Escape");
       const guest = await browser.newPage();
       await guest.goto(link);
@@ -96,8 +99,9 @@ describe("dashboard in a browser", () => {
       expect(await guest.locator("#chat").count()).toBe(0);
       await page.locator('[data-view="feature"] [data-action="share"]').click();
       page.once("dialog", (dialog) => void dialog.accept());
-      await share.getByRole("button", { name: "End this link" }).first().click();
-      await expect.poll(() => share.locator("[data-share]").count(), { timeout: 10_000 }).toBe(0);
+      await share.getByRole("button", { name: "Turn off" }).click();
+      await share.getByRole("button", { name: "Make a link" }).waitFor({ timeout: 10_000 });
+      expect(await share.locator("[data-share]").count()).toBe(0);
       await page.keyboard.press("Escape");
       await guest.reload();
       await guest.locator('[data-view="shared-error"]').waitFor({ timeout: 10_000 });
