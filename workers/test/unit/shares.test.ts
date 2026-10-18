@@ -13,7 +13,7 @@ describe("share links", () => {
     expect(tokenId(token)).toBe(grant.id);
     expect(grant.hash).toBe(await tokenHash(token));
     expect(limited(grant)).toBe(true);
-    for (const path of ["/api/projects/shop/sessions/s-1a2b", "/api/projects/shop/sessions/s-1a2b/turns", "/api/projects/shop/sessions/s-1a2b/changes", "/app/shop/s-1a2b"]) expect(reaches(grant, "GET", path)).toBe(true);
+    for (const path of ["/api/projects/shop/sessions/s-1a2b", "/api/projects/shop/sessions/s-1a2b/turns", "/api/projects/shop/sessions/s-1a2b/changes", "/api/projects/shop/sessions/s-1a2b/events", "/app/shop/s-1a2b"]) expect(reaches(grant, "GET", path)).toBe(true);
     for (const [method, path] of [
       ["POST", "/api/projects/shop/sessions/s-1a2b/steer"],
       ["GET", "/api/projects/shop/sessions/s-1a2b/cloudflare"],
@@ -37,6 +37,7 @@ describe("share links", () => {
     expect(targetOf(grant)).toEqual({ kind: "app", project: "shop", id: "main" });
     expect(reaches(grant, "GET", "/app/shop/main")).toBe(true);
     expect(reaches(grant, "GET", "/api/projects/shop/sessions/s-1a2b")).toBe(false);
+    expect(reaches(grant, "GET", "/api/projects/shop/sessions/s-1a2b/events")).toBe(false);
     expect(scopeFor("HEAD", "/app/shop/main")).toBeNull();
   });
 

@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureMap, FeatureSpec, MapEdit, LearnedRule, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionHistory, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, ChefEvent, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureMap, FeatureSpec, MapEdit, LearnedRule, MainHistory, MemoryEntry, OutboundMode, RouteDecision, SessionChanges, SessionHistory, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -117,6 +117,13 @@ export interface SharedTarget {
   readonly id: string;
   readonly name: string;
   readonly expiresAt: number | null;
+  readonly entry?: string | null;
+}
+
+export interface SessionEvents {
+  readonly entries: readonly { readonly seq: number; readonly event: ChefEvent }[];
+  readonly after: number;
+  readonly done: boolean;
 }
 
 export function sharedApi(input: { readonly base: string; readonly headers?: Readonly<Record<string, string>> }) {
@@ -127,6 +134,7 @@ export function sharedApi(input: { readonly base: string; readonly headers?: Rea
     session: (project: string, id: string) => call<{ record: SessionRecord }>(`${base}/api/projects/${project}/sessions/${id}`, init()),
     turns: (project: string, id: string) => call<SessionTurn[]>(`${base}/api/projects/${project}/sessions/${id}/turns`, init()),
     changes: (project: string, id: string) => call<SessionChanges>(`${base}/api/projects/${project}/sessions/${id}/changes`, init()),
+    events: (project: string, id: string, after: number) => call<SessionEvents>(`${base}/api/projects/${project}/sessions/${id}/events?after=${after}`, init()),
     appState: (link: string, retry: boolean) => fetch(`${base}${link}?state=1${retry ? "&retry=1" : ""}`, init()).catch(() => null),
   };
 }
