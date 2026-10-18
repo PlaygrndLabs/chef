@@ -14,30 +14,34 @@ interface Heard {
   readonly start: number | null;
 }
 
-export function voiceInstructions(spec: readonly FeatureSpec[]): string {
+export function voiceInstructions(spec: readonly FeatureSpec[], context = ""): string {
   const features = spec.length ? spec.map((f) => `- ${f.id}: ${f.title} (${f.status})`).join("\n") : "- none yet";
   return [
-    "You are the voice of Chef, a builder that turns spoken requests into merged software features with no human steps.",
-    "Delegate to the client (Chef's builder) for every request to build, add, change or fix something, and for every question about the project, right away and in the user's words. Never ask the user for details first: the builder works them out. Never claim work is done unless the builder said so. When you talk about it, call it Chef, never the client.",
-    "While you wait, say briefly that you are on it. Speak the builder's commentary in one or two short sentences, in the language of the user's last words; when unsure, in English. Persian (Farsi) is not Arabic: answer Persian in Persian.",
+    "You are Chef, the builder of this project, talking with the person live by voice. You are the same Chef they type to in the project's chat: that chat is your own conversation with them, and what gets built, answered and remembered there is your own work. Speak in the first person, as in \"I'll add that\" or \"Let me check\". Never talk about Chef, a builder, a client, a tool or an assistant as someone else, and never say you are passing, forwarding or handing a request on.",
+    "Act on every request to build, add, change or fix something, and on every question about the project, right away and in the person's own words: delegating to the client is how you yourself build and look things up. Never ask for details first: you work them out while you build. Never claim work is done unless the result says so.",
+    "While you work, say in a few words that you are on it. Then say the result as your own, in one or two short sentences, in the language of the person's last words; when unsure, in English. Persian (Farsi) is not Arabic: answer Persian in Persian.",
     `Features in this project:\n${features}`,
-  ].join("\n\n");
+    context,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function spokenReply(result: SubmitResult): string {
   if (result.answer) return result.answer.text;
   const feature = result.featureId ?? result.decision.featureId ?? "the feature";
-  if (!result.sessionId) return `Nothing to build for that request (${result.decision.reason}).`;
+  if (!result.sessionId) return `There is nothing for me to build for that (${result.decision.reason}).`;
   const kind = result.decision.intent === "new_feature" ? "a new feature" : result.decision.intent === "chore" ? "a chore" : `a ${result.decision.changeKind ?? "change"} to an existing feature`;
   const attempts = result.sessionIds.length > 1 ? ` with ${result.sessionIds.length} parallel attempts` : "";
   const lane = result.decision.hotfix ? " as a hotfix, ahead of other builds" : "";
-  return `Started ${kind}, ${feature}${attempts}${lane}. It merges on its own once tests, review and proof pass; the dashboard shows its running app.`;
+  return `I started ${kind}, ${feature}${attempts}${lane}. I merge it on my own once its tests, review and proof pass; the chat shows its running app.`;
 }
 
 export class VoiceDelegate {
   private heard: Heard[] = [];
   private readonly heardItems = new Set<string>();
   private pending: Promise<void> = Promise.resolve();
+  private ended = false;
   readonly requests: { readonly delegationId: string; readonly prompt: string; readonly result: SubmitResult | null }[] = [];
 
   constructor(
@@ -46,6 +50,7 @@ export class VoiceDelegate {
     private readonly send: (command: LiveCommand) => void,
     private readonly ids: IdSource,
     private readonly settle: () => Promise<void> = async () => {},
+    private readonly unspoken: (content: string) => void = () => {},
   ) {}
 
   handle(event: LiveEvent): Promise<void> {
@@ -95,15 +100,28 @@ export class VoiceDelegate {
       this.reply(delegationId, spokenReply(result));
     } catch (error) {
       this.requests.push({ delegationId, prompt, result: null });
-      this.reply(delegationId, `That request failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.reply(delegationId, `I could not do that: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   private reply(delegationId: string, content: string): void {
-    this.send({ type: "session.commentary.append", event_id: this.ids.next("ev"), delegation_id: delegationId, content: content.slice(0, 1500) });
+    if (this.ended) {
+      this.unspoken(content);
+      return;
+    }
+    try {
+      this.send({ type: "session.commentary.append", event_id: this.ids.next("ev"), delegation_id: delegationId, content: content.slice(0, 1500) });
+    } catch {
+      this.unspoken(content);
+    }
   }
 
   idle(): Promise<void> {
+    return this.pending;
+  }
+
+  end(): Promise<void> {
+    this.ended = true;
     return this.pending;
   }
 }
@@ -116,7 +134,7 @@ export interface VoiceCall {
   hangUp(): Promise<void>;
 }
 
-export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTarget; spec: readonly FeatureSpec[]; ids: IdSource; settle?: () => Promise<void>; onEvent?: (event: LiveEvent) => void; now?: () => number }): Promise<VoiceCall> {
+export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTarget; spec: readonly FeatureSpec[]; context?: string; ids: IdSource; settle?: () => Promise<void>; onEvent?: (event: LiveEvent) => void; now?: () => number }): Promise<VoiceCall> {
   let delegate: VoiceDelegate | null = null;
   let turns: SpokenTurns | null = null;
   const early: LiveEvent[] = [];
@@ -129,7 +147,7 @@ export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTar
     turns?.handle(event);
     void delegate.handle(event);
   };
-  const stream = await input.host.start({ instructions: voiceInstructions(input.spec), onEvent: handle });
+  const stream = await input.host.start({ instructions: voiceInstructions(input.spec, input.context), onEvent: handle });
   const record = input.target.recordSpoken?.bind(input.target);
   const saving = new Set<Promise<void>>();
   const save = (turn: SpokenTurn) => {
@@ -140,15 +158,20 @@ export async function startVoiceCall(input: { host: VoiceHost; target: SpokenTar
     saving.add(saved);
   };
   turns = record ? new SpokenTurns(save, input.now) : null;
-  delegate = new VoiceDelegate(stream.sessionId, input.target, (command) => stream.connection.send(command), input.ids, input.settle);
+  const now = input.now ?? Date.now;
+  const unspoken = (text: string) => save({ speaker: "chef", text, startedAt: now() });
+  const voice = new VoiceDelegate(stream.sessionId, input.target, (command) => stream.connection.send(command), input.ids, input.settle, unspoken);
+  delegate = voice;
   for (const event of early.splice(0)) {
     turns?.handle(event);
     void delegate.handle(event);
   }
   const hangUp = async () => {
+    const working = voice.end();
     await stream.connection.close();
     turns?.endAll();
+    await working;
     await Promise.all([...saving]);
   };
-  return { sessionId: stream.sessionId, delegate, connection: stream.connection, sendAudio: (pcm) => stream.sendAudio(pcm), hangUp };
+  return { sessionId: stream.sessionId, delegate: voice, connection: stream.connection, sendAudio: (pcm) => stream.sendAudio(pcm), hangUp };
 }

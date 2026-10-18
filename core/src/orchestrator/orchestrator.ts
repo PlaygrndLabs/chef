@@ -105,6 +105,7 @@ export class ControlError extends Error {}
 
 const LAYOUT_KEY = "layout/features";
 const CHAT_KEY = "chat/turns";
+const VOICE_CHAT_CHARS = 8_000;
 
 interface Control {
   readonly type: "drop";
@@ -245,12 +246,13 @@ export class Orchestrator {
     return { commitId, tree: commit?.tree ?? {} };
   }
 
-  async submit(prompt: string, options: { readonly attempts?: number; readonly by?: string | null } = {}): Promise<SubmitResult> {
+  async submit(prompt: string, options: { readonly attempts?: number; readonly by?: string | null; readonly spoken?: boolean } = {}): Promise<SubmitResult> {
     const by = options.by ?? null;
-    return this.deps.spend ? this.deps.spend.scope(by, () => this.submitAs(prompt, options.attempts, by)) : this.submitAs(prompt, options.attempts, by);
+    const spoken = options.spoken === true;
+    return this.deps.spend ? this.deps.spend.scope(by, () => this.submitAs(prompt, options.attempts, by, spoken)) : this.submitAs(prompt, options.attempts, by, spoken);
   }
 
-  private async submitAs(prompt: string, attemptsWanted: number | undefined, by: string | null): Promise<SubmitResult> {
+  private async submitAs(prompt: string, attemptsWanted: number | undefined, by: string | null, spoken: boolean): Promise<SubmitResult> {
     if (isMapRequest(prompt)) return this.mapRequest(prompt);
     const { tree } = await this.mainTree();
     const spec = arrangedSpec(readSpec(tree), await this.layout());
@@ -259,7 +261,7 @@ export class Orchestrator {
     const outline = map.features.length ? renderMapOutline(map) : "";
     const chat = renderConversation(await this.chatMemory());
     const decision = await this.router.route(prompt, routing);
-    await this.emit({ type: "route.decided", prompt, decision });
+    await this.emit({ type: "route.decided", prompt, decision, ...(spoken ? { spoken: true } : {}) });
     if (decision.intent === "question") {
       const answer = await this.answer(prompt);
       await this.emit({ type: "question.answered", prompt, answer: answer.text, sources: answer.sources });
@@ -459,9 +461,15 @@ export class Orchestrator {
   }
 
   async submitSpoken(prompt: string, call: { readonly voiceSessionId: string; readonly delegationId: string; readonly by?: string | null }): Promise<SubmitResult> {
-    const result = await this.submit(prompt, { by: call.by ?? null });
+    const result = await this.submit(prompt, { by: call.by ?? null, spoken: true });
     await this.emit({ type: "voice.request", voiceSessionId: call.voiceSessionId, delegationId: call.delegationId, prompt, intent: result.decision.intent, sessionId: result.sessionId, featureId: result.featureId ?? result.decision.featureId });
     return result;
+  }
+
+  async voiceContext(): Promise<string> {
+    const chat = renderConversation(await this.chatMemory());
+    const builds = buildsDoc(await this.sessions());
+    return [chat ? `Your chat with the person so far:\n${chat.length > VOICE_CHAT_CHARS ? `…${chat.slice(-VOICE_CHAT_CHARS)}` : chat}` : "", builds?.text ?? ""].filter(Boolean).join("\n\n");
   }
 
   async recordSpoken(turn: { readonly voiceSessionId: string; readonly speaker: "you" | "chef"; readonly text: string; readonly startedAt: number }): Promise<void> {

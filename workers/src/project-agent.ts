@@ -668,7 +668,7 @@ export class ProjectAgent extends Agent<Env> {
     const call = this.calls.get(connection.id);
     if (!call) return;
     this.calls.delete(connection.id);
-    await (await call)?.hangUp();
+    await this.keepAliveWhile(async () => (await call)?.hangUp());
   }
 
   private async startVoice(connection: Connection, by: string | null): Promise<VoiceCall | null> {
@@ -714,6 +714,7 @@ export class ProjectAgent extends Agent<Env> {
         host,
         target,
         spec: readSpec((await orchestrator.mainTree()).tree),
+        context: await orchestrator.voiceContext(),
         ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
         settle: () => new Promise((resolve) => setTimeout(resolve, 600)),
         onEvent: (event) => {
