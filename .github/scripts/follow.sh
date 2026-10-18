@@ -29,6 +29,7 @@ while [ $SECONDS -lt $end ]; do
     last=$(echo "$events" | jq '.[-1].seq')
   fi
   sessions=$(curl -sS -m 60 -H "$auth" "$api/sessions" || echo '[]')
+  [ -n "${EVENTS_FILE:-}" ] && echo "$sessions" > "$(dirname "$EVENTS_FILE")/sessions.json"
   states=$(echo "$sessions" | jq -r '[.[].machine.state] | join(",")' 2>/dev/null)
   waiting=$(echo "$sessions" | jq -r '[.[] | select(.machine.state != "merged" and .machine.state != "stuck" and .machine.state != "dropped") | (.needs // [])[]] | join(",")' 2>/dev/null)
   if [ -n "$waiting" ]; then
