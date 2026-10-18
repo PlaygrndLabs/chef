@@ -198,6 +198,7 @@ export async function serve(options: { readonly port: number; readonly project?:
 
   interface LocalShare {
     readonly shareId: string;
+    readonly token: string;
     readonly kind: "session" | "app";
     readonly project: string;
     readonly id: string;
@@ -211,10 +212,12 @@ export async function serve(options: { readonly port: number; readonly project?:
     if (request.method === "GET") return Response.json({ shares: [...shares.values()].filter((share) => share.project === name) });
     const body = (await request.json().catch(() => ({}))) as { kind?: "session" | "app"; id?: string; expiresInDays?: number | null };
     if ((body.kind !== "session" && body.kind !== "app") || !body.id) return Response.json({ error: "say what to share" }, { status: 400 });
+    const current = [...shares.values()].find((share) => share.project === name && share.kind === body.kind && share.id === body.id);
+    if (current) return Response.json({ share: current, token: current.token });
     const title = (await w.orchestrator.sessions()).find((record) => record.id === body.id)?.plan.feature.title ?? body.id;
     const { id, token } = newToken();
     const now = Date.now();
-    const share: LocalShare = { shareId: id, kind: body.kind, project: name, id: body.id, name: title, createdAt: now, expiresAt: body.expiresInDays ? now + body.expiresInDays * 86_400_000 : null, lastUsedAt: null };
+    const share: LocalShare = { shareId: id, token, kind: body.kind, project: name, id: body.id, name: title, createdAt: now, expiresAt: body.expiresInDays ? now + body.expiresInDays * 86_400_000 : null, lastUsedAt: null };
     shares.set(token, share);
     return Response.json({ share, token }, { status: 201 });
   };

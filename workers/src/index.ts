@@ -20,6 +20,7 @@ export { UpstreamSync } from "./upstream-sync.ts";
 
 const WEBHOOK = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/git\/webhook$/;
 const PROJECT_ROOT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})$/;
+const PAGE_ASSET = /^\/assets\/[A-Za-z0-9._-]+\.(?:js|css|woff2?|svg|png)$/;
 const COPILOTKIT = /^\/api\/projects\/([a-z][a-z0-9-]{1,30})\/copilotkit(\/|$)/;
 
 export default {
@@ -28,6 +29,7 @@ export default {
     if (webhook) return projectStub(env, webhook[1] as string, trusted(incoming, null));
     if (new URL(incoming.url).pathname === "/api/github/webhook") return gitHubWebhook(trusted(incoming, null), env);
     if (new URL(incoming.url).pathname === SHARE_PAGE && incoming.method === "GET") return env.ASSETS.fetch(new Request(new URL("/", incoming.url), incoming));
+    if (PAGE_ASSET.test(new URL(incoming.url).pathname) && incoming.method === "GET") return env.ASSETS.fetch(incoming);
     const caller = await guard(incoming, access(env, (work) => ctx.waitUntil(work)));
     if (caller instanceof Response) return caller;
     const url = new URL(incoming.url);

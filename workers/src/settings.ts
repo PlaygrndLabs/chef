@@ -6,8 +6,8 @@ import type { SharedInstructions } from "@chef/adapters/guidance";
 import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type SaveResult, type SpendPart, type StoredAgents } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, homeOrigin, passwordProblem, sessionCookie, type Access, type Caller, type Credential, type StoredPassword } from "./access.ts";
-import { deploymentGrant, deploymentKey, mintGrant, readGrantRequest, viewGrant, type Grant, type GrantView } from "./grants.ts";
-import { mintShare, readShareRequest, SHARE_ROUTE, SHARES_ROUTE, targetOf, viewShare, type ShareKind, type ShareView } from "./shares.ts";
+import { deploymentGrant, deploymentKey, live, mintGrant, readGrantRequest, viewGrant, type Grant, type GrantView } from "./grants.ts";
+import { isShareGrant, mintShare, readShareRequest, sameTarget, SHARE_ROUTE, SHARES_ROUTE, targetOf, viewShare, type ShareGrant, type ShareKind, type ShareView } from "./shares.ts";
 import { DurableStore } from "./do-store.ts";
 
 const SETTINGS = "providers";
@@ -74,6 +74,15 @@ export class Settings extends DurableObject<Env> {
 
   async addGrant(grant: Grant): Promise<void> {
     await this.ctx.storage.put({ [`${GRANT}${grant.id}`]: grant, [SEALED]: true });
+  }
+
+  async claimShare(candidate: ShareGrant, now: number): Promise<ShareGrant> {
+    const target = targetOf(candidate);
+    const same = target ? (await this.grants()).grants.filter((grant) => sameTarget(grant, target)) : [];
+    const current = same.find((grant): grant is ShareGrant => isShareGrant(grant) && live(grant, now)) ?? candidate;
+    for (const grant of same) if (grant.id !== current.id) await this.removeGrant(grant.id);
+    if (current === candidate) await this.addGrant(candidate);
+    return current;
   }
 
   async removeGrant(id: string): Promise<boolean> {
@@ -323,9 +332,10 @@ export async function sharesRequest(request: Request, env: Env, describe: Descri
     if (typeof input === "string") return Response.json({ error: input }, { status: 400 });
     const target = await describe(project, input.kind, input.id);
     if ("error" in target) return Response.json({ error: target.error }, { status: 404 });
-    const { grant, token } = await mintShare(input, target, now);
-    await settings.addGrant(grant);
-    return Response.json({ share: viewShare(grant, null), token }, { status: 201 });
+    const candidate = await mintShare(input, target, now);
+    const share = await settings.claimShare(candidate, now);
+    const used = share.id === candidate.id ? null : ((await settings.grants()).used[share.id] ?? null);
+    return Response.json({ share: viewShare(share, used), token: share.token }, { status: share.id === candidate.id ? 201 : 200 });
   }
   const id = SHARE_ROUTE.exec(url.pathname)?.[1] ?? null;
   if (id && request.method === "DELETE") {

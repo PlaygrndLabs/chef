@@ -76,6 +76,7 @@ export type ShareKind = "session" | "app";
 
 export interface ShareView {
   readonly shareId: string;
+  readonly token: string;
   readonly kind: ShareKind;
   readonly project: string;
   readonly id: string;
