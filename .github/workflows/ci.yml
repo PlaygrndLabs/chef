@@ -14,6 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Commits name no Anthropic identity
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && !github.event.forced && github.event.before != '0000000000000000000000000000000000000000')
+        env:
+          FROM: ${{ github.event.pull_request.base.sha || github.event.before }}
+          TO: ${{ github.event.pull_request.head.sha || github.event.after }}
+        run: |
+          found=$(git log --format='%h author %an <%ae>, committer %cn <%ce>, co-authors %(trailers:key=Co-authored-by,valueonly,separator=%x3B )' "$FROM..$TO" | grep -i '@anthropic\.com' || true)
+          [ -z "$found" ] || { echo "$found"; echo "::error::Commits must use the ma.karimi76@gmail.com identity and carry no Claude Co-Authored-By trailer (GOAL.md). Rewrite these commits before merging."; exit 1; }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
