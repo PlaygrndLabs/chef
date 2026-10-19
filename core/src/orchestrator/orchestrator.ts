@@ -99,12 +99,19 @@ export interface GateOutcome {
   readonly ok: boolean;
   readonly checks: readonly CheckResult[];
   readonly requeue?: boolean;
-  readonly reverted?: { readonly commitId: string; readonly revertId: string; readonly log: string };
+}
+
+interface PendingVerify {
+  readonly commitId: string;
+  readonly mainBefore: string;
+  readonly sessionId: string;
+  readonly at: number;
 }
 
 export class ControlError extends Error {}
 
 const LAYOUT_KEY = "layout/features";
+const VERIFY_PREFIX = "verify/";
 const CHAT_KEY = "chat/turns";
 const VOICE_CHAT_CHARS = 8_000;
 
@@ -162,6 +169,8 @@ export class Orchestrator {
   private readonly main: MainWriter;
   private readonly archiver: Archiver;
   private readonly mergeQueue = new Mutex();
+  private readonly verifyQueue = new Mutex();
+  private readonly verifying = new Map<string, Promise<void>>();
   private readonly pickQueue = new Mutex();
   private readonly specialization: Specialization;
   private readonly budget: Budget;
@@ -687,7 +696,11 @@ export class Orchestrator {
   async drain(maxRounds = 200): Promise<SessionRecord[]> {
     for (let round = 0; round < maxRounds; round++) {
       const active = (await this.sessions()).filter(runnable);
-      if (active.length === 0) break;
+      if (active.length === 0) {
+        if (this.deps.background || (await this.pendingVerifies()).length === 0) break;
+        await this.verifyMerges();
+        continue;
+      }
       await Promise.all(active.map((s) => this.step(s.id)));
     }
     return this.sessions();
@@ -696,7 +709,11 @@ export class Orchestrator {
   async run(id: string, maxSteps = 100): Promise<SessionRecord> {
     for (let i = 0; i < maxSteps; i++) {
       const record = await this.session(id);
-      if (isTerminal(record.machine.state)) return record;
+      if (isTerminal(record.machine.state)) {
+        if (this.deps.background || (await this.pendingVerifies()).length === 0) return record;
+        await this.verifyMerges();
+        continue;
+      }
       await this.step(id);
     }
     return this.session(id);
@@ -1167,8 +1184,7 @@ export class Orchestrator {
         await this.emit({ type: "branch.merged", sessionId: record.id, featureId: record.featureId, into: record.merge.into, intoFeature: upstream.featureId, commitId: record.merge.commitId });
         return;
       }
-      await this.emit({ type: "main.merged", sessionId: record.id, featureId: record.featureId, commitId: outcome.reverted?.commitId ?? (record.baseMain as string) });
-      if (outcome.reverted) await this.reopen(record, outcome.reverted.revertId, outcome.reverted.log);
+      await this.emit({ type: "main.merged", sessionId: record.id, featureId: record.featureId, commitId: record.baseMain as string });
     } else {
       await this.apply(record, { type: "gate_failed", log: formatChecks(outcome.checks.filter((c) => !c.ok)) });
     }
@@ -1289,9 +1305,18 @@ export class Orchestrator {
     const checks = approved && record.ready?.commitId === head.id ? record.ready.checks : await this.gateChecks(record, head);
     if (checks.some((c) => !c.ok)) return { ok: false, checks };
     if (!approved && ((await this.mergeMode()) === "manual" || (await this.rivalsOf(record)).length > 0)) return this.waitForPerson(record, head.id, checks);
+    const waiting: GateOutcome = { ok: false, checks, requeue: true };
+    if (await this.verifyBusy()) {
+      record.ready = { commitId: head.id, checks, approved: true };
+      return waiting;
+    }
     return this.mergeQueue.run(async () => {
+      if ((await this.pendingVerifies()).length > 0) {
+        record.ready = { commitId: head.id, checks, approved: true };
+        return waiting;
+      }
       const mainHead = await this.deps.repos.resolveRef(this.canonical, "main");
-      if (!mainHead || mainHead !== record.baseMain) {
+      if (!mainHead || (mainHead !== record.baseMain && !(await this.apartFromMain(record, head, mainHead)))) {
         record.syncPending = true;
         return { ok: false, checks, requeue: true };
       }
@@ -1303,15 +1328,57 @@ export class Orchestrator {
       }
       record.baseMain = outcome.commitId;
       record.merge = { commitId: outcome.commitId, mainBefore: mainHead };
-      const verified = await this.verifyMain(outcome.commitId, mainHead);
-      if (verified.ok) {
-        await this.syncMemory();
-        return { ok: true, checks };
-      }
-      const { revertId } = await this.revertLocked(record.featureId, outcome.commitId, mainHead, verified.log, [record.rootPrompt]);
+      const pending: PendingVerify = { commitId: outcome.commitId, mainBefore: mainHead, sessionId: record.id, at: this.deps.clock.now() };
+      await this.deps.store.put(`${VERIFY_PREFIX}${outcome.commitId}`, pending);
       await this.syncMemory();
-      return { ok: true, checks, reverted: { commitId: outcome.commitId, revertId, log: verified.log } };
+      return { ok: true, checks };
     });
+  }
+
+  private async apartFromMain(record: SessionRecord, head: Commit, mainHead: string): Promise<boolean> {
+    if (!record.baseMain) return false;
+    const base = (await this.commitOf(this.canonical, record.baseMain)).tree;
+    const main = (await this.commitOf(this.canonical, mainHead)).tree;
+    const ours = new Set(Object.keys(diffTrees(base, head.tree)).filter((path) => !(path in this.resolvers)));
+    return Object.keys(diffTrees(base, main)).every((path) => path in this.resolvers || !ours.has(path));
+  }
+
+  async verifyMerges(): Promise<number> {
+    const background = this.deps.background;
+    for (const entry of await this.pendingVerifies()) {
+      if (this.running.has(entry.sessionId)) continue;
+      const work = this.verifyOne(entry);
+      if (background) background(() => work);
+      else await work;
+    }
+    return (await this.pendingVerifies()).length;
+  }
+
+  private async verifyBusy(): Promise<boolean> {
+    for (const entry of await this.pendingVerifies()) if (!this.running.has(entry.sessionId)) await this.verifyOne(entry);
+    return (await this.pendingVerifies()).length > 0;
+  }
+
+  private verifyOne(entry: PendingVerify): Promise<void> {
+    const known = this.verifying.get(entry.commitId);
+    if (known) return known;
+    const work = this.verifyQueue.run(() => this.verifyMerge(entry)).finally(() => this.verifying.delete(entry.commitId));
+    this.verifying.set(entry.commitId, work);
+    return work;
+  }
+
+  private async pendingVerifies(): Promise<PendingVerify[]> {
+    return [...(await this.deps.store.list<PendingVerify | null>(VERIFY_PREFIX)).values()].filter((p): p is PendingVerify => p !== null).sort((a, b) => a.at - b.at);
+  }
+
+  private async verifyMerge(entry: PendingVerify): Promise<void> {
+    if (!(await this.deps.store.get<PendingVerify | null>(`${VERIFY_PREFIX}${entry.commitId}`))) return;
+    const owner = await this.session(entry.sessionId).catch(() => null);
+    if (owner?.merge?.commitId === entry.commitId) {
+      const verified = await this.verifyMain(entry.commitId, entry.mainBefore);
+      if (!verified.ok) await this.revertMerge(entry.commitId, verified.log);
+    }
+    await this.deps.store.delete(`${VERIFY_PREFIX}${entry.commitId}`);
   }
 
   private async verifyMain(commitId: string, mainBefore: string): Promise<{ ok: boolean; log: string }> {

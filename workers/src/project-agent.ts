@@ -839,8 +839,10 @@ export class ProjectAgent extends Agent<Env> {
     const { orchestrator } = await this.build();
     await orchestrator.reclaim();
     const sessions = await this.pump.kick(orchestrator, () => undefined);
+    const verifying = await orchestrator.verifyMerges();
     await this.pushExternal();
     if (sessions.some(runnable)) await this.schedule(1, "drive");
+    else if (verifying > 0) await this.schedule(5, "drive");
     if (sessions.some((s) => s.overBudget && !isTerminal(s.machine.state))) await this.schedule(nextMonth(Date.now()), "budgetChanged", undefined, { idempotent: true });
     if (await this.mainBehind()) await this.schedule(0, "runMainApp", undefined, { idempotent: true });
   }
