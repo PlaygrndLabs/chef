@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: Type chef-dev to delete every project on chef-dev the way Project settings > Delete project does; leave empty to only list them
+        description: Type chef-dev to delete every project on chef-dev the way Project settings > Delete project does (or the project's name when one is given below); leave empty to only list them
+        required: false
+        default: ""
+      name:
+        description: Only this project. A hidden one (made by an old cloud run, so not in the list) is listed first so it can be deleted
         required: false
         default: ""
 
@@ -18,7 +22,8 @@ jobs:
     env:
       CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
       CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
-      DELETE: ${{ inputs.confirm == 'chef-dev' }}
+      ONLY: ${{ inputs.name }}
+      DELETE: ${{ inputs.name == '' && inputs.confirm == 'chef-dev' || inputs.name != '' && inputs.confirm == inputs.name }}
     steps:
       - uses: actions/checkout@v4
       - name: List the projects, and delete them when confirmed
@@ -27,7 +32,15 @@ jobs:
           auth=$(bash .github/scripts/sign-in.sh "$CHEF_URL")
           names=$(curl -fsS -m 60 -H "$auth" "$CHEF_URL/api/projects" | jq -r '.projects[].name')
           echo "projects on chef-dev: $(echo $names)"
-          if [ "$DELETE" != "true" ]; then echo "dry run: nothing deleted. Run again with confirm set to chef-dev to delete these."; exit 0; fi
+          if [ -n "$ONLY" ]; then
+            if ! echo "$names" | grep -qx "$ONLY"; then
+              echo "$ONLY is not listed; it is hidden or does not exist"
+              if [ "$DELETE" != "true" ]; then echo "dry run: nothing listed or deleted. Run again with confirm set to $ONLY to list and delete it."; exit 0; fi
+              curl -fsS -m 600 -X POST -H "$auth" -H 'content-type: application/json' -d "$(jq -n --arg n "$ONLY" '{name: $n}')" "$CHEF_URL/api/projects"; echo
+            fi
+            names="$ONLY"
+          fi
+          if [ "$DELETE" != "true" ]; then echo "dry run: nothing deleted. Run again with confirm set to ${ONLY:-chef-dev} to delete: $(echo $names)"; exit 0; fi
           failed=""
           for name in $names; do
             for attempt in 1 2 3; do
@@ -40,4 +53,5 @@ jobs:
           done
           left=$(curl -fsS -m 60 -H "$auth" "$CHEF_URL/api/projects" | jq -r '.projects[].name')
           echo "projects left: ${left:-none}"
+          [ -n "$ONLY" ] && left=$(echo "$left" | grep -x "$ONLY" || true)
           [ -z "$failed" ] && [ -z "$left" ]
