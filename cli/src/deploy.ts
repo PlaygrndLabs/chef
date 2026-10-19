@@ -7,6 +7,8 @@ import { REPO_ROOT } from "./world.ts";
 
 export const BASE_NAME = "chef";
 export const MEMORY_DIMENSIONS = 768;
+export const TRANSCRIPTS_BINDING = "TRANSCRIPTS";
+export const TRANSCRIPT_DAYS = 90;
 
 type Json = Record<string, unknown>;
 
@@ -99,8 +101,28 @@ export async function ensureMemoryIndex(run: Runner, index: string, log: (line: 
   else log(`could not check or create the memory index ${index}; deploying anyway:\n${created.output.trim().split("\n").slice(-3).join("\n")}`);
 }
 
+export async function ensureTranscripts(run: Runner, bucket: string, log: (line: string) => void): Promise<boolean> {
+  if ((await run(["r2", "bucket", "info", bucket])).code === 0) return true;
+  const created = await run(["r2", "bucket", "create", bucket]);
+  if (created.code !== 0) {
+    log(`could not check or create the transcript bucket ${bucket}, so Chef keeps no copy of its coders' Claude transcripts:\n${created.output.trim().split("\n").slice(-3).join("\n")}`);
+    return false;
+  }
+  const rule = await run(["r2", "bucket", "lifecycle", "add", bucket, "expire-transcripts", "--expire-days", String(TRANSCRIPT_DAYS), "--force"]);
+  log(rule.code === 0 ? `created the transcript bucket ${bucket}, which deletes a transcript after ${TRANSCRIPT_DAYS} days` : `created the transcript bucket ${bucket}, but could not make it delete transcripts after ${TRANSCRIPT_DAYS} days`);
+  return true;
+}
+
+export function transcriptBucket(name: string): string {
+  return `${name.slice(0, 63 - "-transcripts".length)}-transcripts`;
+}
+
+export function withTranscripts(config: Json, bucket: string): Json {
+  return { ...config, r2_buckets: [...list(config["r2_buckets"]).filter((b) => b["binding"] !== TRANSCRIPTS_BINDING), { binding: TRANSCRIPTS_BINDING, bucket_name: bucket }] };
+}
+
 export const TOKEN_HELP =
-  "Cloudflare refused this deploy's API token. Chef needs a token that can edit Workers Scripts, Containers, Artifacts and Vectorize. " +
+  "Cloudflare refused this deploy's API token. Chef needs a token that can edit Workers Scripts, Containers, Artifacts and Vectorize, and optionally Workers R2 Storage to keep its coders' transcripts. " +
   "On a Deploy to Cloudflare button or Workers Builds deploy, open your Worker's Settings > Builds to see which token the build uses, " +
   "add those permissions to it under My Profile > API Tokens, then retry the build.";
 
@@ -141,15 +163,20 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
   const baseFile = join(REPO_ROOT, "wrangler.jsonc");
   const base = parseJsonc(readFileSync(baseFile, "utf8"));
   const name = options.name ?? String(base["name"]);
-  let config = baseFile;
+  let instance: Json | null = null;
   if (name !== BASE_NAME || options.image) {
-    config = join(REPO_ROOT, `.wrangler.${name}.jsonc`);
-    const instance = instanceConfig(base, name);
-    writeFileSync(config, `${JSON.stringify(options.image ? withImage(instance, options.image) : instance, null, 2)}\n`);
+    instance = options.image ? withImage(instanceConfig(base, name), options.image) : instanceConfig(base, name);
     if (name !== BASE_NAME) log(`deploying a separate chef named ${name}, with its own repos, memory and app router`);
     if (options.image) log(`using the prebuilt sandbox image ${options.image}`);
   }
-  const index = (list(parseJsonc(readFileSync(config, "utf8"))["vectorize"])[0]?.["index_name"] as string | undefined) ?? null;
+  const bucket = transcriptBucket(name);
+  if (!options.dryRun && (await ensureTranscripts(run, bucket, log))) instance = withTranscripts(instance ?? base, bucket);
+  let config = baseFile;
+  if (instance) {
+    config = join(REPO_ROOT, `.wrangler.${name}.jsonc`);
+    writeFileSync(config, `${JSON.stringify(instance, null, 2)}\n`);
+  }
+  const index = (list((instance ?? base)["vectorize"])[0]?.["index_name"] as string | undefined) ?? null;
   if (index && !options.dryRun) await ensureMemoryIndex(run, index, log);
   const apiKey = options.apiKey && !options.dryRun ? newToken().token : null;
   const secretsDir = apiKey ? mkdtempSync(join(tmpdir(), "chef-deploy-")) : null;

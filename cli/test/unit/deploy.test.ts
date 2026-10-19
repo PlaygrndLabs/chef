@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { deploy, ensureMemoryIndex, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, refusedToken, TOKEN_HELP, withImage, withSecret, type Runner } from "../../src/deploy.ts";
+import { deploy, ensureMemoryIndex, ensureTranscripts, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, refusedToken, TOKEN_HELP, transcriptBucket, withImage, withSecret, type Runner } from "../../src/deploy.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const base = parseJsonc(readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8"));
@@ -73,6 +73,44 @@ describe("deploy", () => {
     expect(calls[1]).toEqual(["vectorize", "create", "chef-memory", `--dimensions=${MEMORY_DIMENSIONS}`, "--metric=cosine"]);
     await ensureMemoryIndex(runner({ get: 1, create: 1 }), "chef-memory", (l) => log.push(l));
     expect(log.at(-1)).toContain("deploying anyway");
+  });
+
+  it("creates the transcript bucket with an expiry rule only when it is missing, and reports when it cannot", async () => {
+    const calls: string[][] = [];
+    const runner =
+      (codes: Record<string, number>): Runner =>
+      async (args) => {
+        calls.push([...args]);
+        return { code: codes[args[2] as string] ?? 0, output: "Unauthorized" };
+      };
+    const log: string[] = [];
+    expect(await ensureTranscripts(runner({}), "chef-dev-transcripts", (l) => log.push(l))).toBe(true);
+    expect(calls).toEqual([["r2", "bucket", "info", "chef-dev-transcripts"]]);
+    calls.length = 0;
+    expect(await ensureTranscripts(runner({ info: 1 }), "chef-dev-transcripts", (l) => log.push(l))).toBe(true);
+    expect(calls.slice(1)).toEqual([
+      ["r2", "bucket", "create", "chef-dev-transcripts"],
+      ["r2", "bucket", "lifecycle", "add", "chef-dev-transcripts", "expire-transcripts", "--expire-days", "90", "--force"],
+    ]);
+    expect(await ensureTranscripts(runner({ info: 1, create: 1 }), "chef-dev-transcripts", (l) => log.push(l))).toBe(false);
+    expect(log.at(-1)).toContain("keeps no copy");
+    expect(transcriptBucket("chef-dev")).toBe("chef-dev-transcripts");
+    expect(transcriptBucket("x".repeat(63))).toHaveLength(63);
+  });
+
+  it("binds the transcript bucket only when a deploy could make or find it", async () => {
+    const configs: Record<string, unknown>[] = [];
+    const runner =
+      (r2: number): Runner =>
+      async (args) => {
+        if (args[0] === "r2") return { code: r2, output: "" };
+        if (args[0] === "deploy") configs.push(parseJsonc(readFileSync(args[args.indexOf("--config") + 1] as string, "utf8")));
+        return { code: 0, output: "" };
+      };
+    await deploy({ name: "chef-dev", run: runner(0), log: () => {} });
+    await deploy({ name: "chef-dev", run: runner(1), log: () => {} });
+    expect(configs[0]?.["r2_buckets"]).toEqual([{ binding: "TRANSCRIPTS", bucket_name: "chef-dev-transcripts" }]);
+    expect(configs[1]?.["r2_buckets"]).toBeUndefined();
   });
 
   it("deploys again when Cloudflare could not finish the container settings", async () => {

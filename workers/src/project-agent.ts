@@ -34,6 +34,7 @@ import { homeOrigin, ORIGIN_HEADER } from "./access.ts";
 import { publicOrigin } from "./github-pages.ts";
 import { gitHubApp } from "./github.ts";
 import { agentStore, currentSettings, envCipher, settingsStub } from "./settings.ts";
+import { removeTranscripts } from "./transcripts.ts";
 import { validSignature } from "./webhook.ts";
 import type { AppState, SandboxRestart, SandboxStatus } from "./session-agent.ts";
 import { containerAppName, EngineIdCache } from "./cloudflare-ids.ts";
@@ -303,6 +304,10 @@ export class ProjectAgent extends Agent<Env> {
       const addressed = [...(await this.ctx.storage.list<{ readonly url: string }>({ prefix: ADDRESS })).keys()].map((key) => key.slice(ADDRESS.length));
       await router.remove([this.mainSandbox(), ...sessions.map((session) => session.id), ...addressed].map((sandbox) => this.label(sandbox)));
       removed.push("removed the addresses of its running apps");
+    }
+    if (this.env.TRANSCRIPTS) {
+      const transcripts = await removeTranscripts(this.env.TRANSCRIPTS, this.name).catch(() => 0);
+      if (transcripts > 0) removed.push(`removed ${transcripts === 1 ? "1 transcript file" : `${transcripts} transcript files`}`);
     }
     const forgotten = await orchestrator.forgetMemory();
     if (forgotten > 0) removed.push(`forgot ${forgotten === 1 ? "1 memory entry" : `${forgotten} memory entries`}`);

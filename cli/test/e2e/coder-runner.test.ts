@@ -42,10 +42,15 @@ type Call = { readonly name: string; readonly input: object };
 
 function fakeClaude(call: Call | ((conversation: string) => Call | null)) {
   const seen: Seen[] = [];
+  const puts: { readonly path: string; readonly body: string }[] = [];
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     let raw = "";
     req.on("data", (chunk: Buffer) => (raw += chunk.toString("utf8")));
     req.on("end", () => {
+      if (req.method === "PUT") {
+        puts.push({ path: req.url ?? "", body: raw });
+        return void res.writeHead(204).end();
+      }
       const body = (raw ? JSON.parse(raw) : {}) as { model?: string; stream?: boolean; tools?: { name: string }[]; messages?: { content: unknown }[]; system?: unknown };
       const path = (req.url ?? "").split("?")[0] ?? "";
       const tools = (body.tools ?? []).map((t) => t.name);
@@ -61,7 +66,7 @@ function fakeClaude(call: Call | ((conversation: string) => Call | null)) {
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", model, content: [{ type: "text", text }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 12, output_tokens: 3 } }));
     });
   });
-  return { server, seen };
+  return { server, seen, puts };
 }
 
 function origin(dir: string): string {
@@ -81,7 +86,7 @@ describe("coder runner on the Claude Agent SDK", () => {
     mkdirSync(remote);
     const commitId = origin(remote);
     const workspace = join(root, "workspace");
-    const { server, seen } = fakeClaude({ name: "Write", input: { file_path: join(workspace, "s1", "repo", "features", "hello", "index.ts"), content: HELLO } });
+    const { server, seen, puts } = fakeClaude({ name: "Write", input: { file_path: join(workspace, "s1", "repo", "features", "hello", "index.ts"), content: HELLO } });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
@@ -97,6 +102,7 @@ describe("coder runner on the Claude Agent SDK", () => {
       ref: "main",
       commitId,
       llm: { baseUrl: `http://127.0.0.1:${port}` },
+      transcripts: `http://127.0.0.1:${port}/transcripts/s1/`,
     };
     try {
       const child = spawn("node", [join(REPO_ROOT, "workers", "sandbox", "runner.mjs")], {
@@ -124,6 +130,11 @@ describe("coder runner on the Claude Agent SDK", () => {
       expect(turns[0]?.system).toContain("greeting-style");
       expect(turns[0]?.system).toContain("Use when writing a greeting function");
       expect(seen.filter((s) => s.path.startsWith("/v1/") && s.key !== "chef-placeholder").map((s) => s.path)).toEqual([]);
+      const transcript = puts.find((p) => /^\/transcripts\/s1\/projects\/[^/]+\/[^/]+\.jsonl$/.test(p.path));
+      expect(transcript?.body).toContain("features/hello/index.ts");
+      const record = JSON.parse(puts.findLast((p) => p.path.startsWith("/transcripts/s1/turns/"))?.body ?? "{}") as Record<string, unknown>;
+      expect(record).toMatchObject({ role: "chef-backend", model: "claude-sonnet-5-5", outcome: "done" });
+      expect(record["claudeSessions"]).toHaveLength(1);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
