@@ -35,7 +35,7 @@ import { publicOrigin } from "./github-pages.ts";
 import { gitHubApp } from "./github.ts";
 import { agentStore, currentSettings, envCipher, settingsStub } from "./settings.ts";
 import { validSignature } from "./webhook.ts";
-import type { AppState, SandboxStatus } from "./session-agent.ts";
+import type { AppState, SandboxRestart, SandboxStatus } from "./session-agent.ts";
 import { containerAppName, EngineIdCache } from "./cloudflare-ids.ts";
 
 const SESSION_ROUTE = /^\/api\/projects\/[a-z][a-z0-9-]{1,30}\/sessions\/([a-z0-9-]{1,40})(?:\/([a-z]+))?$/;
@@ -351,6 +351,14 @@ export class ProjectAgent extends Agent<Env> {
         const record = await orchestrator.newVersion(id, prompt ?? null, by);
         await this.schedule(1, "drive");
         return Response.json({ sessionId: record.id, version: record.version ?? null }, { status: 202 });
+      }
+      if (request.method === "POST" && action === "sandbox") {
+        const { main, now } = (await request.json().catch(() => ({}))) as { main?: boolean; now?: boolean };
+        await orchestrator.session(id);
+        const name = main === true ? this.mainSandbox() : id;
+        const outcome = await (this.env.SESSION.get(this.env.SESSION.idFromName(name)) as unknown as { restart(now: boolean): Promise<SandboxRestart> }).restart(now === true);
+        if (main === true && outcome === "restarted") await this.schedule(0, "restartMainApp", undefined, { idempotent: true });
+        return Response.json({ outcome }, { status: 202 });
       }
       if (request.method === "POST" && action === "steer") {
         const { message } = (await request.json().catch(() => ({}))) as { message?: string };

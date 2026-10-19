@@ -115,6 +115,8 @@ interface TurnOutput {
   readonly usage?: { readonly inputTokens: number; readonly outputTokens: number; readonly cachedInputTokens?: number };
 }
 
+export type SandboxRestart = "restarted" | "waiting" | "sleeping";
+
 export interface SandboxStatus {
   readonly running: boolean;
   readonly exit: string | null;
@@ -131,7 +133,7 @@ const RUNNING_SIZE = "sandbox/running-size";
 const OOM_BASE = "sandbox/oom-base";
 const RESTART = "sandbox/restart";
 const RESET_CHECK_MS = 30_000;
-const RESTART_GRACE_MS = 20 * 60_000;
+const RESTART_GRACE_MS = 5 * 60_000;
 const APP = "sandbox/app";
 const VISIT_NOTE_MS = 30_000;
 const APP_GRACE_MS = 60_000;
@@ -197,6 +199,18 @@ export class SessionAgent extends Agent<Env> {
       return;
     }
     await container.destroy().catch(() => undefined);
+  }
+
+  async restart(now: boolean): Promise<SandboxRestart> {
+    const container = this.ctx.container;
+    if (!container?.running) return "sleeping";
+    if (!now && (await within(RESET_CHECK_MS, this.turnAlive())) === true) {
+      await this.ctx.storage.put(RESTART, Date.now());
+      await this.schedule(60, "restartIfIdle", undefined, { idempotent: true });
+      return "waiting";
+    }
+    await container.destroy().catch(() => undefined);
+    return "restarted";
   }
 
   async discard(): Promise<void> {

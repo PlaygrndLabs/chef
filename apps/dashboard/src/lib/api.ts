@@ -397,6 +397,7 @@ export function projectApi(project: string) {
     merge: (id: string) => call<{ state: string }>(`${base}/sessions/${id}/merge`, post({})),
     newVersion: (id: string, prompt?: string) => call<{ sessionId: string; version: number | null }>(`${base}/sessions/${id}/version`, post(prompt ? { prompt } : {})),
     steer: (id: string, message: string) => call<{ ok: boolean }>(`${base}/sessions/${id}/steer`, post({ message })),
+    restartSandbox: (id: string, options: { readonly main: boolean; readonly now: boolean }) => call<{ outcome: "restarted" | "waiting" | "sleeping" }>(`${base}/sessions/${id}/sandbox`, post(options)),
     prompt: (prompt: string) => call<SubmitResult>(`${base}/prompts`, post({ prompt })),
     route: (prompt: string) => call<RouteDecision>(`${base}/route`, post({ prompt })),
     settings: () => call<ProjectSettingsView>(`${base}/settings`),
