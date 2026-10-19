@@ -75,7 +75,7 @@ describe("deploy", () => {
     expect(log.at(-1)).toContain("deploying anyway");
   });
 
-  it("creates the transcript bucket with an expiry rule only when it is missing, and reports when it cannot", async () => {
+  it("creates the transcript bucket only when it is missing, never with an expiry rule, and reports when it cannot", async () => {
     const calls: string[][] = [];
     const runner =
       (codes: Record<string, number>): Runner =>
@@ -88,10 +88,7 @@ describe("deploy", () => {
     expect(calls).toEqual([["r2", "bucket", "info", "chef-dev-transcripts"]]);
     calls.length = 0;
     expect(await ensureTranscripts(runner({ info: 1 }), "chef-dev-transcripts", (l) => log.push(l))).toBe(true);
-    expect(calls.slice(1)).toEqual([
-      ["r2", "bucket", "create", "chef-dev-transcripts"],
-      ["r2", "bucket", "lifecycle", "add", "chef-dev-transcripts", "expire-transcripts", "--expire-days", "90", "--force"],
-    ]);
+    expect(calls.slice(1)).toEqual([["r2", "bucket", "create", "chef-dev-transcripts"]]);
     expect(await ensureTranscripts(runner({ info: 1, create: 1 }), "chef-dev-transcripts", (l) => log.push(l))).toBe(false);
     expect(log.at(-1)).toContain("keeps no copy");
     expect(transcriptBucket("chef-dev")).toBe("chef-dev-transcripts");

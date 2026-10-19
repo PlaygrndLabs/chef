@@ -8,7 +8,6 @@ import { REPO_ROOT } from "./world.ts";
 export const BASE_NAME = "chef";
 export const MEMORY_DIMENSIONS = 768;
 export const TRANSCRIPTS_BINDING = "TRANSCRIPTS";
-export const TRANSCRIPT_DAYS = 90;
 
 type Json = Record<string, unknown>;
 
@@ -108,8 +107,7 @@ export async function ensureTranscripts(run: Runner, bucket: string, log: (line:
     log(`could not check or create the transcript bucket ${bucket}, so Chef keeps no copy of its coders' Claude transcripts:\n${created.output.trim().split("\n").slice(-3).join("\n")}`);
     return false;
   }
-  const rule = await run(["r2", "bucket", "lifecycle", "add", bucket, "expire-transcripts", "--expire-days", String(TRANSCRIPT_DAYS), "--force"]);
-  log(rule.code === 0 ? `created the transcript bucket ${bucket}, which deletes a transcript after ${TRANSCRIPT_DAYS} days` : `created the transcript bucket ${bucket}, but could not make it delete transcripts after ${TRANSCRIPT_DAYS} days`);
+  log(`created the transcript bucket ${bucket}`);
   return true;
 }
 
