@@ -37,7 +37,7 @@ export interface TourReport {
   featureRoute?: number;
   removed?: { readonly project: string; readonly listed: boolean; readonly ms: number };
   readonly sent: { readonly prompt: string; readonly answered: boolean; readonly retried: boolean }[];
-  readonly appLoads: { readonly name: string; readonly loadedMs: number | null; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
+  readonly appLoads: { readonly name: string; readonly loadedMs: number | null; readonly rendered: boolean; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
 }
 
 const SETTLE_MS = 15_000;
@@ -178,8 +178,9 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         } else loadedMs = null;
         await page.waitForTimeout(200);
       }
-      report.appLoads.push({ name, loadedMs, timeline });
-      options.log(`${name}: ${loadedMs === null ? "did not load" : `loaded after ${loadedMs} ms`}; ${timeline.map((t) => `${t.ms}ms ${t.phase}`).join(", ")}`);
+      const rendered = loadedMs !== null && (await page.frameLocator("iframe").first().locator("body *:visible").first().waitFor({ timeout: 15_000 }).then(() => true, () => false));
+      report.appLoads.push({ name, loadedMs, rendered, timeline });
+      options.log(`${name}: ${loadedMs === null ? "did not load" : `loaded after ${loadedMs} ms${rendered ? "" : " but showed nothing"}`}; ${timeline.map((t) => `${t.ms}ms ${t.phase}`).join(", ")}`);
       await shot(`${name}-loaded`);
     };
     await signIn(page, `${base}/`, options.password);
@@ -263,7 +264,8 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       if ((!running && (!options.prompt || (round > 1 && sessions.length > 0) || round > 4)) || Date.now() > deadline) {
         report.finished = !running;
         if (latest) {
-          for (const panel of ["app", "messages", "changes", "details"]) {
+          await watchLoad(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=app`, "final-app-load");
+          for (const panel of ["messages", "changes", "details"]) {
             await go(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=${panel}`);
             await shot(`final-${panel}`);
           }
