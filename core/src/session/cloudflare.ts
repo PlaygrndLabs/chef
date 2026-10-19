@@ -34,6 +34,7 @@ export interface SandboxFacts {
   readonly objectId: string;
   readonly running: boolean;
   readonly exit: string | null;
+  readonly size?: string | null;
 }
 
 export interface CloudflareFacts {
@@ -85,6 +86,7 @@ function sandbox(facts: CloudflareFacts, key: string, title: string, box: Sandbo
       { label: "Durable Object", value: facts.namespaces.SessionAgent ? `SessionAgent · ${facts.namespaces.SessionAgent}` : "SessionAgent" },
       { label: "Object ID", value: box.objectId, copy: true },
       { label: "Runs", value: runs },
+      ...(box.size ? [{ label: "Size", value: box.size }] : []),
       ...(box.exit ? [{ label: "Last exit", value: box.exit }] : []),
     ],
     dashboard: dashboardLink(facts.accountId, "workers/containers"),

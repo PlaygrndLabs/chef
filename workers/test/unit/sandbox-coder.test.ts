@@ -9,7 +9,7 @@ function sandboxes(runTurn: () => Promise<TurnOutcome>) {
     idFromName: (name: string) => name,
     get: (name: string) => ({ runTurn, resumeTurn: runTurn, stop: async () => true, reset: async () => void resets.push(name) }),
   } as unknown as DurableObjectNamespace;
-  return { resets, coder: new SandboxCoder(namespace, { model: "m", llm: { baseUrl: "https://llm.example", apiKey: "k" } }) };
+  return { resets, coder: new SandboxCoder(namespace, { project: "todos", model: "m", llm: { baseUrl: "https://llm.example", apiKey: "k" } }) };
 }
 
 const input = {

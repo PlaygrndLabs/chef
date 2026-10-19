@@ -5,11 +5,13 @@ import { APP_REQUEST_HEADER } from "@chef/adapters/app-gate";
 import { appPage } from "@chef/adapters/app-page";
 import { layerStore } from "./image-layers.ts";
 import { LAYER_CACHE_ADDRESS, layerCacheFetch } from "./layer-cache.ts";
+import { exitedForMemory, nextStep, oomKills, sandboxSize, sizeLabel, sizeStep } from "./sandbox-size.ts";
 
 export const PLACEHOLDER = "chef-placeholder";
 
 export interface SandboxJob {
   readonly sessionId: string;
+  readonly project: string;
   readonly featureId: string;
   readonly role: string;
   readonly model: string;
@@ -66,6 +68,7 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
 
 export interface ChecksJob {
   readonly sessionId: string;
+  readonly project: string;
   readonly remote: string;
   readonly ref: string;
   readonly commitId: string;
@@ -114,12 +117,17 @@ interface TurnOutput {
 export interface SandboxStatus {
   readonly running: boolean;
   readonly exit: string | null;
+  readonly size?: string | null;
 }
 
 export const SANDBOX_IDLE_SECONDS = 300;
 export const FOLLOW_SECONDS = 60;
 
 const LAST_USED = "sandbox/last-used";
+const OWNER = "sandbox/project";
+const SIZE = "sandbox/size";
+const RUNNING_SIZE = "sandbox/running-size";
+const OOM_BASE = "sandbox/oom-base";
 const APP = "sandbox/app";
 const VISIT_NOTE_MS = 30_000;
 const APP_GRACE_MS = 60_000;
@@ -128,6 +136,8 @@ const TURN = "sandbox/turn";
 const TURNS_DIR = "/workspace/turns";
 
 type Outbound = Omit<OutboundAccess, "llmKey">;
+
+type SizeStub = { sandboxStep(): Promise<number>; sandboxNeeds(step: number): Promise<void> };
 
 function cacheScope(remote: string): string {
   const url = new URL(remote);
@@ -157,9 +167,11 @@ export class SessionAgent extends Agent<Env> {
   private visited = 0;
   private appRun: { readonly commitId: string; readonly run: Promise<AppState> } | null = null;
   private appsStarting = 0;
+  private project: string | null = null;
 
   async status(): Promise<SandboxStatus> {
-    return { running: this.ctx.container?.running ?? false, exit: this.exit };
+    const running = this.ctx.container?.running ?? false;
+    return { running, exit: this.exit, size: running ? sizeLabel(sandboxSize(await this.ctx.storage.get<number>(RUNNING_SIZE))) : null };
   }
 
   async stop(): Promise<boolean> {
@@ -199,6 +211,7 @@ export class SessionAgent extends Agent<Env> {
   }
 
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome> {
+    await this.remember(job.project);
     const id = job.turnId ?? `${job.sessionId}-${Date.now()}`;
     this.llmKey = llmKey;
     const release = this.grant({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname, cacheScope: cacheScope(job.remote) });
@@ -264,6 +277,7 @@ export class SessionAgent extends Agent<Env> {
       await this.ctx.storage.put(TURN, turn);
       await this.ctx.storage.put(LAST_USED, Date.now());
       await this.scheduleSleep();
+      await this.checkMemory();
     }
   }
 
@@ -320,6 +334,7 @@ export class SessionAgent extends Agent<Env> {
   }
 
   async runChecks(job: ChecksJob): Promise<CommandResult[]> {
+    await this.remember(job.project);
     let results: CommandResult[] | null = null;
     const { code, tail } = await this.runScript("checks.mjs", job, (event) => {
       if (event["type"] === "chef.checks") results = event["results"] as CommandResult[];
@@ -329,6 +344,7 @@ export class SessionAgent extends Agent<Env> {
   }
 
   async runApp(job: AppJob, readToken: string): Promise<AppState> {
+    await this.remember(job.project);
     const current = this.appRun;
     if (current?.commitId === job.commitId) return current.run;
     const before = current ? current.run.catch(() => undefined) : Promise.resolve();
@@ -435,6 +451,7 @@ export class SessionAgent extends Agent<Env> {
       this.busy--;
       await this.ctx.storage.put(LAST_USED, Date.now());
       await this.scheduleSleep();
+      await this.checkMemory();
     }
   }
 
@@ -481,19 +498,67 @@ export class SessionAgent extends Agent<Env> {
     return { code: await process.exitCode, tail, stopped };
   }
 
+  private async remember(project: string): Promise<void> {
+    if (this.project === project) return;
+    this.project = project;
+    await this.ctx.storage.put(OWNER, project);
+  }
+
+  private async owner(): Promise<SizeStub | null> {
+    this.project ??= (await this.ctx.storage.get<string>(OWNER)) ?? null;
+    return this.project ? (this.env.PROJECT.get(this.env.PROJECT.idFromName(this.project)) as unknown as SizeStub) : null;
+  }
+
+  private async startStep(): Promise<number> {
+    const own = (await this.ctx.storage.get<number>(SIZE)) ?? 0;
+    const project = await (await this.owner())?.sandboxStep().catch(() => 0);
+    return sizeStep(Math.max(own, project ?? 0));
+  }
+
+  private async checkMemory(): Promise<void> {
+    try {
+      const container = this.ctx.container;
+      if (!container?.running) {
+        if (exitedForMemory(this.exit)) await this.grow();
+        return;
+      }
+      const base = await this.ctx.storage.get<number>(OOM_BASE);
+      const kills = oomKills((await this.shell(VMSTAT, {})).out);
+      if (base === undefined || kills === null || kills <= base) return;
+      await this.grow();
+      if (this.busy === 0 && !(await this.turnAlive())) await container.destroy();
+    } catch (error) {
+      console.error(`checking the memory of sandbox ${this.name} failed`, error);
+    }
+  }
+
+  private async grow(): Promise<void> {
+    const running = sizeStep(await this.ctx.storage.get<number>(RUNNING_SIZE));
+    const next = nextStep(running);
+    if (next === null) return;
+    if (((await this.ctx.storage.get<number>(SIZE)) ?? 0) < next) await this.ctx.storage.put(SIZE, next);
+    await (await this.owner())?.sandboxNeeds(next).catch((error: unknown) => console.error(`saving the sandbox size of ${this.project} failed`, error));
+    console.error(`sandbox ${this.name} ran out of memory with ${sizeLabel(sandboxSize(running))}; it starts with ${sizeLabel(sandboxSize(next))} from now on`);
+  }
+
   private async ensureContainer(): Promise<Container> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     if (container.running) return container;
     this.exit = null;
     this.intercepted.clear();
-    container.start({ image: container.images["coder"] as string, enableInternet: true, instance: SANDBOX_INSTANCE });
+    const step = await this.startStep();
+    container.start({ image: container.images["coder"] as string, enableInternet: true, instance: sandboxSize(step) });
     container.monitor().then(
       () => (this.exit = "its main process exited"),
       (error: unknown) => (this.exit = String(error)),
     );
     for (let waited = 0; !container.running && !this.exit && waited < 60_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
     if (!container.running) throw new Error(`the sandbox container did not start: ${this.exit ?? "timed out"}`);
+    await this.ctx.storage.put(RUNNING_SIZE, step);
+    const kills = oomKills((await this.shell(VMSTAT, {}).catch(() => ({ code: 1, out: "" }))).out);
+    if (kills === null) await this.ctx.storage.delete(OOM_BASE);
+    else await this.ctx.storage.put(OOM_BASE, kills);
     await container.setInactivityTimeout((await this.idleSeconds()) * 1000).catch(() => undefined);
     return container;
   }
@@ -575,7 +640,7 @@ const CA = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
 const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, PLAYWRIGHT_BROWSERS_PATH: "/opt/pw-browsers" };
 const SANDBOX_USER = "1000:1000";
 const ROOT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
-const SANDBOX_INSTANCE = "standard-2";
+const VMSTAT = "cat /proc/vmstat";
 
 function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);

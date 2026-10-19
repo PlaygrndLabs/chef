@@ -8,11 +8,11 @@ function tail(text: string, lines = 40): string {
   return text.trim().split("\n").slice(-lines).join("\n");
 }
 
-async function job(repos: RepoHost, repo: string, commitId: string, commands: ChecksJob["commands"]): Promise<Omit<ChecksJob, "sessionId"> & { token: () => Promise<void> }> {
+async function job(repos: RepoHost, project: string, repo: string, commitId: string, commands: ChecksJob["commands"]): Promise<Omit<ChecksJob, "sessionId"> & { token: () => Promise<void> }> {
   const info = await repos.info(repo);
   if (!info) throw new Error(`unknown repo ${repo}`);
   const token = await repos.createToken(repo, "read", 900);
-  return { remote: info.remote, ref: info.defaultBranch, commitId, readToken: token.secret, commands, token: () => repos.revokeToken(token) };
+  return { project, remote: info.remote, ref: info.defaultBranch, commitId, readToken: token.secret, commands, token: () => repos.revokeToken(token) };
 }
 
 function sessionOf(repo: string): string {
@@ -23,6 +23,7 @@ export class SandboxCheckRunner implements CheckRunner {
   constructor(
     private readonly sessions: DurableObjectNamespace,
     private readonly repos: RepoHost,
+    private readonly project: string,
   ) {}
 
   async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
@@ -44,7 +45,7 @@ export class SandboxCheckRunner implements CheckRunner {
     const base = input.commitId.split("+")[0] as string;
     const baseCommit = base === input.commitId ? null : await this.repos.readCommit(input.repo, base);
     if (base !== input.commitId && !baseCommit) throw new Error(`unknown base commit ${base} in ${input.repo}`);
-    const prepared = await job(this.repos, input.repo, base, commands);
+    const prepared = await job(this.repos, this.project, input.repo, base, commands);
     const stub = this.sessions.get(this.sessions.idFromName(sessionId)) as unknown as ChecksStub;
     try {
       const { token, ...rest } = prepared;
@@ -67,11 +68,12 @@ export class SandboxProofRunner implements ProofRunner {
   constructor(
     private readonly sessions: DurableObjectNamespace,
     private readonly repos: RepoHost,
+    private readonly project: string,
   ) {}
 
   async prove(input: { repo: string; feature: string; flow: string; url: string; commitId: string; tree: Tree }): Promise<ProofRecord> {
     const repo = input.repo;
-    const prepared = await job(this.repos, repo, input.commitId, [{ name: "proof", argv: ["npm", "run", "--silent", "app", "--", "proof", input.feature, "--url", input.url, "--commit", input.commitId] }]);
+    const prepared = await job(this.repos, this.project, repo, input.commitId, [{ name: "proof", argv: ["npm", "run", "--silent", "app", "--", "proof", input.feature, "--url", input.url, "--commit", input.commitId] }]);
     const stub = this.sessions.get(this.sessions.idFromName(sessionOf(repo))) as unknown as ChecksStub;
     let result: CommandResult | undefined;
     try {
@@ -93,7 +95,7 @@ export class SandboxProofRunner implements ProofRunner {
   async probe(input: ProbeInput): Promise<ProofRecord> {
     const flow = `GET ${input.path}`;
     const limit = input.path === "/" ? 500 : 400;
-    const prepared = await job(this.repos, input.repo, input.commitId, [{ name: "probe", argv: ["node", "--input-type=module", "-e", PROBE, new URL(input.path, input.url).href, String(limit)] }]);
+    const prepared = await job(this.repos, this.project, input.repo, input.commitId, [{ name: "probe", argv: ["node", "--input-type=module", "-e", PROBE, new URL(input.path, input.url).href, String(limit)] }]);
     const stub = this.sessions.get(this.sessions.idFromName(sessionOf(input.repo))) as unknown as ChecksStub;
     let result: CommandResult | undefined;
     try {
