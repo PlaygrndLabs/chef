@@ -1,11 +1,11 @@
 import { Agent } from "agents";
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { APP_START_SECONDS, type AppStatus, type CoderEvent, type CoderTurnResult, type CustomAgent, type FileChanges } from "@chef/core";
+import { APP_START_SECONDS, type AppStatus, type CoderEvent, type CoderTurnResult, type CustomAgent, type FileChanges, type TurnResume } from "@chef/core";
 import { APP_REQUEST_HEADER } from "@chef/adapters/app-gate";
 import { appPage } from "@chef/adapters/app-page";
 import { layerStore } from "./image-layers.ts";
 import { LAYER_CACHE_ADDRESS, layerCacheFetch } from "./layer-cache.ts";
-import { saveTranscript, TRANSCRIPT_ADDRESS } from "./transcripts.ts";
+import { TRANSCRIPT_ADDRESS, transcriptFetch } from "./transcripts.ts";
 import { exitedForMemory, nextStep, oomKills, sandboxSize, sizeLabel, sizeStep } from "./sandbox-size.ts";
 
 export const PLACEHOLDER = "chef-placeholder";
@@ -27,6 +27,7 @@ export interface SandboxJob {
   readonly turnId?: string;
   readonly ownStructure?: boolean;
   readonly lane?: string;
+  readonly resume?: TurnResume;
 }
 
 export type TurnOutcome = { readonly status: "done"; readonly result: CoderTurnResult } | { readonly status: "running" } | { readonly status: "lost" };
@@ -52,7 +53,7 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
     const sessions = this.env.SESSION;
     const access = await (sessions.get(sessions.idFromName(this.ctx.props.sandbox)) as unknown as AccessStub).outboundAccess();
     if (!access) return new Response("this sandbox has no access to anything yet", { status: 503 });
-    if (url.hostname === TRANSCRIPT_ADDRESS) return this.env.TRANSCRIPTS && access.project ? saveTranscript(request, this.env.TRANSCRIPTS, access.project) : new Response("this Chef keeps no transcripts", { status: 404 });
+    if (url.hostname === TRANSCRIPT_ADDRESS) return this.env.TRANSCRIPTS && access.project ? transcriptFetch(request, this.env.TRANSCRIPTS, access.project) : new Response("this Chef keeps no transcripts", { status: 404 });
     if (url.hostname === LAYER_CACHE_ADDRESS) return layerCacheFetch(request, layerStore(this.env.IMAGE_LAYERS), access.cacheScope);
     if (url.protocol !== "https:") return new Response("https only", { status: 403 });
     const headers = new Headers(request.headers);

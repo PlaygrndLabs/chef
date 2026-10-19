@@ -17,6 +17,11 @@ export interface CoderWorkspace {
   readonly tree: Tree;
 }
 
+export interface TurnResume {
+  readonly turn: string;
+  readonly changes: boolean;
+}
+
 export interface CoderTurnInput {
   readonly sessionId: string;
   readonly featureId: string;
@@ -29,6 +34,7 @@ export interface CoderTurnInput {
   readonly attempt: { readonly index: number; readonly of: number };
   readonly lane?: string;
   readonly turnId?: string;
+  readonly resume?: TurnResume;
   readonly workspace: CoderWorkspace;
   readonly signal?: AbortSignal;
   readonly onEvent: (event: CoderEvent) => void;

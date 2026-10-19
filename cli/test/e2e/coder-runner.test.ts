@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,13 +43,20 @@ type Call = { readonly name: string; readonly input: object };
 function fakeClaude(call: Call | ((conversation: string) => Call | null)) {
   const seen: Seen[] = [];
   const puts: { readonly path: string; readonly body: string }[] = [];
+  const stored = new Map<string, Buffer>();
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    let raw = "";
-    req.on("data", (chunk: Buffer) => (raw += chunk.toString("utf8")));
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8");
       if (req.method === "PUT") {
         puts.push({ path: req.url ?? "", body: raw });
+        stored.set(req.url ?? "", Buffer.concat(chunks));
         return void res.writeHead(204).end();
+      }
+      if (req.method === "GET" && (req.url ?? "").startsWith("/transcripts/")) {
+        const body = stored.get(req.url ?? "");
+        return void (body ? res.writeHead(200).end(body) : res.writeHead(404).end());
       }
       const body = (raw ? JSON.parse(raw) : {}) as { model?: string; stream?: boolean; tools?: { name: string }[]; messages?: { content: unknown }[]; system?: unknown };
       const path = (req.url ?? "").split("?")[0] ?? "";
@@ -66,7 +73,21 @@ function fakeClaude(call: Call | ((conversation: string) => Call | null)) {
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", model, content: [{ type: "text", text }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 12, output_tokens: 3 } }));
     });
   });
-  return { server, seen, puts };
+  return { server, seen, puts, stored };
+}
+
+async function runRunner(job: object, cwd: string, workspace: string, home: string): Promise<{ readonly code: number | null; readonly events: ({ type: string } & Record<string, unknown>)[]; readonly err: string }> {
+  mkdirSync(cwd, { recursive: true });
+  const child = spawn("node", [join(REPO_ROOT, "workers", "sandbox", "runner.mjs")], {
+    cwd,
+    env: { PATH: process.env["PATH"] ?? "", HOME: home, CHEF_WORKSPACE: workspace, CHEF_JOB: Buffer.from(JSON.stringify(job)).toString("base64") },
+  });
+  let out = "";
+  let err = "";
+  child.stdout.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));
+  child.stderr.on("data", (chunk: Buffer) => (err += chunk.toString("utf8")));
+  const code = await new Promise<number | null>((resolve) => child.on("close", resolve));
+  return { code, err, events: out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as { type: string } & Record<string, unknown>) };
 }
 
 function origin(dir: string): string {
@@ -135,6 +156,90 @@ describe("coder runner on the Claude Agent SDK", () => {
       const record = JSON.parse(puts.findLast((p) => p.path.startsWith("/transcripts/s1/turns/"))?.body ?? "{}") as Record<string, unknown>;
       expect(record).toMatchObject({ role: "chef-backend", model: "claude-sonnet-5-5", outcome: "done" });
       expect(record["claudeSessions"]).toHaveLength(1);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("continues the saved conversation and changes after the sandbox restarts, and the same role's conversation in a later turn", async () => {
+    const root = mkdtempSync(join(tmpdir(), "chef-runner-"));
+    const remote = join(root, "origin");
+    mkdirSync(remote);
+    const commitId = origin(remote);
+    const workspace = join(root, "workspace");
+    const { server, seen } = fakeClaude({ name: "Write", input: { file_path: join(workspace, "s3", "repo", "features", "hello", "index.ts"), content: HELLO } });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const job = {
+      sessionId: "s3",
+      featureId: "hello",
+      role: "backend",
+      model: "claude-sonnet-5-5",
+      prompt: "Add features/hello/index.ts exporting hello().",
+      agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default", skills: [] },
+      writeScope: ["features/hello/**"],
+      remote,
+      ref: "main",
+      commitId,
+      llm: { baseUrl: `http://127.0.0.1:${port}` },
+      transcripts: `http://127.0.0.1:${port}/transcripts/s3/`,
+    };
+    const asked = (from: number) => seen.slice(from).filter((s) => s.tools.includes("Write")).map((s) => s.system).join("\n");
+    try {
+      const first = await runRunner(job, join(root, "turns", "turnA"), workspace, root);
+      expect(first.code, first.err.slice(-2000)).toBe(0);
+
+      rmSync(workspace, { recursive: true, force: true });
+      const before = seen.length;
+      const restarted = await runRunner({ ...job, resume: { turn: "turnA", changes: true } }, join(root, "turns", "turnB"), workspace, root);
+      expect(restarted.code, restarted.err.slice(-2000)).toBe(0);
+      expect(asked(before)).toContain("The sandbox restarted while you were working on this turn");
+      expect(asked(before)).toContain("Writing the feature.");
+      expect(asked(before)).toContain("The repository has your file changes");
+      expect(restarted.events.at(-1)).toMatchObject({ type: "chef.result", changes: { "features/hello/index.ts": HELLO } });
+
+      const later = seen.length;
+      const rework = await runRunner({ ...job, prompt: "Make hello() say hi.", resume: { turn: "turnB", changes: false } }, join(root, "turns", "turnC"), workspace, root);
+      expect(rework.code, rework.err.slice(-2000)).toBe(0);
+      expect(asked(later)).toContain("This is a new turn on the same feature");
+      expect(asked(later)).toContain("Make hello() say hi.");
+      expect(asked(later)).toContain("The sandbox restarted while you were working on this turn");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("starts a new conversation when the earlier one cannot be found", async () => {
+    const root = mkdtempSync(join(tmpdir(), "chef-runner-"));
+    const remote = join(root, "origin");
+    mkdirSync(remote);
+    const commitId = origin(remote);
+    const workspace = join(root, "workspace");
+    const { server, seen } = fakeClaude({ name: "Write", input: { file_path: join(workspace, "s4", "repo", "features", "hello", "index.ts"), content: HELLO } });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const job = {
+      sessionId: "s4",
+      featureId: "hello",
+      role: "backend",
+      model: "claude-sonnet-5-5",
+      prompt: "Add features/hello/index.ts exporting hello().",
+      agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default", skills: [] },
+      writeScope: ["features/hello/**"],
+      remote,
+      ref: "main",
+      commitId,
+      llm: { baseUrl: `http://127.0.0.1:${port}` },
+      transcripts: `http://127.0.0.1:${port}/transcripts/s4/`,
+      resume: { turn: "missing", changes: true },
+    };
+    try {
+      const run = await runRunner(job, join(root, "turns", "turnA"), workspace, root);
+      expect(run.code, run.err.slice(-2000)).toBe(0);
+      expect(seen.filter((s) => s.tools.includes("Write")).map((s) => s.system).join("\n")).not.toContain("The sandbox restarted");
+      expect(run.events.at(-1)).toMatchObject({ type: "chef.result", changes: { "features/hello/index.ts": HELLO } });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
