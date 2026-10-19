@@ -54,6 +54,13 @@ describe("build steps", () => {
     expect(JSON.parse((await w.repos.readNote("demo", PROOF_NAMESPACE, proofHead)) ?? "null")?.path).toBe("/todo-add");
   });
 
+  it("names a feature built without a plan after the request's subject", async () => {
+    const { w } = withSteps({ plan: false, tests: false, review: false });
+    await w.orchestrator.bootstrap(templateTree());
+    const { featureId } = await w.orchestrator.submit("Make a reading list for Pageturners, a small book club: members add a book with its title and author");
+    expect(featureId).toBe("reading-list-pageturners");
+  });
+
   it("writes tests first only when tests are on, and reviews only when review is on", async () => {
     const { w, planned } = withSteps({ plan: true, tests: true, review: false });
     await w.orchestrator.bootstrap(templateTree());

@@ -481,7 +481,8 @@ export class Orchestrator {
       return { feature: existing, specChanged: false, items: [{ id: `${existing.id}-direct`, featureId: existing.id, kind: decision.changeKind === "bug" ? "fix" : decision.changeKind === "refactor" ? "refactor" : "code", role, prompt: request, acceptance: existing.acceptance.map((c) => c.id) }], model: "chef" };
     }
     const taken = new Set([...spec.map((f) => f.id), ...(await this.sessions()).map((s) => s.featureId)]);
-    const unique = choreId(request, new Set([...taken].map((t) => `chore-${t}`))).replace(/^chore-/, "");
+    const named = request.replace(/^\s*(?:make|add|build|create|implement|write|let|allow)\s+(?:(?:an?|the|me|us)\s+)?/i, "");
+    const unique = choreId(named || request, new Set([...taken].map((t) => `chore-${t}`))).replace(/^chore-/, "");
     const template = usesChefTemplate(tree);
     const entrypoint = template ? `GET /${unique}` : "/";
     const title = choreTitle(request);
