@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { clearInterval, setInterval } from "node:timers";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
@@ -67,7 +67,8 @@ const skillNames = skills.map((skill) => skill.name);
 
 const claudeProjects = join(env.CLAUDE_CONFIG_DIR, "projects");
 const savedMarks = join(env.CLAUDE_CONFIG_DIR, "saved.json");
-const record = { turn: basename(process.cwd()), role: job.agent.name, model: job.model, claudeSessions: [], startedAt: new Date().toISOString(), endedAt: null, outcome: null };
+const records = join(env.CLAUDE_CONFIG_DIR, "turns");
+const record = { turn: basename(process.cwd()), role: job.agent.name, model: job.model, claudeSessions: [], claudeSession: null, transcript: null, resumedFrom: job.resume?.turn ?? null, startedAt: new Date().toISOString(), endedAt: null, outcome: null };
 let saving = Promise.resolve();
 
 function files(root) {
@@ -75,10 +76,34 @@ function files(root) {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? files(join(root, entry.name)) : entry.isFile() ? [join(root, entry.name)] : []));
 }
 
+const transcriptUrl = (path) => `${job.transcripts}${path.split("/").map(encodeURIComponent).join("/")}`;
+
 async function put(path, body) {
-  const url = `${job.transcripts}${path.split("/").map(encodeURIComponent).join("/")}`;
-  const response = await fetch(url, { method: "PUT", body }).catch(() => null);
+  const response = await fetch(transcriptUrl(path), { method: "PUT", body }).catch(() => null);
   return response?.ok === true;
+}
+
+async function get(path) {
+  if (!job.transcripts) return null;
+  const response = await fetch(transcriptUrl(path)).catch(() => null);
+  return response?.ok ? Buffer.from(await response.arrayBuffer()) : null;
+}
+
+function workPatch() {
+  const index = join(env.CLAUDE_CONFIG_DIR, "work.index");
+  const run = (...args) => execFileSync("git", args, { cwd: dir, env: { ...process.env, GIT_INDEX_FILE: index }, maxBuffer: 64 * 1024 * 1024 });
+  run("read-tree", job.commitId);
+  run("add", "-A");
+  return run("diff", "--cached", "--binary", job.commitId);
+}
+
+function writeRecord() {
+  if (record.claudeSession) {
+    const transcript = files(claudeProjects).find((file) => basename(file) === `${record.claudeSession}.jsonl`);
+    if (transcript) record.transcript = relative(env.CLAUDE_CONFIG_DIR, transcript);
+  }
+  mkdirSync(records, { recursive: true });
+  writeFileSync(join(records, `${record.turn}.json`), JSON.stringify(record, null, 2));
 }
 
 async function saveTranscripts() {
@@ -90,13 +115,51 @@ async function saveTranscripts() {
     if (marks[path] !== mark && (await put(path, readFileSync(file)))) marks[path] = mark;
   }
   writeFileSync(savedMarks, JSON.stringify(marks));
+  try {
+    await put(`turns/${record.turn}.patch`, workPatch());
+  } catch (error) {
+    process.stderr.write(`saving the turn's changes failed: ${error.message}\n`);
+  }
   await put(`turns/${record.turn}.json`, JSON.stringify(record, null, 2));
 }
 
 function save() {
+  writeRecord();
   if (!job.transcripts) return saving;
   saving = saving.then(saveTranscripts).catch((error) => process.stderr.write(`saving the transcript failed: ${error.message}\n`));
   return saving;
+}
+
+async function earlierConversation() {
+  if (!job.resume) return null;
+  const local = join(records, `${job.resume.turn}.json`);
+  const text = existsSync(local) ? readFileSync(local, "utf8") : (await get(`turns/${job.resume.turn}.json`))?.toString("utf8");
+  let before;
+  try {
+    before = text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+  if (!before?.claudeSession || !before.transcript) return null;
+  const transcript = join(env.CLAUDE_CONFIG_DIR, before.transcript);
+  if (!existsSync(transcript)) {
+    const body = await get(before.transcript);
+    const end = body ? body.lastIndexOf(10) : -1;
+    if (end < 0) return null;
+    mkdirSync(dirname(transcript), { recursive: true });
+    writeFileSync(transcript, body.subarray(0, end + 1));
+  }
+  if (!job.resume.changes) return { session: before.claudeSession, prompt: `This is a new turn on the same feature, and your earlier turn is above. The repository is now at the latest commit, which can include changes other roles made since then, so read files again before you change them.\n\n${job.prompt}` };
+  const patch = await get(`turns/${job.resume.turn}.patch`);
+  let restored = patch !== null;
+  if (patch?.length) {
+    const file = join(env.CLAUDE_CONFIG_DIR, "work.patch");
+    writeFileSync(file, patch);
+    restored = spawnSync("git", ["apply", "--binary", "--whitespace=nowarn", file], { cwd: dir }).status === 0;
+    if (!restored) git("reset", "--quiet", "--hard", job.commitId);
+  }
+  const state = restored ? "The repository has your file changes as they were at the last save, up to a minute before the restart, so check git status and git diff before you go on." : "Your file changes from this turn were lost, so the repository is back where the turn started and you need to redo them.";
+  return { session: before.claudeSession, prompt: `The sandbox restarted while you were working on this turn, so you continue from your saved conversation. ${state} Then finish the task you were given.` };
 }
 
 async function finish(outcome, code) {
@@ -135,7 +198,10 @@ function toolDetail(input) {
 async function turn(prompt, resume) {
   let result = null;
   for await (const message of query({ prompt, options: options(resume) })) {
-    if (message.session_id && !record.claudeSessions.includes(message.session_id)) record.claudeSessions.push(message.session_id);
+    if (message.session_id) {
+      record.claudeSession = message.session_id;
+      if (!record.claudeSessions.includes(message.session_id)) record.claudeSessions.push(message.session_id);
+    }
     if (message.type === "stream_event" && message.parent_tool_use_id === null) {
       const event = message.event;
       if (event.type === "content_block_delta" && event.delta.type === "text_delta") emit({ type: "assistant.message_delta", delta: event.delta.text });
@@ -164,7 +230,17 @@ function lintProblems() {
   return run.status === 0 ? "" : run.stdout.trim();
 }
 
-let result = await turn(job.prompt);
+const earlier = await earlierConversation().catch((error) => {
+  process.stderr.write(`the earlier conversation could not be restored: ${error.message}\n`);
+  return null;
+});
+let result = earlier ? await turn(earlier.prompt, earlier.session).catch((error) => {
+  process.stderr.write(`resuming the earlier conversation failed, so the turn starts a new one: ${error.message}\n`);
+  git("reset", "--quiet", "--hard", job.commitId);
+  git("clean", "--quiet", "-fd");
+  return null;
+}) : null;
+result ??= await turn(job.prompt);
 const usage = { ...result.usage };
 for (let round = 0; round < 2; round++) {
   const problems = lintProblems();

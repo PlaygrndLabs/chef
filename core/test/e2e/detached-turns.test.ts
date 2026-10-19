@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { laneLayout } from "../../../template/app/gen.ts";
 import { Orchestrator } from "../../src/orchestrator/orchestrator.ts";
-import { TemplatePlanner, TickingClock, type Script } from "../../src/fakes/index.ts";
+import { RuleReviewer, TemplatePlanner, TickingClock, type Script } from "../../src/fakes/index.ts";
 import { TurnRunning, type Coder, type CoderTurnInput, type CoderTurnResult, type ResumeTurnInput } from "../../src/ports/coder.ts";
 import type { Plan, PlanInput } from "../../src/ports/planner.ts";
+import type { ReviewInput, ReviewVerdict } from "../../src/ports/reviewer.ts";
 import { fixture, generated, profiles, scriptFromFixture, templateTree, todoSpec, world, type World } from "../harness.ts";
 
 const PROMPT = "Add an item to a todo list";
@@ -57,8 +58,8 @@ class DetachedCoder implements Coder {
   }
 }
 
-function detachedWorld(coder: DetachedCoder, clock = new TickingClock()): World {
-  return world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]), deps: { coder, clock } });
+function detachedWorld(coder: DetachedCoder, clock = new TickingClock(), reviewer?: RuleReviewer): World {
+  return world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]), deps: { coder, clock, ...(reviewer ? { reviewer } : {}) } });
 }
 
 async function submit(w: World): Promise<string> {
@@ -80,6 +81,28 @@ describe("coder turns that outlive the step that started them", () => {
     expect(coder.launched.map((t) => t.role)).toEqual(["test", "backend"]);
     expect(started(w)).toEqual(["planner", "test", "backend", "reviewer"]);
     expect(record.turns ?? null).toBeNull();
+    expect(coder.launched.map((t) => t.resume ?? null)).toEqual([null, null]);
+    expect(record.conversations).toEqual({ "main/test": coder.launched[0]?.turnId, "main/backend": coder.launched[1]?.turnId });
+  });
+
+  it("continues a role's earlier conversation when the same role works on the feature again", async () => {
+    class OnceRejecting extends RuleReviewer {
+      private rejected = false;
+      override async review(input: ReviewInput): Promise<ReviewVerdict> {
+        if (this.rejected) return super.review(input);
+        this.rejected = true;
+        return { approve: false, reasons: ["the list should say hello"], retest: false, model: this.model };
+      }
+    }
+    const coder = new DetachedCoder(scriptFromFixture(fixture("todo")), 0);
+    const w = detachedWorld(coder, new TickingClock(), new OnceRejecting());
+    const record = await w.orchestrator.run(await submit(w), 200);
+
+    expect(record.machine.state).toBe("merged");
+    const backend = coder.launched.filter((t) => t.role === "backend");
+    expect(backend.length).toBeGreaterThan(1);
+    expect(backend[0]?.resume).toBeUndefined();
+    expect(backend[1]?.resume).toEqual({ turn: backend[0]?.turnId, changes: false });
   });
 
   it("picks up the running turn after the engine restarts instead of starting it again", async () => {
@@ -123,6 +146,7 @@ describe("coder turns that outlive the step that started them", () => {
     expect(coder.launched.map((t) => t.role)).toEqual(["test", "backend", "backend"]);
     const notices = w.bus.log.flatMap((e) => (e.type === "coder.event" && e.event.type === "session.error" ? [e.event.message] : []));
     expect(notices).toEqual(["The sandbox stopped while this turn was running, so the turn starts again."]);
+    expect(coder.launched[2]?.resume).toEqual({ turn: coder.launched[1]?.turnId, changes: true });
   });
 
   it("stops with a reason when the sandbox keeps stopping", async () => {

@@ -59,6 +59,7 @@ export interface SessionRecord {
   overBudget?: string | null;
   lanes?: Lane[] | null;
   turns?: Record<string, PendingTurn> | null;
+  conversations?: Record<string, string> | null;
   released?: MachineState["state"] | null;
   forkDeleted?: boolean;
   createdAt: number;

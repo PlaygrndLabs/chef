@@ -38,6 +38,7 @@ export class SandboxCoder implements Coder {
         ...(input.turnId ? { turnId: input.turnId } : {}),
         ...(usesChefTemplate(input.workspace.tree) ? {} : { ownStructure: true }),
         ...(input.lane ? { lane: input.lane } : {}),
+        ...(input.resume ? { resume: input.resume } : {}),
       },
       input.onEvent,
       llm.apiKey,

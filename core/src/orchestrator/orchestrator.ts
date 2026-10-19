@@ -3,7 +3,7 @@ import { applyChanges, changedPaths, diffTrees, type Author, type Commit, type C
 import { NOTES_NAMESPACE, PROOF_NAMESPACE, parseNote, renderNote, type TurnNote } from "../notes/notes.ts";
 import type { CheckResult, CheckRunner, ProofRecord, ProofRunner } from "../ports/check-runner.ts";
 import type { Classifier } from "../ports/classifier.ts";
-import { TurnRunning, type Coder, type CoderEvent, type CoderTurnResult } from "../ports/coder.ts";
+import { TurnRunning, type Coder, type CoderEvent, type CoderTurnResult, type TurnResume } from "../ports/coder.ts";
 import type { EventBus } from "../ports/event-bus.ts";
 import { chorePlan, choreId, choreTitle, withTestItem, type Plan, type Planner, type SplitPart, type WorkItem } from "../ports/planner.ts";
 import type { AppHost, AppRun } from "../ports/app-host.ts";
@@ -1911,12 +1911,20 @@ export class Orchestrator {
     const onEvent = (event: CoderEvent) => void this.emit({ type: "coder.event", sessionId: record.id, featureId: record.featureId, event, ...tag });
     const slot = lane?.role ?? MAIN_TURN;
     const pending = record.turns?.[slot];
+    const conversation = `${slot}/${item.role}`;
     let restarts = 0;
+    let resume: TurnResume | undefined;
     if (pending?.item === item.id && this.deps.coder.resumeTurn) {
       const resumed = await this.resumeTurn(record, slot, pending, onEvent);
-      if (resumed) return { head, feature, scope, prompt: resumed.prompt, result: resumed.result };
+      if (resumed) {
+        this.keepConversation(record, conversation, pending.id);
+        return { head, feature, scope, prompt: resumed.prompt, result: resumed.result };
+      }
       restarts = pending.restarts + 1;
+      resume = { turn: pending.id, changes: true };
     }
+    const earlier = record.conversations?.[conversation];
+    resume ??= earlier ? { turn: earlier, changes: false } : undefined;
     const guidance = await this.guidance(head.tree);
     const agent = customAgent(profile, record.featureId, scope, guidance);
     const readToken = await this.deps.repos.createToken(record.fork, "read", this.ttl);
@@ -1945,6 +1953,7 @@ export class Orchestrator {
         attempt: { index: record.attempt.index, of: record.attempt.of },
         ...tag,
         ...(turnId ? { turnId } : {}),
+        ...(resume ? { resume } : {}),
         workspace: { repo: record.fork, remote: info?.remote ?? "", ref: lane?.branch ?? "main", commitId: head.id, readToken: readToken.secret, tree: head.tree },
         onEvent,
       });
@@ -1955,7 +1964,12 @@ export class Orchestrator {
       await this.deps.repos.revokeToken(readToken);
     }
     this.dropTurn(record, slot);
+    if (turnId) this.keepConversation(record, conversation, turnId);
     return { head, feature, scope, prompt, result };
+  }
+
+  private keepConversation(record: SessionRecord, key: string, turnId: string): void {
+    record.conversations = { ...(record.conversations ?? {}), [key]: turnId };
   }
 
   private async holdTurn(record: SessionRecord, slot: string, turn: PendingTurn, prompt: string): Promise<string> {
