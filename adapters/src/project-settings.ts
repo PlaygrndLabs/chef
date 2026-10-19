@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MERGE_MODES, OUTBOUND_MODES, type MergeMode, type OutboundMode } from "@chef/core";
+import { MERGE_MODES, OUTBOUND_MODES, type MergeMode, type OutboundMode, type Steps } from "@chef/core";
 import { gitHubRepo, type BranchChoice } from "./external-git.ts";
 import { MAX_ATTEMPTS } from "./settings.ts";
 
@@ -17,6 +17,7 @@ export interface ProjectSettings {
   readonly appIdleMinutes: number;
   readonly attempts: number | null;
   readonly merge: MergeMode;
+  readonly steps: Steps;
   readonly git: GitLinkSettings | null;
 }
 
@@ -24,13 +25,16 @@ export interface ProjectSettingsView {
   readonly appIdleMinutes: number;
   readonly attempts: number | null;
   readonly merge: MergeMode;
+  readonly steps: Steps;
   readonly git: (Omit<GitLinkSettings, "token" | "installation"> & { readonly tokenHint: string | null; readonly pullRequests: boolean; readonly github: boolean }) | null;
 }
 
 export const DEFAULT_APP_IDLE_MINUTES = 15;
 export const MAX_APP_IDLE_MINUTES = 7 * 24 * 60;
 
-export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = { appIdleMinutes: DEFAULT_APP_IDLE_MINUTES, attempts: null, merge: "auto", git: null };
+export const DEFAULT_STEPS: Steps = { plan: false, tests: false, review: false };
+
+export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = { appIdleMinutes: DEFAULT_APP_IDLE_MINUTES, attempts: null, merge: "auto", steps: DEFAULT_STEPS, git: null };
 
 const branchName = z
   .string()
@@ -59,18 +63,19 @@ const ProjectSettingsUpdate = z.strictObject({
   appIdleMinutes: z.number().int().min(5, "a running app stays up at least 5 minutes").max(MAX_APP_IDLE_MINUTES, "a running app sleeps after a week at most").nullable().optional(),
   attempts: z.number().int().min(1, "a feature gets at least 1 try").max(MAX_ATTEMPTS, `a feature gets at most ${MAX_ATTEMPTS} tries at once`).nullable().optional(),
   merge: z.enum(MERGE_MODES).optional(),
+  steps: z.strictObject({ plan: z.boolean().optional(), tests: z.boolean().optional(), review: z.boolean().optional() }).optional(),
   git: GitInput.nullable().optional(),
 });
 
 export function readProjectSettings(stored: Partial<ProjectSettings> | undefined): ProjectSettings {
-  return { ...DEFAULT_PROJECT_SETTINGS, ...stored };
+  return { ...DEFAULT_PROJECT_SETTINGS, ...stored, steps: { ...DEFAULT_STEPS, ...stored?.steps } };
 }
 
 export function viewProjectSettings(settings: ProjectSettings): ProjectSettingsView {
   const git = settings.git;
-  if (!git) return { appIdleMinutes: settings.appIdleMinutes, attempts: settings.attempts, merge: settings.merge, git: null };
+  if (!git) return { appIdleMinutes: settings.appIdleMinutes, attempts: settings.attempts, merge: settings.merge, steps: settings.steps, git: null };
   const { token, installation, ...rest } = git;
-  return { appIdleMinutes: settings.appIdleMinutes, attempts: settings.attempts, merge: settings.merge, git: { ...rest, tokenHint: token ? (token.length > 8 ? `…${token.slice(-4)}` : "set") : null, pullRequests: gitHubRepo(git.url) !== null, github: installation !== undefined } };
+  return { appIdleMinutes: settings.appIdleMinutes, attempts: settings.attempts, merge: settings.merge, steps: settings.steps, git: { ...rest, tokenHint: token ? (token.length > 8 ? `…${token.slice(-4)}` : "set") : null, pullRequests: gitHubRepo(git.url) !== null, github: installation !== undefined } };
 }
 
 export async function withLinkBranch(stored: Partial<ProjectSettings> | undefined, body: unknown, find: (link: { readonly url: string; readonly token: string | null }, wanted: string | null) => Promise<BranchChoice>): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
@@ -97,12 +102,13 @@ export function requestsGitHubApp(body: unknown): string | null {
 export function applyProjectUpdate(stored: Partial<ProjectSettings> | undefined, body: unknown, newSecret: () => string, installation: number | null = null): { ok: true; settings: Partial<ProjectSettings> } | { ok: false; error: string } {
   const parsed = ProjectSettingsUpdate.safeParse(body);
   if (!parsed.success) return { ok: false, error: parsed.error.issues.map((issue) => issue.message).join("; ") };
-  const next: { appIdleMinutes?: number; attempts?: number | null; merge?: MergeMode; git?: GitLinkSettings | null } = { ...stored };
+  const next: { appIdleMinutes?: number; attempts?: number | null; merge?: MergeMode; steps?: Steps; git?: GitLinkSettings | null } = { ...stored };
   const update = parsed.data;
   if (update.appIdleMinutes === null) delete next.appIdleMinutes;
   else if (update.appIdleMinutes !== undefined) next.appIdleMinutes = update.appIdleMinutes;
   if (update.attempts !== undefined) next.attempts = update.attempts;
   if (update.merge !== undefined) next.merge = update.merge;
+  if (update.steps) next.steps = { ...DEFAULT_STEPS, ...stored?.steps, ...Object.fromEntries(Object.entries(update.steps).filter(([, on]) => on !== undefined)) };
   if (update.git === null) next.git = null;
   else if (update.git !== undefined) {
     const previous = stored?.git ?? null;

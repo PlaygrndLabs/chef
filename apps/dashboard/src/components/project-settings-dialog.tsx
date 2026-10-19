@@ -12,7 +12,7 @@ import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/a
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
 import { ProjectBudgetGroup } from "@/components/usage";
 import { host } from "@/host";
-import { githubApi, projectsApi, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
+import { githubApi, projectsApi, type BuildSteps, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const MODES: readonly { readonly mode: OutboundMode; readonly label: string; readonly note: string; readonly pullRequests?: true }[] = [
@@ -259,6 +259,28 @@ function MergeForm(props: { readonly mode: "auto" | "manual"; readonly save: Sav
   );
 }
 
+const STEP_CHOICES = [
+  { step: "plan", label: "Plan", note: "A planner model splits the request into features and work for each role. Off: one builder works straight from the request." },
+  { step: "tests", label: "Tests", note: "A test writer writes failing tests and a flow first, locked against the builders. Off: the project's existing tests still run before a merge." },
+  { step: "review", label: "Review", note: "A second model reviews the change against its spec before it merges. Off: the checks and the running app decide." },
+] as const;
+
+function StepsForm(props: { readonly steps: BuildSteps; readonly save: Save }) {
+  return (
+    <div className="grid gap-2" data-steps={STEP_CHOICES.filter((c) => props.steps[c.step]).map((c) => c.step).join(" ") || "none"}>
+      {STEP_CHOICES.map((c) => (
+        <label key={c.step} className="flex items-start gap-2 text-xs">
+          <input type="checkbox" className="mt-0.5" checked={props.steps[c.step]} aria-label={c.label} onChange={(e) => void props.save({ steps: { [c.step]: e.target.checked } }, `${c.label} is ${e.target.checked ? "on" : "off"}`)} />
+          <span>
+            <span className="font-medium">{c.label}</span>
+            <span className="block text-muted-foreground">{c.note}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function DeleteProjectGroup(props: { readonly project: string; readonly linked: string | null }) {
   const { project } = props;
   const [open, setOpen] = useState(false);
@@ -370,6 +392,9 @@ export function ProjectSettingsDialog(props: {
             </Group>
             <Group title="Merging" note="Every build starts from main, takes in what lands on main while it works, and merges into main when it is done.">
               <MergeForm mode={settings.merge ?? "auto"} save={save} />
+            </Group>
+            <Group title="Build steps" note="Steps a build takes before its checks. Each one costs time and tokens; typecheck, lint, the existing tests and a running app always gate a merge, and main's checks run again after it.">
+              <StepsForm steps={settings.steps ?? { plan: false, tests: false, review: false }} save={save} />
             </Group>
             <ProjectBudgetGroup api={api} />
             <Group title="Apps" note="Each branch runs its app, with the whole stack from its compose file, in its own sandbox, and main runs the release candidate. A running app sleeps after it sits unused and starts again when someone opens it.">

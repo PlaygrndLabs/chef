@@ -147,6 +147,7 @@ export class ProjectAgent extends Agent<Env> {
         environment: async () => envNames(await this.effectiveEnv()),
         instructions: async () => (await settingsStub(env).sharedInstructions())?.text ?? "",
         merge: async () => (await this.projectSettings()).merge,
+        steps: async () => (await this.projectSettings()).steps,
       },
     );
     const git = project.git;

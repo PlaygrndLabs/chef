@@ -15,7 +15,7 @@ export class RuleReviewer implements Reviewer {
     const files = { ...input.existing, ...input.diff };
     const tests = Object.entries(files).filter(([path, content]) => isTest(path) && content !== null);
     const allTests = tests.map(([, content]) => content).join("\n");
-    for (const criterion of input.feature.acceptance) {
+    for (const criterion of input.untested ? [] : input.feature.acceptance) {
       if (allTests.includes(`${criterion.id}:`)) continue;
       reasons.push(`no test named after ${criterion.id} (${criterion.text})`);
       retest = true;

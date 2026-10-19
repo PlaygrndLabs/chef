@@ -8,6 +8,7 @@ export interface ReviewInput {
   readonly checksLog: string;
   readonly scope?: readonly string[];
   readonly chore?: boolean;
+  readonly untested?: boolean;
   readonly ownStructure?: boolean;
   readonly guidance?: string;
 }

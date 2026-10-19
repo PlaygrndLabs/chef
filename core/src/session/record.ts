@@ -38,7 +38,7 @@ export interface SessionRecord {
   commits: string[];
   app: SessionApp | null;
   firstAppCommit: string | null;
-  verdict: (ReviewVerdict & { commitId: string }) | null;
+  verdict: (ReviewVerdict & { commitId: string; skipped?: boolean }) | null;
   lastCodeItem: string | null;
   syncPending: boolean;
   merge: { commitId: string; mainBefore: string; into?: string } | null;

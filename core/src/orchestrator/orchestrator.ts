@@ -5,7 +5,7 @@ import type { CheckResult, CheckRunner, ProofRecord, ProofRunner } from "../port
 import type { Classifier } from "../ports/classifier.ts";
 import { TurnRunning, type Coder, type CoderEvent, type CoderTurnResult } from "../ports/coder.ts";
 import type { EventBus } from "../ports/event-bus.ts";
-import { chorePlan, choreId, withTestItem, type Plan, type Planner, type SplitPart, type WorkItem } from "../ports/planner.ts";
+import { chorePlan, choreId, choreTitle, withTestItem, type Plan, type Planner, type SplitPart, type WorkItem } from "../ports/planner.ts";
 import type { AppHost, AppRun } from "../ports/app-host.ts";
 import type { PushedEvent, RepoHost, RepoToken } from "../ports/repo-host.ts";
 import type { MemoryDoc, MemoryHit, MemoryIndex } from "../ports/memory-index.ts";
@@ -81,7 +81,16 @@ export interface ProjectConfig {
   readonly environment?: () => Promise<readonly EnvVar[]>;
   readonly instructions?: () => Promise<string>;
   readonly merge?: () => Promise<MergeMode>;
+  readonly steps?: () => Promise<Steps>;
 }
+
+export interface Steps {
+  readonly plan: boolean;
+  readonly tests: boolean;
+  readonly review: boolean;
+}
+
+export const ALL_STEPS: Steps = { plan: true, tests: true, review: true };
 
 export const MERGE_MODES = ["auto", "manual"] as const;
 
@@ -298,7 +307,8 @@ export class Orchestrator {
     const known = new Set(routing.map((f) => f.id));
     const building = (await this.sessions()).filter((s) => !isTerminal(s.machine.state) && !known.has(s.featureId)).map((s) => s.plan.feature);
     const withBuilding = [...routing, ...building.filter((f, i) => building.findIndex((g) => g.id === f.id) === i)];
-    const parts = chore ? null : await this.router.split(prompt, withBuilding, decision, chat, outline);
+    const planned = chore || (await this.steps()).plan;
+    const parts = planned && !chore ? await this.router.split(prompt, withBuilding, decision, chat, outline) : null;
     const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, withBuilding, parts.length > 1 ? part.prompt : prompt, chat, outline)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat, outline)];
     const attempts = chore || hotfix ? 1 : Math.max(1, Math.floor(attemptsWanted ?? this.specialization.attempts));
     const created: string[] = [];
@@ -452,10 +462,44 @@ export class Orchestrator {
     const intent = decision.intent === "change_feature" ? "change_feature" : "new_feature";
     const request = withoutCommand(prompt);
     const { tree } = await this.mainTree();
+    const steps = await this.steps();
+    if (!steps.plan) {
+      const direct = await this.directPlan(request, decision, spec, tree);
+      return steps.tests && this.config.profiles["test"] ? withTestItem(direct, "test", usesChefTemplate(tree)) : direct;
+    }
     const result = await this.deps.planner.plan({ prompt: request, intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), ...(map ? { map } : {}), spec, roles, env: await this.environment(), ...(usesChefTemplate(tree) ? {} : { ownStructure: true }), ...(await this.guidanceField(tree)) });
     const mappedOnly = decision.featureId && !spec.some((f) => f.id === decision.featureId) ? decision.featureId : null;
     const planned = described(mappedOnly ? renamed(result, mappedOnly) : result, request);
+    if (!steps.tests) return { ...planned, items: planned.items.filter((i) => i.kind !== "test") };
     return this.config.profiles["test"] ? withTestItem(planned, "test", usesChefTemplate(tree)) : planned;
+  }
+
+  private async directPlan(request: string, decision: RouteDecision, spec: readonly FeatureSpec[], tree: Tree): Promise<Plan> {
+    const role = this.config.profiles["backend"]?.plannable ? "backend" : (Object.values(this.config.profiles).find((p) => p.plannable)?.role ?? "backend");
+    const existing = decision.intent === "change_feature" ? spec.find((f) => f.id === decision.featureId) : undefined;
+    if (existing) {
+      return { feature: existing, specChanged: false, items: [{ id: `${existing.id}-direct`, featureId: existing.id, kind: decision.changeKind === "bug" ? "fix" : decision.changeKind === "refactor" ? "refactor" : "code", role, prompt: request, acceptance: existing.acceptance.map((c) => c.id) }], model: "chef" };
+    }
+    const taken = new Set([...spec.map((f) => f.id), ...(await this.sessions()).map((s) => s.featureId)]);
+    const unique = choreId(request, new Set([...taken].map((t) => `chore-${t}`))).replace(/^chore-/, "");
+    const template = usesChefTemplate(tree);
+    const entrypoint = template ? `GET /${unique}` : "/";
+    const title = choreTitle(request);
+    const feature: FeatureSpec = { id: unique, title, status: "building", entrypoint, revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: request.trim().slice(0, 500) || title }], body: request.trim() };
+    const prompt = template ? `${request.trim()}\n\nA person opens this feature at ${entrypoint.slice(4)}, so serve its page there.` : request.trim();
+    return {
+      feature,
+      specChanged: true,
+      items: [
+        { id: `${unique}-spec`, featureId: unique, kind: "spec_change", role: "planner", prompt: `Record the spec for ${unique}`, acceptance: ["AC1"] },
+        { id: `${unique}-direct`, featureId: unique, kind: "code", role, prompt, acceptance: ["AC1"] },
+      ],
+      model: "chef",
+    };
+  }
+
+  private async steps(): Promise<Steps> {
+    return this.config.steps ? this.config.steps() : ALL_STEPS;
   }
 
   private async planChore(prompt: string, spec: readonly FeatureSpec[]): Promise<Plan> {
@@ -1046,11 +1090,15 @@ export class Orchestrator {
   private async reviewing(record: SessionRecord): Promise<void> {
     if (!(await this.appStarts(record))) return;
     const head = await this.commitOf(record.fork, record.head);
+    if (!(await this.steps()).review) {
+      record.verdict = { approve: true, reasons: ["Review is off for this project."], model: "chef", skipped: true, commitId: head.id };
+      return this.apply(record, { type: "review_approved" });
+    }
     const base = await this.commitOf(this.canonical, record.baseMain);
     await this.emit({ type: "agent.started", sessionId: record.id, featureId: record.featureId, role: "reviewer", kind: "review", model: this.deps.reviewer.model ?? "reviewer" });
     const diff = diffTrees(base.tree, head.tree);
     const scope = this.reviewScope(record, head.tree);
-    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff, ...(record.kind === "chore" ? { chore: true } : { existing: unchangedIn(head.tree, diff, scope) }), checksLog: record.machine.feedback ?? "", scope, ...(usesChefTemplate(head.tree) ? {} : { ownStructure: true }), ...(await this.guidanceField(head.tree)) });
+    const verdict = await this.deps.reviewer.review({ feature: record.plan.feature, diff, ...(record.kind === "chore" ? { chore: true } : { existing: unchangedIn(head.tree, diff, scope), ...(record.plan.items.some((i) => i.kind === "test") ? {} : { untested: true }) }), checksLog: record.machine.feedback ?? "", scope, ...(usesChefTemplate(head.tree) ? {} : { ownStructure: true }), ...(await this.guidanceField(head.tree)) });
     record.verdict = { ...verdict, commitId: head.id };
     await this.emit({ type: "review.verdict", sessionId: record.id, featureId: record.featureId, approve: verdict.approve, reasons: verdict.reasons, model: verdict.model, head: head.id, base: base.id });
     if (verdict.approve) await this.apply(record, { type: "review_approved" });
@@ -1648,6 +1696,7 @@ export class Orchestrator {
     const verdict = record.verdict;
     if (!verdict) return { name: "review", ok: false, log: "no reviewer verdict" };
     if (!verdict.approve) return { name: "review", ok: false, log: verdict.reasons.join("\n") };
+    if (verdict.skipped) return { name: "review", ok: true, log: "review is off for this project" };
     const index = record.commits.indexOf(verdict.commitId);
     if (index < 0) return { name: "review", ok: false, log: "verdict is for a commit outside this session" };
     const coders = new Set<string>();
@@ -1707,6 +1756,7 @@ export class Orchestrator {
     if (!template) return this.answerProof(record, head, app.local);
     if (record.kind === "chore") return this.choreProof(record, head, app.local);
     const flow = featureFlow(readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature);
+    if (head.tree[`features/${flow}/flow.ts`] === undefined) return this.flowlessProof(record, head, app.local);
     const proof = await this.deps.proofs.prove({ repo: record.fork, feature: record.featureId, flow, url: app.local, commitId: head.id, tree: head.tree });
     await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: PROOF_NAMESPACE, commitId: head.id, note: `${JSON.stringify(proof, null, 2)}\n` }));
     const stored = await this.deps.repos.readNote(record.fork, PROOF_NAMESPACE, head.id);
@@ -1735,6 +1785,18 @@ export class Orchestrator {
     const stored = await this.deps.repos.readNote(record.fork, PROOF_NAMESPACE, head.id);
     const log = proof.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${s.name}: ${s.detail}`).join("\n") || "no proof steps";
     return { name: "proof", ok: proof.ok && stored !== null, log: `this project has its own structure, so there is no Chef flow to drive; Chef checked that the running app answers at ${path}\n${log}` };
+  }
+
+  private async flowlessProof(record: SessionRecord, head: Commit, url: string): Promise<CheckResult> {
+    const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
+    const path = entryPath(feature.entrypoint);
+    const probe = this.deps.proofs.probe;
+    const own = probe ? await probe.call(this.deps.proofs, { repo: record.fork, feature: record.featureId, url, path, commitId: head.id }) : null;
+    const merged = await this.proveMerged(record, head, url);
+    await this.withToken(record.fork, (token) => this.deps.repos.addNote(token, { namespace: PROOF_NAMESPACE, commitId: head.id, note: `${JSON.stringify({ feature: record.featureId, url, path, commitId: head.id, ok: (own?.ok ?? true) && merged.every((p) => p.ok), answer: own, proofs: merged }, null, 2)}\n` }));
+    const answered = own ? `${own.steps.map((s) => `${s.ok ? "ok" : "FAIL"} ${s.name}: ${s.detail}`).join("\n") || "no proof steps"}` : "this proof runner cannot open the app, so the checks are the proof";
+    const log = `${record.featureId} has no flow.ts, since tests are off for this project; Chef checked that the running app answers at ${path}\n${answered}`;
+    return { name: "proof", ok: (own?.ok ?? true) && merged.every((p) => p.ok), log: merged.length ? `${log}\n\nMerged features proved again on this branch:\n${proofLines(merged)}` : log };
   }
 
   private async choreProof(record: SessionRecord, head: Commit, url: string): Promise<CheckResult> {
