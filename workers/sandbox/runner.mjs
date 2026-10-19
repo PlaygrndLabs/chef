@@ -70,6 +70,7 @@ const savedMarks = join(env.CLAUDE_CONFIG_DIR, "saved.json");
 const records = join(env.CLAUDE_CONFIG_DIR, "turns");
 const record = { turn: basename(process.cwd()), role: job.agent.name, model: job.model, claudeSessions: [], claudeSession: null, transcript: null, resumedFrom: job.resume?.turn ?? null, startedAt: new Date().toISOString(), endedAt: null, outcome: null };
 let saving = Promise.resolve();
+let queued = false;
 
 function files(root) {
   if (!existsSync(root)) return [];
@@ -125,8 +126,14 @@ async function saveTranscripts() {
 
 function save() {
   writeRecord();
-  if (!job.transcripts) return saving;
-  saving = saving.then(saveTranscripts).catch((error) => process.stderr.write(`saving the transcript failed: ${error.message}\n`));
+  if (!job.transcripts || queued) return saving;
+  queued = true;
+  saving = saving
+    .then(() => {
+      queued = false;
+      return saveTranscripts();
+    })
+    .catch((error) => process.stderr.write(`saving the transcript failed: ${error.message}\n`));
   return saving;
 }
 
@@ -158,7 +165,7 @@ async function earlierConversation() {
     restored = spawnSync("git", ["apply", "--binary", "--whitespace=nowarn", file], { cwd: dir }).status === 0;
     if (!restored) git("reset", "--quiet", "--hard", job.commitId);
   }
-  const state = restored ? "The repository has your file changes as they were at the last save, up to a minute before the restart, so check git status and git diff before you go on." : "Your file changes from this turn were lost, so the repository is back where the turn started and you need to redo them.";
+  const state = restored ? "The repository has your file changes as they were at the last save, up to fifteen seconds before the restart, so check git status and git diff before you go on." : "Your file changes from this turn were lost, so the repository is back where the turn started and you need to redo them.";
   return { session: before.claudeSession, prompt: `The sandbox restarted while you were working on this turn, so you continue from your saved conversation. ${state} Then finish the task you were given.` };
 }
 
@@ -170,7 +177,7 @@ async function finish(outcome, code) {
   process.exit(code);
 }
 
-const saver = setInterval(save, 60_000);
+const saver = setInterval(save, 15_000);
 
 const lint = process.env.CHEF_LINT ?? "/opt/chef/template/lint.mjs";
 const options = (resume) => ({
