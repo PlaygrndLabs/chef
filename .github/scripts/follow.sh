@@ -20,6 +20,8 @@ curl -sS -m 300 -X POST -H "$auth" -H 'content-type: application/json' -d "$(jq 
 later_done=""
 curl -sS -m 120 -X POST -H "$auth" -H 'content-type: application/json' -d "$(jq -n --arg prompt "$PROMPT" '{prompt: $prompt}')" "$api/prompts"; echo
 last=0
+coding_since=""
+restarted=""
 end=$((SECONDS + MINUTES * 60))
 while [ $SECONDS -lt $end ]; do
   events=$(curl -sS -m 60 -H "$auth" "$api/events?after=$last" || echo '[]')
@@ -35,6 +37,15 @@ while [ $SECONDS -lt $end ]; do
   if [ -n "$waiting" ]; then
     echo "waiting for keys: $waiting"
     if [ -n "${ENV_LATER:-}" ] && [ -z "$later_done" ]; then put_env "$ENV_LATER"; later_done=1; fi
+  fi
+  if [ -n "${RESTART_AFTER:-}" ] && [ -z "$restarted" ]; then
+    coder=$(echo "$sessions" | jq -r '[.[] | select(.machine.state == "coding")][0].id // empty' 2>/dev/null)
+    if [ -z "$coder" ]; then coding_since=""
+    elif [ -z "$coding_since" ]; then coding_since=$SECONDS
+    elif [ $((SECONDS - coding_since)) -ge "$RESTART_AFTER" ]; then
+      echo "restarting the sandbox of $coder: $(curl -sS -m 120 -X POST -H "$auth" -H 'content-type: application/json' -d '{"now":true}' "$api/sessions/$coder/sandbox")"
+      restarted=1
+    fi
   fi
   case "$states" in
     *queued*|*planning*|*testing*|*coding*|*reviewing*|*gating*|*syncing*|"") ;;
