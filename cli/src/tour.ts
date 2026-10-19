@@ -260,7 +260,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         await shot(`round${round}-feature`);
       }
       const running = sessions.some((s) => ACTIVE.has(s.machine.state));
-      if ((!running && (round > 1 || !options.prompt)) || Date.now() > deadline) {
+      if ((!running && (!options.prompt || (round > 1 && sessions.length > 0) || round > 4)) || Date.now() > deadline) {
         report.finished = !running;
         if (latest) {
           for (const panel of ["app", "messages", "changes", "details"]) {
