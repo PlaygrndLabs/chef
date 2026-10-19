@@ -31,6 +31,10 @@ on:
         description: Text that page must contain
         required: false
         default: ""
+      restart_after:
+        description: Seconds into the first coding turn to restart its sandbox at once, to see the turn continue from its saved conversation; empty never restarts
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -51,6 +55,7 @@ jobs:
       ENV_LATER: ${{ inputs.env_later }}
       CHECK_PATH: ${{ inputs.check_path }}
       CHECK_TEXT: ${{ inputs.check_text }}
+      RESTART_AFTER: ${{ inputs.restart_after }}
       EVENTS_FILE: ${{ github.workspace }}/results/events.jsonl
     steps:
       - uses: actions/checkout@v4

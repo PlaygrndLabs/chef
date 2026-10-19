@@ -2,6 +2,11 @@ name: inventory
 
 on:
   workflow_dispatch:
+    inputs:
+      records:
+        description: Project whose coder turn records to print from its transcript bucket; empty prints none
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -12,6 +17,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      RECORDS: ${{ inputs.records }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -44,7 +50,14 @@ jobs:
           get "r2/buckets" | jq -r '.result.buckets[]? | .name'
           for bucket in $(get "r2/buckets" | jq -r '.result.buckets[]? | .name | select(endswith("-transcripts"))'); do
             echo "### $bucket"
-            get "r2/buckets/$bucket/objects?per_page=1000" | jq -r '.result[]? | "\(.key)\t\(.size)\t\(.last_modified // "")"'
+            objects=$(get "r2/buckets/$bucket/objects?per_page=1000")
+            echo "$objects" | jq -r '.result[]? | "\(.key)\t\(.size)\t\(.last_modified // "")"'
+            if [ -n "$RECORDS" ]; then
+              for key in $(echo "$objects" | jq -r --arg p "$RECORDS/" '.result[]? | .key | select(startswith($p) and test("/turns/[^/]+\\.json$"))'); do
+                echo "#### $key"
+                get "r2/buckets/$bucket/objects/$(jq -rn --arg k "$key" '$k | @uri')" | jq -c .
+              done
+            fi
           done
           echo "## Pages projects"
           get "pages/projects" | jq -r '.result[]? | .name'

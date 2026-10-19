@@ -90,7 +90,7 @@ function RestartSandbox({ session, main }: { readonly session: string; readonly 
     try {
       const { outcome } = await api.restartSandbox(session, { main, now });
       if (outcome === "waiting") toast("It restarts once the roles' running turns finish", { action: { label: "Restart now", onClick: () => void restart(true) } });
-      else if (outcome === "restarted") toast.success(now ? "Restarted. Running turns start again from their last commit" : "Restarted. It starts again when it is next needed");
+      else if (outcome === "restarted") toast.success(now ? "Restarted. Running turns continue where they stopped" : "Restarted. It starts again when it is next needed");
       else toast("It is already sleeping");
     } catch (error) {
       toast.error(`Could not restart it: ${error instanceof Error ? error.message : String(error)}`);

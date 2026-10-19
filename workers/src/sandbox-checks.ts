@@ -123,7 +123,7 @@ let ok = false;
 for (let attempt = 0; attempt < 3 && !ok; attempt++) {
   if (attempt) await new Promise((resolve) => setTimeout(resolve, 2000));
   try {
-    const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(20000) });
+    const response = await fetch(url, { redirect: "manual", headers: { accept: "text/html,*/*" }, signal: AbortSignal.timeout(20000) });
     ok = response.status < Number(limit);
     detail = \`\${url} answered \${response.status} \${response.statusText}\`.trim();
   } catch (error) {
