@@ -63,10 +63,8 @@ export function step(trail: Trail, delta: number): Trail {
   return index === trail.index ? trail : { entries: trail.entries, index };
 }
 
-export function pageChips(pages: readonly AppPage[], start: string): AppPage[] {
-  const chips: AppPage[] = [{ title: "Home", path: "/" }];
-  for (const page of [...pages, { title: "", path: start }]) if (!chips.some((c) => c.path === page.path)) chips.push(page);
-  return chips;
+export function frameUrl(appUrl: string, path: string): string {
+  return `${appUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 export type AppState =

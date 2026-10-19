@@ -16,7 +16,7 @@ import { ago, appHost, duration, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
-import { addressPath, appLink, builtPage, entryPage, frameReport, MAIN_APP, pageChips, step, visit, type AppPage, type Trail } from "@/lib/app-view";
+import { addressPath, appLink, builtPage, entryPage, frameReport, frameUrl, MAIN_APP, step, visit, type AppPage, type Trail } from "@/lib/app-view";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -51,7 +51,7 @@ const useProjectLevel = chefHost.useProjectLevel ?? (() => null);
 
 function AppTab({ link, url, start, page = start, title, note, missing }: { readonly link: string; readonly url: string | null; readonly start: string; readonly page?: string; readonly title: string; readonly note: string; readonly missing: string }) {
   const [trail, setTrail] = useState<Trail>({ entries: [start], index: 0 });
-  const [load, setLoad] = useState({ path: start, count: 0 });
+  const [reloads, setReloads] = useState(0);
   const [pages, setPages] = useState<readonly AppPage[] | null>(null);
   const waiting = useRef(page === start ? null : page);
   const [draft, setDraft] = useState<string | null>(null);
@@ -59,8 +59,16 @@ function AppTab({ link, url, start, page = start, title, note, missing }: { read
   const { api, selection } = useWorkspace();
   const viewOnly = useProjectLevel(selection.project) === "view";
   const frame = useRef<HTMLIFrameElement>(null);
-  const app = useAppLoad({ link, path: load.path, count: load.count, missing });
+  const first = trail.entries[0] ?? start;
+  const app = useAppLoad({ link, path: first, count: reloads, missing });
   const { loaded } = app;
+  const target = (to: string) => (to === "/" ? link : `${link}?path=${encodeURIComponent(to)}`);
+  const navigate = (to: string) => {
+    if (!frame.current) return;
+    frame.current.src = app.appUrl && app.load.loaded !== null ? frameUrl(app.appUrl, to) : target(to);
+  };
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   useEffect(() => {
     const listen = (event: MessageEvent) => {
       if (!frame.current || event.source !== frame.current.contentWindow) return;
@@ -73,27 +81,30 @@ function AppTab({ link, url, start, page = start, title, note, missing }: { read
       waiting.current = null;
       if (wanted) {
         setTrail((current) => visit(current, wanted));
-        setLoad((current) => ({ path: wanted, count: current.count + 1 }));
+        navigateRef.current(wanted);
       }
     };
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
   }, []);
   const path = trail.entries[trail.index] ?? "/";
-  const target = (to: string) => (to === "/" ? link : `${link}?path=${encodeURIComponent(to)}`);
   const host = app.appUrl ?? url;
-  const open = (to: string) => setLoad((current) => ({ path: to, count: current.count + 1 }));
   const go = (to: string) => {
     waiting.current = null;
     setDraft(null);
     setTrail((current) => visit(current, to));
-    open(to);
+    navigate(to);
   };
   const move = (delta: number) => {
     waiting.current = null;
     const next = step(trail, delta);
     setTrail(next);
-    open(next.entries[next.index] ?? "/");
+    navigate(next.entries[next.index] ?? "/");
+  };
+  const reload = () => {
+    if (app.load.loaded !== null) return navigate(path);
+    setTrail({ entries: [path], index: 0 });
+    setReloads((n) => n + 1);
   };
   const shown = path.split(/[?#]/)[0];
   const unbuilt = pages !== null && page !== "/" && !pages.some((p) => p.path === page);
@@ -112,7 +123,7 @@ function AppTab({ link, url, start, page = start, title, note, missing }: { read
         <Button type="button" variant="ghost" size="icon-xs" disabled={trail.index >= trail.entries.length - 1} onClick={() => move(1)} aria-label="Forward">
           <ArrowRight />
         </Button>
-        <Button type="button" variant="ghost" size="icon-xs" onClick={() => open(path)} aria-label="Reload the app">
+        <Button type="button" variant="ghost" size="icon-xs" onClick={reload} aria-label="Reload the app">
           <RefreshCw />
         </Button>
         <span className="flex min-w-0 flex-1 items-center">
@@ -136,14 +147,6 @@ function AppTab({ link, url, start, page = start, title, note, missing }: { read
           </a>
         </Button>
       </form>
-      <div className="flex flex-wrap items-center gap-1" data-pages>
-        <span className="mr-1 text-xs text-muted-foreground">Pages</span>
-        {pageChips(pages ?? [], page).map((p) => (
-          <button key={p.path} type="button" title={unbuilt && p.path === page ? "This page isn't built yet" : p.title || undefined} onClick={() => go(p.path)} className={cn("h-6 rounded-md border px-1.5 font-mono text-[11px] hover:bg-muted", p.path === shown && "border-foreground/40 bg-muted", unbuilt && p.path === page && "border-dashed text-muted-foreground")} data-unbuilt={unbuilt && p.path === page ? true : undefined}>
-            {p.path}
-          </button>
-        ))}
-      </div>
       {unbuilt && shown !== page ? (
         <p className="text-xs text-muted-foreground" data-page-unbuilt={page}>
           The page <span className="font-mono">{page}</span> isn't built yet, so the app opens on its home page. It opens here by itself once this build has it.
@@ -151,15 +154,16 @@ function AppTab({ link, url, start, page = start, title, note, missing }: { read
       ) : null}
       <AppFrame
         ref={frame}
-        key={load.count}
-        src={app.ready ? target(load.path) : null}
+        key={reloads}
+        src={app.ready ? target(first) : null}
         title={title}
         load={app.load}
-        path={load.path}
+        path={first}
         onLoad={loaded}
         onRetry={() => {
           app.retryNext();
-          open(path);
+          setTrail({ entries: [path], index: 0 });
+          setReloads((n) => n + 1);
         }}
         addCompose={
           viewOnly
