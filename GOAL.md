@@ -15,7 +15,7 @@ Chef is an AI app builder that runs on a person's own Cloudflare account: they d
 - **Every feature is a session.** A feature is one spec entry with one running app. The router splits a request into independent parts that build in parallel, and a part that adds a capability becomes a child feature under the one it builds on. A session is a Durable Object plus its own Artifacts fork named `<project>--<feature>--<session>`.
 - **Roles work side by side.** When a plan has build steps for several roles (frontend, backend, designer and others), each role works on its own `lane/<role>` branch in its own sandbox, and Chef merges the lanes after each round.
 - **Every turn is a commit.** Each accepted agent turn is one commit with the prompt, run id, model, role and spec revision in git notes under `refs/notes/chef`.
-- **Every branch runs in its sandbox.** A session's sandbox is the development environment of its branch: the agents' files and commands, and the project's whole stack started from its compose file with Docker. After each commit the app runs the new code, at its own private address through Chef's app router. `main` runs the same way in its own sandbox, as the release candidate. Nothing of the app is deployed to Cloudflare, and there are no long-living deployments: an idle sandbox sleeps and starts again on the next visit.
+- **Every branch runs in its sandbox.** A session's sandbox is the development environment of its branch: the agents' files and commands, and the project's running app: a Cloudflare Workers project, like every project made from Chef's template, runs with `wrangler dev` and no Docker, and any other stack starts from its compose file with Docker. After each commit the app runs the new code, at its own private address through Chef's app router. `main` runs the same way in its own sandbox, as the release candidate. Nothing of the app is deployed to Cloudflare, and there are no long-living deployments: an idle sandbox sleeps and starts again on the next visit.
 - **Continuous sync.** Every push to `main` is merged into every active fork between turns. A conflict becomes a task for the same session or the conflict-resolver.
 - **Only the merge gate writes to `main`.** It runs typecheck, lint, tests, spec lint, write scopes, locked tests, a reviewer verdict and a proof of the feature's flow on the branch's running app. A merge that turns `main` red is reverted and its session reopens with the failure.
 - **Routing.** Rules first, then Jev (TypeSafe AI's System One model) answers typed choice questions with calibrated confidence, then the planner when confidence is low or the feature is new. Jev never writes text.
@@ -47,14 +47,14 @@ core/        spec, router, session state machine, orchestrator, merge gate, port
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, CopilotKit agent, GitHub
 apps/        the dashboard
 agents/      default role profiles (planner, test, frontend, backend, designer, reviewer, conflict-resolver, gardener, chore)
-template/    the template every project starts from, with its UI kit and the app CLI (drive, proof)
+template/    the template every project starts from: a React app on Cloudflare Workers, with its UI kit and the app CLI (gen, build, drive, proof)
 cli/         Chef CLI: spec lint, deploy, benchmarks, test server
 spec/        Chef's own feature map
 ```
 
 ## Where it stands
 
-Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the feature list, tabs and chat project page, request splitting into child features, parallel role lanes, a running app per branch, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default.
+Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the feature list, tabs and chat project page, request splitting into child features, parallel role lanes, a running app per branch, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default. New projects start as React apps on Cloudflare Workers that run in their sandbox without Docker.
 
 ## Definition of done
 

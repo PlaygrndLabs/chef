@@ -1,5 +1,6 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const job = process.env.CHEF_JOB ? JSON.parse(Buffer.from(process.env.CHEF_JOB, "base64").toString("utf8")) : {};
@@ -8,6 +9,11 @@ const dir = join(home, "app");
 const emit = (event) => process.stdout.write(`${JSON.stringify({ type: "chef.app", ...event })}\n`);
 const COMPOSE_FILES = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
 const dockerEnv = { ...process.env, COMPOSE_BAKE: "false", DOCKER_BUILDKIT: "1" };
+const WRANGLER_FILES = ["wrangler.jsonc", "wrangler.json", "wrangler.toml"];
+const WORKER_PORT = 8787;
+const TEMPLATE_DEPS = process.env.CHEF_TEMPLATE_DIR ?? "/opt/chef/template";
+const pidFile = join(home, "app.pid");
+const logFile = join(home, "app.log");
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, "g");
 const START_SECONDS = 600;
@@ -55,6 +61,119 @@ function syncWorkingCopy() {
 
 export function composeFile(root) {
   return COMPOSE_FILES.find((file) => existsSync(join(root, file))) ?? null;
+}
+
+export function wranglerFile(root) {
+  return WRANGLER_FILES.find((file) => existsSync(join(root, file))) ?? null;
+}
+
+export function coveredBy(wanted, have) {
+  const all = (pkg) => ({ ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) });
+  const needed = all(wanted);
+  const present = all(have);
+  return Object.entries(needed).every(([name, version]) => present[name] === version);
+}
+
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function stopWorker() {
+  const pid = Number(readJson(pidFile));
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      return;
+    }
+  }
+  rmSync(pidFile, { force: true });
+}
+
+function isLink(path) {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function prepareModules() {
+  const pkg = readJson(join(dir, "package.json"));
+  if (!pkg) return;
+  const modules = join(dir, "node_modules");
+  const shared = join(TEMPLATE_DEPS, "node_modules");
+  if (existsSync(shared) && coveredBy(pkg, readJson(join(TEMPLATE_DEPS, "package.json")))) {
+    if (!isLink(modules)) {
+      rmSync(modules, { recursive: true, force: true });
+      symlinkSync(shared, modules);
+    }
+    return;
+  }
+  const lock = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"].map((file) => (existsSync(join(dir, file)) ? readFileSync(join(dir, file), "utf8") : "")).join("\n");
+  const key = createHash("sha256").update(JSON.stringify(pkg)).update(lock).digest("hex");
+  const marker = join(home, "modules.key");
+  if (existsSync(modules) && !isLink(modules) && existsSync(marker) && readFileSync(marker, "utf8") === key) return;
+  if (isLink(modules)) rmSync(modules, { force: true });
+  const installed = run(existsSync(join(dir, "package-lock.json")) ? ["npm", "ci", "--no-audit", "--no-fund"] : ["npm", "install", "--no-audit", "--no-fund"], { env: { ...process.env, CI: "true" }, timeoutMs: 900_000 });
+  if (installed.code !== 0) fail(installed.timedOut ? `installing the packages did not finish within ${job.startSeconds ?? START_SECONDS} seconds` : "installing the packages", installed.out);
+  writeFileSync(marker, key);
+}
+
+function logTail(lines = 40) {
+  return existsSync(logFile) ? tail(readFileSync(logFile, "utf8"), lines) : "";
+}
+
+async function runWorker(file) {
+  prepareModules();
+  const vars = Object.entries(job.env ?? {}).map(([name, value]) => `${name}=${JSON.stringify(String(value))}`).join("\n");
+  writeFileSync(join(dir, ".dev.vars"), vars ? `${vars}\n` : "", { mode: 0o600 });
+  emit({ status: "starting", port: WORKER_PORT, commitId: job.commitId });
+  const local = join(dir, "node_modules", ".bin", "wrangler");
+  const argv = existsSync(local) ? [local] : ["npx", "--yes", "wrangler"];
+  const out = openSync(logFile, "w");
+  const child = spawn(argv[0], [...argv.slice(1), "dev", "--config", file, "--ip", "0.0.0.0", "--port", String(WORKER_PORT), "--show-interactive-dev-session=false"], {
+    cwd: dir,
+    detached: true,
+    stdio: ["ignore", out, out],
+    env: { ...process.env, CI: "true", WRANGLER_SEND_METRICS: "false", BROWSER: "none" },
+  });
+  writeFileSync(pidFile, JSON.stringify(child.pid));
+  let exited = null;
+  child.on("exit", (code, signal) => {
+    exited = signal ? `was stopped by ${signal}` : `stopped with exit code ${code}`;
+  });
+  child.unref();
+  const from = Date.now();
+  const until = Math.min(deadline, from + (job.waitSeconds ?? PORT_SECONDS) * 1000);
+  let suspect = null;
+  for (;;) {
+    if (await answers(WORKER_PORT)) {
+      emit({ status: "running", port: WORKER_PORT, commitId: job.commitId });
+      process.exit(0);
+    }
+    if (exited) fail(`the app did not start: wrangler dev ${exited}`, logTail());
+    const error = buildError(logTail(200));
+    if (error) {
+      if (!suspect || suspect.error !== error) suspect = { error, since: Date.now() };
+      else if (Date.now() - suspect.since >= LOG_GRACE_MS) {
+        stopWorker();
+        fail(`the app did not start: wrangler dev logged an error before it answered on port ${WORKER_PORT}`, logTail());
+      }
+    }
+    if (Date.now() >= until) {
+      stopWorker();
+      fail(`the app did not answer on port ${WORKER_PORT} within ${Math.round((Date.now() - from) / 1000)} seconds`, logTail());
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
 }
 
 export function hostNetworked(config, envFile) {
@@ -159,9 +278,12 @@ async function answers(port) {
 }
 
 async function main() {
+  stopWorker();
   syncWorkingCopy();
   const file = composeFile(dir);
   if (!file) {
+    const worker = wranglerFile(dir);
+    if (worker) return runWorker(worker);
     emit({ status: "no-stack", commitId: job.commitId });
     return;
   }

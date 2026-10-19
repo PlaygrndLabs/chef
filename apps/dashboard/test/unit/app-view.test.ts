@@ -100,7 +100,7 @@ describe("app browser", () => {
     const view = loadView({ ...start, checked: 1300, noStack: true }, 9000, { path: "/" });
     expect(view).toMatchObject({ phase: "no-stack", title: "This branch has no app to run", detail: NO_STACK, percent: 100, slow: false });
     expect(view.detail).toContain("compose.yaml");
-    expect(labels(view)).toEqual(["done Check the app", "failed Find a compose file"]);
+    expect(labels(view)).toEqual(["done Check the app", "failed Find a wrangler config or compose file"]);
   });
 
   it("reads the engine's app state and asks for it on the app's own link", () => {

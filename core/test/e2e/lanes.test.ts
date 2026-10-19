@@ -79,7 +79,7 @@ describe("roles working in parallel inside one feature", () => {
     expect(turns[0]?.workspace.commitId).toBe(turns[1]?.workspace.commitId);
     expect(turns[0]?.prompt).toContain("You are backend, on lane/backend");
     expect(turns[0]?.prompt).toContain("- frontend: Build the frontend part of todo-add");
-    expect(turns[1]?.prompt).toContain(`Export your routes from ${PARTS.frontend}`);
+    expect(turns[1]?.prompt).toContain(`Export your API routes from ${PARTS.frontend}`);
 
     expect(ofType(w.bus.log, "lanes.started")[0]?.lanes).toEqual([
       { role: "backend", branch: "lane/backend", items: 1 },

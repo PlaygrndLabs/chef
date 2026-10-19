@@ -130,7 +130,7 @@ export interface LoadView {
 export const WAKING_AFTER_MS = 1500;
 const SLOW_AFTER_MS = 20_000;
 
-export const NO_STACK = "Chef starts a branch's app from a compose file (compose.yaml or docker-compose.yml) at the root of the code, with the whole stack. This branch has none yet. Chef can add one that runs the whole stack.";
+export const NO_STACK = "Chef runs a Cloudflare Workers project with wrangler dev when it has a wrangler config at the root of the code, and any other stack from a compose file (compose.yaml or docker-compose.yml). This branch has neither yet. Chef can add a compose file that runs the whole stack.";
 
 const fill = (ms: number, typicalMs: number) => 1 - Math.exp(-Math.max(0, ms) / typicalMs);
 
@@ -151,7 +151,7 @@ export function loadView(load: FrameLoad, now: number, input: { readonly path: s
       detail: NO_STACK,
       steps: [
         { label: "Check the app", state: "done", took: checked === null ? null : checked - started },
-        { label: "Find a compose file", state: "failed", took: null },
+        { label: "Find a wrangler config or compose file", state: "failed", took: null },
       ],
       percent: 100,
       slow: false,
@@ -188,7 +188,7 @@ export function loadView(load: FrameLoad, now: number, input: { readonly path: s
   }[phase];
   const detail = {
     check: "Asking Chef whether this app is running.",
-    start: "Chef is starting this branch's app in its sandbox from the latest commit, with the whole stack from its compose file. It opens here by itself when it is ready.",
+    start: "Chef is starting this branch's app in its sandbox from the latest commit. It opens here by itself when it is ready.",
     reach: waking ? "Nobody opened it for a while, so its sandbox is waking up. The first visit after a pause takes longer." : "Sending the first request to the app.",
     page: "The app answered. Its page is loading.",
     done: "",

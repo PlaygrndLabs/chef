@@ -437,7 +437,7 @@ export class SessionAgent extends Agent<Env> {
 
   private async stuckApp(job: AppJob, startSeconds: number): Promise<string> {
     const minutes = Math.round(startSeconds / 60);
-    const diagnosis = this.ctx.container?.running ? this.shell(`${STOP_APP}\n${APP_LOGS}`, { PROJECT: job.project, FILE: `/workspace/${job.target}/compose.chef.json` }).catch(() => ({ code: 1, out: "" })) : Promise.resolve({ code: 1, out: "" });
+    const diagnosis = this.ctx.container?.running ? this.shell(`${STOP_APP}\n${APP_LOGS}`, { PROJECT: job.project, FILE: `/workspace/${job.target}/compose.chef.json`, LOG: `/workspace/${job.target}/app.log` }).catch(() => ({ code: 1, out: "" })) : Promise.resolve({ code: 1, out: "" });
     const logs = await Promise.race([diagnosis, new Promise<{ code: number; out: string }>((resolve) => setTimeout(() => resolve({ code: 1, out: "" }), DIAGNOSE_MS))]);
     return `the app did not start within ${minutes} minutes, so Chef stopped it${this.exit ? ` (the sandbox stopped: ${this.exit})` : ""}: ${logs.out.trim().slice(-3000) || "no output"}`;
   }
@@ -701,7 +701,7 @@ exit 0`;
 
 const STOP_APP = `pkill -TERM -f "/opt/chef/[a]pp.mjs" || true`;
 
-const APP_LOGS = `docker compose -p "$PROJECT" -f "$FILE" logs --no-color --tail 40 2>&1 | tail -c 3000`;
+const APP_LOGS = `if [ -f "$FILE" ]; then docker compose -p "$PROJECT" -f "$FILE" logs --no-color --tail 40 2>&1 | tail -c 3000; else tail -n 40 "$LOG" 2>/dev/null | tail -c 3000; fi`;
 
 const STDERR = `tail -c 4000 "$DIR/stderr.log" 2>/dev/null`;
 

@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 interface Container {
@@ -13,6 +16,8 @@ interface AppScript {
   stackTrouble(containers: readonly Container[], service: string | null): { service: string; reason: string } | null;
   buildError(logs: string): string | null;
   inspected(text: string): Container[];
+  wranglerFile(root: string): string | null;
+  coveredBy(wanted: unknown, have: unknown): boolean;
 }
 
 const script = new URL("../../sandbox/app.mjs", import.meta.url).href;
@@ -52,5 +57,22 @@ describe("the sandbox app script", () => {
     const text = `WARN noise\n${JSON.stringify([{ Name: "/shop-web-1", Config: { Labels: { "com.docker.compose.service": "web" } }, State: { Status: "exited", ExitCode: 137 }, RestartCount: 2 }])}`;
     expect(app.inspected(text)).toEqual([{ service: "web", state: "exited", exitCode: 137, restarts: 2 }]);
     expect(app.inspected("not json")).toEqual([]);
+  });
+
+  it("runs a Workers project with wrangler when it has a wrangler config and no compose file", () => {
+    const root = mkdtempSync(join(tmpdir(), "worker-"));
+    expect(app.wranglerFile(root)).toBeNull();
+    writeFileSync(join(root, "wrangler.toml"), "name = 'x'\n");
+    expect(app.wranglerFile(root)).toBe("wrangler.toml");
+    writeFileSync(join(root, "wrangler.jsonc"), "{}\n");
+    expect(app.wranglerFile(root)).toBe("wrangler.jsonc");
+  });
+
+  it("reuses the sandbox's template packages only when they are the very versions the project asks for", () => {
+    const have = { dependencies: { react: "19.3.0" }, devDependencies: { wrangler: "4.149.0", esbuild: "0.28.2" } };
+    expect(app.coveredBy({ dependencies: { react: "19.3.0" }, devDependencies: { wrangler: "4.149.0" } }, have)).toBe(true);
+    expect(app.coveredBy({ devDependencies: { wrangler: "4.150.0" } }, have)).toBe(false);
+    expect(app.coveredBy({ dependencies: { hono: "4.0.0" } }, have)).toBe(false);
+    expect(app.coveredBy({}, have)).toBe(true);
   });
 });

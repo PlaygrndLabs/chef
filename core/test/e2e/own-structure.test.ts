@@ -62,7 +62,7 @@ describe("a project with its own structure", () => {
     expect(backend?.writeScope).toEqual(expect.arrayContaining(["**", "!**/*.test.*", "!**/spec/**", "!memory/**"]));
     expect(backend?.writeScope).not.toContain("src/registry.gen.ts");
     expect(backend?.instructions).toContain("own structure, not Chef's template");
-    expect(w.planner.planned[0]?.guidance).toContain("Never create `features/`, `flow.ts`, `shared/ui.ts` or `src/registry.gen.ts`");
+    expect(w.planner.planned[0]?.guidance).toContain("Never create `features/`, `flow.ts`, `shared/ui.tsx` or `src/registry.gen.ts`");
     expect(record.plan.items.find((i) => i.kind === "test")?.prompt ?? test?.prompt).not.toContain("flow.ts");
 
     const review = (w.deps.reviewer as unknown as { reviews: { ownStructure?: boolean; guidance?: string }[] }).reviews.at(-1);

@@ -242,7 +242,7 @@ function appState(status: AppStatus | null): NonNullable<CloudflareResource["sta
   if (status === "running") return { tone: "ok", text: "Running" };
   if (status === "starting") return { tone: "run", text: "Starting" };
   if (status === "failed") return { tone: "bad", text: "Could not start" };
-  if (status === "no-stack") return { tone: "idle", text: "No compose file" };
+  if (status === "no-stack") return { tone: "idle", text: "No app to run" };
   return { tone: "idle", text: "Not started yet" };
 }
 

@@ -41,13 +41,13 @@ export function structureGuidance(tree: Readonly<Record<string, unknown>>): stri
   return `${usesChefTemplate(tree) ? TEMPLATE_GUIDANCE : OWN_GUIDANCE}\n\n${COMPOSE_GUIDANCE}`;
 }
 
-const TEMPLATE_GUIDANCE = "# Project structure\n\nThis project uses Chef's template: each feature is a vertical slice under `features/<id>/` with its tests and `flow.ts`, and `src/registry.gen.ts` is generated from those folders. Follow your role's instructions about them.";
+const TEMPLATE_GUIDANCE = "# Project structure\n\nThis project uses Chef's template, a React app on Cloudflare Workers: each feature is a vertical slice under `features/<id>/` with its API routes in `index.ts`, its React pages in `pages.tsx`, its tests and `flow.ts`, and `src/registry.gen.ts` is generated from those folders. Follow your role's instructions about them.";
 
 const OWN_GUIDANCE = [
   "# Project structure",
   "This project has its own structure, not Chef's template. Chef places no limits on its stack: follow the repository's own layout, language, frameworks, test tool and conventions, and ignore any instruction above that assumes Chef's template.",
   "- Read the README, the package files and the code around the change first. Change the files where this behavior already lives, and wire new code into the real app so a person sees it in the running app.",
-  "- Never create `features/`, `flow.ts`, `shared/ui.ts` or `src/registry.gen.ts`, and never run `app gen`.",
+  "- Never create `features/`, `flow.ts`, `shared/ui.tsx` or `src/registry.gen.ts`, and never run `app gen`.",
   "- Write tests with the repository's own test tool, next to its existing tests and named the way they are. Name each test after its acceptance criterion id where the tool names tests (`AC1: ...`).",
   "- Keep the repository's own style, including its comments and formatting.",
   "- Plan work in the repository's existing files, not as a vertical slice, and keep it in one builder role unless its parts live in separate files.",

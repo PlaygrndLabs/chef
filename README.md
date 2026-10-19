@@ -26,7 +26,7 @@ Chef takes that work off your plate, so you spend your time on what to build, no
 
 - **Sessions run themselves.** Each request becomes a session that Chef starts, tracks, keeps up to date and closes for you. Run many at once and none blocks another.
 - **No git chores.** No branches, merges, rebases or conflicts to handle. Chef keeps every session in sync with `main` and merges finished work for you.
-- **Every branch runs.** Each branch gets its own sandbox where the whole app runs, any stack your compose file describes, at its own private link. Sandboxes sleep when idle and wake on the next click.
+- **Every branch runs.** Each branch gets its own sandbox where the whole app runs at its own private link: new projects are React apps on Cloudflare Workers that start in seconds with no Docker, and an imported repository can run any stack its compose file describes. Sandboxes sleep when idle and wake on the next click.
 - **Main is the release candidate.** `main` runs the same way after every merge. Production stays yours: connect your repo to wherever you deploy.
 - **Checked before it ships.** Tests, typecheck and an AI review must pass before anything reaches `main`.
 - **Your keys stay yours.** Bring an Anthropic API key or any compatible provider. Keys stay in your Cloudflare account, never in the browser or the sandbox.
@@ -43,7 +43,7 @@ Chef is a TypeScript monorepo that runs entirely on Cloudflare's developer platf
 - **Coding.** The Claude Agent SDK runs inside a Cloudflare Sandbox (Containers) with role-scoped subagents for tests, code and review. The sandbox gets a read-only token, and its outbound proxy swaps in real keys only on approved hosts.
 - **History.** Each agent turn is one commit, with its prompt, model and role stored in git notes (`refs/notes/chef`).
 - **Gate.** Typecheck, lint, tests, spec lint, write-scope checks per role, locked tests, an independent AI review and a proof run against the branch's running app. Merges are serialized; if `main` moved, the session syncs and is gated again.
-- **Running apps.** Each sandbox runs Docker and starts the branch's compose stack; a small router Worker gives it a private address. Idle sandboxes sleep and start again on the next visit.
+- **Running apps.** Each sandbox runs a Workers project with `wrangler dev`, or Docker with the branch's compose stack for any other repository; a small router Worker gives it a private address. Idle sandboxes sleep and start again on the next visit.
 - **Memory.** Lessons and feature summaries are indexed in Vectorize with Workers AI embeddings and recalled before each turn.
 - **Live UI.** Sessions stream to a React dashboard over AG-UI with CopilotKit: coder output, tool calls, steps, running app, review and merge.
 
