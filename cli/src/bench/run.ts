@@ -75,7 +75,7 @@ export class MonitoredChecks implements CheckRunner {
     private readonly limiter: Limiter,
   ) {}
 
-  async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
+  async run(input: { repo: string; commitId: string; tree: Tree; features?: readonly string[] }): Promise<CheckResult[]> {
     this.runs++;
     const results = await this.limiter.run(() => this.inner.run(input));
     if (input.repo !== this.canonical) return results;

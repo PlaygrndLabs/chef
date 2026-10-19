@@ -1089,9 +1089,28 @@ export class Orchestrator {
 
   private async quickChecks(record: SessionRecord): Promise<CheckResult[]> {
     const head = await this.commitOf(record.fork, record.head);
-    const results = await this.newFailures(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }), record.baseMain);
+    const results = await this.forkChecks(record, head);
     record.checked = { commitId: head.id, results };
     return results.filter((c) => !c.ok);
+  }
+
+  private async forkChecks(record: SessionRecord, head: Commit): Promise<CheckResult[]> {
+    const features = await this.changedFeatures(record, head);
+    const results = await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree, ...(features ? { features } : {}) });
+    return this.newFailures(results, record.baseMain);
+  }
+
+  private async changedFeatures(record: SessionRecord, head: Commit): Promise<string[] | null> {
+    if (record.kind === "chore" || !usesChefTemplate(head.tree) || !record.baseMain) return null;
+    const base = await this.commitOf(this.canonical, record.baseMain);
+    const paths = changedPaths(diffTrees(base.tree, head.tree)).filter((p) => !p.startsWith("spec/") && !p.startsWith(".chef/") && !p.endsWith(".md") && !(p in this.config.generated));
+    const features = new Set<string>();
+    for (const path of paths) {
+      const feature = /^features\/([^/]+)\//.exec(path)?.[1];
+      if (!feature) return null;
+      features.add(feature);
+    }
+    return features.size > 0 ? [...features].sort() : null;
   }
 
   private async appStarts(record: SessionRecord): Promise<boolean> {
@@ -1273,7 +1292,7 @@ export class Orchestrator {
   }
 
   private async gateChecks(record: SessionRecord, head: Commit): Promise<CheckResult[]> {
-    const checks: CheckResult[] = record.checked?.commitId === head.id ? [...record.checked.results] : await this.newFailures(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }), record.baseMain);
+    const checks: CheckResult[] = record.checked?.commitId === head.id ? [...record.checked.results] : await this.forkChecks(record, head);
     checks.push(await this.scopeCheck(record));
     if (this.specialization.lockTests) checks.push(await this.lockedCheck(record));
     checks.push(await this.verdictCheck(record));

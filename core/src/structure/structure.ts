@@ -4,6 +4,10 @@ import { hashHex } from "../util/hash.ts";
 
 export const TEMPLATE_MARKERS = ["app/gen.ts", "src/registry.gen.ts"] as const;
 
+export function templateTestGlobs(features?: readonly string[]): string[] {
+  return [...(features ? features.map((id) => `features/${id}/**/*.test.ts`) : ["features/**/*.test.ts"]), "shared/**/*.test.ts", "app/**/*.test.ts"];
+}
+
 export function usesChefTemplate(tree: Readonly<Record<string, unknown>>): boolean {
   return TEMPLATE_MARKERS.every((path) => path in tree);
 }
