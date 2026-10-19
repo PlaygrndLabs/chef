@@ -268,7 +268,14 @@ export interface ProjectSettingsView {
   readonly appIdleMinutes: number;
   readonly attempts?: number | null;
   readonly merge?: "auto" | "manual";
+  readonly steps?: BuildSteps;
   readonly git: GitLinkView | null;
+}
+
+export interface BuildSteps {
+  readonly plan: boolean;
+  readonly tests: boolean;
+  readonly review: boolean;
 }
 
 export interface GitLinkUpdate {
@@ -284,6 +291,7 @@ export interface ProjectSettingsUpdate {
   readonly appIdleMinutes?: number | null;
   readonly attempts?: number | null;
   readonly merge?: "auto" | "manual";
+  readonly steps?: Partial<BuildSteps>;
   readonly git?: GitLinkUpdate | null;
 }
 

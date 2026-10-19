@@ -60,7 +60,7 @@ describe("project settings", () => {
     if (!linked.ok) throw new Error(linked.error);
     const cleared = applyProjectUpdate(linked.settings, { appIdleMinutes: null, git: null }, secret);
     if (!cleared.ok) throw new Error(cleared.error);
-    expect(readProjectSettings(cleared.settings)).toEqual({ appIdleMinutes: 15, attempts: null, merge: "auto", git: null });
+    expect(readProjectSettings(cleared.settings)).toEqual({ appIdleMinutes: 15, attempts: null, merge: "auto", steps: { plan: false, tests: false, review: false }, git: null });
     const manual = applyProjectUpdate(cleared.settings, { merge: "manual" }, secret);
     if (!manual.ok) throw new Error(manual.error);
     expect(viewProjectSettings(readProjectSettings(manual.settings)).merge).toBe("manual");
@@ -68,6 +68,13 @@ describe("project settings", () => {
     const tries = applyProjectUpdate(cleared.settings, { attempts: 3 }, secret);
     if (!tries.ok) throw new Error(tries.error);
     expect(readProjectSettings(tries.settings).attempts).toBe(3);
+    const tests = applyProjectUpdate(cleared.settings, { steps: { tests: true } }, secret);
+    if (!tests.ok) throw new Error(tests.error);
+    expect(viewProjectSettings(readProjectSettings(tests.settings)).steps).toEqual({ plan: false, tests: true, review: false });
+    const both = applyProjectUpdate(tests.settings, { steps: { review: true } }, secret);
+    if (!both.ok) throw new Error(both.error);
+    expect(readProjectSettings(both.settings).steps).toEqual({ plan: false, tests: true, review: true });
+    expect(applyProjectUpdate(cleared.settings, { steps: { lint: false } }, secret).ok).toBe(false);
     expect(viewProjectSettings(readProjectSettings(tries.settings)).attempts).toBe(3);
     expect(applyProjectUpdate(tries.settings, { attempts: 9 }, secret).ok).toBe(false);
     const back = applyProjectUpdate(tries.settings, { attempts: null }, secret);

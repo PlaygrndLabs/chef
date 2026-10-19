@@ -8,6 +8,8 @@ const PickSchema = z.object({ sessionId: z.string(), reasons: z.array(z.string()
 
 const PICK_SYSTEM = `You pick one of several competing attempts at the same chef feature. Each attempt's code was run against the tests written by every attempt; prefer the attempt that passes the most of them, then the one that best matches the spec, then the smaller diff. Answer with the chosen sessionId and one line per reason.`;
 
+const UNTESTED_NOTE = "Tests are off for this project, so no new tests are expected and none are named after criteria. Judge the code itself against the spec, and never set retest.";
+
 const CHORE_NOTE = "This is a chore: maintenance outside any one feature, not a feature build, so there is no spec and no new tests are expected. Approve if the diff does the task, changes no feature's behavior, and weakens no test. Reject work the task does not ask for, such as Docker, CI or dependency changes in a task about something else, and name the files to take out. Never set retest for a chore.";
 
 export class LlmReviewer implements Reviewer {
@@ -26,7 +28,7 @@ export class LlmReviewer implements Reviewer {
       model: this.model,
       system: withGuidance(this.system, input.guidance),
       schema: VerdictSchema,
-      prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `Spec:\n${JSON.stringify(input.feature, null, 2)}${renderScope(input.scope)}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}${existing}`,
+      prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `${input.untested ? `${UNTESTED_NOTE}\n\n` : ""}Spec:\n${JSON.stringify(input.feature, null, 2)}${renderScope(input.scope)}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}${existing}`,
     });
     return { approve: result.approve && result.reasons.length === 0, reasons: result.reasons, retest: result.retest, model: this.model };
   }
