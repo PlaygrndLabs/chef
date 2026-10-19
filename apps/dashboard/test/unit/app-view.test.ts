@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isPage } from "../../../../template/shared/http.ts";
-import { addressPath, appLink, appState, builtPage, enterAt, entryPage, frameReport, isPagePath, loadView, NO_STACK, pageChips, stateLink, step, visit, type FrameLoad, type Trail } from "../../src/lib/app-view.ts";
+import { addressPath, appLink, appState, builtPage, enterAt, entryPage, frameReport, frameUrl, isPagePath, loadView, NO_STACK, stateLink, step, visit, type FrameLoad, type Trail } from "../../src/lib/app-view.ts";
 
 describe("app browser", () => {
   it("opens the page named in the feature's entrypoint, never a script or an API", () => {
@@ -45,10 +45,9 @@ describe("app browser", () => {
     expect(trail).toEqual({ entries: ["/notes", "/about", "/new"], index: 2 });
   });
 
-  it("lists home, the app's pages and the start page once each", () => {
-    expect(pageChips([{ title: "Notes", path: "/notes" }], "/notes").map((p) => p.path)).toEqual(["/", "/notes"]);
-    expect(pageChips([], "/notes").map((p) => p.path)).toEqual(["/", "/notes"]);
-    expect(pageChips([], "/").map((p) => p.path)).toEqual(["/"]);
+  it("moves inside a loaded app straight on its own address", () => {
+    expect(frameUrl("https://main-notes.example.dev/", "/notes?tab=2")).toBe("https://main-notes.example.dev/notes?tab=2");
+    expect(frameUrl("https://main-notes.example.dev", "about")).toBe("https://main-notes.example.dev/about");
   });
 
   const start: FrameLoad = { started: 1000, checked: null, starting: null, answered: null, loaded: null, error: null };
