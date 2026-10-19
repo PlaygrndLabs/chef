@@ -100,7 +100,7 @@ describe("phase 2 concurrency on fakes", () => {
   it("merges without gating again when main moved only in files the session did not change", async () => {
     const prompt = "Add an item to a todo list";
     let onGate: (() => Promise<void>) | null = null;
-    const inner = new FakeCheckRunner();
+    const inner = new FakeCheckRunner(() => ({ ok: true, log: "ok" }));
     const forkRuns: string[] = [];
     const checks = {
       async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
@@ -113,7 +113,7 @@ describe("phase 2 concurrency on fakes", () => {
         return inner.run(input);
       },
     };
-    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[prompt, todoSpec]]), deps: { checks } });
+    const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[prompt, todoSpec]]), deps: { checks }, config: { steps: async () => ({ plan: true, tests: false, review: true }) } });
     await w.orchestrator.bootstrap(templateTree());
     const { sessionId } = await w.orchestrator.submit(prompt);
     let gated = 0;

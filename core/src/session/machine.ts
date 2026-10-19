@@ -51,7 +51,7 @@ const NEXT: Readonly<Record<SessionEvent["type"], Partial<Record<SessionState, S
   review_approved: { reviewing: "gating" },
   review_rejected: { reviewing: "coding" },
   gate_passed: { gating: "merged" },
-  gate_failed: { gating: "coding" },
+  gate_failed: { gating: "coding", coding: "coding" },
   tests_disputed: { coding: "testing" },
   app_failed: { coding: "coding", reviewing: "coding" },
   conflict: { planning: "coding", testing: "coding", coding: "coding", reviewing: "coding", gating: "coding" },

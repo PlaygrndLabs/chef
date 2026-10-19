@@ -142,7 +142,7 @@ export class ProjectAgent extends Agent<Env> {
         profiles,
         router: routerConfigOf(agents.config.router),
         generated,
-        specialization: { attempts: project.attempts ?? settings.attempts, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }), laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) },
+        specialization: { attempts: project.attempts ?? settings.attempts, testsAlongside: true, stub: (feature) => ({ [stubPath(feature.id)]: renderStub(feature.id, feature.title) }), laneLayout: (feature, roles, tree) => laneLayout(feature.id, feature.title, roles, tree) },
         appLink: (id) => `/app/${this.name}/${id}`,
         environment: async () => envNames(await this.effectiveEnv()),
         instructions: async () => (await settingsStub(env).sharedInstructions())?.text ?? "",
