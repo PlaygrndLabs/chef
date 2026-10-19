@@ -27,7 +27,7 @@ export interface ProjectSettingsView {
   readonly git: (Omit<GitLinkSettings, "token" | "installation"> & { readonly tokenHint: string | null; readonly pullRequests: boolean; readonly github: boolean }) | null;
 }
 
-export const DEFAULT_APP_IDLE_MINUTES = 60;
+export const DEFAULT_APP_IDLE_MINUTES = 15;
 export const MAX_APP_IDLE_MINUTES = 7 * 24 * 60;
 
 export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = { appIdleMinutes: DEFAULT_APP_IDLE_MINUTES, attempts: null, merge: "auto", git: null };

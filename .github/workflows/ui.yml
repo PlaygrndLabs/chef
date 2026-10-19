@@ -20,10 +20,10 @@ on:
         required: true
         default: "25"
       delete:
-        description: Delete the project at the end through Project settings (only one this run created)
+        description: Delete the project at the end through Project settings (only one this run created), so its sandboxes stop at once; turn off to look at it afterwards
         type: boolean
         required: false
-        default: false
+        default: true
       delete_existing:
         description: Also delete the named project when it was there before this run (only a test project an earlier run created)
         type: boolean

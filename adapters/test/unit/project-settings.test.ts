@@ -60,7 +60,7 @@ describe("project settings", () => {
     if (!linked.ok) throw new Error(linked.error);
     const cleared = applyProjectUpdate(linked.settings, { appIdleMinutes: null, git: null }, secret);
     if (!cleared.ok) throw new Error(cleared.error);
-    expect(readProjectSettings(cleared.settings)).toEqual({ appIdleMinutes: 60, attempts: null, merge: "auto", git: null });
+    expect(readProjectSettings(cleared.settings)).toEqual({ appIdleMinutes: 15, attempts: null, merge: "auto", git: null });
     const manual = applyProjectUpdate(cleared.settings, { merge: "manual" }, secret);
     if (!manual.ok) throw new Error(manual.error);
     expect(viewProjectSettings(readProjectSettings(manual.settings)).merge).toBe("manual");
