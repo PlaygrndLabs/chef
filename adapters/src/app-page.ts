@@ -3,7 +3,7 @@ export type AppAnswer = { readonly status: "ready"; readonly url: string; readon
 const TEXT = {
   starting: { title: "Starting this app", detail: "Chef is starting this branch's app in its sandbox from the latest commit. The page opens by itself when it is ready." },
   failed: { title: "This app could not start", detail: "" },
-  "no-stack": { title: "This branch has no app to run", detail: "Chef starts a branch's app from a compose file (compose.yaml or docker-compose.yml) at the root of the code. Ask Chef to add one that runs the whole stack." },
+  "no-stack": { title: "This branch has no app to run", detail: "Chef runs a Cloudflare Workers project with wrangler dev when it has a wrangler config at the root of the code, and any other stack from a compose file (compose.yaml or docker-compose.yml). This branch has neither. Ask Chef to add one." },
   missing: { title: "No app here", detail: "This branch has no commit yet, or it is gone." },
   down: { title: "This app is not answering", detail: "" },
 } as const;

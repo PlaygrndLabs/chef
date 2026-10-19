@@ -51,7 +51,7 @@ describe("project event state", () => {
     ]);
     expect(state.sessions["s2"]?.app).toMatchObject({ status: "no-stack", url: null });
     expect(state.log.slice(1).map((e) => e.summary)).toEqual(["app no-stack at c2abcde", "main app failed at m2abcde: port 3000 never answered"]);
-    expect(updates(state.sessions["s2"]?.timeline ?? [], "coding").flatMap((u) => (u.kind === "chef" ? u.tech : []))).toContain("no compose file at c2abcde, so the app cannot start");
+    expect(updates(state.sessions["s2"]?.timeline ?? [], "coding").flatMap((u) => (u.kind === "chef" ? u.tech : []))).toContain("no wrangler config or compose file at c2abcde, so the app cannot start");
   });
 
   it("follows roles that work at the same time on their own branches", () => {

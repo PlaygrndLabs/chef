@@ -9,14 +9,14 @@ export interface TestApp {
   open(path: string): Promise<OpenPage>;
 }
 
-export function testApp(t: Pick<TestContext, "after">, features: readonly Feature[], env: Env = {}): TestApp {
+export function testApp(t: Pick<TestContext, "after">, features: readonly Feature[], env: Env = {}, root?: string): TestApp {
   const store = new MemoryStore();
   const app = createApp(features, store, env);
   return {
     store,
     fetch: (path, init) => app(new Request(new URL(path, ORIGIN), init)),
     open: async (path) => {
-      const opened = await openPage(features, path, store, env);
+      const opened = await openPage(features, path, store, env, root);
       t.after(() => opened.close());
       return opened;
     },

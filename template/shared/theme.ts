@@ -1,40 +1,3 @@
-export class SafeHtml {
-  readonly value: string;
-
-  constructor(value: string) {
-    this.value = value;
-  }
-
-  toString(): string {
-    return this.value;
-  }
-}
-
-export type Child = SafeHtml | string | number | boolean | null | undefined | readonly Child[];
-
-export function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-}
-
-export function raw(markup: string): SafeHtml {
-  return new SafeHtml(markup);
-}
-
-function render(child: Child): string {
-  if (child === null || child === undefined || child === false || child === true) return "";
-  if (child instanceof SafeHtml) return child.value;
-  if (Array.isArray(child)) return child.map(render).join("");
-  return escapeHtml(String(child));
-}
-
-export function html(strings: TemplateStringsArray, ...values: readonly Child[]): SafeHtml {
-  let out = strings[0] ?? "";
-  values.forEach((value, i) => {
-    out += render(value) + (strings[i + 1] ?? "");
-  });
-  return new SafeHtml(out);
-}
-
 export const ICONS = {
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   minus: '<path d="M5 12h14"/>',
@@ -98,15 +61,6 @@ export const ICONS = {
 } as const;
 
 export type IconName = keyof typeof ICONS;
-
-function svg(name: IconName, className: string, label: string | null): string {
-  const a11y = label ? `role="img" aria-label="${escapeHtml(label)}"` : 'aria-hidden="true"';
-  return `<svg class="${className}" ${a11y} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
-}
-
-export function icon(name: IconName, options: { readonly label?: string; readonly class?: string } = {}): SafeHtml {
-  return raw(svg(name, options.class ? `icon ${options.class}` : "icon", options.label ?? null));
-}
 
 export const CSS = `:root{--bg:#fafafa;--fg:#09090b;--card:#fff;--muted:#71717a;--muted-bg:#f4f4f5;--border:#e4e4e7;--input:#d4d4d8;--ring:#a1a1aa;--primary:#18181b;--primary-fg:#fafafa;--accent:#4f46e5;--danger:#dc2626;--danger-bg:#fef2f2;--success:#16a34a;--success-bg:#f0fdf4;--warning:#d97706;--warning-bg:#fffbeb;--info:#2563eb;--info-bg:#eff6ff;--radius:.75rem;--shadow:0 1px 2px rgb(0 0 0/.04),0 1px 3px rgb(0 0 0/.06);--shadow-lg:0 10px 30px -10px rgb(0 0 0/.2);color-scheme:light}
 @media (prefers-color-scheme:dark){:root{--bg:#09090b;--fg:#fafafa;--card:#111113;--muted:#a1a1aa;--muted-bg:#1f1f23;--border:#27272a;--input:#3f3f46;--ring:#71717a;--primary:#fafafa;--primary-fg:#18181b;--accent:#818cf8;--danger:#f87171;--danger-bg:#2a1215;--success:#4ade80;--success-bg:#0f2417;--warning:#fbbf24;--warning-bg:#2a2010;--info:#60a5fa;--info-bg:#0f1b2e;--shadow:0 1px 2px rgb(0 0 0/.3);--shadow-lg:0 10px 30px -10px rgb(0 0 0/.6);color-scheme:dark}}
@@ -232,41 +186,4 @@ dialog h2{margin-bottom:.5rem}
 @media (max-width:640px){.container{padding:2rem 1rem 4rem}h1{font-size:1.5rem}.grid-2,.grid-3{grid-template-columns:minmax(0,1fr)}.page-header{margin-bottom:1.5rem}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}`;
 
-const RUNTIME = `window.ui=(function(){var I=${JSON.stringify(ICONS)};function esc(s){return String(s).replace(/[&<>"']/g,function(c){return"&#"+c.charCodeAt(0)+";"})}function icon(n,o){o=o||{};var a=o.label?'role="img" aria-label="'+esc(o.label)+'"':'aria-hidden="true"';return'<svg class="icon'+(o.class?" "+o.class:"")+'" '+a+' xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(I[n]||"")+"</svg>"}function toast(m,k){var r=document.querySelector(".ui-toasts");if(!r){r=document.createElement("div");r.className="ui-toasts";r.setAttribute("aria-live","polite");document.body.appendChild(r)}var t=document.createElement("div");t.className="ui-toast"+(k?" "+k:"");t.innerHTML=icon(k==="danger"?"alert":"check-circle");t.appendChild(document.createTextNode(message(m,k==="danger"?FALLBACK:"Done")));r.appendChild(t);setTimeout(function(){t.remove()},3200)}var FALLBACK="Something went wrong. Try again.";function message(e,f){var m=e!==null&&typeof e==="object"&&"message"in e?e.message:e;m=m===null||m===undefined?"":String(m).trim();return m||f||FALLBACK}async function api(path,o){o=o||{};var h=Object.assign({accept:"application/json"},o.headers||{}),b=o.body;if(b!==undefined&&typeof b!=="string"&&!(b instanceof FormData)){b=JSON.stringify(b);h["content-type"]="application/json"}var r;try{r=await fetch(path,{method:o.method||(b===undefined?"GET":"POST"),headers:h,body:b})}catch(x){throw new Error("Could not reach the app. Check your connection and try again.")}var t=await r.text(),d=null;try{d=t?JSON.parse(t):null}catch(x){d=null}if(r.ok)return d===null&&t?t:d;var m=d!==null&&typeof d==="object"?d.error||d.message:"";if(typeof m!=="string")m=m?JSON.stringify(m):"";if(!m&&t&&!/^\\s*</.test(t))m=t.slice(0,200);var e=new Error(message(m,"The request failed ("+r.status+(r.statusText?" "+r.statusText:"")+"). Try again."));e.status=r.status;e.body=d;throw e}function error(el,e){if(typeof el==="string")el=document.querySelector(el);if(!el)return;if(e===null||e===undefined||e===false){el.textContent="";el.hidden=true;return}el.textContent=message(e);el.hidden=false}return{icon:icon,escape:esc,toast:toast,message:message,api:api,error:error}})();`;
-
-const COLOR = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|(?:rgb|hsl|oklch)\([0-9.,%\s/a-z-]+\))$/;
-
-export interface NavLink {
-  readonly href: string;
-  readonly label: string;
-}
-
-export interface PageOptions {
-  readonly title: string;
-  readonly body: Child;
-  readonly description?: string;
-  readonly width?: "narrow" | "normal" | "wide" | "full";
-  readonly accent?: string;
-  readonly brand?: string;
-  readonly nav?: readonly NavLink[];
-  readonly current?: string;
-  readonly style?: string;
-  readonly script?: string;
-  readonly scripts?: readonly string[];
-  readonly status?: number;
-}
-
-export function renderPage(options: PageOptions): SafeHtml {
-  const accent = options.accent && COLOR.test(options.accent) ? `:root{--accent:${options.accent};--primary:${options.accent};--primary-fg:#fff}` : "";
-  const width = options.width && options.width !== "normal" ? ` ${options.width}` : "";
-  const topbar = options.brand || options.nav?.length
-    ? html`<header class="topbar"><div class="container-bar${width}"><a class="brand" href="/">${options.brand ?? options.title}</a>${options.nav?.length ? html`<nav>${options.nav.map((link) => html`<a href="${link.href}"${link.href === options.current ? raw(' aria-current="page"') : ""}>${link.label}</a>`)}</nav>` : ""}</div></header>`
-    : "";
-  const scripts = (options.scripts ?? []).map((src) => html`<script src="${src}" defer></script>`);
-  const inline = options.script ? raw(`<script type="module">${options.script.replace(/<\/script/gi, "<\\/script")}</script>`) : "";
-  return html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${options.title}</title>${options.description ? html`<meta name="description" content="${options.description}">` : ""}<style>${raw(CSS + accent + (options.style ?? ""))}</style><script>${raw(RUNTIME)}</script></head><body>${topbar}<main class="container${width}">${options.body}</main>${scripts}${inline}</body></html>`;
-}
-
-export function page(options: PageOptions): Response {
-  return new Response(renderPage(options).value, { status: options.status ?? 200, headers: { "content-type": "text/html; charset=utf-8" } });
-}
+export const COLOR = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|(?:rgb|hsl|oklch)\([0-9.,%\s/a-z-]+\))$/;

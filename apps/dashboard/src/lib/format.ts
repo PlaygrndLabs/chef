@@ -89,7 +89,7 @@ export const APP_STATUS_LABEL: Readonly<Record<AppStatus, string>> = {
   starting: "Starting",
   running: "Running",
   failed: "Could not start",
-  "no-stack": "No compose file",
+  "no-stack": "No app to run",
 };
 
 export const APP_TONE: Readonly<Record<AppStatus, Tone>> = { starting: "run", running: "ok", failed: "bad", "no-stack": "idle" };

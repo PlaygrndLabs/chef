@@ -47,4 +47,9 @@ describe("reading an imported project", () => {
     expect(withChefSuggestions(overview, { ...tree, ".chef/features/canvas/SPECS.md": "---\ntitle: Canvas\n---\n" }).suggestions.map((s) => s.title)).toEqual([COMPOSE_SUGGESTION.title]);
     expect(withChefSuggestions(overview, { ...tree, ".chef/features/PATH.md": "Open it", "compose.yaml": "services: {}" }).suggestions).toEqual([]);
   });
+
+  it("never suggests dockerizing a Cloudflare Workers project, which runs with wrangler", () => {
+    const overview = { summary: "s", problems: [], suggestions: [] };
+    expect(withChefSuggestions(overview, { ...tree, ".chef/features/PATH.md": "Open it", "wrangler.jsonc": "{}" }).suggestions).toEqual([]);
+  });
 });

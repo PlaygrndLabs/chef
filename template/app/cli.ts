@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Flow } from "../shared/flow.ts";
 import { routeClashes, type Feature } from "../shared/http.ts";
+import { bundleClient } from "./client.ts";
 import { drive, type Fetcher } from "./drive.ts";
 import { REGISTRY_PATH, renderRegistry } from "./gen.ts";
 
@@ -46,6 +47,18 @@ async function gen(check: boolean): Promise<number> {
   return 1;
 }
 
+async function build(): Promise<number> {
+  try {
+    const code = await bundleClient(root);
+    await mkdir(join(root, "dist", "client"), { recursive: true });
+    await writeFile(join(root, "dist", "client", "client.js"), code);
+    return 0;
+  } catch (error) {
+    process.stderr.write(`building the pages failed:\n${(error as Error).message}\n`);
+    return 1;
+  }
+}
+
 async function flowFor(feature: string): Promise<Flow> {
   const spec = await readFile(join(root, "spec", "features", `${feature}.md`), "utf8").catch(() => "");
   const name = /^flow:\s*([a-z0-9-]+)\s*$/m.exec(spec)?.[1] ?? feature;
@@ -68,6 +81,7 @@ async function runDrive(feature: string, args: readonly string[]): Promise<{ cod
 async function main(args: readonly string[]): Promise<number> {
   const [command, target] = args;
   if (command === "gen") return gen(args.includes("--check"));
+  if (command === "build") return build();
   if ((command === "drive" || command === "proof") && target) {
     const { code, output } = await runDrive(target, args);
     const proof = command === "proof" ? { ...(output as object), commit: option(args, "commit") ?? null, at: new Date().toISOString() } : output;
@@ -79,7 +93,7 @@ async function main(args: readonly string[]): Promise<number> {
     process.stdout.write(`${JSON.stringify(proof, null, 2)}\n`);
     return code;
   }
-  process.stderr.write("usage: app gen [--check] | app drive <feature> [--url URL] | app proof <feature> --url URL [--commit SHA] [--out FILE]\n");
+  process.stderr.write("usage: app gen [--check] | app build | app drive <feature> [--url URL] | app proof <feature> --url URL [--commit SHA] [--out FILE]\n");
   return 2;
 }
 

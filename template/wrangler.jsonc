@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+  "build": { "command": "npm run --silent app -- build", "watch_dir": ["features", "shared"] },
+  "assets": { "directory": "dist/client" },
   "durable_objects": { "bindings": [{ "name": "STORE", "class_name": "StoreObject" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["StoreObject"] }]
 }

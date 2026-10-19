@@ -1,6 +1,9 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
-import { createApp, type Env, type Feature } from "../shared/http.ts";
+import { CLIENT_PATH, createApp, type Env, type Feature } from "../shared/http.ts";
 import { MemoryStore, type Store } from "../shared/storage.ts";
+import { bundleClient } from "./client.ts";
 
 export const ORIGIN = "http://app.test";
 export const STEP_TIMEOUT_MS = 5000;
@@ -12,25 +15,44 @@ export interface OpenPage {
 }
 
 let shared: Promise<Browser> | null = null;
+const clients = new Map<string, Promise<string>>();
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+function clientCode(root: string): Promise<string> {
+  let code = clients.get(root);
+  if (!code) {
+    code = bundleClient(root, { minify: false });
+    clients.set(root, code);
+  }
+  return code;
+}
 
 function browser(): Promise<Browser> {
   shared ??= chromium.launch({ headless: true, chromiumSandbox: false });
   return shared;
 }
 
-export async function openPage(features: readonly Feature[], path: string, store: Store = new MemoryStore(), env: Env = {}): Promise<OpenPage> {
+export async function openPage(features: readonly Feature[], path: string, store: Store = new MemoryStore(), env: Env = {}, root = ROOT): Promise<OpenPage> {
   const app = createApp(features, store, env);
+  const code = await clientCode(root);
   const context = await (await browser()).newContext({ baseURL: ORIGIN });
   context.setDefaultTimeout(STEP_TIMEOUT_MS);
   await context.route("**/*", async (route) => {
     const request = route.request();
     if (!request.url().startsWith(ORIGIN)) return route.abort();
+    if (new URL(request.url()).pathname === CLIENT_PATH) return route.fulfill({ status: 200, headers: { "content-type": "text/javascript; charset=utf-8" }, body: code });
     const body = request.postDataBuffer();
     const response = await app(new Request(request.url(), { method: request.method(), headers: request.headers(), ...(body ? { body: new Uint8Array(body) } : {}) }));
     await route.fulfill({ status: response.status, headers: Object.fromEntries(response.headers), body: Buffer.from(await response.arrayBuffer()) });
   });
   const page = await context.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(path);
+  await page.waitForFunction(() => document.getElementById("root")?.hasChildNodes() ?? true).catch(() => {
+    throw new Error(`the page ${path} did not render${errors.length ? `: ${errors.join("; ")}` : ""}`);
+  });
   return { page, store, close: () => context.close() };
 }
 

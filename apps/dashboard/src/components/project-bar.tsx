@@ -95,7 +95,7 @@ function MainAppChip({ now }: { readonly now: number }) {
     return (
       <Chip id="main-app" label={NO_STACK} tone="text-bad">
         <AlertTriangle className="size-3.5" />
-        Main has no compose file
+        Main has no app to run
       </Chip>
     );
   }

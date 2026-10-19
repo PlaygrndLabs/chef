@@ -397,7 +397,7 @@ export function ProjectSettingsDialog(props: {
               <StepsForm steps={settings.steps ?? { plan: false, tests: false, review: false }} save={save} />
             </Group>
             <ProjectBudgetGroup api={api} />
-            <Group title="Apps" note="Each branch runs its app, with the whole stack from its compose file, in its own sandbox, and main runs the release candidate. A running app sleeps after it sits unused and starts again when someone opens it.">
+            <Group title="Apps" note="Each branch runs its app in its own sandbox (a Workers project with wrangler, any other stack from its compose file), and main runs the release candidate. A running app sleeps after it sits unused and starts again when someone opens it.">
               <AppsForm key={settings.appIdleMinutes} minutes={settings.appIdleMinutes} save={save} />
             </Group>
             <DeleteProjectGroup project={project} linked={settings.git?.url ?? null} />

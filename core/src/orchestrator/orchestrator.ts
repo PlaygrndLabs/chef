@@ -488,7 +488,7 @@ export class Orchestrator {
     const entrypoint = template ? `GET /${unique}` : "/";
     const title = choreTitle(request);
     const feature: FeatureSpec = { id: unique, title, status: "building", entrypoint, revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: request.trim().slice(0, 500) || title }], body: request.trim() };
-    const prompt = template ? `${request.trim()}\n\nA person opens this feature at ${entrypoint.slice(4)}, so serve its page there.` : request.trim();
+    const prompt = template ? `${request.trim()}\n\nA person opens this feature at ${entrypoint.slice(4)}, so give it a React page with that path in its pages.tsx.` : request.trim();
     return {
       feature,
       specChanged: true,
@@ -1790,7 +1790,7 @@ export class Orchestrator {
     if (record.app?.status !== "running" || record.app.commitId !== head.id) await this.runApp(record, true);
     const app = record.app;
     const template = usesChefTemplate(head.tree);
-    if (!template && app?.status === "no-stack") return { name: "proof", ok: true, log: "this branch has no compose file, so it has no running app to prove; the repository's own checks are the proof" };
+    if (!template && app?.status === "no-stack") return { name: "proof", ok: true, log: "this branch has no wrangler config or compose file, so it has no running app to prove; the repository's own checks are the proof" };
     if (app?.status !== "running" || !app.local) return { name: "proof", ok: false, log: appTrouble(app) };
     if (!template) return this.answerProof(record, head, app.local);
     if (record.kind === "chore") return this.choreProof(record, head, app.local);
@@ -2395,7 +2395,7 @@ export function runnable(record: SessionRecord): boolean {
 }
 
 function appTrouble(app: SessionApp | null): string {
-  if (app?.status === "no-stack") return "this branch has no compose file (compose.yaml or docker-compose.yml), so Chef cannot start its app to prove the feature";
+  if (app?.status === "no-stack") return "this branch has no wrangler config or compose file (compose.yaml or docker-compose.yml), so Chef cannot start its app to prove the feature";
   if (app?.error) return `the app did not start: ${app.error}`;
   return "the app is not running";
 }

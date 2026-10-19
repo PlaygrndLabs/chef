@@ -199,7 +199,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
         return;
       }
       case "app":
-        tech(item.status === "starting" ? `app starting from ${short(item.commitId)}` : item.status === "running" ? `app running at ${short(item.commitId)}` : item.status === "no-stack" ? `no compose file at ${short(item.commitId)}, so the app cannot start` : `app could not start at ${short(item.commitId)}${item.error ? `: ${item.error}` : ""}`);
+        tech(item.status === "starting" ? `app starting from ${short(item.commitId)}` : item.status === "running" ? `app running at ${short(item.commitId)}` : item.status === "no-stack" ? `no wrangler config or compose file at ${short(item.commitId)}, so the app cannot start` : `app could not start at ${short(item.commitId)}${item.error ? `: ${item.error}` : ""}`);
         return;
       case "rejected": {
         const line = `rule ${item.rule} blocked a ${item.role} change to ${item.paths.join(", ")}`;
