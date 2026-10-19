@@ -177,6 +177,7 @@ export class SessionAgent extends Agent<Env> {
   private visited = 0;
   private appRun: { readonly commitId: string; readonly run: Promise<AppState> } | null = null;
   private appsStarting = 0;
+  private checksTail: Promise<unknown> = Promise.resolve();
   private project: string | null = null;
   private starting: Promise<Container> | null = null;
 
@@ -372,6 +373,12 @@ export class SessionAgent extends Agent<Env> {
   }
 
   async runChecks(job: ChecksJob): Promise<CommandResult[]> {
+    const run = this.checksTail.then(() => this.checksNow(job));
+    this.checksTail = run.catch(() => undefined);
+    return run;
+  }
+
+  private async checksNow(job: ChecksJob): Promise<CommandResult[]> {
     await this.remember(job.project);
     let results: CommandResult[] | null = null;
     const { code, tail } = await this.runScript("checks.mjs", job, (event) => {
