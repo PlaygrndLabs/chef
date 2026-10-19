@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { basename, join, relative } from "node:path";
+import { clearInterval, setInterval } from "node:timers";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
 const job = JSON.parse(Buffer.from(process.env.CHEF_JOB ?? "", "base64").toString("utf8"));
@@ -64,6 +65,50 @@ for (const skill of skills) {
 }
 const skillNames = skills.map((skill) => skill.name);
 
+const claudeProjects = join(env.CLAUDE_CONFIG_DIR, "projects");
+const savedMarks = join(env.CLAUDE_CONFIG_DIR, "saved.json");
+const record = { turn: basename(process.cwd()), role: job.agent.name, model: job.model, claudeSessions: [], startedAt: new Date().toISOString(), endedAt: null, outcome: null };
+let saving = Promise.resolve();
+
+function files(root) {
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? files(join(root, entry.name)) : entry.isFile() ? [join(root, entry.name)] : []));
+}
+
+async function put(path, body) {
+  const url = `${job.transcripts}${path.split("/").map(encodeURIComponent).join("/")}`;
+  const response = await fetch(url, { method: "PUT", body }).catch(() => null);
+  return response?.ok === true;
+}
+
+async function saveTranscripts() {
+  const marks = existsSync(savedMarks) ? JSON.parse(readFileSync(savedMarks, "utf8")) : {};
+  for (const file of files(claudeProjects)) {
+    const stat = statSync(file);
+    const mark = `${stat.size}:${stat.mtimeMs}`;
+    const path = relative(env.CLAUDE_CONFIG_DIR, file);
+    if (marks[path] !== mark && (await put(path, readFileSync(file)))) marks[path] = mark;
+  }
+  writeFileSync(savedMarks, JSON.stringify(marks));
+  await put(`turns/${record.turn}.json`, JSON.stringify(record, null, 2));
+}
+
+function save() {
+  if (!job.transcripts) return saving;
+  saving = saving.then(saveTranscripts).catch((error) => process.stderr.write(`saving the transcript failed: ${error.message}\n`));
+  return saving;
+}
+
+async function finish(outcome, code) {
+  record.endedAt = new Date().toISOString();
+  record.outcome = outcome;
+  clearInterval(saver);
+  await save();
+  process.exit(code);
+}
+
+const saver = setInterval(save, 60_000);
+
 const lint = process.env.CHEF_LINT ?? "/opt/chef/template/lint.mjs";
 const options = (resume) => ({
   cwd: dir,
@@ -90,6 +135,7 @@ function toolDetail(input) {
 async function turn(prompt, resume) {
   let result = null;
   for await (const message of query({ prompt, options: options(resume) })) {
+    if (message.session_id && !record.claudeSessions.includes(message.session_id)) record.claudeSessions.push(message.session_id);
     if (message.type === "stream_event" && message.parent_tool_use_id === null) {
       const event = message.event;
       if (event.type === "content_block_delta" && event.delta.type === "text_delta") emit({ type: "assistant.message_delta", delta: event.delta.text });
@@ -98,8 +144,9 @@ async function turn(prompt, resume) {
     } else if (message.type === "result") result = message;
   }
   if (!result || result.subtype !== "success" || result.is_error) {
-    emit({ type: "session.error", message: result ? `${result.subtype}${result.result ? `: ${result.result}` : ""}` : "the coder ended without a result" });
-    process.exit(1);
+    const message = result ? `${result.subtype}${result.result ? `: ${result.result}` : ""}` : "the coder ended without a result";
+    emit({ type: "session.error", message });
+    await finish(message, 1);
   }
   return result;
 }
@@ -135,3 +182,4 @@ for (const line of git("diff", "--cached", "--name-status", "--no-renames", job.
   changes[path] = status === "D" ? null : readFileSync(join(dir, path), "utf8");
 }
 emit({ type: "chef.result", changes, summary: result.result, model: job.model, usage: { inputTokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0), outputTokens: usage.output_tokens, cachedInputTokens: usage.cache_read_input_tokens ?? 0 } });
+await finish("done", 0);

@@ -5,6 +5,7 @@ import { APP_REQUEST_HEADER } from "@chef/adapters/app-gate";
 import { appPage } from "@chef/adapters/app-page";
 import { layerStore } from "./image-layers.ts";
 import { LAYER_CACHE_ADDRESS, layerCacheFetch } from "./layer-cache.ts";
+import { saveTranscript, TRANSCRIPT_ADDRESS } from "./transcripts.ts";
 import { exitedForMemory, nextStep, oomKills, sandboxSize, sizeLabel, sizeStep } from "./sandbox-size.ts";
 
 export const PLACEHOLDER = "chef-placeholder";
@@ -36,6 +37,7 @@ export interface OutboundAccess {
   readonly llmHost: string | null;
   readonly llmKey: string | null;
   readonly cacheScope: string;
+  readonly project: string | null;
 }
 
 interface OutboundProps {
@@ -50,6 +52,7 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
     const sessions = this.env.SESSION;
     const access = await (sessions.get(sessions.idFromName(this.ctx.props.sandbox)) as unknown as AccessStub).outboundAccess();
     if (!access) return new Response("this sandbox has no access to anything yet", { status: 503 });
+    if (url.hostname === TRANSCRIPT_ADDRESS) return this.env.TRANSCRIPTS && access.project ? saveTranscript(request, this.env.TRANSCRIPTS, access.project) : new Response("this Chef keeps no transcripts", { status: 404 });
     if (url.hostname === LAYER_CACHE_ADDRESS) return layerCacheFetch(request, layerStore(this.env.IMAGE_LAYERS), access.cacheScope);
     if (url.protocol !== "https:") return new Response("https only", { status: 403 });
     const headers = new Headers(request.headers);
@@ -141,7 +144,7 @@ const DIAGNOSE_MS = 20_000;
 const TURN = "sandbox/turn";
 const TURNS_DIR = "/workspace/turns";
 
-type Outbound = Omit<OutboundAccess, "llmKey">;
+type Outbound = Omit<OutboundAccess, "llmKey" | "project">;
 
 type SizeStub = { sandboxStep(): Promise<number>; sandboxNeeds(step: number): Promise<void> };
 
@@ -234,7 +237,9 @@ export class SessionAgent extends Agent<Env> {
 
   async outboundAccess(): Promise<OutboundAccess | null> {
     const latest = [...this.grants.values()].at(-1) ?? this.lastGrant;
-    return latest ? { ...latest, llmHost: this.llmHost, llmKey: this.llmKey } : null;
+    if (!latest) return null;
+    this.project ??= (await this.ctx.storage.get<string>(OWNER)) ?? null;
+    return { ...latest, llmHost: this.llmHost, llmKey: this.llmKey, project: this.project };
   }
 
   async runTurn(job: SandboxJob, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome> {
@@ -275,7 +280,8 @@ export class SessionAgent extends Agent<Env> {
     void readToken;
     void turnId;
     void lane;
-    const started = await this.shell(LAUNCH, { DIR: turn.dir, LANE: laneDir, SCRIPT: "runner.mjs", CHEF_JOB: toBase64(JSON.stringify(visible)) });
+    const transcripts = this.env.TRANSCRIPTS ? { transcripts: `http://${TRANSCRIPT_ADDRESS}/${job.sessionId}/` } : {};
+    const started = await this.shell(LAUNCH, { DIR: turn.dir, LANE: laneDir, SCRIPT: "runner.mjs", CHEF_JOB: toBase64(JSON.stringify({ ...visible, ...transcripts })) });
     if (started.code !== 0) throw new Error(`the coder runner did not start: ${started.out.slice(-500)}`);
     await this.ctx.storage.put(key, turn);
     return turn;
@@ -639,8 +645,8 @@ export class SessionAgent extends Agent<Env> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     const hosts = [...new Set([props.artifactsHost, ...(props.llmHost ? [props.llmHost] : [])])].filter((host) => !this.intercepted.has(host));
-    const cache = !this.intercepted.has(LAYER_CACHE_ADDRESS);
-    if (hosts.length === 0 && !cache) return;
+    const addresses = [LAYER_CACHE_ADDRESS, ...(this.env.TRANSCRIPTS ? [TRANSCRIPT_ADDRESS] : [])].filter((address) => !this.intercepted.has(address));
+    if (hosts.length === 0 && addresses.length === 0) return;
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");
     const fetcher = outbound({ props: { sandbox: this.name } });
@@ -648,9 +654,9 @@ export class SessionAgent extends Agent<Env> {
       await container.interceptOutboundHttps(host, fetcher);
       this.intercepted.add(host);
     }
-    if (cache) {
-      await container.interceptOutboundHttp(LAYER_CACHE_ADDRESS, fetcher);
-      this.intercepted.add(LAYER_CACHE_ADDRESS);
+    for (const address of addresses) {
+      await container.interceptOutboundHttp(address, fetcher);
+      this.intercepted.add(address);
     }
     const trusted = await container.exec(["sh", "/opt/chef/trust.sh"], { env: { PATH: ROOT_PATH }, user: "0:0", stdout: "pipe", stderr: "combined" });
     const out = await new Response(trusted.stdout as ReadableStream<Uint8Array>).text();
