@@ -39,6 +39,7 @@ export interface SessionRecord {
   app: SessionApp | null;
   firstAppCommit: string | null;
   verdict: (ReviewVerdict & { commitId: string; skipped?: boolean }) | null;
+  checked?: { commitId: string; results: CheckResult[] } | null;
   lastCodeItem: string | null;
   syncPending: boolean;
   merge: { commitId: string; mainBefore: string; into?: string } | null;

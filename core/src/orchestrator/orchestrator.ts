@@ -63,10 +63,11 @@ export interface Specialization {
   readonly attempts: number;
   readonly stub: ((feature: FeatureSpec) => FileChanges) | null;
   readonly parallelRoles: boolean;
+  readonly testsAlongside: boolean;
   readonly laneLayout: LaneLayoutFor | null;
 }
 
-export const DEFAULT_SPECIALIZATION: Specialization = { lockTests: true, attempts: 1, stub: null, parallelRoles: true, laneLayout: null };
+export const DEFAULT_SPECIALIZATION: Specialization = { lockTests: true, attempts: 1, stub: null, parallelRoles: true, testsAlongside: false, laneLayout: null };
 
 export interface ProjectConfig {
   readonly name: string;
@@ -900,8 +901,10 @@ export class Orchestrator {
       });
       record.cursor = record.plan.items.indexOf(item) + 1;
     }
-    const withTests = record.plan.items.slice(record.cursor).some((i) => i.kind === "test");
-    await this.apply(record, { type: "planned", withTests });
+    const rest = record.plan.items.slice(record.cursor);
+    const withTests = rest.some((i) => i.kind === "test");
+    const alongside = withTests && this.specialization.parallelRoles && this.specialization.testsAlongside && record.kind !== "chore" && rest.some((i) => BUILD_KINDS.includes(i.kind));
+    await this.apply(record, { type: "planned", withTests: withTests && !alongside });
   }
 
   private async testing(record: SessionRecord): Promise<void> {
@@ -956,16 +959,18 @@ export class Orchestrator {
     if (!record.lanes) {
       if (!this.specialization.parallelRoles || record.kind === "chore") return false;
       const rest = record.plan.items.slice(record.cursor);
-      const lanes = planLanes(rest, BUILD_KINDS);
-      const last = rest.filter((i) => BUILD_KINDS.includes(i.kind)).at(-1);
+      const kinds = this.specialization.testsAlongside ? LANE_KINDS : BUILD_KINDS;
+      const lanes = planLanes(rest, kinds);
+      const last = rest.filter((i) => kinds.includes(i.kind)).at(-1);
       if (lanes.length < 2 || !last) return false;
       record.cursor = record.plan.items.indexOf(last) + 1;
       record.lastCodeItem = last.id;
       record.lanes = await this.layLanes(record, lanes);
       await this.emit({ type: "lanes.started", sessionId: record.id, featureId: record.featureId, lanes: record.lanes.map((l) => ({ role: l.role, branch: l.branch, items: l.items.length })) });
     } else if (!lanesBusy(record.lanes)) {
-      const named = lanesNamedIn(record.machine.feedback ?? "", record.lanes, record.featureId);
-      for (const lane of named.length ? named : record.lanes) lane.rework = true;
+      const builders = record.lanes.filter((lane) => !lane.items.every((id) => record.plan.items.find((i) => i.id === id)?.kind === "test"));
+      const named = lanesNamedIn(record.machine.feedback ?? "", builders, record.featureId);
+      for (const lane of named.length ? named : builders) lane.rework = true;
     }
     const lanes = record.lanes;
     const active = lanes.filter((lane) => laneItem(lane) !== null);
@@ -1022,7 +1027,7 @@ export class Orchestrator {
     const head = await this.commitOf(record.fork, record.head);
     if (!usesChefTemplate(head.tree)) return lanes;
     const feature = readSpec(head.tree).find((f) => f.id === record.featureId) ?? record.plan.feature;
-    const layout = layoutFor(feature, lanes.map((l) => l.role), head.tree);
+    const layout = layoutFor(feature, lanes.map((l) => l.role).filter((role) => role !== "test"), head.tree);
     if (!layout) return lanes;
     const changes = diffTrees(head.tree, this.regenerate(applyChanges(head.tree, layout.changes)));
     if (Object.keys(changes).length > 0) {
@@ -1072,7 +1077,21 @@ export class Orchestrator {
 
   private async coded(record: SessionRecord, unchanged: readonly string[] = []): Promise<void> {
     if (unchanged.length && record.machine.reason === "gate_failed" && this.specialization.lockTests && record.plan.items.some((i) => i.kind === "test")) return this.apply(record, { type: "tests_disputed", said: unchanged });
-    if (await this.appStarts(record)) await this.apply(record, { type: "coded" });
+    const tested = record.kind !== "chore" && record.plan.items.some((i) => i.kind === "test");
+    const [starts, failed] = await Promise.all([this.appStarts(record), tested ? this.quickChecks(record) : Promise.resolve([])]);
+    if (!starts) return;
+    if (failed.length) {
+      await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: false, checks: record.checked?.results ?? failed });
+      return this.apply(record, { type: "gate_failed", log: formatChecks(failed) });
+    }
+    await this.apply(record, { type: "coded" });
+  }
+
+  private async quickChecks(record: SessionRecord): Promise<CheckResult[]> {
+    const head = await this.commitOf(record.fork, record.head);
+    const results = await this.newFailures(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }), record.baseMain);
+    record.checked = { commitId: head.id, results };
+    return results.filter((c) => !c.ok);
   }
 
   private async appStarts(record: SessionRecord): Promise<boolean> {
@@ -1254,7 +1273,7 @@ export class Orchestrator {
   }
 
   private async gateChecks(record: SessionRecord, head: Commit): Promise<CheckResult[]> {
-    const checks: CheckResult[] = await this.newFailures(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }), record.baseMain);
+    const checks: CheckResult[] = record.checked?.commitId === head.id ? [...record.checked.results] : await this.newFailures(await this.deps.checks.run({ repo: record.fork, commitId: head.id, tree: head.tree }), record.baseMain);
     checks.push(await this.scopeCheck(record));
     if (this.specialization.lockTests) checks.push(await this.lockedCheck(record));
     checks.push(await this.verdictCheck(record));
@@ -1976,7 +1995,7 @@ export class Orchestrator {
     const tree = applyChanges(head.tree, result.changes);
     const linted = projectRuleProblems(tree, paths);
     if (linted.length > 0) return this.reject(record, item.role, "project-lint", [...new Set(linted.map((p) => p.path))], scope, linted.map((p) => `${p.path}:${p.line} ${p.message}`).join("\n"), result.changes, [], lane);
-    if (item.kind === "test" && !record.lastCodeItem) {
+    if (item.kind === "test" && (!record.lastCodeItem || lane)) {
       const red = await this.redCheck(record, head, tree, feature);
       if (red) return this.reject(record, item.role, "red-tests", red.paths, scope, red.detail, result.changes, red.passing, lane);
     }
@@ -2238,6 +2257,7 @@ interface StartedTurn {
 const CODER_KINDS: ReadonlySet<TurnNote["kind"]> = new Set(["test", "code", "fix", "refactor", "chore", "conflict"]);
 
 const BUILD_KINDS: readonly WorkItem["kind"][] = ["code", "fix", "refactor", "chore"];
+const LANE_KINDS: readonly WorkItem["kind"][] = [...BUILD_KINDS, "test"];
 
 const MERGED_PROOFS = 6;
 
