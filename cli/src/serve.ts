@@ -110,7 +110,7 @@ export async function serve(options: { readonly port: number; readonly project?:
       main: { remote: null, commitId: (await w.orchestrator.mainTree()).commitId },
       session: { id, fork: record.fork, remote: null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: (record.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
       agents: agentsOf(record),
-      sandboxes: { session: box(id), lanes: Object.fromEntries((record.lanes ?? []).map((l) => [l.role, box(`${id}--${l.role}`)])), main: null },
+      sandboxes: { session: box(id), main: null },
       app: { name: `${id}-${name}`, url: record.app?.url ?? null, status: record.app?.status ?? null, commitId: record.app?.commitId ?? null },
       mainApp: null,
     });

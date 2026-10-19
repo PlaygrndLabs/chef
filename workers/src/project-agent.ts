@@ -26,7 +26,7 @@ import { DurableEventBus } from "./event-bus.ts";
 import { SandboxCheckRunner, SandboxProofRunner } from "./sandbox-checks.ts";
 import { appBranch, SandboxAppHost } from "./app-host.ts";
 import { AppRouter, appName, routerName, RouterTakenError } from "./app-router.ts";
-import { SandboxCoder, sandboxName } from "./sandbox-coder.ts";
+import { SandboxCoder } from "./sandbox-coder.ts";
 import { appPath, appResponse, type AppAnswer } from "@chef/adapters/app-page";
 import { appEntry, newAppKey, OWNER_COOKIE_SECONDS, SHARE_COOKIE_SECONDS } from "@chef/adapters/app-gate";
 import { appScope, sessionScope, SHARE_HEADER, type ShareKind } from "./shares.ts";
@@ -295,10 +295,7 @@ export class ProjectAgent extends Agent<Env> {
     const removed: string[] = [];
     const kept: string[] = [];
     const sandboxes = new Set([this.name, this.mainSandbox()]);
-    for (const session of sessions) {
-      sandboxes.add(session.id);
-      for (const lane of session.lanes ?? []) sandboxes.add(sandboxName(session.id, lane.role));
-    }
+    for (const session of sessions) sandboxes.add(session.id);
     await Promise.all([...sandboxes].map((name) => (this.env.SESSION.get(this.env.SESSION.idFromName(name)) as unknown as { discard(): Promise<void> }).discard().catch(() => undefined)));
     removed.push(`stopped the work of ${sessions.length === 1 ? "1 session" : `${sessions.length} sessions`}`);
     for (let waited = 0; this.runningMain && waited < MAIN_WAIT_SECONDS; waited++) await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -375,18 +372,16 @@ export class ProjectAgent extends Agent<Env> {
     const engine = engineOf(this.env.PROJECT_WORKER_PREFIX);
     const routerWorker = routerName(engine);
     const accountId = settings.cloudflare?.accountId ?? this.env.CF_ACCOUNT_ID ?? null;
-    const lanes = record.lanes ?? [];
     const box = async (name: string): Promise<SandboxFacts> => {
       const objectId = this.env.SESSION.idFromName(name);
       const status = await (this.env.SESSION.get(objectId) as unknown as { status(): Promise<SandboxStatus> }).status().catch((): SandboxStatus => ({ running: false, exit: null }));
       return { name, objectId: objectId.toString(), running: status.running, exit: status.exit, size: status.size ?? null };
     };
-    const [main, fork, ids, session, laneBoxes, mainBox] = await Promise.all([
+    const [main, fork, ids, session, mainBox] = await Promise.all([
       repos.info(this.name),
       record.forkDeleted ? Promise.resolve(null) : repos.info(record.fork),
       this.engineIds.ids(settings.cloudflare, engine),
       box(id),
-      Promise.all(lanes.map(async (lane) => [lane.role, await box(sandboxName(id, lane.role))] as const)),
       box(this.mainSandbox()),
     ]);
     const mainApp = (await this.ctx.storage.get<MainAppState>(MAIN_APP)) ?? null;
@@ -399,9 +394,9 @@ export class ProjectAgent extends Agent<Env> {
       namespaces: ids.namespaces,
       containerApp: { name: containerAppName(engine), id: ids.containerApp },
       main: { remote: main?.remote ?? null, commitId: (await orchestrator.mainTree()).commitId },
-      session: { id, fork: record.fork, remote: fork?.remote ?? null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: lanes.map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
+      session: { id, fork: record.fork, remote: fork?.remote ?? null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: (record.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
       agents: agentsOf(record),
-      sandboxes: { session, lanes: Object.fromEntries(laneBoxes), main: mainBox },
+      sandboxes: { session, main: mainBox },
       app: router ? { name: appName(this.label(id), routerWorker), url: record.app?.url ?? null, status: record.app?.status ?? null, commitId: record.app?.commitId ?? null } : null,
       mainApp: mainApp ? { url: mainApp.url, commitId: mainApp.commitId, status: mainApp.status } : null,
     });

@@ -273,7 +273,6 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         for (const lane of laned?.lanes ?? []) {
           await go(`/?project=${project}&feature=${laned?.featureId}&session=${laned?.id}&panel=messages&role=${lane.role}`);
           await shot(`role-${lane.role}`);
-          if (await reveal(page, `[data-cf="sandbox:${lane.role}"]`)) await shot(`role-${lane.role}-sandbox`);
         }
         const phone = await context.newPage();
         await phone.setViewportSize({ width: 390, height: 844 });

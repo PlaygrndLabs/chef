@@ -25,6 +25,7 @@ export interface SandboxJob {
   readonly llm: { readonly baseUrl: string };
   readonly turnId?: string;
   readonly ownStructure?: boolean;
+  readonly lane?: string;
 }
 
 export type TurnOutcome = { readonly status: "done"; readonly result: CoderTurnResult } | { readonly status: "running" } | { readonly status: "lost" };
@@ -128,6 +129,9 @@ const OWNER = "sandbox/project";
 const SIZE = "sandbox/size";
 const RUNNING_SIZE = "sandbox/running-size";
 const OOM_BASE = "sandbox/oom-base";
+const RESTART = "sandbox/restart";
+const RESET_CHECK_MS = 30_000;
+const RESTART_GRACE_MS = 20 * 60_000;
 const APP = "sandbox/app";
 const VISIT_NOTE_MS = 30_000;
 const APP_GRACE_MS = 60_000;
@@ -146,6 +150,7 @@ function cacheScope(remote: string): string {
 
 interface TurnState {
   readonly id: string;
+  readonly key?: string;
   readonly dir: string;
   readonly model: string;
   readonly outbound: Outbound;
@@ -168,6 +173,7 @@ export class SessionAgent extends Agent<Env> {
   private appRun: { readonly commitId: string; readonly run: Promise<AppState> } | null = null;
   private appsStarting = 0;
   private project: string | null = null;
+  private starting: Promise<Container> | null = null;
 
   async status(): Promise<SandboxStatus> {
     const running = this.ctx.container?.running ?? false;
@@ -181,9 +187,16 @@ export class SessionAgent extends Agent<Env> {
     return true;
   }
 
-  async reset(): Promise<void> {
+  async reset(lane?: string): Promise<void> {
     const container = this.ctx.container;
-    if (container?.running) await container.destroy().catch(() => undefined);
+    if (!container?.running) return;
+    const key = turnKey(lane);
+    if ((await within(RESET_CHECK_MS, this.turnAlive(key))) === true && (await within(RESET_CHECK_MS, this.stopTurn(key).then(() => true)))) {
+      await this.ctx.storage.put(RESTART, Date.now());
+      await this.schedule(60, "restartIfIdle", undefined, { idempotent: true });
+      return;
+    }
+    await container.destroy().catch(() => undefined);
   }
 
   async discard(): Promise<void> {
@@ -202,7 +215,7 @@ export class SessionAgent extends Agent<Env> {
       await container.destroy();
       return;
     }
-    await this.schedule(Math.max(30, Math.ceil(idleSeconds - idleFor / 1000)), "sleepIfIdle", undefined, { idempotent: true });
+    await this.schedule(Math.max(30, Math.ceil(idleSeconds - idleFor / 1000)), "sleepIfIdle");
   }
 
   async outboundAccess(): Promise<OutboundAccess | null> {
@@ -216,7 +229,7 @@ export class SessionAgent extends Agent<Env> {
     this.llmKey = llmKey;
     const release = this.grant({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname, cacheScope: cacheScope(job.remote) });
     try {
-      let turn = await this.ctx.storage.get<TurnState>(TURN);
+      let turn = await this.ctx.storage.get<TurnState>(turnKey(job.lane));
       if (turn?.id !== id) turn = await this.launch(id, job);
       return await this.follow(turn, onEvent, job.turnId ? FOLLOW_SECONDS : null);
     } finally {
@@ -224,8 +237,8 @@ export class SessionAgent extends Agent<Env> {
     }
   }
 
-  async resumeTurn(id: string, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome> {
-    const turn = await this.ctx.storage.get<TurnState>(TURN);
+  async resumeTurn(id: string, onEvent: (event: CoderEvent) => void, llmKey: string, lane?: string): Promise<TurnOutcome> {
+    const turn = await this.ctx.storage.get<TurnState>(turnKey(lane));
     if (turn?.id !== id) return { status: "lost" };
     this.llmKey = llmKey;
     const release = this.grant(turn.outbound);
@@ -237,17 +250,19 @@ export class SessionAgent extends Agent<Env> {
   }
 
   private async launch(id: string, job: SandboxJob): Promise<TurnState> {
-    await this.stopTurn();
+    const key = turnKey(job.lane);
+    await this.stopTurn(key);
     await this.ensureContainer();
     const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname, cacheScope: cacheScope(job.remote) };
     await this.intercept(outbound);
-    const turn: TurnState = { id, dir: `${TURNS_DIR}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
-    const { readToken, turnId, ...visible } = job;
+    const turn: TurnState = { id, key, dir: `${TURNS_DIR}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
+    const { readToken, turnId, lane, ...visible } = job;
     void readToken;
     void turnId;
+    void lane;
     const started = await this.shell(LAUNCH, { DIR: turn.dir, TURNS: TURNS_DIR, SCRIPT: "runner.mjs", CHEF_JOB: toBase64(JSON.stringify(visible)) });
     if (started.code !== 0) throw new Error(`the coder runner did not start: ${started.out.slice(-500)}`);
-    await this.ctx.storage.put(TURN, turn);
+    await this.ctx.storage.put(key, turn);
     return turn;
   }
 
@@ -274,10 +289,10 @@ export class SessionAgent extends Agent<Env> {
       }
     } finally {
       this.busy--;
-      await this.ctx.storage.put(TURN, turn);
+      await this.ctx.storage.put(turn.key ?? TURN, turn);
       await this.ctx.storage.put(LAST_USED, Date.now());
       await this.scheduleSleep();
-      await this.checkMemory();
+      await this.checkMemory(`the coder turn ${turn.id}`);
     }
   }
 
@@ -306,21 +321,23 @@ export class SessionAgent extends Agent<Env> {
       }
       if (Date.now() - saved > 2000) {
         saved = Date.now();
-        await this.ctx.storage.put(TURN, turn);
+        await this.ctx.storage.put(turn.key ?? TURN, turn);
       }
     }
     await process.exitCode;
   }
 
-  private async turnAlive(): Promise<boolean> {
-    const turn = await this.ctx.storage.get<TurnState>(TURN);
-    if (!turn || turn.done) return false;
-    return (await this.shell(STATE, { DIR: turn.dir }).catch(() => ({ code: 1, out: "lost" }))).out.trim() === "running";
+  private async turnAlive(except?: string): Promise<boolean> {
+    for (const [key, turn] of await this.ctx.storage.list<TurnState>({ prefix: TURN })) {
+      if (turn.done || key === except) continue;
+      if ((await this.shell(STATE, { DIR: turn.dir }).catch(() => ({ code: 1, out: "lost" }))).out.trim() === "running") return true;
+    }
+    return false;
   }
 
-  private async stopTurn(): Promise<void> {
-    const turn = await this.ctx.storage.get<TurnState>(TURN);
-    await this.ctx.storage.delete(TURN);
+  private async stopTurn(key: string): Promise<void> {
+    const turn = await this.ctx.storage.get<TurnState>(key);
+    await this.ctx.storage.delete(key);
     if (!turn || turn.done || !this.ctx.container?.running) return;
     await this.shell(KILL, { DIR: turn.dir }).catch(() => undefined);
   }
@@ -451,7 +468,7 @@ export class SessionAgent extends Agent<Env> {
       this.busy--;
       await this.ctx.storage.put(LAST_USED, Date.now());
       await this.scheduleSleep();
-      await this.checkMemory();
+      await this.checkMemory(script);
     }
   }
 
@@ -515,36 +532,61 @@ export class SessionAgent extends Agent<Env> {
     return sizeStep(Math.max(own, project ?? 0));
   }
 
-  private async checkMemory(): Promise<void> {
+  private async checkMemory(job: string): Promise<void> {
     try {
       const container = this.ctx.container;
       if (!container?.running) {
-        if (exitedForMemory(this.exit)) await this.grow();
+        if (exitedForMemory(this.exit)) await this.grow(job);
         return;
       }
       const base = await this.ctx.storage.get<number>(OOM_BASE);
       const kills = oomKills((await this.shell(VMSTAT, {})).out);
-      if (base === undefined || kills === null || kills <= base) return;
-      await this.grow();
-      if (this.busy === 0 && !(await this.turnAlive())) await container.destroy();
+      if (base !== undefined && kills !== null && kills > base) {
+        await this.grow(job);
+        await this.ctx.storage.put(OOM_BASE, kills);
+      }
+      await this.restartWhenIdle();
     } catch (error) {
       console.error(`checking the memory of sandbox ${this.name} failed`, error);
     }
   }
 
-  private async grow(): Promise<void> {
+  async restartIfIdle(): Promise<void> {
+    if (await this.restartWhenIdle()) await this.schedule(60, "restartIfIdle");
+  }
+
+  private async restartWhenIdle(): Promise<boolean> {
+    const container = this.ctx.container;
+    if (!container?.running) return false;
+    const asked = await this.ctx.storage.get<number>(RESTART);
+    const grown = ((await this.ctx.storage.get<number>(SIZE)) ?? 0) > sizeStep(await this.ctx.storage.get<number>(RUNNING_SIZE));
+    if (asked === undefined && !grown) return false;
+    const quiet = this.busy === 0 || (asked !== undefined && Date.now() - asked > RESTART_GRACE_MS);
+    if (quiet && !(await this.turnAlive())) {
+      await container.destroy();
+      return false;
+    }
+    return asked !== undefined;
+  }
+
+  private async grow(job: string): Promise<void> {
     const running = sizeStep(await this.ctx.storage.get<number>(RUNNING_SIZE));
     const next = nextStep(running);
     if (next === null) return;
     if (((await this.ctx.storage.get<number>(SIZE)) ?? 0) < next) await this.ctx.storage.put(SIZE, next);
     await (await this.owner())?.sandboxNeeds(next).catch((error: unknown) => console.error(`saving the sandbox size of ${this.project} failed`, error));
-    console.error(`sandbox ${this.name} ran out of memory with ${sizeLabel(sandboxSize(running))}; it starts with ${sizeLabel(sandboxSize(next))} from now on`);
+    console.error(`sandbox ${this.name} ran out of memory with ${sizeLabel(sandboxSize(running))} after ${job}; it starts with ${sizeLabel(sandboxSize(next))} from now on`);
   }
 
   private async ensureContainer(): Promise<Container> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
-    if (container.running) return container;
+    if (container.running && !this.starting) return container;
+    this.starting ??= this.startContainer(container).finally(() => (this.starting = null));
+    return this.starting;
+  }
+
+  private async startContainer(container: Container): Promise<Container> {
     this.exit = null;
     this.intercepted.clear();
     const step = await this.startStep();
@@ -556,6 +598,7 @@ export class SessionAgent extends Agent<Env> {
     for (let waited = 0; !container.running && !this.exit && waited < 60_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
     if (!container.running) throw new Error(`the sandbox container did not start: ${this.exit ?? "timed out"}`);
     await this.ctx.storage.put(RUNNING_SIZE, step);
+    await this.ctx.storage.delete(RESTART);
     const kills = oomKills((await this.shell(VMSTAT, {}).catch(() => ({ code: 1, out: "" }))).out);
     if (kills === null) await this.ctx.storage.delete(OOM_BASE);
     else await this.ctx.storage.put(OOM_BASE, kills);
@@ -641,6 +684,22 @@ const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, PLAYWRIGHT_BR
 const SANDBOX_USER = "1000:1000";
 const ROOT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const VMSTAT = "cat /proc/vmstat";
+
+async function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  try {
+    return await Promise.race([work.catch(() => null), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function turnKey(lane: string | undefined): string {
+  return lane ? `${TURN}/${lane}` : TURN;
+}
 
 function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);
