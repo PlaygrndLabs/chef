@@ -282,7 +282,7 @@ export class SessionAgent extends Agent<Env> {
       await this.ctx.storage.put(turn.key ?? TURN, turn);
       await this.ctx.storage.put(LAST_USED, Date.now());
       await this.scheduleSleep();
-      await this.checkMemory();
+      await this.checkMemory(`the coder turn ${turn.id}`);
     }
   }
 
@@ -458,7 +458,7 @@ export class SessionAgent extends Agent<Env> {
       this.busy--;
       await this.ctx.storage.put(LAST_USED, Date.now());
       await this.scheduleSleep();
-      await this.checkMemory();
+      await this.checkMemory(script);
     }
   }
 
@@ -522,30 +522,30 @@ export class SessionAgent extends Agent<Env> {
     return sizeStep(Math.max(own, project ?? 0));
   }
 
-  private async checkMemory(): Promise<void> {
+  private async checkMemory(job: string): Promise<void> {
     try {
       const container = this.ctx.container;
       if (!container?.running) {
-        if (exitedForMemory(this.exit)) await this.grow();
+        if (exitedForMemory(this.exit)) await this.grow(job);
         return;
       }
       const base = await this.ctx.storage.get<number>(OOM_BASE);
       const kills = oomKills((await this.shell(VMSTAT, {})).out);
       if (base === undefined || kills === null || kills <= base) return;
-      await this.grow();
+      await this.grow(job);
       if (this.busy === 0 && !(await this.turnAlive())) await container.destroy();
     } catch (error) {
       console.error(`checking the memory of sandbox ${this.name} failed`, error);
     }
   }
 
-  private async grow(): Promise<void> {
+  private async grow(job: string): Promise<void> {
     const running = sizeStep(await this.ctx.storage.get<number>(RUNNING_SIZE));
     const next = nextStep(running);
     if (next === null) return;
     if (((await this.ctx.storage.get<number>(SIZE)) ?? 0) < next) await this.ctx.storage.put(SIZE, next);
     await (await this.owner())?.sandboxNeeds(next).catch((error: unknown) => console.error(`saving the sandbox size of ${this.project} failed`, error));
-    console.error(`sandbox ${this.name} ran out of memory with ${sizeLabel(sandboxSize(running))}; it starts with ${sizeLabel(sandboxSize(next))} from now on`);
+    console.error(`sandbox ${this.name} ran out of memory with ${sizeLabel(sandboxSize(running))} after ${job}; it starts with ${sizeLabel(sandboxSize(next))} from now on`);
   }
 
   private async ensureContainer(): Promise<Container> {
