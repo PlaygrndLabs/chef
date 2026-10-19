@@ -14,7 +14,7 @@ Chef runs on Cloudflare: the dashboard, projects, agents, sandboxes with your ru
 
 1. Press the button. Cloudflare copies Chef into a new repository on your GitHub or GitLab account and connects it to Workers Builds. If you give the Worker another name than `chef`, its Artifacts namespace, Workflow, memory index and app router take that name too, so several Chefs can share an account.
 2. Set `CHEF_PASSWORD`, the password you will sign in with. Use at least 8 characters; `openssl rand -base64 24` makes a good one. If you leave the example value, Chef ignores it and asks the first visitor to pick a password.
-3. Deploy. The build runs Chef's `deploy` script (`pnpm run deploy`): it builds the dashboard and the sandbox image, creates the memory index if it is missing, and deploys the Worker with its Durable Objects, container, Workflow and Artifacts namespace.
+3. Deploy. The build runs Chef's `deploy` script (`pnpm run deploy`): it builds the dashboard and the sandbox image, creates the memory index and the R2 bucket that keeps the coders' Claude transcripts if they are missing, and deploys the Worker with its Durable Objects, container, Workflow and Artifacts namespace.
 4. The API token Workers Builds makes can edit Workers Scripts, KV and R2 only, so the first build stops with a message about the token. Open the Worker's Settings > Builds to see which token it uses, add Containers, Artifacts and Vectorize (Edit) to it under My Profile > API Tokens, and retry the build.
 5. Open `https://<worker name>.<your-subdomain>.workers.dev`, sign in, and fill in Settings: your model provider and the Cloudflare account that gives running apps their addresses. Then create your first project.
 
@@ -41,7 +41,7 @@ npx wrangler secret put CHEF_PASSWORD
 ## Deploy from GitHub Actions
 
 1. Fork this repository.
-2. Add the Actions secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (a token that can edit Workers Scripts, Containers, Vectorize, Workflows and Artifacts), and `CHEF_PASSWORD`.
+2. Add the Actions secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (a token that can edit Workers Scripts, Containers, Vectorize, Workflows, Artifacts and Workers R2 Storage), and `CHEF_PASSWORD`. Without R2 Chef still deploys, but keeps no transcripts of its coders' work, so a turn whose sandbox restarts starts over.
 3. Every green `ci` run on `main` now deploys with `pnpm run deploy`, then checks the Worker answers and that the password signs in. You can also run the `deploy` workflow by hand.
 
 Any secret from [Settings](#settings) that the repository has is passed to the Worker as a default.
