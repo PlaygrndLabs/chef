@@ -531,9 +531,12 @@ export class SessionAgent extends Agent<Env> {
       }
       const base = await this.ctx.storage.get<number>(OOM_BASE);
       const kills = oomKills((await this.shell(VMSTAT, {})).out);
-      if (base === undefined || kills === null || kills <= base) return;
-      await this.grow(job);
-      if (this.busy === 0 && !(await this.turnAlive())) await container.destroy();
+      if (base !== undefined && kills !== null && kills > base) {
+        await this.grow(job);
+        await this.ctx.storage.put(OOM_BASE, kills);
+      }
+      const wanted = (await this.ctx.storage.get<number>(SIZE)) ?? 0;
+      if (wanted > sizeStep(await this.ctx.storage.get<number>(RUNNING_SIZE)) && this.busy === 0 && !(await this.turnAlive())) await container.destroy();
     } catch (error) {
       console.error(`checking the memory of sandbox ${this.name} failed`, error);
     }
