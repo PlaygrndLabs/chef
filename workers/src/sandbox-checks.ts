@@ -1,5 +1,5 @@
 import { parseTap, tapFailures } from "@chef/core/tap";
-import { diffTrees, lintSpecFiles, repoChecks, usesChefTemplate, type CheckResult, type CheckRunner, type ProbeInput, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@chef/core";
+import { diffTrees, lintSpecFiles, repoChecks, templateTestGlobs, usesChefTemplate, type CheckResult, type CheckRunner, type ProbeInput, type ProofRecord, type ProofRunner, type RepoHost, type Tree } from "@chef/core";
 import type { ChecksJob, CommandResult } from "./session-agent.ts";
 
 type ChecksStub = { runChecks(job: ChecksJob): Promise<CommandResult[]> };
@@ -26,13 +26,13 @@ export class SandboxCheckRunner implements CheckRunner {
     private readonly project: string,
   ) {}
 
-  async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
+  async run(input: { repo: string; commitId: string; tree: Tree; features?: readonly string[] }): Promise<CheckResult[]> {
     const specFiles: Record<string, string> = {};
     for (const [path, content] of Object.entries(input.tree)) if (path.startsWith("spec/")) specFiles[path] = content;
     const spec = lintSpecFiles(specFiles).problems;
     const specLint = { name: "spec-lint", ok: spec.length === 0, log: spec.map((p) => `${p.path}: ${p.message}`).join("\n") || "spec ok" };
     if (usesChefTemplate(input.tree)) {
-      const results = await this.runCommands(input, TEMPLATE_CHECKS);
+      const results = await this.runCommands(input, templateChecks(input.features));
       return [...results.map((r) => ({ name: r.name, ok: r.code === 0, log: (r.name === "test" && r.code !== 0 ? tapFailures(r.stdout) : "") || tail(`${r.stdout}\n${r.stderr}`) || `${r.name} ok`, ...(r.name === "test" ? { cases: parseTap(r.stdout) } : {}) })), specLint];
     }
     const own = repoChecks(input.tree);
@@ -57,12 +57,14 @@ export class SandboxCheckRunner implements CheckRunner {
   }
 }
 
-const TEMPLATE_CHECKS: ChecksJob["commands"] = [
-  { name: "typecheck", argv: ["npx", "tsc", "-p", "tsconfig.json"] },
-  { name: "test", argv: ["node", "--test", "--test-reporter=tap", "--experimental-strip-types", "features/**/*.test.ts", "shared/**/*.test.ts", "app/**/*.test.ts"] },
-  { name: "generated", argv: ["npm", "run", "--silent", "app", "--", "gen", "--check"] },
-  { name: "lint", argv: ["node", "/opt/chef/template/lint.mjs"] },
-];
+function templateChecks(features?: readonly string[]): ChecksJob["commands"] {
+  return [
+    { name: "typecheck", argv: ["npx", "tsc", "-p", "tsconfig.json"] },
+    { name: "test", argv: ["node", "--test", "--test-reporter=tap", "--experimental-strip-types", ...templateTestGlobs(features)] },
+    { name: "generated", argv: ["npm", "run", "--silent", "app", "--", "gen", "--check"] },
+    { name: "lint", argv: ["node", "/opt/chef/template/lint.mjs"] },
+  ];
+}
 
 export class SandboxProofRunner implements ProofRunner {
   constructor(

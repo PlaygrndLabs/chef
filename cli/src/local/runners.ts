@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { checkTree, formatProblems, parseTap } from "@chef/core/checks";
-import { lintSpecFiles, repoChecks, usesChefTemplate, type CheckResult, type CheckRunner, type Clock, type ProbeInput, type ProofRecord, type ProofRunner, type Tree } from "@chef/core";
+import { lintSpecFiles, repoChecks, templateTestGlobs, usesChefTemplate, type CheckResult, type CheckRunner, type Clock, type ProbeInput, type ProofRecord, type ProofRunner, type Tree } from "@chef/core";
 import { exec } from "./exec.ts";
 import { materialize } from "./materialize.ts";
 
@@ -22,14 +22,14 @@ function failures(tap: string): string {
 export class LocalCheckRunner implements CheckRunner {
   constructor(private readonly nodeModules: string) {}
 
-  async run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]> {
+  async run(input: { repo: string; commitId: string; tree: Tree; features?: readonly string[] }): Promise<CheckResult[]> {
     if (!usesChefTemplate(input.tree)) return this.runOwn(input.tree);
     const work = await materialize(input.tree, this.nodeModules);
     try {
       const tsc = join(this.nodeModules, "typescript", "bin", "tsc");
       const [typecheck, tests, generated] = await Promise.all([
         exec(process.execPath, [tsc, "-p", "tsconfig.json"], { cwd: work.dir }),
-        exec(process.execPath, ["--test", "--test-reporter=tap", ...NODE_TS, "features/**/*.test.ts", "shared/**/*.test.ts", "app/**/*.test.ts"], { cwd: work.dir }),
+        exec(process.execPath, ["--test", "--test-reporter=tap", ...NODE_TS, ...templateTestGlobs(input.features)], { cwd: work.dir }),
         exec(process.execPath, [...NODE_TS, "app/cli.ts", "gen", "--check"], { cwd: work.dir }),
       ]);
       const code = checkTree(input.tree);

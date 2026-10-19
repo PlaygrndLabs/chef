@@ -13,7 +13,7 @@ export interface CheckResult {
 }
 
 export interface CheckRunner {
-  run(input: { repo: string; commitId: string; tree: Tree }): Promise<CheckResult[]>;
+  run(input: { repo: string; commitId: string; tree: Tree; features?: readonly string[] }): Promise<CheckResult[]>;
 }
 
 export interface ProofRecord {
