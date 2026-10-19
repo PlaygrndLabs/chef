@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Cloud, Copy, ExternalLink } from "lucide-react";
+import { Check, Cloud, Copy, ExternalLink, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
@@ -82,6 +82,30 @@ function UsedBy({ roles }: { readonly roles: readonly string[] }) {
   );
 }
 
+function RestartSandbox({ session, main }: { readonly session: string; readonly main: boolean }) {
+  const { api } = useWorkspace();
+  const [busy, setBusy] = useState(false);
+  const restart = async (now: boolean) => {
+    setBusy(true);
+    try {
+      const { outcome } = await api.restartSandbox(session, { main, now });
+      if (outcome === "waiting") toast("It restarts once the roles' running turns finish", { action: { label: "Restart now", onClick: () => void restart(true) } });
+      else if (outcome === "restarted") toast.success(now ? "Restarted. Running turns start again from their last commit" : "Restarted. It starts again when it is next needed");
+      else toast("It is already sleeping");
+    } catch (error) {
+      toast.error(`Could not restart it: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button type="button" disabled={busy} onClick={() => void restart(false)} title="Restart this sandbox once its running turns finish" className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50" data-cf-restart>
+      <RotateCw className={cn("size-3", busy && "animate-spin")} />
+      Restart
+    </button>
+  );
+}
+
 function Resource({ resource, showRoles, session }: { readonly resource: CloudflareResource; readonly showRoles: boolean; readonly session: string | null }) {
   const { selection } = useWorkspace();
   const id = resource.key === "main-app" ? MAIN_APP : session;
@@ -101,6 +125,7 @@ function Resource({ resource, showRoles, session }: { readonly resource: Cloudfl
           </span>
         ) : null}
         <span className="flex-1" />
+        {session && resource.kind === "container" && resource.state?.tone === "run" ? <RestartSandbox session={session} main={resource.key === "sandbox:main"} /> : null}
         {resource.dashboard ? (
           <a href={resource.dashboard} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground" data-cf-dashboard>
             Cloudflare
