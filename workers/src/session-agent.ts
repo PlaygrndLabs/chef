@@ -269,12 +269,13 @@ export class SessionAgent extends Agent<Env> {
     await this.ensureContainer();
     const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname, cacheScope: cacheScope(job.remote) };
     await this.intercept(outbound);
-    const turn: TurnState = { id, key, dir: `${TURNS_DIR}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
+    const laneDir = `${TURNS_DIR}/${job.lane ?? "main"}`;
+    const turn: TurnState = { id, key, dir: `${laneDir}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
     const { readToken, turnId, lane, ...visible } = job;
     void readToken;
     void turnId;
     void lane;
-    const started = await this.shell(LAUNCH, { DIR: turn.dir, TURNS: TURNS_DIR, SCRIPT: "runner.mjs", CHEF_JOB: toBase64(JSON.stringify(visible)) });
+    const started = await this.shell(LAUNCH, { DIR: turn.dir, LANE: laneDir, SCRIPT: "runner.mjs", CHEF_JOB: toBase64(JSON.stringify(visible)) });
     if (started.code !== 0) throw new Error(`the coder runner did not start: ${started.out.slice(-500)}`);
     await this.ctx.storage.put(key, turn);
     return turn;
@@ -662,8 +663,8 @@ function turnResult(turn: TurnState): CoderTurnResult {
   return { changes: final.changes, summary: final.summary, model: final.model, runId: turn.id, usage: final.usage ?? { inputTokens: 0, outputTokens: 0 } };
 }
 
-const LAUNCH = `for proc in /proc/[0-9]*; do [ "\${proc#/proc/}" = "$$" ] && continue; case "$(tr '\\0' ' ' < "$proc/cmdline" 2>/dev/null)" in *"/opt/chef/runner.mjs"*|*"claude-agent-sdk"*) kill -TERM "\${proc#/proc/}" 2>/dev/null ;; esac; done
-rm -rf "$TURNS" && mkdir -p "$DIR" && cd "$DIR" || exit 1
+const LAUNCH = `for file in "$LANE"/*/pid; do [ -f "$file" ] || continue; pid=$(cat "$file" 2>/dev/null); [ -n "$pid" ] && { kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null; }; done
+rm -rf "$LANE" 2>/dev/null; mkdir -p "$DIR" && cd "$DIR" || { echo "could not make $DIR"; exit 1; }
 setsid sh -c 'echo $$ > pid.tmp && mv pid.tmp pid; node "/opt/chef/$SCRIPT" > events.jsonl 2> stderr.log; echo $? > exit.tmp && mv exit.tmp exit' < /dev/null > /dev/null 2>&1 &
 for i in $(seq 1 100); do [ -s pid ] && exit 0; sleep 0.1; done
 echo "the runner wrote no pid"; exit 1`;
