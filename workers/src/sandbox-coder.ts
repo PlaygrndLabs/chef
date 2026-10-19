@@ -6,7 +6,7 @@ interface SandboxStub {
   runTurn(job: unknown, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome>;
   resumeTurn(id: string, onEvent: (event: CoderEvent) => void, llmKey: string, lane?: string): Promise<TurnOutcome>;
   stop(): Promise<boolean>;
-  reset(): Promise<void>;
+  reset(lane?: string): Promise<void>;
 }
 
 export const TURN_ANSWER_MS = 6 * 60_000;
@@ -42,17 +42,17 @@ export class SandboxCoder implements Coder {
       input.onEvent,
       llm.apiKey,
     );
-    const outcome = input.turnId ? await this.answered(input.sessionId, call) : await call;
+    const outcome = input.turnId ? await this.answered(input.sessionId, call, input.lane) : await call;
     const result = settle(outcome, input.turnId ?? sandbox);
     if (!result) throw new Error("the sandbox container stopped while the coder was working");
     return result;
   }
 
   async resumeTurn(input: ResumeTurnInput): Promise<CoderTurnResult | null> {
-    return settle(await this.answered(input.sessionId, this.stub(input.sessionId).resumeTurn(input.turnId, input.onEvent, this.llm().apiKey, input.lane)), input.turnId);
+    return settle(await this.answered(input.sessionId, this.stub(input.sessionId).resumeTurn(input.turnId, input.onEvent, this.llm().apiKey, input.lane), input.lane), input.turnId);
   }
 
-  private async answered(sandbox: string, call: Promise<TurnOutcome>): Promise<TurnOutcome> {
+  private async answered(sandbox: string, call: Promise<TurnOutcome>, lane?: string): Promise<TurnOutcome> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const silent = new Promise<"silent">((resolve) => {
       timer = setTimeout(() => resolve("silent"), TURN_ANSWER_MS);
@@ -63,8 +63,9 @@ export class SandboxCoder implements Coder {
     } finally {
       clearTimeout(timer);
     }
-    await this.stub(sandbox).reset().catch((error: unknown) => console.error(`restarting the sandbox ${sandbox} failed`, error));
-    throw Object.assign(new Error(`the sandbox ${sandbox} gave no answer for ${TURN_ANSWER_MS / 60_000} minutes, so Chef restarted it`), { retryable: true });
+    const turn = lane ? `the ${lane} turn in the sandbox ${sandbox}` : `the sandbox ${sandbox}`;
+    await this.stub(sandbox).reset(lane).catch((error: unknown) => console.error(`restarting ${turn} failed`, error));
+    throw Object.assign(new Error(`${turn} gave no answer for ${TURN_ANSWER_MS / 60_000} minutes, so Chef restarted it`), { retryable: true });
   }
 
   async release(sessionId: string): Promise<void> {

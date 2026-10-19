@@ -129,6 +129,9 @@ const OWNER = "sandbox/project";
 const SIZE = "sandbox/size";
 const RUNNING_SIZE = "sandbox/running-size";
 const OOM_BASE = "sandbox/oom-base";
+const RESTART = "sandbox/restart";
+const RESET_CHECK_MS = 30_000;
+const RESTART_GRACE_MS = 20 * 60_000;
 const APP = "sandbox/app";
 const VISIT_NOTE_MS = 30_000;
 const APP_GRACE_MS = 60_000;
@@ -184,9 +187,16 @@ export class SessionAgent extends Agent<Env> {
     return true;
   }
 
-  async reset(): Promise<void> {
+  async reset(lane?: string): Promise<void> {
     const container = this.ctx.container;
-    if (container?.running) await container.destroy().catch(() => undefined);
+    if (!container?.running) return;
+    const key = turnKey(lane);
+    if ((await within(RESET_CHECK_MS, this.turnAlive(key))) === true && (await within(RESET_CHECK_MS, this.stopTurn(key).then(() => true)))) {
+      await this.ctx.storage.put(RESTART, Date.now());
+      await this.schedule(60, "restartIfIdle", undefined, { idempotent: true });
+      return;
+    }
+    await container.destroy().catch(() => undefined);
   }
 
   async discard(): Promise<void> {
@@ -205,7 +215,7 @@ export class SessionAgent extends Agent<Env> {
       await container.destroy();
       return;
     }
-    await this.schedule(Math.max(30, Math.ceil(idleSeconds - idleFor / 1000)), "sleepIfIdle", undefined, { idempotent: true });
+    await this.schedule(Math.max(30, Math.ceil(idleSeconds - idleFor / 1000)), "sleepIfIdle");
   }
 
   async outboundAccess(): Promise<OutboundAccess | null> {
@@ -317,9 +327,9 @@ export class SessionAgent extends Agent<Env> {
     await process.exitCode;
   }
 
-  private async turnAlive(): Promise<boolean> {
-    for (const turn of (await this.ctx.storage.list<TurnState>({ prefix: TURN })).values()) {
-      if (turn.done) continue;
+  private async turnAlive(except?: string): Promise<boolean> {
+    for (const [key, turn] of await this.ctx.storage.list<TurnState>({ prefix: TURN })) {
+      if (turn.done || key === except) continue;
       if ((await this.shell(STATE, { DIR: turn.dir }).catch(() => ({ code: 1, out: "lost" }))).out.trim() === "running") return true;
     }
     return false;
@@ -535,11 +545,28 @@ export class SessionAgent extends Agent<Env> {
         await this.grow(job);
         await this.ctx.storage.put(OOM_BASE, kills);
       }
-      const wanted = (await this.ctx.storage.get<number>(SIZE)) ?? 0;
-      if (wanted > sizeStep(await this.ctx.storage.get<number>(RUNNING_SIZE)) && this.busy === 0 && !(await this.turnAlive())) await container.destroy();
+      await this.restartWhenIdle();
     } catch (error) {
       console.error(`checking the memory of sandbox ${this.name} failed`, error);
     }
+  }
+
+  async restartIfIdle(): Promise<void> {
+    if (await this.restartWhenIdle()) await this.schedule(60, "restartIfIdle");
+  }
+
+  private async restartWhenIdle(): Promise<boolean> {
+    const container = this.ctx.container;
+    if (!container?.running) return false;
+    const asked = await this.ctx.storage.get<number>(RESTART);
+    const grown = ((await this.ctx.storage.get<number>(SIZE)) ?? 0) > sizeStep(await this.ctx.storage.get<number>(RUNNING_SIZE));
+    if (asked === undefined && !grown) return false;
+    const quiet = this.busy === 0 || (asked !== undefined && Date.now() - asked > RESTART_GRACE_MS);
+    if (quiet && !(await this.turnAlive())) {
+      await container.destroy();
+      return false;
+    }
+    return asked !== undefined;
   }
 
   private async grow(job: string): Promise<void> {
@@ -571,6 +598,7 @@ export class SessionAgent extends Agent<Env> {
     for (let waited = 0; !container.running && !this.exit && waited < 60_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
     if (!container.running) throw new Error(`the sandbox container did not start: ${this.exit ?? "timed out"}`);
     await this.ctx.storage.put(RUNNING_SIZE, step);
+    await this.ctx.storage.delete(RESTART);
     const kills = oomKills((await this.shell(VMSTAT, {}).catch(() => ({ code: 1, out: "" }))).out);
     if (kills === null) await this.ctx.storage.delete(OOM_BASE);
     else await this.ctx.storage.put(OOM_BASE, kills);
@@ -656,6 +684,18 @@ const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, PLAYWRIGHT_BR
 const SANDBOX_USER = "1000:1000";
 const ROOT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const VMSTAT = "cat /proc/vmstat";
+
+async function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  try {
+    return await Promise.race([work.catch(() => null), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function turnKey(lane: string | undefined): string {
   return lane ? `${TURN}/${lane}` : TURN;

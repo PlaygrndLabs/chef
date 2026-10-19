@@ -7,7 +7,7 @@ function sandboxes(runTurn: () => Promise<TurnOutcome>) {
   const resets: string[] = [];
   const namespace = {
     idFromName: (name: string) => name,
-    get: (name: string) => ({ runTurn, resumeTurn: runTurn, stop: async () => true, reset: async () => void resets.push(name) }),
+    get: (name: string) => ({ runTurn, resumeTurn: runTurn, stop: async () => true, reset: async (lane?: string) => void resets.push(lane ? `${name}:${lane}` : name) }),
   } as unknown as DurableObjectNamespace;
   return { resets, coder: new SandboxCoder(namespace, { project: "todos", model: "m", llm: { baseUrl: "https://llm.example", apiKey: "k" } }) };
 }
@@ -31,14 +31,14 @@ const input = {
 describe("sandbox coder", () => {
   afterEach(() => void vi.useRealTimers());
 
-  it("restarts a sandbox that gives no answer about a turn and lets the session try again", async () => {
+  it("resets only the lane whose turn gives no answer and lets the session try again", async () => {
     vi.useFakeTimers();
     const { resets, coder } = sandboxes(() => new Promise<TurnOutcome>(() => undefined));
     const turn = coder.runTurn(input);
     const failed = expect(turn).rejects.toMatchObject({ retryable: true, message: expect.stringContaining("gave no answer") });
     await vi.advanceTimersByTimeAsync(TURN_ANSWER_MS);
     await failed;
-    expect(resets).toEqual(["s1"]);
+    expect(resets).toEqual(["s1:frontend"]);
   });
 
   it("passes on a turn that is still running", async () => {
