@@ -47,6 +47,7 @@ const FRESH = "project/fresh";
 const ENV = "project/env";
 const AGENTS = "project/agents/";
 const MAIN_APP = "project/main-app";
+const SANDBOX_STEP = "project/sandbox-size";
 const APP_KEY = "project/app-key";
 const ADDRESS = "project/address/";
 const REMOVING = "project/removing";
@@ -119,13 +120,13 @@ export class ProjectAgent extends Agent<Env> {
     const orchestrator = new Orchestrator(
       {
         repos,
-        coder: new SandboxCoder(env.SESSION, { model: settings.models.coder, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
+        coder: new SandboxCoder(env.SESSION, { project: this.name, model: settings.models.coder, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
         classifier: settings.jev ? new JevClassifier(new TypeSafeClient({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL, ...(settings.jev.baseUrl ? { baseURL: settings.jev.baseUrl } : {}) }), env.JEV_MODEL, (model, usage) => spend.record(currentSpender(), model, usage, "router")) : NO_CLASSIFIER,
         planner: new LlmPlanner(llm, resolveModel(plannerRole.model, settings.models), withSkills(plannerRole.instructions, plannerRole.skills)),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
         apps,
-        checks: new SandboxCheckRunner(env.SESSION, repos),
-        proofs: new SandboxProofRunner(env.SESSION, repos),
+        checks: new SandboxCheckRunner(env.SESSION, repos, this.name),
+        proofs: new SandboxProofRunner(env.SESSION, repos, this.name),
         bus,
         clock,
         ids: { next: (prefix) => `${prefix}${crypto.randomUUID().slice(0, 8)}` },
@@ -377,8 +378,8 @@ export class ProjectAgent extends Agent<Env> {
     const lanes = record.lanes ?? [];
     const box = async (name: string): Promise<SandboxFacts> => {
       const objectId = this.env.SESSION.idFromName(name);
-      const status = await (this.env.SESSION.get(objectId) as unknown as { status(): Promise<SandboxStatus> }).status().catch(() => ({ running: false, exit: null }));
-      return { name, objectId: objectId.toString(), running: status.running, exit: status.exit };
+      const status = await (this.env.SESSION.get(objectId) as unknown as { status(): Promise<SandboxStatus> }).status().catch((): SandboxStatus => ({ running: false, exit: null }));
+      return { name, objectId: objectId.toString(), running: status.running, exit: status.exit, size: status.size ?? null };
     };
     const [main, fork, ids, session, laneBoxes, mainBox] = await Promise.all([
       repos.info(this.name),
@@ -489,6 +490,14 @@ export class ProjectAgent extends Agent<Env> {
     if (state?.status === "no-stack" && state.commitId === source.commitId) return { status: "no-stack" };
     await this.schedule(0, "wakeApp", source.sandbox, { idempotent: true });
     return { status: "starting", since: Date.now() };
+  }
+
+  async sandboxStep(): Promise<number> {
+    return (await this.ctx.storage.get<number>(SANDBOX_STEP)) ?? 0;
+  }
+
+  async sandboxNeeds(step: number): Promise<void> {
+    if (step > (await this.sandboxStep())) await this.ctx.storage.put(SANDBOX_STEP, step);
   }
 
   async wakeApp(sandbox: string): Promise<void> {

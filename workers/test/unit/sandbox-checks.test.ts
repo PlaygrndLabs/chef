@@ -39,7 +39,7 @@ describe("sandbox checks", () => {
   it("runs an imported repository's own install and test script, not the template's checks", async () => {
     const { repos, commitId } = await repoWith(imported);
     const { jobs, namespace } = sandbox(passing);
-    const results = await new SandboxCheckRunner(namespace, repos).run({ repo: "todos--items-left--s1", commitId, tree: imported });
+    const results = await new SandboxCheckRunner(namespace, repos, "todos").run({ repo: "todos--items-left--s1", commitId, tree: imported });
     expect(jobs).toHaveLength(1);
     expect(jobs[0]?.install).toMatchObject({ argv: ["npx", "--yes", "yarn@1", "install", "--frozen-lockfile"] });
     expect(jobs[0]?.commands.map((c) => c.argv.join(" "))).toEqual(["npm run --silent test"]);
@@ -51,7 +51,7 @@ describe("sandbox checks", () => {
     const tree = { "main.py": "print(1)\n" };
     const { repos, commitId } = await repoWith(tree);
     const { jobs, namespace } = sandbox(passing);
-    const results = await new SandboxCheckRunner(namespace, repos).run({ repo: "todos--items-left--s1", commitId, tree });
+    const results = await new SandboxCheckRunner(namespace, repos, "todos").run({ repo: "todos--items-left--s1", commitId, tree });
     expect(jobs).toHaveLength(0);
     expect(results.map((r) => [r.name, r.ok])).toEqual([["checks", true], ["spec-lint", true]]);
   });
@@ -60,7 +60,7 @@ describe("sandbox checks", () => {
     const tree = { "app/gen.ts": "export {};\n", "src/registry.gen.ts": renderRegistry([]), "package.json": "{}" };
     const { repos, commitId } = await repoWith(tree);
     const { jobs, namespace } = sandbox(passing);
-    const results = await new SandboxCheckRunner(namespace, repos).run({ repo: "todos--items-left--s1", commitId, tree });
+    const results = await new SandboxCheckRunner(namespace, repos, "todos").run({ repo: "todos--items-left--s1", commitId, tree });
     expect(jobs[0]?.install).toBeUndefined();
     expect(jobs[0]?.commands.map((c) => c.name)).toEqual(["typecheck", "test", "generated", "lint"]);
     expect(results.map((r) => r.name)).toEqual(["typecheck", "test", "generated", "lint", "spec-lint"]);
@@ -69,7 +69,7 @@ describe("sandbox checks", () => {
   it("proves an own-structure app by asking its running app for a page", async () => {
     const { repos, commitId } = await repoWith(imported);
     const { jobs, namespace } = sandbox(() => [{ name: "probe", code: 0, stdout: JSON.stringify({ steps: [{ name: "GET /", ok: true, detail: "http://127.0.0.1:3000/ answered 200 OK" }] }), stderr: "" }]);
-    const proof = await new SandboxProofRunner(namespace, repos).probe({ repo: "todos--items-left--s1", feature: "items-left", url: "http://127.0.0.1:3000", path: "/", commitId });
+    const proof = await new SandboxProofRunner(namespace, repos, "todos").probe({ repo: "todos--items-left--s1", feature: "items-left", url: "http://127.0.0.1:3000", path: "/", commitId });
     expect(jobs[0]?.commands[0]?.argv.slice(-2)).toEqual(["http://127.0.0.1:3000/", "500"]);
     expect(proof).toMatchObject({ ok: true, flow: "GET /", steps: [{ name: "GET /", ok: true }] });
   });

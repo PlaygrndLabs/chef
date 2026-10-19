@@ -14,7 +14,7 @@ export const TURN_ANSWER_MS = 6 * 60_000;
 export class SandboxCoder implements Coder {
   constructor(
     private readonly sessions: DurableObjectNamespace,
-    private readonly options: { readonly model: string; readonly llm: { readonly baseUrl: string; readonly apiKey: string } | null },
+    private readonly options: { readonly project: string; readonly model: string; readonly llm: { readonly baseUrl: string; readonly apiKey: string } | null },
   ) {}
 
   async runTurn(input: CoderTurnInput): Promise<CoderTurnResult> {
@@ -23,6 +23,7 @@ export class SandboxCoder implements Coder {
     const call = this.stub(sandbox).runTurn(
       {
         sessionId: sandbox,
+        project: this.options.project,
         featureId: input.featureId,
         role: input.role,
         model: input.model === "coder-default" ? this.options.model : input.model,
