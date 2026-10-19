@@ -38,7 +38,7 @@ describe("sandbox coder", () => {
     const failed = expect(turn).rejects.toMatchObject({ retryable: true, message: expect.stringContaining("gave no answer") });
     await vi.advanceTimersByTimeAsync(TURN_ANSWER_MS);
     await failed;
-    expect(resets).toEqual(["s1--frontend"]);
+    expect(resets).toEqual(["s1"]);
   });
 
   it("passes on a turn that is still running", async () => {

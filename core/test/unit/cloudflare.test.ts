@@ -21,7 +21,7 @@ const facts: CloudflareFacts = {
     lanes: [{ role: "frontend", branch: "lane/frontend", head: "cccccccccccccccc" }],
   },
   agents: { sandbox: ["test"], engine: ["planner", "reviewer"] },
-  sandboxes: { session: box("s-1", true), lanes: { frontend: box("s-1--frontend") }, main: box("fresh--main") },
+  sandboxes: { session: box("s-1", true), main: box("fresh--main") },
   app: { name: "s-1-fresh", url: "https://s-1-fresh-chef-dev-app.acme.workers.dev", status: "running", commitId: "bbbbbbbbbbbbbbbb" },
   mainApp: { url: "https://main-fresh-chef-dev-app.acme.workers.dev", commitId: "aaaaaaaaaaaaaaaa", status: "starting" },
 };
@@ -44,7 +44,8 @@ describe("Cloudflare view of a session", () => {
     expect(byKey["fork"]?.facts.find((f) => f.label === "Git remote")?.value).toBe(facts.session.remote);
     expect(byKey["sandbox"]?.state).toEqual({ tone: "run", text: "Running" });
     expect(byKey["sandbox"]?.facts.find((f) => f.label === "Application")?.value).toBe("chef-dev-sessionagent · app1");
-    expect(byKey["sandbox:frontend"]).toMatchObject({ roles: ["frontend"], state: { tone: "idle" } });
+    expect(byKey["sandbox"]?.roles).toEqual(["test", "frontend"]);
+    expect(byKey["sandbox:frontend"]).toBeUndefined();
     expect(byKey["branch:frontend"]).toMatchObject({ roles: ["frontend"], name: "lane/frontend" });
     expect(byKey["app"]?.facts.find((f) => f.label === "URL")?.value).toBe("https://s-1-fresh-chef-dev-app.acme.workers.dev");
     expect(byKey["app"]?.state).toEqual({ tone: "ok", text: "Running" });
@@ -58,7 +59,7 @@ describe("Cloudflare view of a session", () => {
   it("says which agents use each resource", () => {
     const view = cloudflareView(facts);
     const usedBy = (role: string) => view.resources.filter((r) => r.roles.includes(role)).map((r) => r.key);
-    expect(usedBy("frontend")).toEqual(["fork", "branch:frontend", "sandbox:frontend", "memory"]);
+    expect(usedBy("frontend")).toEqual(["fork", "branch:frontend", "sandbox", "memory"]);
     expect(usedBy("test")).toEqual(["fork", "sandbox", "memory"]);
     expect(usedBy("planner")).toEqual(["main", "engine", "project-object"]);
     expect(usedBy("reviewer")).toEqual(["fork", "engine", "project-object"]);

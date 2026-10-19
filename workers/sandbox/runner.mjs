@@ -46,6 +46,7 @@ if (!job.ownStructure && existsSync(modules) && !existsSync(join(dir, "node_modu
 const env = {
   PATH: process.env.PATH ?? "",
   HOME: process.env.HOME ?? "/tmp",
+  CLAUDE_CONFIG_DIR: join(dir, "..", "claude"),
   ANTHROPIC_BASE_URL: job.llm.baseUrl,
   ANTHROPIC_API_KEY: process.env.CHEF_LLM_KEY ?? "chef-placeholder",
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -55,7 +56,7 @@ const env = {
 for (const name of ["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "PLAYWRIGHT_BROWSERS_PATH", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy"]) if (process.env[name]) env[name] = process.env[name];
 
 const skills = job.agent.skills ?? [];
-const skillsDir = join(env.HOME, ".claude", "skills");
+const skillsDir = join(env.CLAUDE_CONFIG_DIR, "skills");
 rmSync(skillsDir, { recursive: true, force: true });
 for (const skill of skills) {
   mkdirSync(join(skillsDir, skill.name), { recursive: true });

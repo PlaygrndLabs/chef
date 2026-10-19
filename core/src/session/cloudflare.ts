@@ -55,7 +55,7 @@ export interface CloudflareFacts {
     readonly lanes: readonly { readonly role: string; readonly branch: string; readonly head: string | null }[];
   };
   readonly agents: { readonly sandbox: readonly string[]; readonly engine: readonly string[] };
-  readonly sandboxes: { readonly session: SandboxFacts; readonly lanes: Readonly<Record<string, SandboxFacts>>; readonly main: SandboxFacts | null };
+  readonly sandboxes: { readonly session: SandboxFacts; readonly main: SandboxFacts | null };
   readonly app: { readonly name: string; readonly url: string | null; readonly status: AppStatus | null; readonly commitId: string | null } | null;
   readonly mainApp: { readonly url: string | null; readonly commitId: string; readonly status: AppStatus } | null;
 }
@@ -134,11 +134,7 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
         dashboard: null,
       }),
     ),
-    sandbox(facts, "sandbox", "Sandbox container", facts.sandboxes.session, facts.agents.sandbox, `${facts.agents.sandbox.length ? "agent turns on main, the final checks" : "the final checks"} and this build's running app`),
-    ...s.lanes.flatMap((lane) => {
-      const box = facts.sandboxes.lanes[lane.role];
-      return box ? [sandbox(facts, `sandbox:${lane.role}`, "Role sandbox", box, [lane.role], `${lane.role} turns on ${lane.branch}`)] : [];
-    }),
+    sandbox(facts, "sandbox", "Sandbox container", facts.sandboxes.session, unique([...facts.agents.sandbox, ...laneRoles]), `${facts.agents.sandbox.length ? "agent turns on main, " : ""}${laneRoles.length ? "each role's turns on its own branch in its own folder, " : ""}the final checks and this build's running app`),
   ];
   if (facts.app) {
     const app = facts.app;

@@ -25,6 +25,7 @@ export interface SandboxJob {
   readonly llm: { readonly baseUrl: string };
   readonly turnId?: string;
   readonly ownStructure?: boolean;
+  readonly lane?: string;
 }
 
 export type TurnOutcome = { readonly status: "done"; readonly result: CoderTurnResult } | { readonly status: "running" } | { readonly status: "lost" };
@@ -146,6 +147,7 @@ function cacheScope(remote: string): string {
 
 interface TurnState {
   readonly id: string;
+  readonly key?: string;
   readonly dir: string;
   readonly model: string;
   readonly outbound: Outbound;
@@ -168,6 +170,7 @@ export class SessionAgent extends Agent<Env> {
   private appRun: { readonly commitId: string; readonly run: Promise<AppState> } | null = null;
   private appsStarting = 0;
   private project: string | null = null;
+  private starting: Promise<Container> | null = null;
 
   async status(): Promise<SandboxStatus> {
     const running = this.ctx.container?.running ?? false;
@@ -216,7 +219,7 @@ export class SessionAgent extends Agent<Env> {
     this.llmKey = llmKey;
     const release = this.grant({ artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname, cacheScope: cacheScope(job.remote) });
     try {
-      let turn = await this.ctx.storage.get<TurnState>(TURN);
+      let turn = await this.ctx.storage.get<TurnState>(turnKey(job.lane));
       if (turn?.id !== id) turn = await this.launch(id, job);
       return await this.follow(turn, onEvent, job.turnId ? FOLLOW_SECONDS : null);
     } finally {
@@ -224,8 +227,8 @@ export class SessionAgent extends Agent<Env> {
     }
   }
 
-  async resumeTurn(id: string, onEvent: (event: CoderEvent) => void, llmKey: string): Promise<TurnOutcome> {
-    const turn = await this.ctx.storage.get<TurnState>(TURN);
+  async resumeTurn(id: string, onEvent: (event: CoderEvent) => void, llmKey: string, lane?: string): Promise<TurnOutcome> {
+    const turn = await this.ctx.storage.get<TurnState>(turnKey(lane));
     if (turn?.id !== id) return { status: "lost" };
     this.llmKey = llmKey;
     const release = this.grant(turn.outbound);
@@ -237,17 +240,19 @@ export class SessionAgent extends Agent<Env> {
   }
 
   private async launch(id: string, job: SandboxJob): Promise<TurnState> {
-    await this.stopTurn();
+    const key = turnKey(job.lane);
+    await this.stopTurn(key);
     await this.ensureContainer();
     const outbound: Outbound = { artifactsHost: new URL(job.remote).hostname, readToken: job.readToken, llmHost: new URL(job.llm.baseUrl).hostname, cacheScope: cacheScope(job.remote) };
     await this.intercept(outbound);
-    const turn: TurnState = { id, dir: `${TURNS_DIR}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
-    const { readToken, turnId, ...visible } = job;
+    const turn: TurnState = { id, key, dir: `${TURNS_DIR}/${id}`, model: job.model, outbound, delivered: 0, result: null, done: false };
+    const { readToken, turnId, lane, ...visible } = job;
     void readToken;
     void turnId;
+    void lane;
     const started = await this.shell(LAUNCH, { DIR: turn.dir, TURNS: TURNS_DIR, SCRIPT: "runner.mjs", CHEF_JOB: toBase64(JSON.stringify(visible)) });
     if (started.code !== 0) throw new Error(`the coder runner did not start: ${started.out.slice(-500)}`);
-    await this.ctx.storage.put(TURN, turn);
+    await this.ctx.storage.put(key, turn);
     return turn;
   }
 
@@ -274,7 +279,7 @@ export class SessionAgent extends Agent<Env> {
       }
     } finally {
       this.busy--;
-      await this.ctx.storage.put(TURN, turn);
+      await this.ctx.storage.put(turn.key ?? TURN, turn);
       await this.ctx.storage.put(LAST_USED, Date.now());
       await this.scheduleSleep();
       await this.checkMemory();
@@ -306,21 +311,23 @@ export class SessionAgent extends Agent<Env> {
       }
       if (Date.now() - saved > 2000) {
         saved = Date.now();
-        await this.ctx.storage.put(TURN, turn);
+        await this.ctx.storage.put(turn.key ?? TURN, turn);
       }
     }
     await process.exitCode;
   }
 
   private async turnAlive(): Promise<boolean> {
-    const turn = await this.ctx.storage.get<TurnState>(TURN);
-    if (!turn || turn.done) return false;
-    return (await this.shell(STATE, { DIR: turn.dir }).catch(() => ({ code: 1, out: "lost" }))).out.trim() === "running";
+    for (const turn of (await this.ctx.storage.list<TurnState>({ prefix: TURN })).values()) {
+      if (turn.done) continue;
+      if ((await this.shell(STATE, { DIR: turn.dir }).catch(() => ({ code: 1, out: "lost" }))).out.trim() === "running") return true;
+    }
+    return false;
   }
 
-  private async stopTurn(): Promise<void> {
-    const turn = await this.ctx.storage.get<TurnState>(TURN);
-    await this.ctx.storage.delete(TURN);
+  private async stopTurn(key: string): Promise<void> {
+    const turn = await this.ctx.storage.get<TurnState>(key);
+    await this.ctx.storage.delete(key);
     if (!turn || turn.done || !this.ctx.container?.running) return;
     await this.shell(KILL, { DIR: turn.dir }).catch(() => undefined);
   }
@@ -544,7 +551,12 @@ export class SessionAgent extends Agent<Env> {
   private async ensureContainer(): Promise<Container> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
-    if (container.running) return container;
+    if (container.running && !this.starting) return container;
+    this.starting ??= this.startContainer(container).finally(() => (this.starting = null));
+    return this.starting;
+  }
+
+  private async startContainer(container: Container): Promise<Container> {
     this.exit = null;
     this.intercepted.clear();
     const step = await this.startStep();
@@ -641,6 +653,10 @@ const SANDBOX_ENV = { HOME: "/home/node", NODE_EXTRA_CA_CERTS: CA, PLAYWRIGHT_BR
 const SANDBOX_USER = "1000:1000";
 const ROOT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const VMSTAT = "cat /proc/vmstat";
+
+function turnKey(lane: string | undefined): string {
+  return lane ? `${TURN}/${lane}` : TURN;
+}
 
 function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);
