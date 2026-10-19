@@ -66,11 +66,12 @@ describe("sandbox checks", () => {
     expect(results.map((r) => r.name)).toEqual(["typecheck", "test", "generated", "lint", "spec-lint"]);
   });
 
-  it("proves an own-structure app by asking its running app for a page", async () => {
+  it("proves an app by asking its running app for a page the way a browser does", async () => {
     const { repos, commitId } = await repoWith(imported);
     const { jobs, namespace } = sandbox(() => [{ name: "probe", code: 0, stdout: JSON.stringify({ steps: [{ name: "GET /", ok: true, detail: "http://127.0.0.1:3000/ answered 200 OK" }] }), stderr: "" }]);
     const proof = await new SandboxProofRunner(namespace, repos, "todos").probe({ repo: "todos--items-left--s1", feature: "items-left", url: "http://127.0.0.1:3000", path: "/", commitId });
     expect(jobs[0]?.commands[0]?.argv.slice(-2)).toEqual(["http://127.0.0.1:3000/", "500"]);
+    expect(jobs[0]?.commands[0]?.argv.join(" ")).toContain('accept: "text/html');
     expect(proof).toMatchObject({ ok: true, flow: "GET /", steps: [{ name: "GET /", ok: true }] });
   });
 });

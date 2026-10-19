@@ -6,6 +6,7 @@ describe("project routes", () => {
     expect(projectOf("/api/projects/treetest/features/edit-todo-items")).toBe("treetest");
     expect(projectOf("/api/projects/treetest/sessions/s1/retry")).toBe("treetest");
     expect(projectOf("/api/projects/treetest/sessions/s1/cloudflare")).toBe("treetest");
+    expect(projectOf("/api/projects/treetest/sessions/s1/sandbox")).toBe("treetest");
     expect(projectOf("/api/projects/treetest/sessions/s1/events")).toBe("treetest");
     expect(projectOf("/api/projects/treetest/history")).toBe("treetest");
     expect(projectOf("/api/projects/treetest/history/0123abc")).toBe("treetest");
@@ -19,7 +20,7 @@ describe("project routes", () => {
   it("leaves other paths to the app", () => {
     expect(projectOf("/api/projects/treetest/features")).toBeNull();
     expect(projectOf("/api/projects/treetest/features/Edit")).toBeNull();
-    expect(projectOf("/api/projects/treetest/sessions/s1/sandbox")).toBeNull();
+    expect(projectOf("/api/projects/treetest/sessions/s1/shell")).toBeNull();
     expect(projectOf("/api/projects/treetest/history/main")).toBeNull();
     expect(projectOf("/app")).toBeNull();
   });
