@@ -38,6 +38,7 @@ export interface TourReport {
   removed?: { readonly project: string; readonly listed: boolean; readonly ms: number };
   readonly sent: { readonly prompt: string; readonly answered: boolean; readonly retried: boolean }[];
   readonly appLoads: { readonly name: string; readonly loadedMs: number | null; readonly rendered: boolean; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
+  tabsKept?: { readonly app: boolean | null; readonly messages: boolean; readonly panel: string | null };
 }
 
 const SETTLE_MS = 15_000;
@@ -70,6 +71,31 @@ async function reveal(page: Page, selector: string): Promise<boolean> {
   if (!(await target.waitFor({ timeout: 10_000 }).then(() => true, () => false))) return false;
   await target.scrollIntoViewIfNeeded();
   return true;
+}
+
+async function keptTabs(page: Page, feature: string): Promise<{ app: boolean | null; messages: boolean; panel: string | null }> {
+  const scope = `[data-kept="${feature}"]`;
+  const tab = (name: string) => page.locator(`${scope} [role="tab"]`, { hasText: name }).first();
+  const mark = (selector: string) =>
+    page.evaluate((s) => {
+      const found = document.querySelector(s);
+      found?.setAttribute("data-tour-mark", "kept");
+      return found !== null;
+    }, selector);
+  const kept = (selector: string) => page.evaluate((s) => document.querySelector(s)?.getAttribute("data-tour-mark") === "kept", selector);
+  const framed = await mark(`${scope} iframe`);
+  await tab("Messages").click();
+  await page.waitForTimeout(800);
+  await mark(`${scope} [data-messages]`);
+  await page.locator('[data-tab=":main"]').click();
+  await page.waitForTimeout(1500);
+  await page.locator(`[data-tab="${feature}"]`).click();
+  await page.waitForTimeout(800);
+  const panel = await page.locator(`${scope} [role="tab"][aria-selected="true"]`).first().innerText().catch(() => null);
+  const messages = await kept(`${scope} [data-messages]`);
+  await tab("App").click();
+  await page.waitForTimeout(800);
+  return { app: framed ? await kept(`${scope} iframe`) : null, messages, panel };
 }
 
 async function json<T>(page: Page, path: string, init?: { method: string; data?: unknown }): Promise<T> {
@@ -265,6 +291,10 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         report.finished = !running;
         if (latest) {
           await watchLoad(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=app`, "final-app-load");
+          report.tabsKept = await keptTabs(page, latest.featureId).catch(() => ({ app: false, messages: false, panel: null }));
+          options.log(`tabs kept: ${JSON.stringify(report.tabsKept)}`);
+          if (report.tabsKept.app === false || !report.tabsKept.messages || report.tabsKept.panel !== "Messages") report.errors.push(`tabs: switching tabs rebuilt them ${JSON.stringify(report.tabsKept)}`);
+          await shot("final-tabs-kept");
           for (const panel of ["messages", "changes", "details"]) {
             await go(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=${panel}`);
             await shot(`final-${panel}`);

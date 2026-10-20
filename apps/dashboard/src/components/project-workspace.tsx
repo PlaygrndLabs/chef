@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ResizeHandle, useStoredWidth } from "@/components/resize-handle";
@@ -17,7 +17,7 @@ import { rememberProject, returningToNewProject } from "@/lib/projects";
 import type { Selection, SettingsScope } from "@/lib/selection";
 import { useSettings } from "@/lib/settings";
 import { MAIN_TAB, useTabs } from "@/lib/tabs";
-import { WorkspaceContext, type Workspace } from "@/lib/workspace";
+import { WorkspaceContext, type TabPlace, type Workspace } from "@/lib/workspace";
 
 export const MainView = preloadable(() => import("@/components/main-view").then((m) => m.MainView));
 const CommandPalette = preloadable(() => import("@/components/command-palette").then((m) => m.CommandPalette));
@@ -86,6 +86,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   const compact = useMediaQuery("(max-width: 1023px)");
   const activeTab = selection.view === "main" ? MAIN_TAB : (featureId ?? (selection.view === "feature" ? selection.session : compact ? null : MAIN_TAB));
   const { tabs, close, keep } = useTabs(project, activeTab);
+  const places = useRef(new Map<string, TabPlace>());
   const width = useWindowWidth();
   const [palette, setPalette] = useState(false);
   const [treeSheet, setTreeSheet] = useState(false);
@@ -104,6 +105,10 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
   useEffect(() => {
     if (data.ready) keep((id) => features.some((f) => f.id === id));
   }, [data.ready, features, keep]);
+
+  useEffect(() => {
+    if (activeTab && activeTab !== MAIN_TAB) places.current.set(activeTab, { session: selection.session, panel: selection.panel, role: selection.role ?? null });
+  }, [activeTab, selection.session, selection.panel, selection.role]);
 
   const openSettings = useCallback(
     (scope: SettingsScope, section = "general", item: string | null = null) => {
@@ -136,7 +141,7 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
         setTreeSheet(false);
       },
       openFeature: (id) => {
-        select({ view: "feature", feature: id, session: null, panel: null });
+        select({ view: "feature", feature: id, session: null, panel: null, ...places.current.get(id) });
         setTreeSheet(false);
       },
       openMain: () => {
@@ -145,8 +150,10 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
       },
       tabs,
       activeTab,
-      selectTab: (id) => select(tabPlace(id)),
+      selectTab: (id) => select({ ...tabPlace(id), ...places.current.get(id) }),
+      placeOf: (id) => places.current.get(id),
       closeTab: (id) => {
+        places.current.delete(id);
         const next = close(id);
         if (id !== activeTab) return;
         setExpanded(false);

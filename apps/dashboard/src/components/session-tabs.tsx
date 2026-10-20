@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { AppWindowMac, X } from "lucide-react";
 import { PanelSkeleton } from "@/components/loading";
 import { MapMarkIcon } from "@/components/map-mark";
@@ -8,7 +8,7 @@ import { preloadable } from "@/lib/lazy";
 import { currentSession, waitsForKey } from "@/lib/model";
 import { MAIN_TAB } from "@/lib/tabs";
 import { cn } from "@/lib/utils";
-import { useWorkspace } from "@/lib/workspace";
+import { useWorkspace, WorkspaceContext, type Workspace } from "@/lib/workspace";
 
 export const SessionView = preloadable(() => import("@/components/session-view").then((m) => m.SessionView));
 export const MainTabView = preloadable(() => import("@/components/main-tab").then((m) => m.MainTab));
@@ -37,7 +37,7 @@ function Tab({ id }: { readonly id: string }) {
   );
 }
 
-export function TabContent() {
+function Pane() {
   const { activeTab, feature, data } = useWorkspace();
   if (activeTab === null || activeTab === MAIN_TAB)
     return (
@@ -57,6 +57,39 @@ export function TabContent() {
       <SessionView key={feature.id} feature={feature} />
     </Suspense>
   );
+}
+
+function Kept({ id, children }: { readonly id: string; readonly children: React.ReactNode }) {
+  const workspace = useWorkspace();
+  const shown = (workspace.activeTab ?? MAIN_TAB) === id;
+  const scoped = useMemo<Workspace>(() => {
+    if (shown) return workspace;
+    if (id === MAIN_TAB) return { ...workspace, activeTab: MAIN_TAB };
+    const place = workspace.placeOf(id);
+    const feature = workspace.features.find((f) => f.id === id) ?? null;
+    const selection = { ...workspace.selection, view: "feature" as const, feature: id, session: place?.session ?? null, panel: place?.panel ?? null, role: place?.role ?? null };
+    return { ...workspace, selection, feature, session: feature ? currentSession(feature, selection.session) : null, activeTab: id };
+  }, [workspace, shown, id]);
+  return (
+    <div hidden={!shown} className="h-full" data-kept={id}>
+      <WorkspaceContext.Provider value={scoped}>{children}</WorkspaceContext.Provider>
+    </div>
+  );
+}
+
+export function TabContent({ keep = false }: { readonly keep?: boolean }) {
+  const { activeTab, tabs } = useWorkspace();
+  const current = activeTab ?? MAIN_TAB;
+  const [opened, setOpened] = useState<readonly string[]>([]);
+  if (keep && !opened.includes(current)) setOpened([...opened.filter((id) => tabs.includes(id)), current]);
+  if (!keep) return <Pane />;
+  return opened
+    .filter((id) => id === current || tabs.includes(id))
+    .map((id) => (
+      <Kept key={id} id={id}>
+        <Pane />
+      </Kept>
+    ));
 }
 
 function Missing() {
@@ -83,7 +116,7 @@ export function SessionTabs({ onClose }: { readonly onClose?: () => void }) {
         ) : null}
       </div>
       <div className="min-h-0 flex-1">
-        <TabContent />
+        <TabContent keep />
       </div>
     </div>
   );

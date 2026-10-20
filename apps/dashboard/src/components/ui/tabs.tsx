@@ -3,21 +3,37 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 import { Tabs as TabsPrimitive } from "radix-ui"
 
+const OpenTab = React.createContext<string | undefined>(undefined)
+
 function Tabs({
   className,
   orientation = "horizontal",
+  value,
+  defaultValue,
+  onValueChange,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Root>) {
+  const [own, setOwn] = React.useState(defaultValue)
+  const open = value ?? own
+  const change = (next: string) => {
+    setOwn(next)
+    onValueChange?.(next)
+  }
   return (
-    <TabsPrimitive.Root
-      data-slot="tabs"
-      data-orientation={orientation}
-      className={cn(
-        "group/tabs flex gap-2 data-horizontal:flex-col",
-        className
-      )}
-      {...props}
-    />
+    <OpenTab.Provider value={open}>
+      <TabsPrimitive.Root
+        data-slot="tabs"
+        data-orientation={orientation}
+        orientation={orientation}
+        value={open}
+        onValueChange={change}
+        className={cn(
+          "group/tabs flex gap-2 data-horizontal:flex-col",
+          className
+        )}
+        {...props}
+      />
+    </OpenTab.Provider>
   )
 }
 
@@ -73,11 +89,19 @@ function TabsTrigger({
 
 function TabsContent({
   className,
+  value,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Content>) {
+  const open = React.useContext(OpenTab) === value
+  const [shown, setShown] = React.useState(open)
+  if (open && !shown) setShown(true)
+  if (!shown) return null
   return (
     <TabsPrimitive.Content
       data-slot="tabs-content"
+      value={value}
+      forceMount
+      hidden={!open}
       className={cn("flex-1 text-sm outline-none", className)}
       {...props}
     />

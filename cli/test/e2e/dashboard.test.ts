@@ -128,11 +128,11 @@ describe("dashboard in a browser", () => {
       await page.locator('[data-view="main"]').waitFor({ timeout: 10_000 });
       expect(await page.locator('[data-tab=":main"]').innerText()).toContain("main");
       await page.getByRole("tab", { name: "History" }).click();
-      await page.locator('[data-view="history"] [data-commit]').first().waitFor({ timeout: 10_000 });
-      await page.locator('[data-view="history"] [data-commit][aria-current="true"]').waitFor();
-      await page.locator('[data-view="history"] [data-commit]').first().click();
-      await page.locator("[data-commit-detail] [data-file]").first().waitFor({ timeout: 10_000 });
-      await page.locator("[data-commit-detail] [data-diff]").waitFor();
+      await page.locator('[data-view="main"] [data-view="history"] [data-commit]').first().waitFor({ timeout: 10_000 });
+      await page.locator('[data-view="main"] [data-view="history"] [data-commit][aria-current="true"]').waitFor();
+      await page.locator('[data-view="main"] [data-view="history"] [data-commit]').first().click();
+      await page.locator('[data-view="main"] [data-commit-detail] [data-file]').first().waitFor({ timeout: 10_000 });
+      await page.locator('[data-view="main"] [data-commit-detail] [data-diff]').waitFor();
       await page.getByRole("tab", { name: "App", exact: true }).click();
 
       await page.locator('#features [data-feature="reverse"]').dblclick();
