@@ -58,6 +58,14 @@ describe("Cloudflare view of a session", () => {
     expect(view.resources.filter((r) => r.group === "project").map((r) => r.key)).toEqual(["sandbox:main", "main-app", "router", "main", "engine", "project-object", "workflow", "memory"]);
   });
 
+  it("calls an app asleep when its sandbox sleeps, since a visit wakes it", () => {
+    const asleep = cloudflareView({ ...facts, sandboxes: { session: box("s-1"), main: box("fresh--main") }, mainApp: { ...facts.mainApp, status: "running" } });
+    const byKey = Object.fromEntries(asleep.resources.map((r) => [r.key, r]));
+    expect(byKey["sandbox"]?.state).toEqual({ tone: "idle", text: "Sleeping" });
+    expect(byKey["app"]?.state).toEqual({ tone: "idle", text: "Asleep, wakes on a visit" });
+    expect(byKey["main-app"]?.state).toEqual({ tone: "idle", text: "Asleep, wakes on a visit" });
+  });
+
   it("says which agents use each resource", () => {
     const view = cloudflareView(facts);
     const usedBy = (role: string) => view.resources.filter((r) => r.roles.includes(role)).map((r) => r.key);
