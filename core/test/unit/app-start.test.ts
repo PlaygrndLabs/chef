@@ -95,7 +95,7 @@ describe("app start in the session flow", () => {
     const { sessionId } = await w.orchestrator.submit(PROMPT);
     const record = await w.orchestrator.run(sessionId as string);
     expect(record.machine.state).toBe("stuck");
-    expect(record.machine.reason).toMatch(/attempt budget exhausted.*the app still does not start/);
+    expect(record.machine.reason).toMatch(/same failure repeated.*the app still does not start/);
     expect(record.machine.feedback).toContain('Could not resolve "../page.ts"');
     expect(w.bus.log.some((e) => e.type === "agent.started" && e.role === "reviewer")).toBe(false);
     expect(w.coder.turns.filter((t) => t.role === "backend").length).toBeLessThanOrEqual(5);

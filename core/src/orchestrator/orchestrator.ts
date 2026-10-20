@@ -1082,7 +1082,7 @@ export class Orchestrator {
     if (!starts) return;
     if (failed.length) {
       await this.emit({ type: "gate.result", sessionId: record.id, featureId: record.featureId, ok: false, checks: record.checked?.results ?? failed });
-      return this.apply(record, { type: "gate_failed", log: formatChecks(failed) });
+      return this.apply(record, gateFailed(failed));
     }
     await this.apply(record, { type: "coded" });
   }
@@ -1273,7 +1273,7 @@ export class Orchestrator {
       }
       await this.emit({ type: "main.merged", sessionId: record.id, featureId: record.featureId, commitId: record.baseMain as string });
     } else {
-      await this.apply(record, { type: "gate_failed", log: formatChecks(outcome.checks.filter((c) => !c.ok)) });
+      await this.apply(record, gateFailed(outcome.checks.filter((c) => !c.ok)));
     }
   }
 
@@ -2363,6 +2363,11 @@ function proofLines(proofs: readonly ProofRecord[]): string {
 
 function formatChecks(checks: readonly CheckResult[]): string {
   return checks.map((c) => `## ${c.name}: ${c.ok ? "ok" : "FAILED"}\n${c.log}`).join("\n\n");
+}
+
+function gateFailed(checks: readonly CheckResult[]): SessionEvent {
+  const signature = checks.map((c) => (c.cases?.some((t) => !t.ok) ? `${c.name}: ${c.cases.filter((t) => !t.ok).map((t) => t.name).sort().join(", ")}` : `${c.name}: ${c.log}`)).sort().join("\n");
+  return { type: "gate_failed", log: formatChecks(checks), signature };
 }
 
 function firstLine(text: string): string {

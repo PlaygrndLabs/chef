@@ -291,8 +291,7 @@ export function updates(timeline: readonly TimelineItem[], state: SessionState, 
 export function plainReason(reason: string): string {
   const tries = /^attempt budget exhausted \((\d+)\/\d+\)/.exec(reason);
   if (tries) return `Chef tried ${tries[1]} times and could not get past the review and checks.`;
-  if (reason.startsWith("token budget exhausted")) return "Chef used up the tokens it may spend on one build.";
-  if (reason.startsWith("time budget exhausted")) return "Chef ran out of the time it may spend on one build.";
+  if (reason.startsWith("same failure repeated")) return "Chef hit the same failure again after changing its approach, so it stopped instead of spending more tokens on it.";
   return reason;
 }
 
