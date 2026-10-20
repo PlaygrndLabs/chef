@@ -4,6 +4,8 @@ import type { ProjectData } from "./live";
 import type { FeatureNode, SessionNode } from "./model";
 import type { Selection, SettingsScope } from "./selection";
 
+export type TabPlace = Pick<Selection, "session" | "panel" | "role">;
+
 export interface AppSettings {
   readonly settings: SettingsView | null;
   readonly setSettings: (settings: SettingsView) => void;
@@ -29,6 +31,7 @@ export interface Workspace {
   readonly tabs: readonly string[];
   readonly activeTab: string | null;
   readonly selectTab: (id: string) => void;
+  readonly placeOf: (id: string) => TabPlace | undefined;
   readonly closeTab: (id: string) => void;
   readonly focusComposer: () => void;
   readonly openSettings: (scope: SettingsScope, section?: string, item?: string | null) => void;
