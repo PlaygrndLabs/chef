@@ -220,7 +220,10 @@ export function ProjectUsageSection(props: { readonly api: ProjectApi }) {
   if (!usage) return <Skeleton className="h-48" aria-label="Loading usage" />;
   const parts = PARTS.filter(([part]) => (usage.parts[part] ?? 0) > 0);
   const builds = usage.builds;
-  const total = builds.reduce((sum, b) => sum + b.cost.model + b.cost.sandbox, 0) + usage.main.sandbox;
+  const monthStart = Date.parse(`${usage.month}-01T00:00:00Z`);
+  const thisMonth = builds.filter((b) => b.createdAt >= monthStart).reduce((sum, b) => sum + b.cost.model + b.cost.sandbox, 0);
+  const outside = Math.max(0, usage.spent - thisMonth - usage.main.sandbox);
+  const total = builds.reduce((sum, b) => sum + b.cost.model + b.cost.sandbox, 0) + usage.main.sandbox + outside;
   const shown = builds.filter((b) => b.cost.model + b.cost.sandbox > 0 || isActive(b.state));
   return (
     <>
@@ -246,8 +249,8 @@ export function ProjectUsageSection(props: { readonly api: ProjectApi }) {
           ) : null}
         </div>
       </Group>
-      <Group title="By build" note="What each build cost since it started: the model calls made for it and its sandbox on Cloudflare. Open one to see its Details.">
-        {shown.length === 0 && usage.main.sandbox === 0 ? (
+      <Group title="By build" note="What each build cost since it started: the model calls made for it and its sandbox on Cloudflare. Open one to see its Details. Work that belongs to no build, like the project chat, has its own row.">
+        {shown.length === 0 && usage.main.sandbox === 0 && outside === 0 ? (
           <p className="text-xs text-muted-foreground">No build has cost anything yet.</p>
         ) : (
           <div className="flex flex-col" data-project-builds>
@@ -268,8 +271,20 @@ export function ProjectUsageSection(props: { readonly api: ProjectApi }) {
                   />
                 </li>
               ) : null}
+              {outside > 0 ? (
+                <li className="py-2 dash-b last:border-b-0" data-build-usage="outside" title="Model calls this month that belong to no build: the project chat, routing requests to features, and planning before a build starts.">
+                  <Cells
+                    cells={[
+                      <span key="t" className="truncate text-muted-foreground">Chat, routing and planning</span>,
+                      <span key="m" className="text-xs text-muted-foreground">{cost(outside)}</span>,
+                      <span key="s" className="text-xs text-muted-foreground">-</span>,
+                      <span key="a">{cost(outside)}</span>,
+                    ]}
+                  />
+                </li>
+              ) : null}
             </ul>
-            <Cells className="pt-2 font-medium" cells={[<span key="t">All builds</span>, <span key="m" />, <span key="s" />, <span key="a">{cost(total)}</span>]} />
+            <Cells className="pt-2 font-medium" cells={[<span key="t">Total</span>, <span key="m" />, <span key="s" />, <span key="a">{cost(total)}</span>]} />
           </div>
         )}
       </Group>
