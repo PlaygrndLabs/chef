@@ -5,7 +5,7 @@ import { fixture, scriptFromFixture, templateTree, todoSpec, world } from "../ha
 const PROMPT = "Add an item to a todo list";
 
 function stuckWorld() {
-  const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]), config: { budget: { maxAttempts: 2, maxTokens: 1e9, maxMillis: 1e12 } } });
+  const w = world({ script: scriptFromFixture(fixture("todo")), presets: new Map([[PROMPT, todoSpec]]), config: { budget: { maxAttempts: 2, maxRepeats: 3 } } });
   return w;
 }
 

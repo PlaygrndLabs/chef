@@ -59,6 +59,41 @@ describe("session machine", () => {
     expect(stuck.reason).toMatch(/attempt budget exhausted.*the app still does not start/);
   });
 
+  it("asks for a different approach when a failure comes back, and goes stuck the third time", () => {
+    const failing = (log: string): SessionEvent[] => [{ type: "coded" }, { type: "review_approved" }, { type: "gate_failed", log }];
+    const twice = run([{ type: "start" }, { type: "planned", withTests: false }, ...failing("AC1 red after 120ms"), ...failing("AC1 red after 87ms")], { ...DEFAULT_BUDGET, maxAttempts: 10 });
+    expect(twice.state).toBe("coding");
+    expect(twice.feedback).toContain("same failure as an earlier try");
+    const thrice = run([{ type: "start" }, { type: "planned", withTests: false }, ...failing("AC1 red"), ...failing("AC2 red"), ...failing("AC1 red"), ...failing("AC1 red")], { ...DEFAULT_BUDGET, maxAttempts: 10 });
+    expect(thrice.state).toBe("stuck");
+    expect(thrice.reason).toMatch(/same failure repeated \(3\/3\)/);
+  });
+
+  it("matches gate failures by their failing tests, not their whole log", () => {
+    const failing = (log: string): SessionEvent[] => [{ type: "coded" }, { type: "review_approved" }, { type: "gate_failed", log, signature: "tests: AC1" }];
+    const m = run([{ type: "start" }, { type: "planned", withTests: false }, ...failing("run one"), ...failing("run two"), ...failing("run three")], { ...DEFAULT_BUDGET, maxAttempts: 10 });
+    expect(m.state).toBe("stuck");
+  });
+
+  it("stops roles that keep clashing on the same lines even though it costs no try, but not merges of a moving main", () => {
+    const clash: SessionEvent = { type: "conflict", paths: ["src/app.ts"], between: ["frontend", "backend"] };
+    const m = run([{ type: "start" }, { type: "planned", withTests: false }, clash, clash, clash]);
+    expect(m.state).toBe("stuck");
+    expect(m.usage.attempts).toBe(1);
+    const main: SessionEvent = { type: "conflict", paths: ["src/app.ts"] };
+    expect(run([{ type: "start" }, { type: "planned", withTests: false }, main, main, main, main]).state).toBe("coding");
+  });
+
+  it("does not stop on time or tokens, and a retry starts with a clean failure history", () => {
+    const stuck = run([{ type: "start" }, { type: "planned", withTests: false }, { type: "app_failed", log: "web stopped" }, { type: "app_failed", log: "web stopped" }, { type: "app_failed", log: "web stopped" }]);
+    expect(stuck.state).toBe("stuck");
+    const retried = transition({ ...stuck, usage: { ...stuck.usage, tokens: 50_000_000 } }, { type: "retried", guidance: "" }, DEFAULT_BUDGET, 10 * 3_600_000);
+    expect(retried.state).toBe("coding");
+    expect(retried.usage.failures ?? []).toEqual([]);
+    const later = transition({ ...retried, usage: { ...retried.usage, tokens: 50_000_000 } }, { type: "app_failed", log: "web stopped" }, DEFAULT_BUDGET, 100 * 3_600_000);
+    expect(later.state).toBe("coding");
+  });
+
   it("rejects transitions that do not exist", () => {
     expect(() => transition(initialMachine(0), { type: "coded" }, DEFAULT_BUDGET, 0)).toThrow(InvalidTransition);
   });

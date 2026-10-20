@@ -10,7 +10,7 @@ export type SessionEvent =
   | { readonly type: "review_approved" }
   | { readonly type: "review_rejected"; readonly reasons: readonly string[]; readonly retest?: boolean }
   | { readonly type: "gate_passed" }
-  | { readonly type: "gate_failed"; readonly log: string }
+  | { readonly type: "gate_failed"; readonly log: string; readonly signature?: string }
   | { readonly type: "tests_disputed"; readonly said: readonly string[] }
   | { readonly type: "app_failed"; readonly log: string }
   | { readonly type: "conflict"; readonly paths: readonly string[]; readonly between?: readonly string[] }
@@ -24,16 +24,16 @@ export type RejectionRule = "write-scope" | "locked-tests" | "red-tests" | "proj
 
 export interface Budget {
   readonly maxAttempts: number;
-  readonly maxTokens: number;
-  readonly maxMillis: number;
+  readonly maxRepeats: number;
 }
 
-export const DEFAULT_BUDGET: Budget = { maxAttempts: 4, maxTokens: 2_000_000, maxMillis: 60 * 60 * 1000 };
+export const DEFAULT_BUDGET: Budget = { maxAttempts: 4, maxRepeats: 3 };
 
 export interface Usage {
   readonly attempts: number;
   readonly tokens: number;
   readonly startedAt: number;
+  readonly failures?: readonly string[];
 }
 
 export interface MachineState {
@@ -75,12 +75,34 @@ export function isTerminal(state: SessionState): boolean {
   return state === "merged" || state === "stuck" || state === "dropped";
 }
 
-export function exceeded(usage: Usage, budget: Budget, now: number): string | null {
+export function exceeded(usage: Usage, budget: Budget): string | null {
+  const repeats = timesSeen(usage.failures ?? [], usage.failures?.at(-1));
+  if (repeats >= budget.maxRepeats) return `same failure repeated (${repeats}/${budget.maxRepeats})`;
   if (usage.attempts > budget.maxAttempts) return `attempt budget exhausted (${usage.attempts - 1}/${budget.maxAttempts})`;
-  if (usage.tokens > budget.maxTokens) return `token budget exhausted (${usage.tokens}/${budget.maxTokens})`;
-  if (now - usage.startedAt > budget.maxMillis) return `time budget exhausted (${now - usage.startedAt}ms/${budget.maxMillis}ms)`;
   return null;
 }
+
+export function failureFingerprint(text: string): string {
+  const normal = text
+    .toLowerCase()
+    .replace(/\d{4}-\d\d-\d\dt[\d:.]+z?/g, "#")
+    .replace(/\b[0-9a-f]{7,}\b/g, "#")
+    .replace(/\d+(\.\d+)?\s?(ms|s|sec|seconds?|m|min)\b/g, "#")
+    .replace(/:\d+(:\d+)?\b/g, ":#")
+    .replace(/\s+/g, " ")
+    .trim();
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < normal.length; i++) hash = Math.imul(hash ^ normal.charCodeAt(i), 0x01000193);
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function timesSeen(failures: readonly string[], fingerprint: string | undefined): number {
+  return fingerprint ? failures.filter((f) => f === fingerprint).length : 0;
+}
+
+const LOOP_EVENTS: ReadonlySet<SessionEvent["type"]> = new Set(["review_rejected", "gate_failed", "app_failed", "turn_rejected", "conflict", "reopened"]);
+
+const REPEAT_NOTE = "This is the same failure as an earlier try, so the last approach did not work. Find the root cause and take a different approach instead of repeating the same fix.";
 
 export function transition(current: MachineState, event: SessionEvent, budget: Budget, now: number): MachineState {
   let to = NEXT[event.type][current.state];
@@ -88,12 +110,17 @@ export function transition(current: MachineState, event: SessionEvent, budget: B
   if (event.type === "review_rejected" && current.state === "reviewing" && event.retest) to = "testing";
   if (!to) throw new InvalidTransition(current.state, event.type);
   const retry = event.type === "review_rejected" || event.type === "gate_failed" || event.type === "app_failed" || event.type === "turn_rejected" || (event.type === "reopened" && event.charged !== false);
-  const usage: Usage = event.type === "retried" ? { attempts: 1, tokens: 0, startedAt: now } : retry ? { ...current.usage, attempts: current.usage.attempts + 1 } : current.usage;
+  const charged: Usage = event.type === "retried" ? { attempts: 1, tokens: 0, startedAt: now } : retry ? { ...current.usage, attempts: current.usage.attempts + 1 } : current.usage;
+  const failed = feedbackOf(event, current);
+  const fingerprint = failed !== null && LOOP_EVENTS.has(event.type) && !(event.type === "reopened" && event.charged === false) && !(event.type === "conflict" && !event.between?.length) ? failureFingerprint(event.type === "gate_failed" && event.signature ? event.signature : failed) : null;
+  const usage: Usage = fingerprint ? { ...charged, failures: [...(charged.failures ?? []), fingerprint].slice(-20) } : charged;
+  const repeated = fingerprint !== null && timesSeen(charged.failures ?? [], fingerprint) > 0;
   const carried = (to === "coding" || to === "testing") && event.type !== "planned" && (event.type !== "tests_committed" || current.reason === "review_rejected" || current.reason === "tests_disputed");
-  const feedback = event.type === "retried" ? retriedFeedback(event.guidance, current.feedback) : (feedbackOf(event, current) ?? (carried ? current.feedback : null));
+  const fresh = event.type === "retried" ? retriedFeedback(event.guidance, current.feedback) : (failed ?? (carried ? current.feedback : null));
+  const feedback = repeated && fresh ? `${fresh}\n\n${REPEAT_NOTE}` : fresh;
   const reason = event.type === "fail" || event.type === "dropped" ? event.reason : event.type;
   if (to === "coding" || event.type === "turn_rejected" || event.type === "review_rejected") {
-    const over = exceeded(usage, budget, now);
+    const over = exceeded(usage, budget);
     if (over) return { state: "stuck", usage, feedback, reason: event.type === "app_failed" ? `${over}; the app still does not start` : over };
   }
   return { state: to, usage, feedback, reason };

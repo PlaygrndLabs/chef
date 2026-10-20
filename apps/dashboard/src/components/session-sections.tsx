@@ -11,8 +11,7 @@ import { toast } from "sonner";
 import { COMPOSE_PROMPT } from "@chef/core/app";
 import { AppFrame, loadTone, useAppLoad } from "@/components/app-frame";
 import { CloudflareList, CloudflareSections } from "@/components/cloudflare-resources";
-import { isActive } from "@/lib/events";
-import { ago, appHost, duration, short, tokens } from "@/lib/format";
+import { ago, appHost, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
@@ -318,7 +317,6 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
   const record = detail.data?.record ?? node.record;
   const budget = detail.data?.budget;
   const usage = record?.machine.usage;
-  const elapsed = usage && record ? (isActive(record.machine.state) ? Date.now() : record.updatedAt) - usage.startedAt : 0;
   return (
     <div className="flex flex-col gap-6">
       <Section title="On Cloudflare">
@@ -333,8 +331,10 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
       {usage && budget ? (
         <Section title="Budget">
           <Meter label="Tries" value={usage.attempts} max={budget.maxAttempts} text={`${usage.attempts} of ${budget.maxAttempts}`} />
-          <Meter label="Tokens" value={usage.tokens} max={budget.maxTokens} text={`${tokens(usage.tokens)} of ${tokens(budget.maxTokens)}`} />
-          <Meter label="Time" value={elapsed} max={budget.maxMillis} text={`${duration(elapsed)} of ${duration(budget.maxMillis)}`} />
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Tokens</span>
+            <span>{tokens(usage.tokens)}</span>
+          </div>
         </Section>
       ) : null}
       {node.live?.recalled.length ? (
