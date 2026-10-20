@@ -198,7 +198,7 @@ function AppsForm(props: { readonly minutes: number; readonly save: Save }) {
       }}
     >
       <Field label="Minutes without visits before a running app sleeps">
-        <Input value={minutes} onChange={(e) => setMinutes(e.target.value)} aria-label="App idle minutes" type="number" min={5} max={10080} required />
+        <Input value={minutes} onChange={(e) => setMinutes(e.target.value)} aria-label="App idle minutes" type="number" min={1} max={10080} required />
       </Field>
       <Button type="submit" size="sm">
         Save

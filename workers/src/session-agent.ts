@@ -127,10 +127,12 @@ export interface SandboxStatus {
   readonly size?: string | null;
 }
 
-export const SANDBOX_IDLE_SECONDS = 300;
+export const SANDBOX_IDLE_SECONDS = 120;
+export const INACTIVITY_BACKSTOP_SECONDS = 300;
 export const FOLLOW_SECONDS = 60;
 
 const LAST_USED = "sandbox/last-used";
+const LAST_VISIT = "sandbox/last-visit";
 const OWNER = "sandbox/project";
 const SIZE = "sandbox/size";
 const RUNNING_SIZE = "sandbox/running-size";
@@ -240,15 +242,13 @@ export class SessionAgent extends Agent<Env> {
   async sleepIfIdle(): Promise<void> {
     const container = this.ctx.container;
     if (!container?.running) return;
-    const lastUsed = (await this.ctx.storage.get<number>(LAST_USED)) ?? 0;
-    const idleFor = Date.now() - lastUsed;
-    const idleSeconds = await this.idleSeconds();
+    const sleepAt = await this.sleepAt(0);
     await this.settle(false, await this.cpuNow()).catch((error: unknown) => console.error(`counting the time of sandbox ${this.name} failed`, error));
-    if (this.busy === 0 && idleFor >= idleSeconds * 1000 && !(await this.turnAlive())) {
+    if (this.busy === 0 && Date.now() >= sleepAt && !(await this.turnAlive())) {
       await container.destroy();
       return;
     }
-    await this.schedule(Math.max(30, Math.ceil(idleSeconds - idleFor / 1000)), "sleepIfIdle");
+    await this.schedule(Math.max(30, Math.ceil((sleepAt - Date.now()) / 1000)), "sleepIfIdle");
   }
 
   async outboundAccess(): Promise<OutboundAccess | null> {
@@ -443,7 +443,7 @@ export class SessionAgent extends Agent<Env> {
       );
       if (state.status === "starting") state = { ...state, status: "failed", error: stopped ? await this.stuckApp(job, startSeconds) : `the app runner stopped with exit code ${code}${this.exit ? ` (the sandbox stopped: ${this.exit})` : ""}: ${tail.slice(-500) || "no output"}`, at: Date.now() };
       await this.ctx.storage.put(APP, state);
-      if (state.status === "running") await this.ctx.container?.setInactivityTimeout((await this.idleSeconds()) * 1000).catch(() => undefined);
+      if (state.status === "running") await this.ctx.container?.setInactivityTimeout((await this.backstopSeconds()) * 1000).catch(() => undefined);
       return state;
     } finally {
       this.appsStarting--;
@@ -469,7 +469,10 @@ export class SessionAgent extends Agent<Env> {
     const state = await this.appState();
     const container = this.ctx.container;
     const html = (request.headers.get("accept") ?? "").includes("text/html");
+    const url = new URL(request.url);
     if (!container?.running || state?.status !== "running" || !state.port) {
+      const moved = html && state && (state.status === "asleep" || state.status === "running") ? await this.movedTo(state, url) : null;
+      if (moved) return new Response(null, { status: 302, headers: { location: moved, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
       if (state && (state.status === "asleep" || state.status === "running")) this.ctx.waitUntil(this.wake(state));
       if (state?.status === "failed") return appPage({ status: "failed", target: state.target, html, ...(state.error ? { error: state.error } : {}) });
       if (state?.status === "no-stack") return appPage({ status: "no-stack", target: state.target, html });
@@ -477,10 +480,9 @@ export class SessionAgent extends Agent<Env> {
     }
     if (Date.now() - this.visited > VISIT_NOTE_MS) {
       this.visited = Date.now();
-      await this.ctx.storage.put(LAST_USED, this.visited);
+      await this.ctx.storage.put(LAST_VISIT, this.visited);
       await this.scheduleSleep();
     }
-    const url = new URL(request.url);
     const headers = new Headers(request.headers);
     headers.delete(APP_REQUEST_HEADER);
     try {
@@ -488,6 +490,14 @@ export class SessionAgent extends Agent<Env> {
     } catch (error) {
       return appPage({ status: "down", target: state.target, html, error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  private async movedTo(state: AppState, url: URL): Promise<string | null> {
+    const project = this.env.PROJECT.get(this.env.PROJECT.idFromName(state.project)) as unknown as { movedApp(target: string, path: string): Promise<string | null> };
+    return project.movedApp(state.target, `${url.pathname}${url.search}`).catch((error: unknown) => {
+      console.error(`finding where the app of ${state.target} went failed`, error);
+      return null;
+    });
   }
 
   private async wake(state: AppState): Promise<void> {
@@ -517,8 +527,7 @@ export class SessionAgent extends Agent<Env> {
   private async closeStale(): Promise<void> {
     const alive = await this.ctx.storage.get<Alive>(RUN);
     if (!alive) return;
-    const lastUsed = (await this.ctx.storage.get<number>(LAST_USED)) ?? alive.since;
-    const end = Math.min(Date.now(), Math.max(alive.since, lastUsed) + (await this.idleSeconds()) * 1000);
+    const end = Math.min(Date.now(), Math.max(alive.since, await this.sleepAt(alive.since)));
     await this.ctx.storage.delete(RUN);
     await this.report(alive.step, (end - alive.since) / 1000, 0);
   }
@@ -530,13 +539,20 @@ export class SessionAgent extends Agent<Env> {
     await (await this.owner())?.sandboxSpent(this.name, micros, Math.max(0, seconds));
   }
 
-  private async idleSeconds(): Promise<number> {
+  private async sleepAt(since: number): Promise<number> {
+    const lastUsed = (await this.ctx.storage.get<number>(LAST_USED)) ?? since;
     const app = await this.ctx.storage.get<AppState>(APP);
-    return Math.max(SANDBOX_IDLE_SECONDS, app && app.status === "running" ? app.idleMinutes * 60 : 0);
+    const lastVisit = app?.status === "running" ? await this.ctx.storage.get<number>(LAST_VISIT) : undefined;
+    return Math.max(lastUsed + SANDBOX_IDLE_SECONDS * 1000, lastVisit !== undefined && app ? lastVisit + app.idleMinutes * 60_000 : 0);
+  }
+
+  private async backstopSeconds(): Promise<number> {
+    const app = await this.ctx.storage.get<AppState>(APP);
+    return Math.max(INACTIVITY_BACKSTOP_SECONDS, app?.status === "running" ? app.idleMinutes * 60 : 0);
   }
 
   private async scheduleSleep(): Promise<void> {
-    await this.schedule(await this.idleSeconds(), "sleepIfIdle", undefined, { idempotent: true });
+    await this.schedule(Math.max(30, Math.ceil(((await this.sleepAt(Date.now())) - Date.now()) / 1000)), "sleepIfIdle", undefined, { idempotent: true });
   }
 
   private async runScript(script: string, job: { remote: string; readToken: string; llm?: { readonly baseUrl: string } }, onEvent: (event: Record<string, unknown>) => void, secrets: { readonly llmKey?: string | null } = {}, limitMs?: number): Promise<{ code: number; tail: string; stopped: boolean }> {
@@ -684,7 +700,7 @@ export class SessionAgent extends Agent<Env> {
     const kills = oomKills((await this.shell(VMSTAT, {}).catch(() => ({ code: 1, out: "" }))).out);
     if (kills === null) await this.ctx.storage.delete(OOM_BASE);
     else await this.ctx.storage.put(OOM_BASE, kills);
-    await container.setInactivityTimeout((await this.idleSeconds()) * 1000).catch(() => undefined);
+    await container.setInactivityTimeout((await this.backstopSeconds()) * 1000).catch(() => undefined);
     return container;
   }
 

@@ -552,6 +552,13 @@ export class ProjectAgent extends Agent<Env> {
     if (step > (await this.sandboxStep())) await this.ctx.storage.put(SANDBOX_STEP, step);
   }
 
+  async movedApp(sandbox: string, path: string): Promise<string | null> {
+    const source = await this.appSource(sandbox);
+    if (!source || source.sandbox === sandbox) return null;
+    const url = await this.address(source.sandbox);
+    return url ? appEntry(url, await this.appKey(), { path, now: Date.now(), cookieSeconds: SHARE_COOKIE_SECONDS }) : null;
+  }
+
   async wakeApp(sandbox: string): Promise<void> {
     this.detach(`starting the app of ${sandbox}`, () => this.wakeNow(sandbox));
   }
