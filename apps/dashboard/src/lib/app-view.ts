@@ -163,7 +163,7 @@ export function loadView(load: FrameLoad, now: number, input: { readonly path: s
   const spans: Span[] = [
     { label: "Check the app", from: started, to: checked, weight: 1, typicalMs: 800 },
     ...(starting ? [{ label: "Start the app from the latest commit", from: starting.since, to: starting.until, weight: 12, typicalMs: 45_000 }] : []),
-    { label: waking ? "Wake up the app" : "Reach the app", from: reachFrom, to: reachedAt, weight: 3, typicalMs: 2500 },
+    { label: waking ? "Start the app again" : "Reach the app", from: reachFrom, to: reachedAt, weight: 3, typicalMs: 2500 },
     { label: `Open ${input.path}`, from: answered, to: loaded, weight: 2, typicalMs: 1500 },
   ];
   let found = false;
@@ -181,7 +181,7 @@ export function loadView(load: FrameLoad, now: number, input: { readonly path: s
   const title = {
     check: "Checking the app",
     start: "Starting the app",
-    reach: waking ? "Waking up the app" : "Opening the app",
+    reach: waking ? "Starting the app again" : "Opening the app",
     page: `Loading ${input.path}`,
     done: `Loaded ${input.path}`,
     failed: "The app could not open",
@@ -189,7 +189,7 @@ export function loadView(load: FrameLoad, now: number, input: { readonly path: s
   const detail = {
     check: "Asking Chef whether this app is running.",
     start: "Chef is starting this branch's app in its sandbox from the latest commit. It opens here by itself when it is ready.",
-    reach: waking ? "Nobody opened it for a while, so its sandbox is waking up. The first visit after a pause takes longer." : "Sending the first request to the app.",
+    reach: waking ? "Nobody opened it for a while, so its sandbox stopped and is starting again. The first visit after a pause takes longer." : "Sending the first request to the app.",
     page: "The app answered. Its page is loading.",
     done: "",
     failed: error ?? "",

@@ -87,7 +87,7 @@ function sandbox(facts: CloudflareFacts, key: string, title: string, box: Sandbo
     title,
     name: box.name,
     roles,
-    state: box.running ? { tone: "run", text: "Running" } : { tone: "idle", text: "Sleeping" },
+    state: box.running ? { tone: "run", text: "Running" } : { tone: "idle", text: "Stopped" },
     facts: [
       { label: "Application", value: facts.containerApp.id ? `${facts.containerApp.name} · ${facts.containerApp.id}` : facts.containerApp.name },
       { label: "Durable Object", value: facts.namespaces.SessionAgent ? `SessionAgent · ${facts.namespaces.SessionAgent}` : "SessionAgent" },
@@ -251,7 +251,7 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
 }
 
 function appState(status: AppStatus | null, awake: boolean): NonNullable<CloudflareResource["state"]> {
-  if (status === "running") return awake ? { tone: "ok", text: "Running" } : { tone: "idle", text: "Asleep, wakes on a visit" };
+  if (status === "running") return awake ? { tone: "ok", text: "Running" } : { tone: "idle", text: "Stopped, starts on a visit" };
   if (status === "starting") return { tone: "run", text: "Starting" };
   if (status === "failed") return { tone: "bad", text: "Could not start" };
   if (status === "no-stack") return { tone: "idle", text: "No app to run" };

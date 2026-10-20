@@ -66,12 +66,12 @@ describe("app browser", () => {
     expect(loadView({ ...start, checked: 1100, answered: 1500, loaded: 1900 }, 5000, { path: "/notes" })).toMatchObject({ phase: "done", percent: 100 });
   });
 
-  it("says the app is waking up once its first answer takes a while", () => {
+  it("says the app is starting again once its first answer takes a while", () => {
     const waking = loadView({ ...start, checked: 1000 }, 4000, { path: "/" });
-    expect(waking.title).toBe("Waking up the app");
-    expect(labels(waking)).toEqual(["done Check the app", "run Wake up the app", "wait Open /"]);
+    expect(waking.title).toBe("Starting the app again");
+    expect(labels(waking)).toEqual(["done Check the app", "run Start the app again", "wait Open /"]);
     expect(waking.slow).toBe(false);
-    expect(labels(loadView({ ...start, checked: 1000, answered: 5000 }, 5200, { path: "/" }))).toEqual(["done Check the app", "done Wake up the app", "run Open /"]);
+    expect(labels(loadView({ ...start, checked: 1000, answered: 5000 }, 5200, { path: "/" }))).toEqual(["done Check the app", "done Start the app again", "run Open /"]);
     expect(loadView({ ...start, checked: 1000 }, 30_000, { path: "/" }).slow).toBe(true);
   });
 
@@ -92,7 +92,7 @@ describe("app browser", () => {
     const failed = loadView({ ...start, checked: 1200, starting: { since: 1000, until: null }, error: "compose up failed" }, 9000, { path: "/" });
     expect(failed).toMatchObject({ phase: "failed", detail: "compose up failed" });
     expect(labels(failed)).toEqual(["done Check the app", "failed Start the app from the latest commit", "wait Reach the app", "wait Open /"]);
-    expect(labels(loadView({ ...start, checked: 1000, error: "offline" }, 9000, { path: "/" }))).toEqual(["done Check the app", "failed Wake up the app", "wait Open /"]);
+    expect(labels(loadView({ ...start, checked: 1000, error: "offline" }, 9000, { path: "/" }))).toEqual(["done Check the app", "failed Start the app again", "wait Open /"]);
     expect(labels(loadView({ ...start, error: "There is no app here yet." }, 2000, { path: "/" }))).toEqual(["failed Check the app", "wait Reach the app", "wait Open /"]);
   });
 
