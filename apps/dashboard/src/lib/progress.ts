@@ -26,6 +26,10 @@ export interface Progress {
   readonly now: string;
 }
 
+export function wroteTests(record: { readonly plan: { readonly items: readonly { readonly kind: string }[] } } | undefined, timeline: readonly TimelineItem[]): boolean {
+  return (record?.plan.items.some((i) => i.kind === "test") ?? false) || timeline.some((t) => t.kind === "state" && t.to === "testing");
+}
+
 export function stoppedAt(timeline: readonly TimelineItem[]): SessionState {
   for (let i = timeline.length - 1; i >= 0; i--) {
     const item = timeline[i];

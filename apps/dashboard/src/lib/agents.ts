@@ -123,7 +123,7 @@ export function teamOf(node: SessionNode): Member[] {
   for (const item of node.record?.plan.items ?? []) add(item.role);
   for (const agent of node.live?.agents ?? []) add(agent.role);
   for (const commit of node.live?.commits ?? []) add(commit.role);
-  add("reviewer");
+  if (!node.record?.verdict?.skipped) add("reviewer");
   roles.sort((a, b) => stageOf(a) - stageOf(b));
   const seen = new Set([...(node.live?.agents ?? []).map((a) => a.role), ...(node.live?.commits ?? []).map((c) => c.role)]);
   if (node.live?.verdict || node.record?.verdict) seen.add("reviewer");
