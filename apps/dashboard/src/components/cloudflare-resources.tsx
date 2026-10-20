@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Check, ChevronDown, Cloud, Copy, ExternalLink, RotateCw } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
@@ -9,7 +9,6 @@ import { roleLabel, useAgents } from "@/lib/agents";
 import { appLink, MAIN_APP } from "@/lib/app-view";
 import { cost, duration } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { ProjectApi } from "@/lib/api";
 import { useWorkspace } from "@/lib/workspace";
 
 const KIND: Readonly<Record<CloudflareKind, string>> = {
@@ -198,22 +197,4 @@ export function CloudflareSections({ view, loading, error, session, group }: { r
   if (loading && !view) return <Skeleton className="h-28" />;
   if (!view) return <p className="text-sm text-muted-foreground">Could not read the Cloudflare details{error ? `: ${error}` : ""}.</p>;
   return <CloudflareList resources={view.resources.filter((r) => r.group === group)} session={session} />;
-}
-
-export function ProjectCloudflare({ api }: { readonly api: ProjectApi }) {
-  const [view, setView] = useState<CloudflareView | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    api.projectCloudflare().then(setView, (e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-  }, [api]);
-  return (
-    <div className="flex flex-col gap-3" data-project-cloudflare>
-      <CloudflareSections view={view} loading={!view && !error} error={error} session={null} group="project" />
-      {view ? (
-        <p className="text-xs text-muted-foreground">
-          It all runs on {view.accountId ? <span className="font-mono">account {view.accountId}</span> : "your Cloudflare account"}, under the Chef engine <span className="font-mono">{view.engine}</span>.
-        </p>
-      ) : null}
-    </div>
-  );
 }

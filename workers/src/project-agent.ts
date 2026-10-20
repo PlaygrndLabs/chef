@@ -10,7 +10,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost, voiceUsage } from "@chef/adapters/realtime";
-import { addCost, NO_COST, type SessionCost, type SpendPart, APP_START_SECONDS, AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type AppStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PushedEvent, agentsOf, cloudflareView, engineOf, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
+import { addCost, NO_COST, projectUsage, type ProjectUsage, type SessionCost, type SpendPart, APP_START_SECONDS, AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type AppStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PushedEvent, agentsOf, cloudflareView, engineOf, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -284,7 +284,7 @@ export class ProjectAgent extends Agent<Env> {
       return Response.json(await new EngineSpend(this.env, this.name).scope(by, () => orchestrator.route(prompt.trim())));
     }
     if (action === "budget" && url.pathname.endsWith(`/projects/${this.name}/budget`)) return this.budgetRequest(request);
-    if (request.method === "GET" && action === "cloudflare" && url.pathname.endsWith(`/projects/${this.name}/cloudflare`)) return Response.json(await this.cloudflare(null));
+    if (request.method === "GET" && action === "usage") return Response.json(await this.usage());
     if (request.method === "GET" && action === "sessions") return Response.json(await orchestrator.sessions());
     if (request.method === "GET" && action === "cursor") return Response.json({ seq: await bus.cursor() });
     if (request.method === "GET" && action === "events") return Response.json(await bus.since(Number(url.searchParams.get("after") ?? 0)));
@@ -386,9 +386,9 @@ export class ProjectAgent extends Agent<Env> {
     return Response.json({ error: "not found" }, { status: 404 });
   }
 
-  private async cloudflare(id: string | null): Promise<CloudflareView> {
+  private async cloudflare(id: string): Promise<CloudflareView> {
     const { orchestrator, repos, router, settings } = await this.build();
-    const record = id ? await orchestrator.session(id) : null;
+    const record = await orchestrator.session(id);
     const engine = engineOf(this.env.PROJECT_WORKER_PREFIX);
     const routerWorker = routerName(engine);
     const accountId = settings.cloudflare?.accountId ?? this.env.CF_ACCOUNT_ID ?? null;
@@ -400,9 +400,9 @@ export class ProjectAgent extends Agent<Env> {
     };
     const [main, fork, ids, session, mainBox] = await Promise.all([
       repos.info(this.name),
-      !record || record.forkDeleted ? Promise.resolve(null) : repos.info(record.fork),
+      record.forkDeleted ? Promise.resolve(null) : repos.info(record.fork),
       this.engineIds.ids(settings.cloudflare, engine),
-      id ? box(id) : Promise.resolve(null),
+      box(id),
       box(this.mainSandbox()),
     ]);
     const mainApp = (await this.ctx.storage.get<MainAppState>(MAIN_APP)) ?? null;
@@ -415,10 +415,10 @@ export class ProjectAgent extends Agent<Env> {
       namespaces: ids.namespaces,
       containerApp: { name: containerAppName(engine), id: ids.containerApp },
       main: { remote: main?.remote ?? null, commitId: (await orchestrator.mainTree()).commitId },
-      session: id && record ? { id, fork: record.fork, remote: fork?.remote ?? null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: (record.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch, head: l.head })) } : null,
-      agents: record ? agentsOf(record) : { sandbox: [], engine: ["planner", "reviewer"] },
+      session: { id, fork: record.fork, remote: fork?.remote ?? null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: (record.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
+      agents: agentsOf(record),
       sandboxes: { session, main: mainBox },
-      app: router && id && record ? { name: appName(this.label(id), routerWorker), url: record.app?.url ?? null, status: record.app?.status ?? null, commitId: record.app?.commitId ?? null } : null,
+      app: router ? { name: appName(this.label(id), routerWorker), url: record.app?.url ?? null, status: record.app?.status ?? null, commitId: record.app?.commitId ?? null } : null,
       mainApp: mainApp ? { url: mainApp.url, commitId: mainApp.commitId, status: mainApp.status } : null,
     });
   }
@@ -523,6 +523,13 @@ export class ProjectAgent extends Agent<Env> {
   private async addCost(key: string, part: SpendPart, micros: number, seconds = 0): Promise<void> {
     const at = `${COST}${key}`;
     await this.ctx.storage.put(at, addCost((await this.ctx.storage.get<SessionCost>(at)) ?? NO_COST, part, micros, seconds));
+  }
+
+  private async usage(): Promise<ProjectUsage> {
+    const { orchestrator } = await this.build();
+    const [{ caps, ledger }, sessions, stored] = await Promise.all([settingsStub(this.env).spending(Date.now()), orchestrator.sessions(), this.ctx.storage.list<SessionCost>({ prefix: COST })]);
+    const costs = new Map([...stored].map(([key, cost]) => [key.slice(COST.length), cost]));
+    return projectUsage({ project: this.name, caps, ledger, sessions, costs, main: this.mainSandbox() });
   }
 
   private async costOf(key: string): Promise<SessionCost> {

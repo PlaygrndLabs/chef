@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addSpend, costMicros, emptyLedger, monthOf, NO_CAPS, overCap, readCap, setCaps } from "../../src/usage/budget.ts";
+import { addSpend, costMicros, emptyLedger, monthOf, NO_CAPS, NO_COST, overCap, projectUsage, readCap, setCaps } from "../../src/usage/budget.ts";
 
 describe("model spend", () => {
   it("prices tokens by model family and charges cache reads a tenth", () => {
@@ -21,8 +21,8 @@ describe("model spend", () => {
     ledger = addSpend(ledger, "2026-10", "shop", null, 3);
     ledger = addSpend(ledger, "2026-10", "blog", "usr_a", 2);
     ledger = addSpend(ledger, "2026-10", "blog", null, 4, "voice");
-    expect(ledger).toEqual({ month: "2026-10", org: 14, projects: { shop: 8, blog: 6 }, members: { usr_a: 7 }, parts: { model: 10, voice: 4 } });
-    expect(addSpend(ledger, "2026-11", "shop", null, 1, "router")).toEqual({ month: "2026-11", org: 1, projects: { shop: 1 }, members: {}, parts: { router: 1 } });
+    expect(ledger).toEqual({ month: "2026-10", org: 14, projects: { shop: 8, blog: 6 }, members: { usr_a: 7 }, parts: { model: 10, voice: 4 }, projectParts: { shop: { model: 8 }, blog: { model: 2, voice: 4 } } });
+    expect(addSpend(ledger, "2026-11", "shop", null, 1, "router")).toEqual({ month: "2026-11", org: 1, projects: { shop: 1 }, members: {}, parts: { router: 1 }, projectParts: { shop: { router: 1 } } });
     expect(monthOf(Date.UTC(2026, 9, 31, 23, 59))).toBe("2026-10");
   });
 
@@ -44,5 +44,22 @@ describe("model spend", () => {
     expect(readCap("5")).toBeUndefined();
     const caps = setCaps(NO_CAPS, { org: 100, projects: { shop: 10 }, members: { usr_a: 1 } });
     expect(setCaps(caps, { projects: { shop: null }, members: { usr_b: 2 } })).toEqual({ org: 100, projects: {}, members: { usr_a: 1, usr_b: 2 } });
+  });
+});
+
+describe("project usage", () => {
+  it("lists every build's cost newest first, with the month's parts and main's sandbox", () => {
+    const ledger = addSpend(addSpend(emptyLedger("2026-10"), "2026-10", "shop", null, 30), "2026-10", "shop", null, 12, "sandbox");
+    const session = (id: string, createdAt: number) => ({ id, featureId: `f-${id}`, createdAt, plan: { feature: { title: `Build ${id}` } }, machine: { state: "merged" as const } });
+    const costs = new Map([
+      ["s1", { model: 20, sandbox: 5, sandboxSeconds: 60 }],
+      ["shop--main", { model: 0, sandbox: 7, sandboxSeconds: 90 }],
+    ]);
+    const usage = projectUsage({ project: "shop", caps: { ...NO_CAPS, projects: { shop: 100 } }, ledger, sessions: [session("s1", 1), session("s2", 2)], costs, main: "shop--main" });
+    expect(usage).toMatchObject({ month: "2026-10", spent: 42, cap: 100, parts: { model: 30, sandbox: 12 }, main: { sandbox: 7 } });
+    expect(usage.builds.map((b) => [b.id, b.title, b.cost])).toEqual([
+      ["s2", "Build s2", NO_COST],
+      ["s1", "Build s1", { model: 20, sandbox: 5, sandboxSeconds: 60 }],
+    ]);
   });
 });

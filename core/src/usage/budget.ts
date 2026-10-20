@@ -1,3 +1,5 @@
+import type { SessionState } from "../session/machine.ts";
+
 export interface TokenUsage {
   readonly inputTokens: number;
   readonly outputTokens: number;
@@ -28,6 +30,7 @@ export interface Ledger {
   readonly projects: Readonly<Record<string, number>>;
   readonly members: Readonly<Record<string, number>>;
   readonly parts?: Readonly<Partial<Record<SpendPart, number>>>;
+  readonly projectParts?: Readonly<Record<string, Readonly<Partial<Record<SpendPart, number>>>>>;
 }
 
 export const NO_CAPS: Caps = { org: null, projects: {}, members: {} };
@@ -89,6 +92,38 @@ export interface SessionCost {
 
 export const NO_COST: SessionCost = { model: 0, sandbox: 0, sandboxSeconds: 0 };
 
+export interface BuildUsage {
+  readonly id: string;
+  readonly feature: string;
+  readonly title: string;
+  readonly state: SessionState;
+  readonly createdAt: number;
+  readonly cost: SessionCost;
+}
+
+export interface ProjectUsage {
+  readonly month: string;
+  readonly spent: number;
+  readonly cap: number | null;
+  readonly parts: Readonly<Partial<Record<SpendPart, number>>>;
+  readonly builds: readonly BuildUsage[];
+  readonly main: SessionCost;
+}
+
+export function projectUsage(input: { readonly project: string; readonly caps: Caps; readonly ledger: Ledger; readonly sessions: readonly { readonly id: string; readonly featureId: string; readonly createdAt: number; readonly plan: { readonly feature: { readonly title: string } }; readonly machine: { readonly state: SessionState } }[]; readonly costs: ReadonlyMap<string, SessionCost>; readonly main: string }): ProjectUsage {
+  const { project, caps, ledger, costs } = input;
+  return {
+    month: ledger.month,
+    spent: ledger.projects[project] ?? 0,
+    cap: caps.projects[project] ?? null,
+    parts: ledger.projectParts?.[project] ?? {},
+    builds: [...input.sessions]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((s) => ({ id: s.id, feature: s.featureId, title: s.plan.feature.title, state: s.machine.state, createdAt: s.createdAt, cost: costs.get(s.id) ?? NO_COST })),
+    main: costs.get(input.main) ?? NO_COST,
+  };
+}
+
 export function addCost(cost: SessionCost, part: SpendPart, micros: number, seconds = 0): SessionCost {
   return part === "sandbox" ? { ...cost, sandbox: cost.sandbox + micros, sandboxSeconds: cost.sandboxSeconds + seconds } : { ...cost, model: cost.model + micros };
 }
@@ -109,6 +144,7 @@ export function addSpend(ledger: Ledger, month: string, project: string, by: str
     projects: { ...base.projects, [project]: (base.projects[project] ?? 0) + micros },
     members: by ? { ...base.members, [by]: (base.members[by] ?? 0) + micros } : base.members,
     parts: { ...base.parts, [part]: (base.parts?.[part] ?? 0) + micros },
+    projectParts: { ...base.projectParts, [project]: { ...base.projectParts?.[project], [part]: (base.projectParts?.[project]?.[part] ?? 0) + micros } },
   };
 }
 
