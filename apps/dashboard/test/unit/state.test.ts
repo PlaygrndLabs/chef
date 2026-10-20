@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FeatureSpec, ChefEvent, SessionRecord } from "@chef/core";
 import { apply, emptyProject } from "../../src/lib/events.ts";
 import { featureNodes, featureTree, groupSessions, relationsOf, sessionNodes, sortFeatures } from "../../src/lib/model.ts";
-import { activity, plainReason, progress, splitCommands, stripFeatureTag, toolText, updates } from "../../src/lib/progress.ts";
+import { activity, plainReason, progress, splitCommands, stripFeatureTag, toolText, updates, wroteTests } from "../../src/lib/progress.ts";
 import { teamOf } from "../../src/lib/agents.ts";
 import { transcript, type Heard } from "../../src/lib/voice.ts";
 
@@ -86,6 +86,21 @@ describe("project event state", () => {
     expect(team.filter((m) => m.branch).map((m) => [m.role, m.state, m.branch])).toEqual([["backend", "done", "lane/backend"], ["frontend", "working", "lane/frontend"]]);
     const both = run([...events.slice(0, -2)]);
     expect(teamOf({ ...node, live: both.sessions["s1"] }).filter((m) => m.state === "working").map((m) => m.role)).toEqual(["backend", "frontend"]);
+  });
+
+  it("leaves out the reviewer and the tests step when the project turned them off", () => {
+    const s = run([
+      { type: "session.created", sessionId: "s1", featureId: "todo", fork: "f", reason: "new", attempt: attempt(), parent: null },
+      { type: "session.state", sessionId: "s1", featureId: "todo", from: "queued", to: "coding", reason: "planned" },
+      { type: "commit.created", sessionId: "s1", featureId: "todo", repo: "f", commitId: "c1", role: "backend", message: "m" },
+      { type: "session.state", sessionId: "s1", featureId: "todo", from: "coding", to: "merged", reason: "gate_passed" },
+    ]).sessions["s1"];
+    const record = (verdict: object | null, kinds: string[]) => ({ plan: { items: kinds.map((kind) => ({ kind, role: "backend" })) }, verdict }) as never;
+    const node = { id: "s1", featureId: "todo", state: "merged", attempt: null, parent: null, createdAt: 1, updatedAt: 1, needs: [], budget: null, ready: null, live: s, into: null, version: null } as const;
+    expect(teamOf({ ...node, record: record({ approve: true, reasons: [], skipped: true }, ["code"]) }).map((m) => m.role)).toEqual(["planner", "backend"]);
+    expect(teamOf({ ...node, record: record({ approve: true, reasons: [] }, ["code"]) }).map((m) => m.role)).toContain("reviewer");
+    expect(wroteTests(record(null, ["code"]), s?.timeline ?? [])).toBe(false);
+    expect(wroteTests(record(null, ["test", "code"]), s?.timeline ?? [])).toBe(true);
   });
 
   it("ignores replayed and malformed entries", () => {
