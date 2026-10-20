@@ -3,7 +3,9 @@ import { costMicros, readCap, type SpendGate, type SpendPart, type TokenUsage } 
 import { settingsStub } from "./settings.ts";
 import { USER_HEADER } from "./access.ts";
 
-const spender = new AsyncLocalStorage<{ readonly by: string | null }>();
+const spender = new AsyncLocalStorage<{ readonly by: string | null; readonly session?: string }>();
+
+export type SessionSpend = (session: string, part: SpendPart, micros: number) => Promise<void>;
 
 export function requester(request: Request): string | null {
   const by = request.headers.get(USER_HEADER);
@@ -23,19 +25,23 @@ export class EngineSpend implements SpendGate {
   constructor(
     private readonly env: Env,
     private readonly project: string,
+    private readonly onSession?: SessionSpend,
   ) {}
 
   blocked(by: string | null): Promise<string | null> {
     return settingsStub(this.env).spendBlocked(this.project, by, Date.now());
   }
 
-  async record(by: string | null, model: string, usage: TokenUsage, part: SpendPart = "model"): Promise<void> {
+  async record(by: string | null, model: string, usage: TokenUsage, part: SpendPart = "model", session?: string): Promise<void> {
     const micros = costMicros(model, usage);
-    if (micros > 0) await settingsStub(this.env).recordSpend(this.project, by, micros, Date.now(), part);
+    if (micros <= 0) return;
+    await settingsStub(this.env).recordSpend(this.project, by, micros, Date.now(), part);
+    const of = session ?? spender.getStore()?.session;
+    if (of && this.onSession) await this.onSession(of, part, micros).catch((error: unknown) => console.error(`saving the cost of ${this.project} ${of} failed`, error));
   }
 
-  scope<T>(by: string | null, work: () => Promise<T>): Promise<T> {
-    return spender.run({ by }, work);
+  scope<T>(by: string | null, work: () => Promise<T>, session?: string): Promise<T> {
+    return spender.run(session ? { by, session } : { by }, work);
   }
 }
 

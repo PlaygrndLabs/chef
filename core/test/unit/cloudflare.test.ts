@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { agentsOf, cloudflareView, dashboardLink, engineOf, type CloudflareFacts } from "../../src/index.ts";
+import { addCost, agentsOf, cloudflareView, NO_COST, sandboxMicros, dashboardLink, engineOf, type CloudflareFacts } from "../../src/index.ts";
 
 const box = (name: string, running = false) => ({ name, objectId: `id-${name}`, running, exit: null });
+
+const session = {
+  id: "s-1",
+  fork: "fresh--s-1",
+  remote: "https://acc1.artifacts.cloudflare.net/git/chef-dev/fresh--s-1.git",
+  removed: null,
+  head: "bbbbbbbbbbbbbbbb",
+  lanes: [{ role: "frontend", branch: "lane/frontend", head: "cccccccccccccccc" }],
+} as const;
 
 const facts: CloudflareFacts = {
   accountId: "acc1",
@@ -12,14 +21,7 @@ const facts: CloudflareFacts = {
   namespaces: { SessionAgent: "ns-session", ProjectAgent: "ns-project" },
   containerApp: { name: "chef-dev-sessionagent", id: "app1" },
   main: { remote: "https://acc1.artifacts.cloudflare.net/git/chef-dev/fresh.git", commitId: "aaaaaaaaaaaaaaaa" },
-  session: {
-    id: "s-1",
-    fork: "fresh--s-1",
-    remote: "https://acc1.artifacts.cloudflare.net/git/chef-dev/fresh--s-1.git",
-    removed: null,
-    head: "bbbbbbbbbbbbbbbb",
-    lanes: [{ role: "frontend", branch: "lane/frontend", head: "cccccccccccccccc" }],
-  },
+  session,
   agents: { sandbox: ["test"], engine: ["planner", "reviewer"] },
   sandboxes: { session: box("s-1", true), main: box("fresh--main") },
   app: { name: "s-1-fresh", url: "https://s-1-fresh-chef-dev-app.acme.workers.dev", status: "running", commitId: "bbbbbbbbbbbbbbbb" },
@@ -41,7 +43,7 @@ describe("Cloudflare view of a session", () => {
     const view = cloudflareView(facts);
     const byKey = Object.fromEntries(view.resources.map((r) => [r.key, r]));
     expect(byKey["fork"]?.name).toBe("chef-dev/fresh--s-1");
-    expect(byKey["fork"]?.facts.find((f) => f.label === "Git remote")?.value).toBe(facts.session.remote);
+    expect(byKey["fork"]?.facts.find((f) => f.label === "Git remote")?.value).toBe(session.remote);
     expect(byKey["sandbox"]?.state).toEqual({ tone: "run", text: "Running" });
     expect(byKey["sandbox"]?.facts.find((f) => f.label === "Application")?.value).toBe("chef-dev-sessionagent · app1");
     expect(byKey["sandbox"]?.roles).toEqual(["test", "frontend"]);
@@ -76,13 +78,37 @@ describe("Cloudflare view of a session", () => {
   });
 
   it("says when the session repo is gone", () => {
-    const view = cloudflareView({ ...facts, session: { ...facts.session, removed: "dropped", remote: null } });
+    const view = cloudflareView({ ...facts, session: { ...session, removed: "dropped", remote: null } });
     const fork = view.resources.find((r) => r.key === "fork");
     expect(fork?.state?.tone).toBe("gone");
     expect(fork?.facts.find((f) => f.label === "Archive")?.value).toBe("chef-dev/fresh archive/s-1");
   });
 
+  it("lists only the project's own resources when no build is asked for", () => {
+    const view = cloudflareView({ ...facts, session: null, sandboxes: { session: null, main: box("fresh--main") }, app: null });
+    expect(view.resources.every((r) => r.group === "project")).toBe(true);
+    expect(view.resources.map((r) => r.key)).toContain("sandbox:main");
+  });
+
+  it("carries what a sandbox cost so far", () => {
+    const view = cloudflareView({ ...facts, sandboxes: { session: { ...box("s-1"), spent: { micros: 54_000, seconds: 3600 } }, main: null } });
+    expect(view.resources.find((r) => r.key === "sandbox")?.spent).toEqual({ micros: 54_000, seconds: 3600 });
+  });
+
   it("never carries a token", () => {
     expect(JSON.stringify(cloudflareView(facts))).not.toMatch(/token|secret|Bearer/i);
+  });
+});
+
+describe("Cloudflare cost of a sandbox", () => {
+  it("prices memory and disk for every second it is up and CPU only when busy", () => {
+    expect(sandboxMicros({ memoryMib: 6144, diskMb: 12_000, seconds: 3600, cpuSeconds: 0 })).toBeCloseTo(6 * 3600 * 2.5 + 12 * 3600 * 0.07);
+    expect(sandboxMicros({ memoryMib: 3072, diskMb: 12_000, seconds: 0, cpuSeconds: 10 })).toBe(200);
+    expect(sandboxMicros({ memoryMib: 3072, diskMb: 12_000, seconds: -5, cpuSeconds: -1 })).toBe(0);
+  });
+
+  it("adds model and sandbox spend to a build's cost", () => {
+    const cost = addCost(addCost(NO_COST, "model", 300), "sandbox", 100, 60);
+    expect(addCost(cost, "router", 5)).toEqual({ model: 305, sandbox: 100, sandboxSeconds: 60 });
   });
 });

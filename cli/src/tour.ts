@@ -299,8 +299,18 @@ export async function tour(options: TourOptions): Promise<TourReport> {
             await go(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=${panel}`);
             await shot(`final-${panel}`);
           }
-          if (await reveal(page, '[data-cf="sandbox"]')) await shot("final-details-sandbox");
+          if (await reveal(page, '[data-cf="sandbox"] [data-cf-row]')) {
+            await page.locator('[data-cf="sandbox"] [data-cf-row]').first().click();
+            await shot("final-details-sandbox");
+          }
+          const dark = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base, colorScheme: "dark", storageState: await context.storageState() });
+          const night = await dark.newPage();
+          await night.goto(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=details`);
+          await shot("final-details-dark", night);
+          await dark.close();
         }
+        await go(`/?project=${project}&settings=project.cloudflare`);
+        await shot("project-cloudflare");
         const laned = sessions.filter((s) => s.lanes?.length).at(-1);
         for (const lane of laned?.lanes ?? []) {
           await go(`/?project=${project}&feature=${laned?.featureId}&session=${laned?.id}&panel=messages&role=${lane.role}`);
@@ -313,6 +323,8 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         if (latest) {
           await phone.goto(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}`);
           await shot("phone-feature", phone);
+          await phone.goto(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=details`);
+          await shot("phone-details", phone);
         }
         break;
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exitedForMemory, nextStep, oomKills, SANDBOX_SIZES, sandboxSize, sizeLabel } from "../../src/sandbox-size.ts";
+import { busySeconds, exitedForMemory, nextStep, oomKills, SANDBOX_SIZES, sandboxSize, sizeLabel } from "../../src/sandbox-size.ts";
 
 describe("sandbox sizes", () => {
   it("start with 3 GiB on one vCPU and grow to the largest custom instance", () => {
@@ -28,5 +28,10 @@ describe("sandbox sizes", () => {
     expect(exitedForMemory("OOM killed")).toBe(true);
     expect(exitedForMemory("its main process exited")).toBe(false);
     expect(exitedForMemory(null)).toBe(false);
+  });
+
+  it("reads how long the CPU was busy from the kernel's counters", () => {
+    expect(busySeconds("cpu  1000 50 450 90000 300 20 30 0 0 0\ncpu0 1000 50 450 90000 300 20 30 0 0 0\n")).toBe(15.5);
+    expect(busySeconds("nothing here")).toBeNull();
   });
 });

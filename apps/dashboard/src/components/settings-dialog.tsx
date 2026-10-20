@@ -271,7 +271,7 @@ export function SettingsDialog(props: {
       id: "usage",
       label: "Usage",
       icon: Wallet,
-      note: "What Chef spends on models this month, and the budgets that pause work when they are reached.",
+      note: "What Chef spends on models and sandboxes this month, and the budgets that pause work when they are reached.",
       render: () => <UsageSection />,
     },
     {

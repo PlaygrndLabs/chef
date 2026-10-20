@@ -35,3 +35,11 @@ export function oomKills(vmstat: string): number | null {
 export function exitedForMemory(exit: string | null): boolean {
   return exit !== null && /out of memory|\boom\b|memory limit/i.test(exit);
 }
+
+export function busySeconds(stat: string): number | null {
+  const match = /^cpu\s+(.+)$/m.exec(stat);
+  if (!match?.[1]) return null;
+  const [user = 0, nice = 0, system = 0, , , irq = 0, softirq = 0] = match[1].trim().split(/\s+/).map(Number);
+  const busy = (user + nice + system + irq + softirq) / 100;
+  return Number.isFinite(busy) ? busy : null;
+}

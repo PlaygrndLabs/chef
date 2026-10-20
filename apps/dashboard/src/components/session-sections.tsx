@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { COMPOSE_PROMPT } from "@chef/core/app";
 import { AppFrame, loadTone, useAppLoad } from "@/components/app-frame";
 import { CloudflareList, CloudflareSections } from "@/components/cloudflare-resources";
-import { ago, appHost, short, tokens } from "@/lib/format";
+import { ago, appHost, cost as formatCost, duration, short, tokens } from "@/lib/format";
 import type { SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
@@ -309,27 +309,44 @@ function Meter({ label, value, max, text }: { readonly label: string; readonly v
   );
 }
 
+function CostLine({ label, value, note }: { readonly label: string; readonly value: string; readonly note?: string }) {
+  return (
+    <div className="flex items-baseline gap-2 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      {note ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{note}</span> : <span className="flex-1" />}
+      <span className="tabular-nums">{value}</span>
+    </div>
+  );
+}
+
 export function DetailsTab({ node }: { readonly node: SessionNode }) {
-  const { api } = useWorkspace();
+  const { api, openSettings } = useWorkspace();
   const detail = useFetch(() => api.session(node.id), `${node.id}:${node.state}:${node.record?.updatedAt ?? 0}`, node.id);
-  const turns = useFetch(() => api.turns(node.id), `${node.id}:${node.live?.commits.length ?? node.record?.commits.length ?? 0}`, node.id);
   const cloudflare = useFetch(() => api.cloudflare(node.id), `${node.id}:${node.state}:${node.record?.updatedAt ?? 0}`, node.id);
   const record = detail.data?.record ?? node.record;
   const budget = detail.data?.budget;
+  const spent = detail.data?.cost;
   const usage = record?.machine.usage;
   return (
-    <div className="flex flex-col gap-6">
-      <Section title="On Cloudflare">
-        <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} session={node.id} />
-      </Section>
-      <Section title="Steps saved as commits">
-        {turns.loading && !turns.data ? <Skeleton className="h-16" /> : null}
-        {turns.data?.length === 0 ? <p className="text-sm text-muted-foreground">No commits yet.</p> : null}
-        {turns.error ? <p className="text-sm text-muted-foreground">Could not load the commits: {turns.error}</p> : null}
-        <CommitList turns={turns.data ?? []} />
+    <div className="mx-auto flex max-w-3xl flex-col gap-8" data-details>
+      <Section title="Cost so far">
+        {detail.loading && !detail.data ? <Skeleton className="h-20" /> : null}
+        {spent ? (
+          <div className="flex flex-col gap-1.5" data-build-cost>
+            <div className="flex items-baseline justify-between dash-b pb-2">
+              <span className="text-sm">This build</span>
+              <span className="text-xl tabular-nums" data-build-cost-total>
+                {formatCost(spent.model + spent.sandbox)}
+              </span>
+            </div>
+            <CostLine label="Model" note="planning, writing code and review" value={formatCost(spent.model)} />
+            <CostLine label="Sandbox" note={spent.sandboxSeconds ? `up ${duration(spent.sandboxSeconds * 1000)} on Cloudflare` : "on Cloudflare"} value={formatCost(spent.sandbox)} />
+            <p className="text-xs text-muted-foreground">Estimated at list prices, and counted in Usage and the monthly budgets.</p>
+          </div>
+        ) : null}
       </Section>
       {usage && budget ? (
-        <Section title="Budget">
+        <Section title="Tries and tokens">
           <Meter label="Tries" value={usage.attempts} max={budget.maxAttempts} text={`${usage.attempts} of ${budget.maxAttempts}`} />
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Tokens</span>
@@ -337,6 +354,16 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
           </div>
         </Section>
       ) : null}
+      <Section title="On Cloudflare">
+        <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} session={node.id} group="session" />
+        <p className="text-xs text-muted-foreground">
+          Only what this build uses. What the whole project shares is in{" "}
+          <button type="button" onClick={() => openSettings("project", "cloudflare")} className="underline underline-offset-2 hover:text-foreground" data-open-project-cloudflare>
+            Project settings
+          </button>
+          .
+        </p>
+      </Section>
       {node.live?.recalled.length ? (
         <Section title="Lessons it remembered">
           <ul className="flex flex-col gap-1 font-mono text-xs">

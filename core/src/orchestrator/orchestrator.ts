@@ -789,7 +789,7 @@ export class Orchestrator {
           if (synced === "conflict") return await this.save(record);
         }
         if (record.upstream && record.head && record.machine.state !== "queued" && (await this.followUpstream(record)) === "conflict") return await this.save(record);
-        await (this.deps.spend ? this.deps.spend.scope(record.requestedBy ?? null, () => this.advance(record)) : this.advance(record));
+        await (this.deps.spend ? this.deps.spend.scope(record.requestedBy ?? null, () => this.advance(record), record.id) : this.advance(record));
         if (await this.deps.store.get<number | null>(`retry/${id}`)) await this.deps.store.put(`retry/${id}`, null);
       } catch (error) {
         if (error instanceof TurnRunning) return await this.save(record);
@@ -2011,7 +2011,7 @@ export class Orchestrator {
   private async finishTurn(record: SessionRecord, item: WorkItem, turn: StartedTurn, lane?: Lane): Promise<"committed" | "empty" | "rejected"> {
     const { head, feature, scope, prompt, result } = turn;
     record.machine = addTokens(record.machine, result.usage.inputTokens + result.usage.outputTokens);
-    await this.deps.spend?.record(record.requestedBy ?? null, result.model, result.usage);
+    await this.deps.spend?.record(record.requestedBy ?? null, result.model, result.usage, "model", record.id);
     const generated = this.generatedPaths(head.tree);
     const paths = changedPaths(result.changes).filter((p) => !generated.has(p));
     const outside = outOfScope(paths, scope);

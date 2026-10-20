@@ -21,6 +21,12 @@ export interface CloudflareResource {
   readonly state?: { readonly tone: CloudflareTone; readonly text: string };
   readonly facts: readonly CloudflareFact[];
   readonly dashboard: string | null;
+  readonly spent?: SandboxSpent;
+}
+
+export interface SandboxSpent {
+  readonly micros: number;
+  readonly seconds: number;
 }
 
 export interface CloudflareView {
@@ -35,6 +41,7 @@ export interface SandboxFacts {
   readonly running: boolean;
   readonly exit: string | null;
   readonly size?: string | null;
+  readonly spent?: SandboxSpent | null;
 }
 
 export interface CloudflareFacts {
@@ -46,7 +53,7 @@ export interface CloudflareFacts {
   readonly namespaces: Readonly<Partial<Record<"ProjectAgent" | "SessionAgent", string>>>;
   readonly containerApp: { readonly name: string; readonly id: string | null };
   readonly main: { readonly remote: string | null; readonly commitId: string | null };
-  readonly session: {
+  readonly session: null | {
     readonly id: string;
     readonly fork: string;
     readonly remote: string | null;
@@ -55,7 +62,7 @@ export interface CloudflareFacts {
     readonly lanes: readonly { readonly role: string; readonly branch: string; readonly head: string | null }[];
   };
   readonly agents: { readonly sandbox: readonly string[]; readonly engine: readonly string[] };
-  readonly sandboxes: { readonly session: SandboxFacts; readonly main: SandboxFacts | null };
+  readonly sandboxes: { readonly session: SandboxFacts | null; readonly main: SandboxFacts | null };
   readonly app: { readonly name: string; readonly url: string | null; readonly status: AppStatus | null; readonly commitId: string | null } | null;
   readonly mainApp: { readonly url: string | null; readonly commitId: string; readonly status: AppStatus } | null;
 }
@@ -90,53 +97,58 @@ function sandbox(facts: CloudflareFacts, key: string, title: string, box: Sandbo
       ...(box.exit ? [{ label: "Last exit", value: box.exit }] : []),
     ],
     dashboard: dashboardLink(facts.accountId, "workers/containers"),
+    ...(box.spent ? { spent: box.spent } : {}),
   };
 }
 
 export function cloudflareView(facts: CloudflareFacts): CloudflareView {
   const s = facts.session;
-  const laneRoles = s.lanes.map((l) => l.role);
+  const box = facts.sandboxes.session;
+  const laneRoles = s ? s.lanes.map((l) => l.role) : [];
   const engineRoles = facts.agents.engine;
   const coders = unique([...facts.agents.sandbox, ...laneRoles]);
   const reviewer = engineRoles.filter((r) => r === "reviewer");
   const workerPage = (name: string, tab = "") => dashboardLink(facts.accountId, `workers/services/view/${encodeURIComponent(name)}/production${tab}`);
-  const resources: CloudflareResource[] = [
-    {
-      key: "fork",
-      group: "session",
-      kind: "repo",
-      title: "Artifacts repo",
-      name: `${facts.engine}/${s.fork}`,
-      roles: unique([...coders, ...reviewer]),
-      state: s.removed === "merged" ? { tone: "gone", text: "Removed after merge" } : s.removed === "dropped" ? { tone: "gone", text: "Removed, kept as an archive branch" } : { tone: "ok", text: "Active" },
-      facts: [
-        { label: "Namespace", value: facts.engine },
-        { label: "Branch", value: laneRoles.length ? `main, plus one branch per role` : "main" },
-        { label: "Head", value: short(s.head) },
-        ...(s.remote ? [{ label: "Git remote", value: s.remote, copy: true }] : []),
-        { label: "Forked from", value: `${facts.engine}/${facts.project}` },
-        ...(s.removed === "dropped" && s.head ? [{ label: "Archive", value: `${facts.engine}/${facts.project} archive/${s.id}` }] : []),
-      ],
-      dashboard: null,
-    },
-    ...s.lanes.map(
-      (lane): CloudflareResource => ({
-        key: `branch:${lane.role}`,
+  const resources: CloudflareResource[] = [];
+  if (s && box) {
+    resources.push(
+      {
+        key: "fork",
         group: "session",
-        kind: "branch",
-        title: "Role branch",
-        name: lane.branch,
-        roles: [lane.role],
+        kind: "repo",
+        title: "Artifacts repo",
+        name: `${facts.engine}/${s.fork}`,
+        roles: unique([...coders, ...reviewer]),
+        state: s.removed === "merged" ? { tone: "gone", text: "Removed after merge" } : s.removed === "dropped" ? { tone: "gone", text: "Removed, kept as an archive branch" } : { tone: "ok", text: "Active" },
         facts: [
-          { label: "Repo", value: `${facts.engine}/${s.fork}` },
-          { label: "Head", value: short(lane.head) },
+          { label: "Namespace", value: facts.engine },
+          { label: "Branch", value: laneRoles.length ? `main, plus one branch per role` : "main" },
+          { label: "Head", value: short(s.head) },
+          ...(s.remote ? [{ label: "Git remote", value: s.remote, copy: true }] : []),
+          { label: "Forked from", value: `${facts.engine}/${facts.project}` },
+          ...(s.removed === "dropped" && s.head ? [{ label: "Archive", value: `${facts.engine}/${facts.project} archive/${s.id}` }] : []),
         ],
         dashboard: null,
-      }),
-    ),
-    sandbox(facts, "sandbox", "Sandbox container", facts.sandboxes.session, unique([...facts.agents.sandbox, ...laneRoles]), `${facts.agents.sandbox.length ? "agent turns on main, " : ""}${laneRoles.length ? "each role's turns on its own branch in its own folder, " : ""}the final checks and this build's running app`),
-  ];
-  if (facts.app) {
+      },
+      ...s.lanes.map(
+        (lane): CloudflareResource => ({
+          key: `branch:${lane.role}`,
+          group: "session",
+          kind: "branch",
+          title: "Role branch",
+          name: lane.branch,
+          roles: [lane.role],
+          facts: [
+            { label: "Repo", value: `${facts.engine}/${s.fork}` },
+            { label: "Head", value: short(lane.head) },
+          ],
+          dashboard: null,
+        }),
+      ),
+      sandbox(facts, "sandbox", "Sandbox container", box, unique([...facts.agents.sandbox, ...laneRoles]), `${facts.agents.sandbox.length ? "agent turns on main, " : ""}${laneRoles.length ? "each role's turns on its own branch in its own folder, " : ""}the final checks and this build's running app`),
+    );
+  }
+  if (s && box && facts.app) {
     const app = facts.app;
     resources.push({
       key: "app",
@@ -148,7 +160,7 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
       state: appState(app.status),
       facts: [
         { label: "Router", value: facts.router },
-        { label: "Forwards to", value: `the sandbox ${facts.sandboxes.session.name}` },
+        { label: "Forwards to", value: `the sandbox ${box.name}` },
         ...(app.commitId ? [{ label: "Running", value: short(app.commitId) }] : []),
         ...(app.url ? [{ label: "URL", value: app.url, href: app.url }] : []),
       ],

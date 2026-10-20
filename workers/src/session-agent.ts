@@ -1,12 +1,12 @@
 import { Agent } from "agents";
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { APP_START_SECONDS, type AppStatus, type CoderEvent, type CoderTurnResult, type CustomAgent, type FileChanges, type TurnResume } from "@chef/core";
+import { APP_START_SECONDS, sandboxMicros, type AppStatus, type CoderEvent, type CoderTurnResult, type CustomAgent, type FileChanges, type TurnResume } from "@chef/core";
 import { APP_REQUEST_HEADER } from "@chef/adapters/app-gate";
 import { appPage } from "@chef/adapters/app-page";
 import { layerStore } from "./image-layers.ts";
 import { LAYER_CACHE_ADDRESS, layerCacheFetch } from "./layer-cache.ts";
 import { TRANSCRIPT_ADDRESS, transcriptFetch } from "./transcripts.ts";
-import { exitedForMemory, nextStep, oomKills, sandboxSize, sizeLabel, sizeStep } from "./sandbox-size.ts";
+import { busySeconds, exitedForMemory, nextStep, oomKills, sandboxSize, sizeLabel, sizeStep } from "./sandbox-size.ts";
 
 export const PLACEHOLDER = "chef-placeholder";
 
@@ -136,6 +136,8 @@ const SIZE = "sandbox/size";
 const RUNNING_SIZE = "sandbox/running-size";
 const OOM_BASE = "sandbox/oom-base";
 const RESTART = "sandbox/restart";
+const RUN = "sandbox/run";
+const CPU_STAT = "head -n 1 /proc/stat";
 const RESET_CHECK_MS = 30_000;
 const RESTART_GRACE_MS = 5 * 60_000;
 const APP = "sandbox/app";
@@ -147,7 +149,14 @@ const TURNS_DIR = "/workspace/turns";
 
 type Outbound = Omit<OutboundAccess, "llmKey" | "project">;
 
-type SizeStub = { sandboxStep(): Promise<number>; sandboxNeeds(step: number): Promise<void> };
+type SizeStub = { sandboxStep(): Promise<number>; sandboxNeeds(step: number): Promise<void>; sandboxSpent(sandbox: string, micros: number, seconds: number): Promise<void> };
+
+interface Alive {
+  readonly run: number;
+  readonly since: number;
+  readonly step: number;
+  readonly cpu: number | null;
+}
 
 function cacheScope(remote: string): string {
   const url = new URL(remote);
@@ -184,6 +193,7 @@ export class SessionAgent extends Agent<Env> {
 
   async status(): Promise<SandboxStatus> {
     const running = this.ctx.container?.running ?? false;
+    if (running) await this.settle(false).catch((error: unknown) => console.error(`counting the time of sandbox ${this.name} failed`, error));
     return { running, exit: this.exit, size: running ? sizeLabel(sandboxSize(await this.ctx.storage.get<number>(RUNNING_SIZE))) : null };
   }
 
@@ -220,7 +230,10 @@ export class SessionAgent extends Agent<Env> {
 
   async discard(): Promise<void> {
     const container = this.ctx.container;
-    if (container?.running) await container.destroy().catch(() => undefined);
+    if (container?.running) {
+      await this.settle(true, await this.cpuNow()).catch(() => undefined);
+      await container.destroy().catch(() => undefined);
+    }
     await this.destroy();
   }
 
@@ -230,6 +243,7 @@ export class SessionAgent extends Agent<Env> {
     const lastUsed = (await this.ctx.storage.get<number>(LAST_USED)) ?? 0;
     const idleFor = Date.now() - lastUsed;
     const idleSeconds = await this.idleSeconds();
+    await this.settle(false, await this.cpuNow()).catch((error: unknown) => console.error(`counting the time of sandbox ${this.name} failed`, error));
     if (this.busy === 0 && idleFor >= idleSeconds * 1000 && !(await this.turnAlive())) {
       await container.destroy();
       return;
@@ -480,6 +494,42 @@ export class SessionAgent extends Agent<Env> {
     await (this.env.PROJECT.get(this.env.PROJECT.idFromName(state.project)) as unknown as { wakeApp(target: string): Promise<void> }).wakeApp(state.target).catch((error: unknown) => console.error(`waking the app of ${state.target} failed`, error));
   }
 
+  private stopped(exit: string, run: number): void {
+    this.exit = exit;
+    this.ctx.waitUntil(this.settle(true, null, run).catch((error: unknown) => console.error(`counting the time of sandbox ${this.name} failed`, error)));
+  }
+
+  private async cpuNow(): Promise<number | null> {
+    if (!this.ctx.container?.running) return null;
+    return busySeconds((await this.shell(CPU_STAT, {}).catch(() => ({ code: 1, out: "" }))).out);
+  }
+
+  private async settle(stopped: boolean, cpu: number | null = null, run?: number): Promise<void> {
+    const alive = await this.ctx.storage.get<Alive>(RUN);
+    if (!alive || (run !== undefined && alive.run !== run)) return;
+    const now = Date.now();
+    const cpuSeconds = cpu !== null && alive.cpu !== null ? Math.max(0, cpu - alive.cpu) : 0;
+    if (stopped) await this.ctx.storage.delete(RUN);
+    else await this.ctx.storage.put(RUN, { ...alive, since: now, cpu: cpu ?? alive.cpu } satisfies Alive);
+    await this.report(alive.step, (now - alive.since) / 1000, cpuSeconds);
+  }
+
+  private async closeStale(): Promise<void> {
+    const alive = await this.ctx.storage.get<Alive>(RUN);
+    if (!alive) return;
+    const lastUsed = (await this.ctx.storage.get<number>(LAST_USED)) ?? alive.since;
+    const end = Math.min(Date.now(), Math.max(alive.since, lastUsed) + (await this.idleSeconds()) * 1000);
+    await this.ctx.storage.delete(RUN);
+    await this.report(alive.step, (end - alive.since) / 1000, 0);
+  }
+
+  private async report(step: number, seconds: number, cpuSeconds: number): Promise<void> {
+    const size = sandboxSize(step);
+    const micros = sandboxMicros({ memoryMib: size.memoryMib, diskMb: size.diskMb, seconds, cpuSeconds });
+    if (micros <= 0) return;
+    await (await this.owner())?.sandboxSpent(this.name, micros, Math.max(0, seconds));
+  }
+
   private async idleSeconds(): Promise<number> {
     const app = await this.ctx.storage.get<AppState>(APP);
     return Math.max(SANDBOX_IDLE_SECONDS, app && app.status === "running" ? app.idleMinutes * 60 : 0);
@@ -618,15 +668,18 @@ export class SessionAgent extends Agent<Env> {
   private async startContainer(container: Container): Promise<Container> {
     this.exit = null;
     this.intercepted.clear();
+    await this.closeStale().catch((error: unknown) => console.error(`counting the last run of sandbox ${this.name} failed`, error));
     const step = await this.startStep();
+    const run = Date.now();
     container.start({ image: container.images["coder"] as string, enableInternet: true, instance: sandboxSize(step) });
     container.monitor().then(
-      () => (this.exit = "its main process exited"),
-      (error: unknown) => (this.exit = String(error)),
+      () => this.stopped("its main process exited", run),
+      (error: unknown) => this.stopped(String(error), run),
     );
     for (let waited = 0; !container.running && !this.exit && waited < 60_000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
     if (!container.running) throw new Error(`the sandbox container did not start: ${this.exit ?? "timed out"}`);
     await this.ctx.storage.put(RUNNING_SIZE, step);
+    await this.ctx.storage.put(RUN, { run, since: Date.now(), step, cpu: await this.cpuNow() } satisfies Alive);
     await this.ctx.storage.delete(RESTART);
     const kills = oomKills((await this.shell(VMSTAT, {}).catch(() => ({ code: 1, out: "" }))).out);
     if (kills === null) await this.ctx.storage.delete(OOM_BASE);

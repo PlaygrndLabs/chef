@@ -6,14 +6,14 @@ export interface TokenUsage {
   readonly audioOutputTokens?: number;
 }
 
-export const SPEND_PARTS = ["model", "router", "voice"] as const;
+export const SPEND_PARTS = ["model", "router", "voice", "sandbox"] as const;
 
 export type SpendPart = (typeof SPEND_PARTS)[number];
 
 export interface SpendGate {
   blocked(by: string | null): Promise<string | null>;
-  record(by: string | null, model: string, usage: TokenUsage, part?: SpendPart): Promise<void>;
-  scope<T>(by: string | null, work: () => Promise<T>): Promise<T>;
+  record(by: string | null, model: string, usage: TokenUsage, part?: SpendPart, session?: string): Promise<void>;
+  scope<T>(by: string | null, work: () => Promise<T>, session?: string): Promise<T>;
 }
 
 export interface Caps {
@@ -62,6 +62,35 @@ export function costMicros(model: string, usage: TokenUsage): number {
   const input = (usage.inputTokens - cached - audioIn) * price.input + audioIn * (price.audioInput ?? price.input) + cached * price.input * 0.1;
   const output = (usage.outputTokens - audioOut) * price.output + audioOut * (price.audioOutput ?? price.output);
   return Math.round(input + output);
+}
+
+export const CONTAINER_RATES = { memoryGibSecond: 2.5, diskGbSecond: 0.07, vcpuSecond: 20 } as const;
+
+export interface SandboxRun {
+  readonly memoryMib: number;
+  readonly diskMb: number;
+  readonly seconds: number;
+  readonly cpuSeconds: number;
+}
+
+export function sandboxMicros(run: SandboxRun): number {
+  const seconds = Math.max(0, run.seconds);
+  const memory = (run.memoryMib / 1024) * seconds * CONTAINER_RATES.memoryGibSecond;
+  const disk = (run.diskMb / 1000) * seconds * CONTAINER_RATES.diskGbSecond;
+  const cpu = Math.max(0, run.cpuSeconds) * CONTAINER_RATES.vcpuSecond;
+  return memory + disk + cpu;
+}
+
+export interface SessionCost {
+  readonly model: number;
+  readonly sandbox: number;
+  readonly sandboxSeconds: number;
+}
+
+export const NO_COST: SessionCost = { model: 0, sandbox: 0, sandboxSeconds: 0 };
+
+export function addCost(cost: SessionCost, part: SpendPart, micros: number, seconds = 0): SessionCost {
+  return part === "sandbox" ? { ...cost, sandbox: cost.sandbox + micros, sandboxSeconds: cost.sandboxSeconds + seconds } : { ...cost, model: cost.model + micros };
 }
 
 export function monthOf(now: number): string {
