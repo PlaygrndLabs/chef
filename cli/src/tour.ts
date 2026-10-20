@@ -158,7 +158,14 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     let deleting: string | null = null;
     page.on("response", (response) => {
       if (deleting && response.status() === 409 && new RegExp(`/(api/projects|agents/project|app)/${deleting}[/?]`).test(response.url())) return;
-      if (response.status() >= 400 && response.request().method() !== "HEAD") report.errors.push(`http ${response.status()} ${response.request().method()} ${response.url()}`);
+      if (response.status() < 400 || response.request().method() === "HEAD") return;
+      if (deleting && response.status() === 503 && new URL(response.url()).hostname.includes(`-${deleting}-`)) return;
+      const line = `http ${response.status()} ${response.request().method()} ${response.url()} after ${report.shots.at(-1) ?? "the start"}${deleting ? ` while deleting ${deleting}` : ""}`;
+      report.errors.push(line);
+      void response.text().then(
+        (body) => void (report.errors[report.errors.indexOf(line)] = `${line}: ${body.replace(/\s+/g, " ").trim().slice(0, 300)}`),
+        () => undefined,
+      );
     });
     page.on("console", (message) => {
       if (message.type() !== "error" || message.text().startsWith("Failed to load resource")) return;
