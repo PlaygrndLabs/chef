@@ -377,7 +377,7 @@ export interface ProjectBudget {
 
 export interface Spending {
   readonly caps: { readonly org: number | null; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>> };
-  readonly ledger: { readonly month: string; readonly org: number; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>>; readonly parts?: Readonly<Partial<Record<SpendPart, number>>> };
+  readonly ledger: { readonly month: string; readonly org: number; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>>; readonly parts?: Readonly<Partial<Record<SpendPart, number>>>; readonly projectParts?: Readonly<Record<string, Readonly<Partial<Record<SpendPart, number>>>>> };
 }
 
 export const usageApi = {

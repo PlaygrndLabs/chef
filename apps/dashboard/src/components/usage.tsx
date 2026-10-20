@@ -122,21 +122,18 @@ export function UsageSection() {
           </ul>
         </Group>
       ) : null}
-      <Group title="Projects" note="Each project's budget is set in its own settings, under General.">
+      <Group title="Projects" note="What each project spent this month: model calls and its sandboxes on Cloudflare. Open a project to see what each of its builds cost and to set its budget.">
         {projects.length === 0 ? (
           <p className="text-xs text-muted-foreground">No spending yet this month.</p>
         ) : (
-          <ul className="grid gap-1.5" id="project-spending">
-            {projects.map((name) => (
-              <li key={name} className="flex items-center gap-2 text-sm" data-project-spent={name}>
-                <span className="min-w-0 flex-1 truncate">{name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {money(ledger.projects[name] ?? 0)}
-                  {caps.projects[name] !== undefined ? ` of ${money(caps.projects[name])}` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-col" id="project-spending">
+            <Cells className="pb-1.5 text-xs text-muted-foreground" cells={[<span key="t">Project</span>, <span key="m">Model</span>, <span key="s">Sandbox</span>, <span key="a">Total</span>]} />
+            <ul className="flex flex-col dash-t">
+              {projects.map((name) => (
+                <ProjectRow key={name} name={name} spent={ledger.projects[name] ?? 0} sandbox={ledger.projectParts?.[name]?.sandbox ?? 0} cap={caps.projects[name]} />
+              ))}
+            </ul>
+          </div>
         )}
       </Group>
       {members.length > 0 ? (
@@ -158,6 +155,37 @@ export function UsageSection() {
 
 function Cells({ cells, className }: { readonly cells: readonly React.ReactNode[]; readonly className?: string }) {
   return <div className={cn("grid grid-cols-[minmax(0,1fr)_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 sm:grid-cols-[minmax(0,1fr)_4.25rem_4.25rem_4.25rem] sm:gap-x-2 text-sm [&>*:not(:first-child)]:text-right [&>*:not(:first-child)]:tabular-nums", className)}>{cells}</div>;
+}
+
+function ProjectRow(props: { readonly name: string; readonly spent: number; readonly sandbox: number; readonly cap: number | undefined }) {
+  const workspace = useOptionalWorkspace();
+  const live = workspace?.projects.includes(props.name) ?? false;
+  const cells = (
+    <Cells
+      cells={[
+        <span key="t" className="truncate">
+          {props.name}
+          {props.cap !== undefined ? <span className="text-xs text-muted-foreground"> of {money(props.cap)}</span> : null}
+        </span>,
+        <span key="m" className="text-xs text-muted-foreground">{cost(props.spent - props.sandbox)}</span>,
+        <span key="s" className="text-xs text-muted-foreground">{cost(props.sandbox)}</span>,
+        <span key="a">{cost(props.spent)}</span>,
+      ]}
+    />
+  );
+  return (
+    <li className="dash-b last:border-b-0" data-project-spent={props.name}>
+      {live && workspace ? (
+        <button type="button" className="w-full py-2 text-left hover:bg-muted/60" title={`Open ${props.name}'s usage`} onClick={() => workspace.select({ project: props.name, view: "project", feature: null, session: null, panel: null, settings: { scope: "project", section: "usage" }, item: null })}>
+          {cells}
+        </button>
+      ) : (
+        <div className="py-2" title={workspace ? `${props.name} was deleted` : undefined}>
+          {cells}
+        </div>
+      )}
+    </li>
+  );
 }
 
 function BuildRow({ build }: { readonly build: BuildUsage }) {

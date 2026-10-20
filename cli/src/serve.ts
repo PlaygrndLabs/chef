@@ -96,6 +96,15 @@ export async function serve(options: { readonly port: number; readonly project?:
   const assets = options.assets ?? join(REPO_ROOT, "apps", "dashboard", "dist");
   if (!existsSync(join(assets, "index.html"))) log(`no dashboard build in ${assets}; run pnpm build`);
 
+  const localCaps = (name: string) => ({ org: null, projects: { [name]: 5_000_000 }, members: {} });
+  const localSpend = async (name: string) => {
+    const sessions = await w.orchestrator.sessions();
+    const costs = new Map(sessions.map((s) => [s.id, localCost(s)] as const));
+    const model = [...costs.values()].reduce((sum, c) => sum + c.model, 0);
+    const sandbox = [...costs.values()].reduce((sum, c) => sum + c.sandbox, 0);
+    const ledger = { month: new Date().toISOString().slice(0, 7), org: model + sandbox, projects: { [name]: model + sandbox }, members: {}, parts: { model, sandbox }, projectParts: { [name]: { model, sandbox } } };
+    return { sessions, costs, ledger };
+  };
   const localCost = (record: SessionRecord): SessionCost => {
     const seconds = Math.round((record.updatedAt - record.createdAt) / 1000) + SANDBOX_IDLE_SECONDS;
     return { model: costMicros("claude-sonnet", { inputTokens: record.machine.usage.tokens, outputTokens: 0 }), sandbox: sandboxMicros({ memoryMib: 3072, diskMb: 12_000, seconds, cpuSeconds: seconds / 20 }), sandboxSeconds: seconds };
@@ -255,6 +264,10 @@ export async function serve(options: { readonly port: number; readonly project?:
       return agentsRequest(request, { store: agents, defaults: repoProfiles(), models: resolved.models, jev: resolved.jev !== null });
     }
     if (url.pathname === "/api/projects") return projects(request);
+    if (url.pathname === "/api/usage" && request.method === "GET") {
+      const name = project?.name ?? "demo";
+      return Response.json({ caps: localCaps(name), ledger: (await localSpend(name)).ledger });
+    }
     if (url.pathname === "/api/share" && request.method === "GET") return sharedTarget(request);
     const shareId = /^\/api\/shares\/([a-z0-9]{12})$/.exec(url.pathname)?.[1];
     if (shareId && request.method === "DELETE") {
@@ -277,12 +290,9 @@ export async function serve(options: { readonly port: number; readonly project?:
       }
       if (request.method === "GET" && action === "sessions") return Response.json(await w.orchestrator.sessions());
       if (request.method === "GET" && action === "usage") {
-        const sessions = await w.orchestrator.sessions();
-        const costs = new Map(sessions.map((s) => [s.id, localCost(s)] as const));
-        const builds = [...costs.values()].reduce((sum, c) => sum + c.model + c.sandbox, 0);
         const name = project?.name ?? "demo";
-        const ledger = { month: new Date().toISOString().slice(0, 7), org: builds, projects: { [name]: builds }, members: {}, projectParts: { [name]: { model: [...costs.values()].reduce((sum, c) => sum + c.model, 0), sandbox: [...costs.values()].reduce((sum, c) => sum + c.sandbox, 0) } } };
-        return Response.json(projectUsage({ project: name, caps: { org: null, projects: { [name]: 5_000_000 }, members: {} }, ledger, sessions, costs, main: `${name}--main` }));
+        const { sessions, costs, ledger } = await localSpend(name);
+        return Response.json(projectUsage({ project: name, caps: localCaps(name), ledger, sessions, costs, main: `${name}--main` }));
       }
       if (project && action === "shares") return sharesRequest(request, project.name);
       if (action === "settings") return projectSettingsRequest(request);
