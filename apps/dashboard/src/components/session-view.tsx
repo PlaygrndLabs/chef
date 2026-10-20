@@ -345,8 +345,8 @@ function PickReasons({ node }: { readonly node: SessionNode }) {
 }
 
 const SECTIONS: readonly { readonly value: PanelTab; readonly label: string }[] = [
-  { value: "app", label: "App" },
   { value: "messages", label: "Messages" },
+  { value: "app", label: "App" },
   { value: "changes", label: "Changes" },
   { value: "checks", label: "Checks" },
   { value: "details", label: "Details" },
@@ -430,7 +430,7 @@ export function SessionView({ feature }: { readonly feature: FeatureNode }) {
   const node = currentSession(feature, selection.session);
   const [stopping, setStopping] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const section = selection.panel ?? "app";
+  const section = selection.panel ?? "messages";
   const active = node ? isActive(node.state) : false;
   const chore = node ? isChore(node) : feature.id.startsWith("chore-") && !feature.onMain;
 

@@ -59,7 +59,7 @@ describe("dashboard in a browser", () => {
       await card.click();
       const feature = page.locator('[data-view="feature"][data-state="merged"]');
       await feature.waitFor({ timeout: 10_000 });
-      expect(await page.getByRole("tab", { name: "App", exact: true }).getAttribute("aria-selected")).toBe("true");
+      expect(await page.getByRole("tab", { name: "Messages" }).getAttribute("aria-selected")).toBe("true");
       expect(await page.locator('#sessions [data-tab="todo-add"]').getAttribute("aria-selected")).toBe("true");
       expect(new URL(page.url()).searchParams.get("session")).toBe("s1");
       await page.getByRole("tab", { name: "Messages" }).click();
@@ -118,9 +118,10 @@ describe("dashboard in a browser", () => {
       expect(await page.locator("#chat").innerText()).toContain("On it. This is 2 features");
       await page.locator('#features [data-feature="shout"]').click();
       await page.locator('[data-view="feature"][data-feature="shout"]').waitFor({ timeout: 10_000 });
-      expect(await page.getByRole("tab", { name: "App", exact: true }).getAttribute("aria-selected")).toBe("true");
+      expect(await page.getByRole("tab", { name: "Messages" }).getAttribute("aria-selected")).toBe("true");
       expect(await page.locator("#sessions [data-tab]").evaluateAll((tabs) => tabs.map((t) => t.getAttribute("data-tab")))).toEqual([":main", "todo-add", "shout"]);
-      await page.locator("#sessions").getByRole("tabpanel", { name: "App" }).waitFor({ timeout: 10_000 });
+      await page.locator("#sessions").getByRole("tabpanel", { name: "Messages" }).waitFor({ timeout: 10_000 });
+      expect(await page.locator('[data-kept="shout"] [data-slot="tabs-content"]').count()).toBe(1);
       await page.getByRole("button", { name: "Close Shout a phrase" }).click();
       await page.locator('[data-view="feature"][data-feature="todo-add"]').waitFor({ timeout: 10_000 });
 
