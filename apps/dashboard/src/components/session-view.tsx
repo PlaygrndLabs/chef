@@ -13,7 +13,7 @@ import { isActive } from "@/lib/events";
 import { PLAIN_STATE, stateTone } from "@/lib/format";
 import { currentSession, heldBy, isChore, relationsOf, nodeStatus, waitsForBudget, waitsForKey, waitsForMerge, type FeatureNode, type SessionNode } from "@/lib/model";
 import type { Panel as PanelTab } from "@/lib/selection";
-import { activity, plainReason, progress, STAGES, updates, whatFailed, type Update } from "@/lib/progress";
+import { activity, plainReason, progress, STAGES, updates, whatFailed, wroteTests, type Update } from "@/lib/progress";
 import { modelLabel, roleLabel, teamOf, useAgents, type MemberState } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -24,9 +24,11 @@ import { host } from "@/host";
 
 function Steps({ node }: { readonly node: SessionNode }) {
   const p = progress(node.state, node.live?.timeline ?? []);
+  const tested = wroteTests(node.record, node.live?.timeline ?? []);
   return (
     <ol className="flex items-center gap-1.5 overflow-x-auto" aria-label="Progress">
       {STAGES.map((name, i) => {
+        if (name === "Tests" && !tested) return null;
         const done = p.done || i < p.stage;
         const now = !p.done && i === p.stage;
         const failed = now && p.failed;

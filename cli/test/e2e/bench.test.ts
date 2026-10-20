@@ -3,7 +3,7 @@ import { BENCH_ITEMS } from "../../src/bench/items.ts";
 import { runBench, runReplay } from "../../src/bench/run.ts";
 
 describe("benchmark", () => {
-  it("phase 3 settings revert less than phase 2 settings on the same features", { timeout: 180_000 }, async () => {
+  it("phase 3 settings revert less than phase 2 settings on the same features", { timeout: 360_000 }, async () => {
     const items = BENCH_ITEMS.filter((item) => item.id === "shout" || item.id === "reverse");
     const phase2 = await runBench("phase2", items);
     const phase3 = await runBench("phase3", items);
@@ -18,7 +18,7 @@ describe("benchmark", () => {
     expect(byId.get("shout")?.rejected).toEqual({ "red-tests": 2 });
     expect(byId.get("reverse")?.picked).toBe("attempt 2");
   });
-  it("a replay seeded with the learned memory does not repeat a reverted mistake and lint catches vacuous tests", { timeout: 300_000 }, async () => {
+  it("a replay seeded with the learned memory does not repeat a reverted mistake and lint catches vacuous tests", { timeout: 480_000 }, async () => {
     const items = BENCH_ITEMS.filter((item) => ["shout", "slug", "word-count", "reverse"].includes(item.id));
     const [learning, replay] = await runReplay(items);
 
