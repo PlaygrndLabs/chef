@@ -3,7 +3,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, SessionPump, agentsOf, cloudflareView, addCost, addSpend, costMicros, emptyMonth, ledgerOf, lifetime, monthOf, NO_COST, PROJECT_COST, projectUsage, sandboxMicros, type BuildCost, type CloudflareView, type SessionRecord, type SpendPart, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
-const SANDBOX_IDLE_SECONDS = 300;
+const SANDBOX_IDLE_SECONDS = 120;
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { newToken } from "@chef/core/access";
 import { agentsRequest, projectAgentsRequest } from "@chef/adapters/agents";

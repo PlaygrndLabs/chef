@@ -25,6 +25,7 @@
     {
       "class_name": "SessionAgent",
       "scheduling_policy": "durable_object",
+      "max_instances": 500,
       "images": { "coder": { "dockerfile": "./workers/sandbox/Dockerfile" } }
     }
   ],

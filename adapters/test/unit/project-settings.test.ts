@@ -55,12 +55,17 @@ describe("project settings", () => {
     expect(applyProjectUpdate(undefined, { git: { url: "https://gitlab.com/acme/app", github: true, mode: "branch" } }, secret, 5)).toMatchObject({ ok: false, error: expect.stringContaining("github.com") });
   });
 
+  it("lets a running app sleep a minute after its last visit, and no sooner", () => {
+    expect(applyProjectUpdate(undefined, { appIdleMinutes: 1 }, secret)).toMatchObject({ ok: true, settings: { appIdleMinutes: 1 } });
+    expect(applyProjectUpdate(undefined, { appIdleMinutes: 0 }, secret)).toMatchObject({ ok: false, error: expect.stringContaining("at least a minute") });
+  });
+
   it("unlinks and resets the app idle time", () => {
     const linked = applyProjectUpdate(undefined, { appIdleMinutes: 30, git: { url: "https://github.com/acme/app", mode: "off" } }, secret);
     if (!linked.ok) throw new Error(linked.error);
     const cleared = applyProjectUpdate(linked.settings, { appIdleMinutes: null, git: null }, secret);
     if (!cleared.ok) throw new Error(cleared.error);
-    expect(readProjectSettings(cleared.settings)).toEqual({ appIdleMinutes: 15, attempts: null, merge: "auto", steps: { plan: false, tests: false, review: false }, git: null });
+    expect(readProjectSettings(cleared.settings)).toEqual({ appIdleMinutes: 1, attempts: null, merge: "auto", steps: { plan: false, tests: false, review: false }, git: null });
     const manual = applyProjectUpdate(cleared.settings, { merge: "manual" }, secret);
     if (!manual.ok) throw new Error(manual.error);
     expect(viewProjectSettings(readProjectSettings(manual.settings)).merge).toBe("manual");

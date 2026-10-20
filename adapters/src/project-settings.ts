@@ -29,7 +29,7 @@ export interface ProjectSettingsView {
   readonly git: (Omit<GitLinkSettings, "token" | "installation"> & { readonly tokenHint: string | null; readonly pullRequests: boolean; readonly github: boolean }) | null;
 }
 
-export const DEFAULT_APP_IDLE_MINUTES = 15;
+export const DEFAULT_APP_IDLE_MINUTES = 1;
 export const MAX_APP_IDLE_MINUTES = 7 * 24 * 60;
 
 export const DEFAULT_STEPS: Steps = { plan: false, tests: false, review: false };
@@ -60,7 +60,7 @@ const GitInput = z
   .refine((git) => git.syncBranch !== git.branch, { message: "the sync branch must differ from the main branch; Chef never pushes to main" });
 
 const ProjectSettingsUpdate = z.strictObject({
-  appIdleMinutes: z.number().int().min(5, "a running app stays up at least 5 minutes").max(MAX_APP_IDLE_MINUTES, "a running app sleeps after a week at most").nullable().optional(),
+  appIdleMinutes: z.number().int().min(1, "a running app stays up at least a minute").max(MAX_APP_IDLE_MINUTES, "a running app sleeps after a week at most").nullable().optional(),
   attempts: z.number().int().min(1, "a feature gets at least 1 try").max(MAX_ATTEMPTS, `a feature gets at most ${MAX_ATTEMPTS} tries at once`).nullable().optional(),
   merge: z.enum(MERGE_MODES).optional(),
   steps: z.strictObject({ plan: z.boolean().optional(), tests: z.boolean().optional(), review: z.boolean().optional() }).optional(),
