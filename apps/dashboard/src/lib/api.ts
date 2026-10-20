@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, ChefEvent, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureMap, FeatureSpec, MapEdit, LearnedRule, MainHistory, MemoryEntry, OutboundMode, ProjectUsage, RouteDecision, SessionChanges, SessionCost, SessionHistory, SpendPart, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, ChefEvent, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureMap, FeatureSpec, MapEdit, LearnedRule, MainHistory, MemoryEntry, OutboundMode, ProjectUsage, RouteDecision, SessionChanges, BuildCost, SessionHistory, Spend, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -377,7 +377,7 @@ export interface ProjectBudget {
 
 export interface Spending {
   readonly caps: { readonly org: number | null; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>> };
-  readonly ledger: { readonly month: string; readonly org: number; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>>; readonly parts?: Readonly<Partial<Record<SpendPart, number>>>; readonly projectParts?: Readonly<Record<string, Readonly<Partial<Record<SpendPart, number>>>>> };
+  readonly ledger: { readonly month: string; readonly org: number; readonly projects: Readonly<Record<string, number>>; readonly members: Readonly<Record<string, number>>; readonly parts: Spend; readonly projectParts: Readonly<Record<string, Spend>> };
 }
 
 export const usageApi = {
@@ -394,7 +394,7 @@ export function projectApi(project: string) {
     editMap: (edit: MapEdit) => call<{ commitId: string | null; id: string | null }>(`${base}/feature-map`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(edit) }),
     removeFeature: (id: string) => call<{ featureIds: string[]; commitId: string | null }>(`${base}/features/${id}`, { method: "DELETE" }),
     sessions: () => call<SessionRecord[]>(`${base}/sessions`),
-    session: (id: string) => call<{ record: SessionRecord; budget: Budget; cost?: SessionCost }>(`${base}/sessions/${id}`),
+    session: (id: string) => call<{ record: SessionRecord; budget: Budget; cost?: BuildCost }>(`${base}/sessions/${id}`),
     turns: (id: string) => call<SessionTurn[]>(`${base}/sessions/${id}/turns`),
     changes: (id: string) => call<SessionChanges>(`${base}/sessions/${id}/changes`),
     sessionHistory: (id: string) => call<SessionHistory>(`${base}/sessions/${id}/history`),

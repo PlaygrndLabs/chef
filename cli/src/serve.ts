@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
-import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, SessionPump, agentsOf, cloudflareView, costMicros, projectUsage, sandboxMicros, type CloudflareView, type SessionCost, type SessionRecord, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
+import { AgentSettings, ControlError, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, DEFAULT_BUDGET, DEFAULT_SPECIALIZATION, envNeeds, isTerminal, parseFeature, readSpec, SessionPump, agentsOf, cloudflareView, addCost, addSpend, costMicros, emptyMonth, ledgerOf, lifetime, monthOf, NO_COST, PROJECT_COST, projectUsage, sandboxMicros, type BuildCost, type CloudflareView, type SessionRecord, type SpendPart, type FeatureSpec, type SandboxFacts, type SplitPart } from "@chef/core";
 const SANDBOX_IDLE_SECONDS = 300;
 import { MemoryStore, type Script } from "@chef/core/fakes";
 import { newToken } from "@chef/core/access";
@@ -99,21 +99,22 @@ export async function serve(options: { readonly port: number; readonly project?:
   const localCaps = (name: string) => ({ org: null, projects: { [name]: 5_000_000 }, members: {} });
   const localSpend = async (name: string) => {
     const sessions = await w.orchestrator.sessions();
-    const costs = new Map(sessions.map((s) => [s.id, localCost(s)] as const));
-    const model = [...costs.values()].reduce((sum, c) => sum + c.model, 0);
-    const sandbox = [...costs.values()].reduce((sum, c) => sum + c.sandbox, 0);
-    const ledger = { month: new Date().toISOString().slice(0, 7), org: model + sandbox, projects: { [name]: model + sandbox }, members: {}, parts: { model, sandbox }, projectParts: { [name]: { model, sandbox } } };
-    return { sessions, costs, ledger };
+    const month = monthOf(Date.now());
+    const costs = new Map<string, BuildCost>([...sessions.map((s) => [s.id, localCost(s)] as const), [PROJECT_COST, addCost(NO_COST, month, "router", 3_000)]]);
+    let spent = emptyMonth(month);
+    for (const cost of costs.values()) for (const [part, micros] of Object.entries(cost.months[month] ?? {})) spent = addSpend(spent, name, null, micros, part as SpendPart);
+    return { sessions, costs, ledger: ledgerOf(spent) };
   };
-  const localCost = (record: SessionRecord): SessionCost => {
+  const localCost = (record: SessionRecord): BuildCost => {
     const seconds = Math.round((record.updatedAt - record.createdAt) / 1000) + SANDBOX_IDLE_SECONDS;
-    return { model: costMicros("claude-sonnet", { inputTokens: record.machine.usage.tokens, outputTokens: 0 }), sandbox: sandboxMicros({ memoryMib: 3072, diskMb: 12_000, seconds, cpuSeconds: seconds / 20 }), sandboxSeconds: seconds };
+    const month = monthOf(record.createdAt);
+    return addCost(addCost(NO_COST, month, "model", costMicros("claude-sonnet", { inputTokens: record.machine.usage.tokens, outputTokens: 0 })), month, "sandbox", sandboxMicros({ memoryMib: 3072, diskMb: 12_000, seconds, cpuSeconds: seconds / 20 }), seconds);
   };
 
   const localCloudflare = async (id: string): Promise<CloudflareView> => {
     const record = await w.orchestrator.session(id);
     const name = record.project;
-    const box = (sandbox: string, cost: SessionCost | null): SandboxFacts => ({ name: sandbox, objectId: createHash("sha256").update(sandbox).digest("hex"), running: false, exit: null, spent: cost ? { micros: cost.sandbox, seconds: cost.sandboxSeconds } : null });
+    const box = (sandbox: string, cost: BuildCost | null): SandboxFacts => ({ name: sandbox, objectId: createHash("sha256").update(sandbox).digest("hex"), running: false, exit: null, spent: cost ? { micros: lifetime(cost).sandbox ?? 0, seconds: cost.sandboxSeconds } : null });
     return cloudflareView({
       accountId: null,
       engine: "chef",

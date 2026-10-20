@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addCost, agentsOf, cloudflareView, NO_COST, sandboxMicros, dashboardLink, engineOf, type CloudflareFacts } from "../../src/index.ts";
+import { addCost, agentsOf, cloudflareView, lifetime, NO_COST, sandboxMicros, dashboardLink, engineOf, type CloudflareFacts } from "../../src/index.ts";
 
 const box = (name: string, running = false) => ({ name, objectId: `id-${name}`, running, exit: null });
 
@@ -58,6 +58,14 @@ describe("Cloudflare view of a session", () => {
     expect(view.resources.filter((r) => r.group === "project").map((r) => r.key)).toEqual(["sandbox:main", "main-app", "router", "main", "engine", "project-object", "workflow", "memory"]);
   });
 
+  it("calls an app asleep when its sandbox sleeps, since a visit wakes it", () => {
+    const asleep = cloudflareView({ ...facts, sandboxes: { session: box("s-1"), main: box("fresh--main") }, mainApp: { url: "https://main-fresh-chef-dev-app.acme.workers.dev", commitId: "aaaaaaaaaaaaaaaa", status: "running" } });
+    const byKey = Object.fromEntries(asleep.resources.map((r) => [r.key, r]));
+    expect(byKey["sandbox"]?.state).toEqual({ tone: "idle", text: "Sleeping" });
+    expect(byKey["app"]?.state).toEqual({ tone: "idle", text: "Asleep, wakes on a visit" });
+    expect(byKey["main-app"]?.state).toEqual({ tone: "idle", text: "Asleep, wakes on a visit" });
+  });
+
   it("says which agents use each resource", () => {
     const view = cloudflareView(facts);
     const usedBy = (role: string) => view.resources.filter((r) => r.roles.includes(role)).map((r) => r.key);
@@ -107,8 +115,9 @@ describe("Cloudflare cost of a sandbox", () => {
     expect(sandboxMicros({ memoryMib: 3072, diskMb: 12_000, seconds: -5, cpuSeconds: -1 })).toBe(0);
   });
 
-  it("adds model and sandbox spend to a build's cost", () => {
-    const cost = addCost(addCost(NO_COST, "model", 300), "sandbox", 100, 60);
-    expect(addCost(cost, "router", 5)).toEqual({ model: 305, sandbox: 100, sandboxSeconds: 60 });
+  it("adds each part's spend to a build's cost by month, and sums its lifetime", () => {
+    const cost = addCost(addCost(addCost(NO_COST, "2026-10", "model", 300), "2026-10", "sandbox", 100, 60), "2026-11", "router", 5);
+    expect(cost).toEqual({ months: { "2026-10": { model: 300, sandbox: 100 }, "2026-11": { router: 5 } }, sandboxSeconds: 60 });
+    expect(lifetime(cost)).toEqual({ model: 300, sandbox: 100, router: 5 });
   });
 });

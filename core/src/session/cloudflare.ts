@@ -157,11 +157,11 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
       title: "App address",
       name: app.name,
       roles: [],
-      state: appState(app.status),
+      state: appState(app.status, box.running),
       facts: [
         { label: "Router", value: facts.router },
         { label: "Forwards to", value: `the sandbox ${box.name}` },
-        ...(app.commitId ? [{ label: "Running", value: short(app.commitId) }] : []),
+        ...(app.commitId ? [{ label: "Built from", value: short(app.commitId) }] : []),
         ...(app.url ? [{ label: "URL", value: app.url, href: app.url }] : []),
       ],
       dashboard: workerPage(facts.router, "/deployments"),
@@ -176,7 +176,7 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
       title: "App of main",
       name: `${facts.project} main`,
       roles: [],
-      state: appState(facts.mainApp?.status ?? null),
+      state: appState(facts.mainApp?.status ?? null, facts.sandboxes.main?.running ?? true),
       facts: [...(facts.mainApp?.commitId ? [{ label: "Main", value: short(facts.mainApp.commitId) }] : []), ...(facts.mainApp?.url ? [{ label: "URL", value: facts.mainApp.url, href: facts.mainApp.url }] : [])],
       dashboard: null,
     },
@@ -250,8 +250,8 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
   return { accountId: facts.accountId, engine: facts.engine, resources };
 }
 
-function appState(status: AppStatus | null): NonNullable<CloudflareResource["state"]> {
-  if (status === "running") return { tone: "ok", text: "Running" };
+function appState(status: AppStatus | null, awake: boolean): NonNullable<CloudflareResource["state"]> {
+  if (status === "running") return awake ? { tone: "ok", text: "Running" } : { tone: "idle", text: "Asleep, wakes on a visit" };
   if (status === "starting") return { tone: "run", text: "Starting" };
   if (status === "failed") return { tone: "bad", text: "Could not start" };
   if (status === "no-stack") return { tone: "idle", text: "No app to run" };

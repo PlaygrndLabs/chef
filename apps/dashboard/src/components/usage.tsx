@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Group } from "@/components/settings-shell";
 import type { BuildUsage, ProjectUsage } from "@chef/core";
+import { addAll, PARTS, SPEND_GROUPS, SPEND_PARTS, sumOf, type Spend, type SpendGroup } from "@chef/core/usage";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/status";
 import { usageApi, type ProjectApi, type Spending } from "@/lib/api";
@@ -17,12 +18,21 @@ const MICROS = 1_000_000;
 
 const useUsage = host.useUsage ?? (() => null);
 
-const PARTS = [
-  ["model", "Writing code"],
-  ["router", "Routing"],
-  ["voice", "Live talk"],
-  ["sandbox", "Sandboxes on Cloudflare"],
-] as const;
+const GROUP_LABEL: Record<SpendGroup, string> = { models: "Model", cloudflare: "Cloudflare" };
+
+function PartList({ spend }: { readonly spend: Spend }) {
+  const parts = SPEND_PARTS.filter((part) => (spend[part] ?? 0) > 0);
+  return parts.length ? (
+    <ul className="grid gap-1.5" data-parts>
+      {parts.map((part) => (
+        <li key={part} className="flex items-center gap-2 text-sm" data-part-spent={part}>
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{PARTS[part].label}</span>
+          <span className="tabular-nums">{cost(spend[part] ?? 0)}</span>
+        </li>
+      ))}
+    </ul>
+  ) : null;
+}
 
 export function money(micros: number): string {
   const value = micros / MICROS;
@@ -95,7 +105,6 @@ export function UsageSection() {
   const { caps, ledger } = spending;
   const projects = [...new Set([...Object.keys(ledger.projects), ...Object.keys(caps.projects)])].sort((a, b) => (ledger.projects[b] ?? 0) - (ledger.projects[a] ?? 0));
   const save = async (update: Parameters<typeof usageApi.save>[0]) => setSpending(await usageApi.save(update));
-  const parts = PARTS.filter(([part]) => (ledger.parts?.[part] ?? 0) > 0);
   return (
     <>
       {host.UsageSummary ? <host.UsageSummary /> : null}
@@ -110,16 +119,9 @@ export function UsageSection() {
           <Bar spent={ledger.org} cap={caps.org} />
         </div>
       </Group>
-      {parts.length > 0 ? (
+      {sumOf(ledger.parts) > 0 ? (
         <Group title="By part" note="Writing code is Claude; routing is Jev; live talk is the voice model; sandboxes are the containers builds and apps run in, billed for every second they are up.">
-          <ul className="grid gap-1.5" id="part-spending">
-            {parts.map(([part, label]) => (
-              <li key={part} className="flex items-center gap-2 text-sm" data-part-spent={part}>
-                <span className="min-w-0 flex-1 truncate">{label}</span>
-                <span className="text-xs text-muted-foreground">{money(ledger.parts?.[part] ?? 0)}</span>
-              </li>
-            ))}
-          </ul>
+          <PartList spend={ledger.parts} />
         </Group>
       ) : null}
       <Group title="Projects" note="What each project spent this month: model calls and its sandboxes on Cloudflare. Open a project to see what each of its builds cost and to set its budget.">
@@ -127,10 +129,10 @@ export function UsageSection() {
           <p className="text-xs text-muted-foreground">No spending yet this month.</p>
         ) : (
           <div className="flex flex-col" id="project-spending">
-            <Cells className="pb-1.5 text-xs text-muted-foreground" cells={[<span key="t">Project</span>, <span key="m">Model</span>, <span key="s">Sandbox</span>, <span key="a">Total</span>]} />
+            <SpendHead first="Project" />
             <ul className="flex flex-col dash-t">
               {projects.map((name) => (
-                <ProjectRow key={name} name={name} spent={ledger.projects[name] ?? 0} sandbox={ledger.projectParts?.[name]?.sandbox ?? 0} cap={caps.projects[name]} />
+                <ProjectRow key={name} name={name} spend={ledger.projectParts[name] ?? {}} cap={caps.projects[name]} />
               ))}
             </ul>
           </div>
@@ -157,30 +159,39 @@ function Cells({ cells, className }: { readonly cells: readonly React.ReactNode[
   return <div className={cn("grid grid-cols-[minmax(0,1fr)_3.25rem_3.25rem_3.5rem] items-center gap-x-1.5 sm:grid-cols-[minmax(0,1fr)_4.25rem_4.25rem_4.25rem] sm:gap-x-2 text-sm [&>*:not(:first-child)]:text-right [&>*:not(:first-child)]:tabular-nums", className)}>{cells}</div>;
 }
 
-function ProjectRow(props: { readonly name: string; readonly spent: number; readonly sandbox: number; readonly cap: number | undefined }) {
-  const workspace = useOptionalWorkspace();
-  const live = workspace?.projects.includes(props.name) ?? false;
-  const cells = (
+function SpendCells({ label, spend, className }: { readonly label: React.ReactNode; readonly spend: Spend; readonly className?: string }) {
+  return (
     <Cells
+      {...(className ? { className } : {})}
       cells={[
-        <span key="t" className="truncate">
-          {props.name}
-          {props.cap !== undefined ? <span className="text-xs text-muted-foreground"> of {money(props.cap)}</span> : null}
+        <span key="t" className="flex min-w-0 items-center gap-2">
+          {label}
         </span>,
-        <span key="m" className="text-xs text-muted-foreground">{cost(props.spent - props.sandbox)}</span>,
-        <span key="s" className="text-xs text-muted-foreground">{cost(props.sandbox)}</span>,
-        <span key="a">{cost(props.spent)}</span>,
+        ...SPEND_GROUPS.map((group) => (
+          <span key={group} className="text-xs text-muted-foreground">
+            {sumOf(spend, group) > 0 ? cost(sumOf(spend, group)) : "-"}
+          </span>
+        )),
+        <span key="a">{cost(sumOf(spend))}</span>,
       ]}
     />
   );
+}
+
+function SpendHead({ first }: { readonly first: string }) {
+  return <Cells className="pb-1.5 text-xs text-muted-foreground" cells={[<span key="t">{first}</span>, ...SPEND_GROUPS.map((group) => <span key={group}>{GROUP_LABEL[group]}</span>), <span key="a">Total</span>]} />;
+}
+
+function SpendRow(props: { readonly id: string; readonly kind: "project" | "build"; readonly label: React.ReactNode; readonly spend: Spend; readonly title?: string; readonly onOpen?: (() => void) | null }) {
+  const cells = <SpendCells label={props.label} spend={props.spend} />;
   return (
-    <li className="dash-b last:border-b-0" data-project-spent={props.name}>
-      {live && workspace ? (
-        <button type="button" className="w-full py-2 text-left hover:bg-muted/60" title={`Open ${props.name}'s usage`} onClick={() => workspace.select({ project: props.name, view: "project", feature: null, session: null, panel: null, settings: { scope: "project", section: "usage" }, item: null })}>
+    <li className="dash-b last:border-b-0" {...{ [`data-${props.kind}-usage`]: props.id }}>
+      {props.onOpen ? (
+        <button type="button" className="w-full py-2 text-left hover:bg-muted/60" title={props.title} onClick={props.onOpen}>
           {cells}
         </button>
       ) : (
-        <div className="py-2" title={workspace ? `${props.name} was deleted` : undefined}>
+        <div className="py-2" title={props.title}>
           {cells}
         </div>
       )}
@@ -188,26 +199,30 @@ function ProjectRow(props: { readonly name: string; readonly spent: number; read
   );
 }
 
+function ProjectRow(props: { readonly name: string; readonly spend: Spend; readonly cap: number | undefined }) {
+  const workspace = useOptionalWorkspace();
+  const live = workspace?.projects.includes(props.name) ?? false;
+  const label = (
+    <span className="truncate">
+      {props.name}
+      {props.cap !== undefined ? <span className="text-xs text-muted-foreground"> of {money(props.cap)}</span> : null}
+    </span>
+  );
+  const open = live && workspace ? () => workspace.select({ project: props.name, view: "project", feature: null, session: null, panel: null, settings: { scope: "project", section: "usage" }, item: null }) : null;
+  return <SpendRow id={props.name} kind="project" label={label} spend={props.spend} title={open ? `Open ${props.name}'s usage` : `${props.name} was deleted`} onOpen={open} />;
+}
+
 function BuildRow({ build }: { readonly build: BuildUsage }) {
   const workspace = useOptionalWorkspace();
-  const open = () => workspace?.select({ view: "feature", feature: build.feature, session: build.id, panel: "details", settings: null, item: null });
-  return (
-    <li className="dash-b last:border-b-0" data-build-usage={build.id}>
-      <button type="button" onClick={open} className="w-full py-2 text-left hover:bg-muted/60" title={`${build.title}, ${PLAIN_STATE[build.state].toLowerCase()}${build.cost.sandboxSeconds ? `, sandbox up ${duration(build.cost.sandboxSeconds * 1000)}` : ""}. Open its Details.`}>
-        <Cells
-          cells={[
-            <span key="t" className="flex min-w-0 items-center gap-2">
-              <StatusDot tone={stateTone(build.state)} />
-              <span className="truncate">{build.title}</span>
-            </span>,
-            <span key="m" className="text-xs text-muted-foreground">{cost(build.cost.model)}</span>,
-            <span key="s" className="text-xs text-muted-foreground">{cost(build.cost.sandbox)}</span>,
-            <span key="a">{cost(build.cost.model + build.cost.sandbox)}</span>,
-          ]}
-        />
-      </button>
-    </li>
+  const label = (
+    <>
+      <StatusDot tone={stateTone(build.state)} />
+      <span className="truncate">{build.title}</span>
+    </>
   );
+  const lifetime = sumOf(build.total) > sumOf(build.month) ? `, ${cost(sumOf(build.total))} since it started` : "";
+  const title = `${build.title}, ${PLAIN_STATE[build.state].toLowerCase()}${build.sandboxSeconds ? `, sandbox up ${duration(build.sandboxSeconds * 1000)}` : ""}${lifetime}. Open its Details.`;
+  return <SpendRow id={build.id} kind="build" label={label} spend={build.month} title={title} onOpen={() => workspace?.select({ view: "feature", feature: build.feature, session: build.id, panel: "details", settings: null, item: null })} />;
 }
 
 export function ProjectUsageSection(props: { readonly api: ProjectApi }) {
@@ -218,13 +233,8 @@ export function ProjectUsageSection(props: { readonly api: ProjectApi }) {
   }, [props.api]);
   if (error) return <p className="text-sm text-muted-foreground">Could not load the usage: {error}</p>;
   if (!usage) return <Skeleton className="h-48" aria-label="Loading usage" />;
-  const parts = PARTS.filter(([part]) => (usage.parts[part] ?? 0) > 0);
-  const builds = usage.builds;
-  const monthStart = Date.parse(`${usage.month}-01T00:00:00Z`);
-  const thisMonth = builds.filter((b) => b.createdAt >= monthStart).reduce((sum, b) => sum + b.cost.model + b.cost.sandbox, 0);
-  const outside = Math.max(0, usage.spent - thisMonth - usage.main.sandbox);
-  const total = builds.reduce((sum, b) => sum + b.cost.model + b.cost.sandbox, 0) + usage.main.sandbox + outside;
-  const shown = builds.filter((b) => b.cost.model + b.cost.sandbox > 0 || isActive(b.state));
+  const shown = usage.builds.filter((b) => sumOf(b.month) > 0 || isActive(b.state));
+  const total = [...shown.map((b) => b.month), usage.main, usage.outside].reduce<Spend>(addAll, {});
   return (
     <>
       <Group title={`${monthName(usage.month)} so far`} note="Everything this project spent this month, estimated at list prices. Chef pauses new work in this project when it reaches the budget. Leave the budget empty for no limit.">
@@ -237,54 +247,23 @@ export function ProjectUsageSection(props: { readonly api: ProjectApi }) {
             <CapForm id="project-budget" label="Monthly budget for this project" cap={usage.cap} onSave={async (cap) => setUsage({ ...usage, ...(await props.api.saveBudget(cap)) })} />
           </div>
           <Bar spent={usage.spent} cap={usage.cap} />
-          {parts.length ? (
-            <ul className="grid gap-1.5" data-project-parts>
-              {parts.map(([part, label]) => (
-                <li key={part} className="flex items-center gap-2 text-sm" data-project-part={part}>
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground">{label}</span>
-                  <span className="tabular-nums">{cost(usage.parts[part] ?? 0)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <PartList spend={usage.parts} />
         </div>
       </Group>
-      <Group title="By build" note="What each build cost since it started: the model calls made for it and its sandbox on Cloudflare. Open one to see its Details. Work that belongs to no build, like the project chat, has its own row.">
-        {shown.length === 0 && usage.main.sandbox === 0 && outside === 0 ? (
-          <p className="text-xs text-muted-foreground">No build has cost anything yet.</p>
+      <Group title="By build" note="What each build cost this month: the model calls made for it and its sandbox on Cloudflare. Open one to see its Details. Main's app and the project chat, which belong to no build, have their own rows.">
+        {sumOf(total) === 0 && shown.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nothing has cost anything yet this month.</p>
         ) : (
           <div className="flex flex-col" data-project-builds>
-            <Cells className="pb-1.5 text-xs text-muted-foreground" cells={[<span key="t">Build</span>, <span key="m">Model</span>, <span key="s">Sandbox</span>, <span key="a">Total</span>]} />
+            <SpendHead first="Build" />
             <ul className="flex flex-col dash-t">
               {shown.map((b) => (
                 <BuildRow key={b.id} build={b} />
               ))}
-              {usage.main.sandbox > 0 ? (
-                <li className="py-2 dash-b last:border-b-0" data-build-usage="main" title={`Main's app runs in its own sandbox${usage.main.sandboxSeconds ? `, up ${duration(usage.main.sandboxSeconds * 1000)} so far` : ""}.`}>
-                  <Cells
-                    cells={[
-                      <span key="t" className="truncate text-muted-foreground">Main's app</span>,
-                      <span key="m" className="text-xs text-muted-foreground">-</span>,
-                      <span key="s" className="text-xs text-muted-foreground">{cost(usage.main.sandbox)}</span>,
-                      <span key="a">{cost(usage.main.sandbox)}</span>,
-                    ]}
-                  />
-                </li>
-              ) : null}
-              {outside > 0 ? (
-                <li className="py-2 dash-b last:border-b-0" data-build-usage="outside" title="Model calls this month that belong to no build: the project chat, routing requests to features, and planning before a build starts.">
-                  <Cells
-                    cells={[
-                      <span key="t" className="truncate text-muted-foreground">Chat, routing and planning</span>,
-                      <span key="m" className="text-xs text-muted-foreground">{cost(outside)}</span>,
-                      <span key="s" className="text-xs text-muted-foreground">-</span>,
-                      <span key="a">{cost(outside)}</span>,
-                    ]}
-                  />
-                </li>
-              ) : null}
+              {sumOf(usage.main) > 0 ? <SpendRow id="main" kind="build" label={<span className="truncate text-muted-foreground">Main's app</span>} spend={usage.main} title={`Main's app runs in its own sandbox${usage.mainSeconds ? `, up ${duration(usage.mainSeconds * 1000)} so far` : ""}.`} /> : null}
+              {sumOf(usage.outside) > 0 ? <SpendRow id="outside" kind="build" label={<span className="truncate text-muted-foreground">Chat, routing and planning</span>} spend={usage.outside} title="Calls this month that belong to no build: the project chat, live talk, routing requests to features, and planning before a build starts." /> : null}
             </ul>
-            <Cells className="pt-2 font-medium" cells={[<span key="t">Total</span>, <span key="m" />, <span key="s" />, <span key="a">{cost(total)}</span>]} />
+            <SpendCells className="pt-2 font-medium" label="Total" spend={total} />
           </div>
         )}
       </Group>

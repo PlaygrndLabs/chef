@@ -9,6 +9,7 @@ import { StatusDot } from "@/components/status";
 import { host as chefHost } from "@/host";
 import { toast } from "sonner";
 import { COMPOSE_PROMPT } from "@chef/core/app";
+import { lifetime, PARTS, SPEND_PARTS, sumOf } from "@chef/core/usage";
 import { AppFrame, loadTone, useAppLoad } from "@/components/app-frame";
 import { CloudflareList, CloudflareSections } from "@/components/cloudflare-resources";
 import { ago, appHost, cost as formatCost, duration, short, tokens } from "@/lib/format";
@@ -325,7 +326,8 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
   const cloudflare = useFetch(() => api.cloudflare(node.id), `${node.id}:${node.state}:${node.record?.updatedAt ?? 0}`, node.id);
   const record = detail.data?.record ?? node.record;
   const budget = detail.data?.budget;
-  const spent = detail.data?.cost;
+  const spent = detail.data?.cost ? lifetime(detail.data.cost) : null;
+  const sandboxSeconds = detail.data?.cost?.sandboxSeconds ?? 0;
   const usage = record?.machine.usage;
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8" data-details>
@@ -336,11 +338,12 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
             <div className="flex items-baseline justify-between dash-b pb-2">
               <span className="text-sm">This build</span>
               <span className="text-xl tabular-nums" data-build-cost-total>
-                {formatCost(spent.model + spent.sandbox)}
+                {formatCost(sumOf(spent))}
               </span>
             </div>
-            <CostLine label="Model" note="planning, writing code and review" value={formatCost(spent.model)} />
-            <CostLine label="Sandbox" note={spent.sandboxSeconds ? `up ${duration(spent.sandboxSeconds * 1000)} on Cloudflare` : "on Cloudflare"} value={formatCost(spent.sandbox)} />
+            {SPEND_PARTS.filter((part) => (spent[part] ?? 0) > 0).map((part) => (
+              <CostLine key={part} label={PARTS[part].label} {...(part === "sandbox" && sandboxSeconds ? { note: `up ${duration(sandboxSeconds * 1000)}` } : {})} value={formatCost(spent[part] ?? 0)} />
+            ))}
             <p className="text-xs text-muted-foreground">Estimated at list prices, and counted in Usage and the monthly budgets.</p>
           </div>
         ) : null}

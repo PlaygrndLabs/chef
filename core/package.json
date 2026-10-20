@@ -15,7 +15,8 @@
     "./chat": "./src/router/conversation.ts",
     "./access": "./src/access/token.ts",
     "./features": "./src/features/map.ts",
-    "./app": "./src/app/compose.ts"
+    "./app": "./src/app/compose.ts",
+    "./usage": "./src/usage/budget.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

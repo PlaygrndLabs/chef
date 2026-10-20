@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addSpend, costMicros, emptyLedger, monthOf, NO_CAPS, NO_COST, overCap, projectUsage, readCap, setCaps } from "../../src/usage/budget.ts";
+import { addCost, addSpend, costMicros, emptyMonth, ledgerOf, monthOf, NO_CAPS, NO_COST, overCap, PARTS, PROJECT_COST, projectUsage, readCap, setCaps, SPEND_PARTS, sumOf } from "../../src/usage/budget.ts";
 
 describe("model spend", () => {
   it("prices tokens by model family and charges cache reads a tenth", () => {
@@ -15,19 +15,27 @@ describe("model spend", () => {
     expect(costMicros("gpt-live-1", { inputTokens: 2_000_000, outputTokens: 0, audioInputTokens: 1_000_000 })).toBe(36_000_000);
   });
 
-  it("adds spend to the org, the project and the person, and starts over each month", () => {
-    let ledger = emptyLedger("2026-10");
-    ledger = addSpend(ledger, "2026-10", "shop", "usr_a", 5);
-    ledger = addSpend(ledger, "2026-10", "shop", null, 3);
-    ledger = addSpend(ledger, "2026-10", "blog", "usr_a", 2);
-    ledger = addSpend(ledger, "2026-10", "blog", null, 4, "voice");
-    expect(ledger).toEqual({ month: "2026-10", org: 14, projects: { shop: 8, blog: 6 }, members: { usr_a: 7 }, parts: { model: 10, voice: 4 }, projectParts: { shop: { model: 8 }, blog: { model: 2, voice: 4 } } });
-    expect(addSpend(ledger, "2026-11", "shop", null, 1, "router")).toEqual({ month: "2026-11", org: 1, projects: { shop: 1 }, members: {}, parts: { router: 1 }, projectParts: { shop: { router: 1 } } });
+  it("adds spend to the project and the person by part, and totals them for the org", () => {
+    let month = emptyMonth("2026-10");
+    month = addSpend(month, "shop", "usr_a", 5);
+    month = addSpend(month, "shop", null, 3);
+    month = addSpend(month, "blog", "usr_a", 2);
+    month = addSpend(month, "blog", null, 4, "voice");
+    expect(month).toEqual({ month: "2026-10", projects: { shop: { model: 8 }, blog: { model: 2, voice: 4 } }, members: { usr_a: { model: 7 } } });
+    expect(ledgerOf(month)).toEqual({ month: "2026-10", org: 14, projects: { shop: 8, blog: 6 }, members: { usr_a: 7 }, parts: { model: 10, voice: 4 }, projectParts: { shop: { model: 8 }, blog: { model: 2, voice: 4 } } });
     expect(monthOf(Date.UTC(2026, 9, 31, 23, 59))).toBe("2026-10");
   });
 
+  it("names every part once, in a group that decides its column", () => {
+    expect(SPEND_PARTS).toEqual(["model", "router", "voice", "sandbox"]);
+    expect(SPEND_PARTS.every((part) => PARTS[part].label.length > 0)).toBe(true);
+    expect(sumOf({ model: 3, router: 1, sandbox: 2 }, "models")).toBe(4);
+    expect(sumOf({ model: 3, router: 1, sandbox: 2 }, "cloudflare")).toBe(2);
+    expect(sumOf({ model: 3, router: 1, sandbox: 2 })).toBe(6);
+  });
+
   it("names the first budget that is reached", () => {
-    const ledger = { month: "2026-10", org: 40_000_000, projects: { shop: 10_000_000 }, members: { usr_a: 5_000_000 } };
+    const ledger = { month: "2026-10", org: 40_000_000, projects: { shop: 10_000_000 }, members: { usr_a: 5_000_000 }, parts: {}, projectParts: {} };
     expect(overCap(NO_CAPS, ledger, "2026-10", "shop", "usr_a")).toBeNull();
     expect(overCap({ ...NO_CAPS, org: 40_000_000 }, ledger, "2026-10", "shop", null)).toBe("The organization reached its monthly budget of $40.00.");
     expect(overCap({ ...NO_CAPS, projects: { shop: 10_000_000 } }, ledger, "2026-10", "shop", null)).toBe("This project reached its monthly budget of $10.00.");
@@ -48,18 +56,20 @@ describe("model spend", () => {
 });
 
 describe("project usage", () => {
-  it("lists every build's cost newest first, with the month's parts and main's sandbox", () => {
-    const ledger = addSpend(addSpend(emptyLedger("2026-10"), "2026-10", "shop", null, 30), "2026-10", "shop", null, 12, "sandbox");
+  it("shows this month's cost of each build, main's app and the project chat, newest build first", () => {
+    const ledger = ledgerOf(addSpend(addSpend(emptyMonth("2026-10"), "shop", null, 32), "shop", null, 12, "sandbox"));
     const session = (id: string, createdAt: number) => ({ id, featureId: `f-${id}`, createdAt, plan: { feature: { title: `Build ${id}` } }, machine: { state: "merged" as const } });
+    const s1 = addCost(addCost(addCost(NO_COST, "2026-09", "model", 50), "2026-10", "model", 20), "2026-10", "sandbox", 5, 60);
     const costs = new Map([
-      ["s1", { model: 20, sandbox: 5, sandboxSeconds: 60 }],
-      ["shop--main", { model: 0, sandbox: 7, sandboxSeconds: 90 }],
+      ["s1", s1],
+      ["shop--main", addCost(NO_COST, "2026-10", "sandbox", 7, 90)],
+      [PROJECT_COST, addCost(NO_COST, "2026-10", "router", 12)],
     ]);
     const usage = projectUsage({ project: "shop", caps: { ...NO_CAPS, projects: { shop: 100 } }, ledger, sessions: [session("s1", 1), session("s2", 2)], costs, main: "shop--main" });
-    expect(usage).toMatchObject({ month: "2026-10", spent: 42, cap: 100, parts: { model: 30, sandbox: 12 }, main: { sandbox: 7 } });
-    expect(usage.builds.map((b) => [b.id, b.title, b.cost])).toEqual([
-      ["s2", "Build s2", NO_COST],
-      ["s1", "Build s1", { model: 20, sandbox: 5, sandboxSeconds: 60 }],
+    expect(usage).toMatchObject({ month: "2026-10", spent: 44, cap: 100, parts: { model: 32, sandbox: 12 }, main: { sandbox: 7 }, mainSeconds: 90, outside: { router: 12 } });
+    expect(usage.builds.map((b) => [b.id, b.month, b.total])).toEqual([
+      ["s2", {}, {}],
+      ["s1", { model: 20, sandbox: 5 }, { model: 70, sandbox: 5 }],
     ]);
   });
 });
