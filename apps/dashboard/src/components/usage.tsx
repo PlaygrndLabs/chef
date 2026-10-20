@@ -162,7 +162,7 @@ function Cells({ cells, className }: { readonly cells: readonly React.ReactNode[
 function SpendCells({ label, spend, className }: { readonly label: React.ReactNode; readonly spend: Spend; readonly className?: string }) {
   return (
     <Cells
-      className={className}
+      {...(className ? { className } : {})}
       cells={[
         <span key="t" className="flex min-w-0 items-center gap-2">
           {label}

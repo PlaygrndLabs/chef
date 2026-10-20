@@ -59,7 +59,7 @@ describe("Cloudflare view of a session", () => {
   });
 
   it("calls an app asleep when its sandbox sleeps, since a visit wakes it", () => {
-    const asleep = cloudflareView({ ...facts, sandboxes: { session: box("s-1"), main: box("fresh--main") }, mainApp: { ...facts.mainApp, status: "running" } });
+    const asleep = cloudflareView({ ...facts, sandboxes: { session: box("s-1"), main: box("fresh--main") }, mainApp: { url: "https://main-fresh-chef-dev-app.acme.workers.dev", commitId: "aaaaaaaaaaaaaaaa", status: "running" } });
     const byKey = Object.fromEntries(asleep.resources.map((r) => [r.key, r]));
     expect(byKey["sandbox"]?.state).toEqual({ tone: "idle", text: "Sleeping" });
     expect(byKey["app"]?.state).toEqual({ tone: "idle", text: "Asleep, wakes on a visit" });

@@ -342,7 +342,7 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
               </span>
             </div>
             {SPEND_PARTS.filter((part) => (spent[part] ?? 0) > 0).map((part) => (
-              <CostLine key={part} label={PARTS[part].label} note={part === "sandbox" && sandboxSeconds ? `up ${duration(sandboxSeconds * 1000)}` : undefined} value={formatCost(spent[part] ?? 0)} />
+              <CostLine key={part} label={PARTS[part].label} {...(part === "sandbox" && sandboxSeconds ? { note: `up ${duration(sandboxSeconds * 1000)}` } : {})} value={formatCost(spent[part] ?? 0)} />
             ))}
             <p className="text-xs text-muted-foreground">Estimated at list prices, and counted in Usage and the monthly budgets.</p>
           </div>
