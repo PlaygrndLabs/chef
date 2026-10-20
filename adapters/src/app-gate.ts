@@ -126,9 +126,17 @@ async function gate(request, env, next) {
   return next(new Request(request, { headers }));
 }
 
+async function sandbox(request, env, forwarded) {
+  try {
+    return await env.SESSION.get(env.SESSION.idFromName(env.CHEF_TARGET)).fetch(forwarded);
+  } catch {
+    return closed(request, 503, "This app is not available right now", "Chef could not reach this app, so it may have been stopped or deleted. Open it again from Chef.");
+  }
+}
+
 export default {
   fetch(request, env) {
-    return gate(request, env, (forwarded) => env.SESSION.get(env.SESSION.idFromName(env.CHEF_TARGET)).fetch(forwarded));
+    return gate(request, env, (forwarded) => sandbox(request, env, forwarded));
   },
 };
 `;

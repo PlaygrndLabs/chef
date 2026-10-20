@@ -159,6 +159,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     page.on("response", (response) => {
       if (deleting && response.status() === 409 && new RegExp(`/(api/projects|agents/project|app)/${deleting}[/?]`).test(response.url())) return;
       if (response.status() < 400 || response.request().method() === "HEAD") return;
+      if (deleting && response.status() === 503 && new URL(response.url()).hostname.includes(`-${deleting}-`)) return;
       const line = `http ${response.status()} ${response.request().method()} ${response.url()} after ${report.shots.at(-1) ?? "the start"}${deleting ? ` while deleting ${deleting}` : ""}`;
       report.errors.push(line);
       void response.text().then(

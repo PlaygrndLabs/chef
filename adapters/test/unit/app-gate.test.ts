@@ -70,4 +70,17 @@ describe("app router", () => {
     expect((await app.fetch(new Request(`${ORIGIN}/`, { headers: html }), {})).status).toBe(503);
     expect(seen.target).toBeUndefined();
   });
+
+  it("answers with a page of its own when the sandbox cannot be reached, as while its project is deleted", async () => {
+    const app = await router();
+    const gone = { idFromName: (name: string) => name, get: () => ({ fetch: () => Promise.reject(new Error("destroyed")) }) };
+    const env = { CHEF_APP_KEY: KEY, CHEF_TARGET: "s1", SESSION: gone };
+    const entered = await app.fetch(new Request(await appEntry(ORIGIN, KEY, { path: "/", now: Date.now() })), env);
+    const page = await app.fetch(new Request(`${ORIGIN}/`, { headers: { ...html, cookie: cookieOf(entered) } }), env);
+    expect(page.status).toBe(503);
+    expect(await page.text()).toContain("This app is not available right now");
+    const script = await app.fetch(new Request(`${ORIGIN}/client.js`, { headers: { cookie: cookieOf(entered) } }), env);
+    expect(script.status).toBe(503);
+    expect(await script.json()).toMatchObject({ error: expect.stringContaining("stopped or deleted") });
+  });
 });
