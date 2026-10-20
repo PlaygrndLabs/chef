@@ -357,9 +357,9 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
       <Section title="On Cloudflare">
         <CloudflareSections view={cloudflare.data} loading={cloudflare.loading} error={cloudflare.error} session={node.id} group="session" />
         <p className="text-xs text-muted-foreground">
-          Only what this build uses. What the whole project shares is in{" "}
-          <button type="button" onClick={() => openSettings("project", "cloudflare")} className="underline underline-offset-2 hover:text-foreground" data-open-project-cloudflare>
-            Project settings
+          Only what this build uses. What every build of the project cost is in{" "}
+          <button type="button" onClick={() => openSettings("project", "usage")} className="underline underline-offset-2 hover:text-foreground" data-open-project-usage>
+            Project settings, under Usage
           </button>
           .
         </p>

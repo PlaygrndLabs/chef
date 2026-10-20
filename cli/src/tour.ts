@@ -316,8 +316,10 @@ export async function tour(options: TourOptions): Promise<TourReport> {
           await shot("final-details-dark", night);
           await dark.close();
         }
-        await go(`/?project=${project}&settings=project.cloudflare`);
-        await shot("project-cloudflare");
+        await go(`/?project=${project}&settings=project.usage`);
+        await shot("project-usage");
+        await go(`/?project=${project}&settings=app.usage`);
+        await shot("app-usage");
         const laned = sessions.filter((s) => s.lanes?.length).at(-1);
         for (const lane of laned?.lanes ?? []) {
           await go(`/?project=${project}&feature=${laned?.featureId}&session=${laned?.id}&panel=messages&role=${lane.role}`);

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Brain, Cloud, FolderGit2, KeyRound, Route, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Bot, BookOpen, Brain, FolderGit2, Wallet, KeyRound, Route, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { OutboundMode, SyncState } from "@chef/core";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -10,8 +10,7 @@ import { EnvironmentForm } from "@/components/environment";
 import { MemoryForm, ProjectInstructionsForm } from "@/components/guidance";
 import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
-import { ProjectBudgetGroup } from "@/components/usage";
-import { ProjectCloudflare } from "@/components/cloudflare-resources";
+import { ProjectUsageSection } from "@/components/usage";
 import { host } from "@/host";
 import { githubApi, projectsApi, type BuildSteps, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -397,7 +396,6 @@ export function ProjectSettingsDialog(props: {
             <Group title="Build steps" note="Steps a build takes before its checks. Each one costs time and tokens; typecheck, lint, the existing tests and a running app always gate a merge, and main's checks run again after it.">
               <StepsForm steps={settings.steps ?? { plan: false, tests: false, review: false }} save={save} />
             </Group>
-            <ProjectBudgetGroup api={api} />
             <Group title="Apps" note="Each branch runs its app in its own sandbox (a Workers project with wrangler, any other stack from its compose file), and main runs the release candidate. A running app sleeps after it sits unused and starts again when someone opens it.">
               <AppsForm key={settings.appIdleMinutes} minutes={settings.appIdleMinutes} save={save} />
             </Group>
@@ -406,6 +404,13 @@ export function ProjectSettingsDialog(props: {
         ) : (
           loading()
         ),
+    },
+    {
+      id: "usage",
+      label: "Usage",
+      icon: Wallet,
+      note: "What this project spends: this month against its budget, and what each build cost.",
+      render: () => <ProjectUsageSection api={api} />,
     },
     {
       id: "repository",
@@ -438,13 +443,6 @@ export function ProjectSettingsDialog(props: {
     { id: "agents", label: "Agents", icon: Bot, fill: true, render: agents("agents") },
     { id: "skills", label: "Skills", icon: BookOpen, fill: true, render: agents("skills") },
     { id: "router", label: "Router", icon: Route, fill: true, render: agents("router") },
-    {
-      id: "cloudflare",
-      label: "Cloudflare",
-      icon: Cloud,
-      note: "What this project keeps on your Cloudflare account and every build shares. Each build's own sandbox, code and app address show in its Details tab.",
-      render: () => <ProjectCloudflare api={api} />,
-    },
     {
       id: "environment",
       label: "Environment",
