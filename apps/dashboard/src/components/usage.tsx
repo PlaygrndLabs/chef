@@ -14,6 +14,7 @@ const PARTS = [
   ["model", "Writing code"],
   ["router", "Routing"],
   ["voice", "Live talk"],
+  ["sandbox", "Sandboxes on Cloudflare"],
 ] as const;
 
 export function money(micros: number): string {
@@ -91,7 +92,7 @@ export function UsageSection() {
   return (
     <>
       {host.UsageSummary ? <host.UsageSummary /> : null}
-      <Group title={`${monthName(ledger.month)} so far`} note="What Chef's model, routing and voice calls cost, estimated from tokens at list prices. Your Cloudflare bill is separate. When a budget is reached, Chef pauses new work until the budget is raised or the next month starts.">
+      <Group title={`${monthName(ledger.month)} so far`} note="What Chef's model, routing and voice calls and its sandboxes on Cloudflare cost, estimated at list prices. Workers, Durable Objects and Artifacts aren't counted here; they come mostly within your Workers Paid plan. When a budget is reached, Chef pauses new work until the budget is raised or the next month starts.">
         <div className="grid gap-2" data-current="org-spent">
           <div className="flex items-baseline justify-between text-sm">
             <span>
@@ -103,7 +104,7 @@ export function UsageSection() {
         </div>
       </Group>
       {parts.length > 0 ? (
-        <Group title="By model" note="Writing code is Claude; routing is Jev; live talk is the voice model.">
+        <Group title="By part" note="Writing code is Claude; routing is Jev; live talk is the voice model; sandboxes are the containers builds and apps run in, billed for every second they are up.">
           <ul className="grid gap-1.5" id="part-spending">
             {parts.map(([part, label]) => (
               <li key={part} className="flex items-center gap-2 text-sm" data-part-spent={part}>

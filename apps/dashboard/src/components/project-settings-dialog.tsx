@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Brain, FolderGit2, KeyRound, Route, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Bot, BookOpen, Brain, Cloud, FolderGit2, KeyRound, Route, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { OutboundMode, SyncState } from "@chef/core";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -11,6 +11,7 @@ import { MemoryForm, ProjectInstructionsForm } from "@/components/guidance";
 import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
 import { Group, SettingsShell, type SettingsSection } from "@/components/settings-shell";
 import { ProjectBudgetGroup } from "@/components/usage";
+import { ProjectCloudflare } from "@/components/cloudflare-resources";
 import { host } from "@/host";
 import { githubApi, projectsApi, type BuildSteps, type GitHubView, type GitLinkView, type ProjectApi, type ProjectSettingsUpdate, type ProjectSettingsView } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -437,6 +438,13 @@ export function ProjectSettingsDialog(props: {
     { id: "agents", label: "Agents", icon: Bot, fill: true, render: agents("agents") },
     { id: "skills", label: "Skills", icon: BookOpen, fill: true, render: agents("skills") },
     { id: "router", label: "Router", icon: Route, fill: true, render: agents("router") },
+    {
+      id: "cloudflare",
+      label: "Cloudflare",
+      icon: Cloud,
+      note: "What this project keeps on your Cloudflare account and every build shares. Each build's own sandbox, code and app address show in its Details tab.",
+      render: () => <ProjectCloudflare api={api} />,
+    },
     {
       id: "environment",
       label: "Environment",

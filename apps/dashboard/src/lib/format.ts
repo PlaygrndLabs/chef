@@ -93,3 +93,9 @@ export const APP_STATUS_LABEL: Readonly<Record<AppStatus, string>> = {
 };
 
 export const APP_TONE: Readonly<Record<AppStatus, Tone>> = { starting: "run", running: "ok", failed: "bad", "no-stack": "idle" };
+
+export function cost(micros: number): string {
+  if (micros > 0 && micros < 5_000) return "<$0.01";
+  const value = micros / 1_000_000;
+  return `$${value >= 100 ? Math.round(value).toLocaleString("en-US") : value.toFixed(2)}`;
+}
