@@ -197,7 +197,7 @@ function AppsForm(props: { readonly minutes: number; readonly save: Save }) {
         void props.save({ appIdleMinutes: Number(minutes) });
       }}
     >
-      <Field label="Minutes without visits before a running app sleeps">
+      <Field label="Minutes without visits before a running app stops">
         <Input value={minutes} onChange={(e) => setMinutes(e.target.value)} aria-label="App idle minutes" type="number" min={1} max={10080} required />
       </Field>
       <Button type="submit" size="sm">
@@ -396,7 +396,7 @@ export function ProjectSettingsDialog(props: {
             <Group title="Build steps" note="Steps a build takes before its checks. Each one costs time and tokens; typecheck, lint, the existing tests and a running app always gate a merge, and main's checks run again after it.">
               <StepsForm steps={settings.steps ?? { plan: false, tests: false, review: false }} save={save} />
             </Group>
-            <Group title="Apps" note="Each branch runs its app in its own sandbox (a Workers project with wrangler, any other stack from its compose file), and main runs the release candidate. A running app sleeps after it sits unused and starts again when someone opens it.">
+            <Group title="Apps" note="Each branch runs its app in its own sandbox (a Workers project with wrangler, any other stack from its compose file), and main runs the release candidate. A running app stops after it sits unused and starts again when someone opens it.">
               <AppsForm key={settings.appIdleMinutes} minutes={settings.appIdleMinutes} save={save} />
             </Group>
             <DeleteProjectGroup project={project} linked={settings.git?.url ?? null} />

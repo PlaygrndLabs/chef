@@ -430,7 +430,7 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
   );
 }
 
-const SLEEPS = "It sleeps when nobody opens it for a while and wakes up on the next visit.";
+const SLEEPS = "It stops when nobody opens it for a while and starts again on the next visit.";
 
 export function SessionApp({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
   const { data, selection } = useWorkspace();
