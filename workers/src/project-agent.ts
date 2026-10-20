@@ -10,7 +10,7 @@ import { WorkersAiReviewer, type TextGenerator } from "@chef/adapters/workers-ai
 import { VectorizeIndex, type EmbedderLike, type VectorizeLike } from "@chef/adapters/vectorize";
 import { GptLiveHost, type Connect, type SocketLike } from "@chef/adapters/gpt-live";
 import { RealtimeHost, voiceUsage } from "@chef/adapters/realtime";
-import { addCost, NO_COST, projectUsage, type ProjectUsage, type SessionCost, type SpendPart, APP_START_SECONDS, AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type AppStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PushedEvent, agentsOf, cloudflareView, engineOf, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
+import { addCost, lifetime, monthOf, NO_COST, projectUsage, type BuildCost, type ProjectUsage, type SpendPart, APP_START_SECONDS, AgentSettings, readCap, applyAgentConfig, FEATURE_ROUTE, featureRequest, FEATURE_MAP_ROUTE, featureMapRequest, readFeatureMap, HISTORY_ROUTE, historyResponse, SESSION_HISTORY_ROUTE, sessionHistoryResponse, type AppStatus, ControlError, DEFAULT_BUDGET, DEFAULT_STORED_AGENTS, mergeAgentConfig, envNeeds, NO_CLASSIFIER, isTerminal, loadProfiles, Orchestrator, resolveModel, routerConfigOf, withSkills, type Profiles, readSpec, caughtUp, SetupError, setupResponse, replayFrom, runnable, SessionPump, startVoiceCall, type ExternalSync, type PushedEvent, agentsOf, cloudflareView, engineOf, type CloudflareView, type SandboxFacts, type Tree, type SpokenTurn, type VoiceCall, type ChefEvent } from "@chef/core";
 import { applyEnvUpdate, envNames, mergeEnv, revealEnv, viewProjectEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { projectAgentsRequest } from "@chef/adapters/agents";
 import { instructionsRequest, memoryRequest, type GuidanceHost } from "@chef/adapters/guidance";
@@ -52,7 +52,7 @@ const SANDBOX_STEP = "project/sandbox-size";
 const APP_KEY = "project/app-key";
 const ADDRESS = "project/address/";
 const REMOVING = "project/removing";
-const COST = "project/cost/";
+const COST = "project/spend/";
 
 export interface MainAppState {
   readonly status: AppStatus;
@@ -103,7 +103,7 @@ export class ProjectAgent extends Agent<Env> {
     const control = bindingControl(env.ARTIFACTS as unknown as ArtifactsBindingLike);
     const repos = new ArtifactsRepoHost(control);
     const bus = new DurableEventBus(this.ctx.storage, (message) => this.broadcast(message, [...this.calls.keys()]));
-    const spend = new EngineSpend(env, this.name, (session, part, micros) => this.addCost(session, part, micros));
+    const spend = this.spender();
     const llm = settings.llm ? llmFromProvider(settings.llm, meteredFetch((model, usage) => spend.record(currentSpender(), model, usage))) : missingLlm;
     const profiles = applyAgentConfig(loadProfiles(agentFiles), agents.config);
     const reviewerRole = role(profiles, "reviewer");
@@ -281,7 +281,7 @@ export class ProjectAgent extends Agent<Env> {
       const by = requester(request);
       const blocked = await orchestrator.blocked(by);
       if (blocked) return Response.json({ error: blocked }, { status: 402 });
-      return Response.json(await new EngineSpend(this.env, this.name).scope(by, () => orchestrator.route(prompt.trim())));
+      return Response.json(await this.spender().scope(by, () => orchestrator.route(prompt.trim())));
     }
     if (action === "budget" && url.pathname.endsWith(`/projects/${this.name}/budget`)) return this.budgetRequest(request);
     if (request.method === "GET" && action === "usage") return Response.json(await this.usage());
@@ -396,7 +396,7 @@ export class ProjectAgent extends Agent<Env> {
       const objectId = this.env.SESSION.idFromName(name);
       const status = await this.sandbox(name).status().catch((): SandboxStatus => ({ running: false, exit: null }));
       const cost = await this.costOf(name);
-      return { name, objectId: objectId.toString(), running: status.running, exit: status.exit, size: status.size ?? null, spent: { micros: cost.sandbox, seconds: cost.sandboxSeconds } };
+      return { name, objectId: objectId.toString(), running: status.running, exit: status.exit, size: status.size ?? null, spent: { micros: lifetime(cost).sandbox ?? 0, seconds: cost.sandboxSeconds } };
     };
     const [main, fork, ids, session, mainBox] = await Promise.all([
       repos.info(this.name),
@@ -520,20 +520,24 @@ export class ProjectAgent extends Agent<Env> {
     return record?.requestedBy ?? null;
   }
 
+  private spender(): EngineSpend {
+    return new EngineSpend(this.env, this.name, (key, part, micros) => this.addCost(key, part, micros));
+  }
+
   private async addCost(key: string, part: SpendPart, micros: number, seconds = 0): Promise<void> {
     const at = `${COST}${key}`;
-    await this.ctx.storage.put(at, addCost((await this.ctx.storage.get<SessionCost>(at)) ?? NO_COST, part, micros, seconds));
+    await this.ctx.storage.put(at, addCost((await this.ctx.storage.get<BuildCost>(at)) ?? NO_COST, monthOf(Date.now()), part, micros, seconds));
   }
 
   private async usage(): Promise<ProjectUsage> {
     const { orchestrator } = await this.build();
-    const [{ caps, ledger }, sessions, stored] = await Promise.all([settingsStub(this.env).spending(Date.now()), orchestrator.sessions(), this.ctx.storage.list<SessionCost>({ prefix: COST })]);
+    const [{ caps, ledger }, sessions, stored] = await Promise.all([settingsStub(this.env).spending(Date.now()), orchestrator.sessions(), this.ctx.storage.list<BuildCost>({ prefix: COST })]);
     const costs = new Map([...stored].map(([key, cost]) => [key.slice(COST.length), cost]));
     return projectUsage({ project: this.name, caps, ledger, sessions, costs, main: this.mainSandbox() });
   }
 
-  private async costOf(key: string): Promise<SessionCost> {
-    return (await this.ctx.storage.get<SessionCost>(`${COST}${key}`)) ?? NO_COST;
+  private async costOf(key: string): Promise<BuildCost> {
+    return (await this.ctx.storage.get<BuildCost>(`${COST}${key}`)) ?? NO_COST;
   }
 
   private sandbox(name: string): { status(): Promise<SandboxStatus> } {
@@ -751,7 +755,7 @@ export class ProjectAgent extends Agent<Env> {
       return null;
     };
     const { orchestrator, settings } = await this.build();
-    const spend = new EngineSpend(this.env, this.name);
+    const spend = this.spender();
     if (!settings.llm) return fail(NO_LLM);
     const voice = settings.voice;
     if (!voice) return fail("Live talk needs a voice key in Settings > Models.");
@@ -860,7 +864,7 @@ export class ProjectAgent extends Agent<Env> {
     try {
       if (!settings.llm) throw new Error(NO_LLM);
       const main = await orchestrator.mainTree();
-      const spend = new EngineSpend(this.env, this.name);
+      const spend = this.spender();
       const overview = await exploreProject(llmFromProvider(settings.llm, meteredFetch((model, usage) => spend.record(null, model, usage))), { name: this.name, tree: main.tree, model: settings.models.planner });
       state = { status: "ready", commitId: main.commitId, at: Date.now(), overview };
     } catch (error) {

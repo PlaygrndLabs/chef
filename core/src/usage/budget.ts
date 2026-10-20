@@ -8,9 +8,34 @@ export interface TokenUsage {
   readonly audioOutputTokens?: number;
 }
 
-export const SPEND_PARTS = ["model", "router", "voice", "sandbox"] as const;
+export type SpendGroup = "models" | "cloudflare";
 
-export type SpendPart = (typeof SPEND_PARTS)[number];
+export const PARTS = {
+  model: { label: "Writing code", group: "models" },
+  router: { label: "Routing", group: "models" },
+  voice: { label: "Live talk", group: "models" },
+  sandbox: { label: "Sandboxes on Cloudflare", group: "cloudflare" },
+} as const satisfies Record<string, { readonly label: string; readonly group: SpendGroup }>;
+
+export type SpendPart = keyof typeof PARTS;
+
+export const SPEND_PARTS = Object.keys(PARTS) as readonly SpendPart[];
+
+export const SPEND_GROUPS: readonly SpendGroup[] = ["models", "cloudflare"];
+
+export type Spend = Readonly<Partial<Record<SpendPart, number>>>;
+
+export function addTo(spend: Spend, part: SpendPart, micros: number): Spend {
+  return { ...spend, [part]: (spend[part] ?? 0) + micros };
+}
+
+export function sumOf(spend: Spend, group?: SpendGroup): number {
+  return SPEND_PARTS.reduce((sum, part) => (group === undefined || PARTS[part].group === group ? sum + (spend[part] ?? 0) : sum), 0);
+}
+
+export function addAll(a: Spend, b: Spend): Spend {
+  return SPEND_PARTS.reduce((sum, part) => (b[part] ? addTo(sum, part, b[part]) : sum), a);
+}
 
 export interface SpendGate {
   blocked(by: string | null): Promise<string | null>;
@@ -24,13 +49,19 @@ export interface Caps {
   readonly members: Readonly<Record<string, number>>;
 }
 
+export interface MonthSpend {
+  readonly month: string;
+  readonly projects: Readonly<Record<string, Spend>>;
+  readonly members: Readonly<Record<string, Spend>>;
+}
+
 export interface Ledger {
   readonly month: string;
   readonly org: number;
   readonly projects: Readonly<Record<string, number>>;
   readonly members: Readonly<Record<string, number>>;
-  readonly parts?: Readonly<Partial<Record<SpendPart, number>>>;
-  readonly projectParts?: Readonly<Record<string, Readonly<Partial<Record<SpendPart, number>>>>>;
+  readonly parts: Spend;
+  readonly projectParts: Readonly<Record<string, Spend>>;
 }
 
 export const NO_CAPS: Caps = { org: null, projects: {}, members: {} };
@@ -84,13 +115,22 @@ export function sandboxMicros(run: SandboxRun): number {
   return memory + disk + cpu;
 }
 
-export interface SessionCost {
-  readonly model: number;
-  readonly sandbox: number;
+export interface BuildCost {
+  readonly months: Readonly<Record<string, Spend>>;
   readonly sandboxSeconds: number;
 }
 
-export const NO_COST: SessionCost = { model: 0, sandbox: 0, sandboxSeconds: 0 };
+export const NO_COST: BuildCost = { months: {}, sandboxSeconds: 0 };
+
+export const PROJECT_COST = "project";
+
+export function addCost(cost: BuildCost, month: string, part: SpendPart, micros: number, seconds = 0): BuildCost {
+  return { months: { ...cost.months, [month]: addTo(cost.months[month] ?? {}, part, micros) }, sandboxSeconds: cost.sandboxSeconds + seconds };
+}
+
+export function lifetime(cost: BuildCost): Spend {
+  return Object.values(cost.months).reduce<Spend>(addAll, {});
+}
 
 export interface BuildUsage {
   readonly id: string;
@@ -98,54 +138,66 @@ export interface BuildUsage {
   readonly title: string;
   readonly state: SessionState;
   readonly createdAt: number;
-  readonly cost: SessionCost;
+  readonly month: Spend;
+  readonly total: Spend;
+  readonly sandboxSeconds: number;
 }
 
 export interface ProjectUsage {
   readonly month: string;
   readonly spent: number;
   readonly cap: number | null;
-  readonly parts: Readonly<Partial<Record<SpendPart, number>>>;
+  readonly parts: Spend;
   readonly builds: readonly BuildUsage[];
-  readonly main: SessionCost;
+  readonly main: Spend;
+  readonly mainSeconds: number;
+  readonly outside: Spend;
 }
 
-export function projectUsage(input: { readonly project: string; readonly caps: Caps; readonly ledger: Ledger; readonly sessions: readonly { readonly id: string; readonly featureId: string; readonly createdAt: number; readonly plan: { readonly feature: { readonly title: string } }; readonly machine: { readonly state: SessionState } }[]; readonly costs: ReadonlyMap<string, SessionCost>; readonly main: string }): ProjectUsage {
+export function projectUsage(input: { readonly project: string; readonly caps: Caps; readonly ledger: Ledger; readonly sessions: readonly { readonly id: string; readonly featureId: string; readonly createdAt: number; readonly plan: { readonly feature: { readonly title: string } }; readonly machine: { readonly state: SessionState } }[]; readonly costs: ReadonlyMap<string, BuildCost>; readonly main: string }): ProjectUsage {
   const { project, caps, ledger, costs } = input;
+  const month = (key: string) => costs.get(key)?.months[ledger.month] ?? {};
   return {
     month: ledger.month,
     spent: ledger.projects[project] ?? 0,
     cap: caps.projects[project] ?? null,
-    parts: ledger.projectParts?.[project] ?? {},
+    parts: ledger.projectParts[project] ?? {},
     builds: [...input.sessions]
       .sort((a, b) => b.createdAt - a.createdAt)
-      .map((s) => ({ id: s.id, feature: s.featureId, title: s.plan.feature.title, state: s.machine.state, createdAt: s.createdAt, cost: costs.get(s.id) ?? NO_COST })),
-    main: costs.get(input.main) ?? NO_COST,
+      .map((s) => {
+        const cost = costs.get(s.id) ?? NO_COST;
+        return { id: s.id, feature: s.featureId, title: s.plan.feature.title, state: s.machine.state, createdAt: s.createdAt, month: month(s.id), total: lifetime(cost), sandboxSeconds: cost.sandboxSeconds };
+      }),
+    main: month(input.main),
+    mainSeconds: costs.get(input.main)?.sandboxSeconds ?? 0,
+    outside: month(PROJECT_COST),
   };
-}
-
-export function addCost(cost: SessionCost, part: SpendPart, micros: number, seconds = 0): SessionCost {
-  return part === "sandbox" ? { ...cost, sandbox: cost.sandbox + micros, sandboxSeconds: cost.sandboxSeconds + seconds } : { ...cost, model: cost.model + micros };
 }
 
 export function monthOf(now: number): string {
   return new Date(now).toISOString().slice(0, 7);
 }
 
-export function emptyLedger(month: string): Ledger {
-  return { month, org: 0, projects: {}, members: {} };
+export function emptyMonth(month: string): MonthSpend {
+  return { month, projects: {}, members: {} };
 }
 
-export function addSpend(ledger: Ledger, month: string, project: string, by: string | null, micros: number, part: SpendPart = "model"): Ledger {
-  const base = ledger.month === month ? ledger : emptyLedger(month);
+export function addSpend(spend: MonthSpend, project: string, by: string | null, micros: number, part: SpendPart = "model"): MonthSpend {
   return {
-    month,
-    org: base.org + micros,
-    projects: { ...base.projects, [project]: (base.projects[project] ?? 0) + micros },
-    members: by ? { ...base.members, [by]: (base.members[by] ?? 0) + micros } : base.members,
-    parts: { ...base.parts, [part]: (base.parts?.[part] ?? 0) + micros },
-    projectParts: { ...base.projectParts, [project]: { ...base.projectParts?.[project], [part]: (base.projectParts?.[project]?.[part] ?? 0) + micros } },
+    month: spend.month,
+    projects: { ...spend.projects, [project]: addTo(spend.projects[project] ?? {}, part, micros) },
+    members: by ? { ...spend.members, [by]: addTo(spend.members[by] ?? {}, part, micros) } : spend.members,
   };
+}
+
+export function ledgerOf(spend: MonthSpend): Ledger {
+  const totals = (of: Readonly<Record<string, Spend>>) => Object.fromEntries(Object.entries(of).map(([name, s]) => [name, sumOf(s)]));
+  const parts = Object.values(spend.projects).reduce<Spend>(addAll, {});
+  return { month: spend.month, org: sumOf(parts), projects: totals(spend.projects), members: totals(spend.members), parts, projectParts: spend.projects };
+}
+
+export function emptyLedger(month: string): Ledger {
+  return ledgerOf(emptyMonth(month));
 }
 
 export function dollars(micros: number): string {

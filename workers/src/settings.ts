@@ -3,7 +3,7 @@ import { applyUpdate, describeSettings, MANAGED_PARTS, NO_SETTINGS, readManaged,
 import type { ProjectActivity, ProjectEntry } from "@chef/adapters/projects";
 import type { GitHubAppCredentials, GitHubBroker } from "@chef/adapters/github-app";
 import type { SharedInstructions } from "@chef/adapters/guidance";
-import { addSpend, AgentSettings, emptyLedger, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type SaveResult, type SpendPart, type StoredAgents } from "@chef/core";
+import { addSpend, AgentSettings, emptyMonth, ledgerOf, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type MonthSpend, type SaveResult, type SpendPart, type StoredAgents } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, homeOrigin, passwordProblem, sessionCookie, type Access, type Caller, type Credential, type StoredPassword } from "./access.ts";
 import { deploymentGrant, deploymentKey, live, mintGrant, readGrantRequest, viewGrant, type Grant, type GrantView } from "./grants.ts";
@@ -27,7 +27,7 @@ const ENV_KEY = "env/key";
 const SHARED_ENV = "env/shared";
 const SHARED_INSTRUCTIONS = "instructions/shared";
 const CAPS = "spend/caps";
-const LEDGER = "spend/ledger";
+const SPEND = "spend/month/";
 const PENDING_MS = 60 * 60_000;
 
 export interface PendingConnect {
@@ -195,15 +195,17 @@ export class Settings extends DurableObject<Env> {
     await this.ctx.storage.put(GITHUB_LINKS, links);
   }
 
-  async spending(now: number): Promise<{ readonly caps: Caps; readonly ledger: Ledger }> {
-    const month = monthOf(now);
-    const ledger = (await this.ctx.storage.get<Ledger>(LEDGER)) ?? emptyLedger(month);
-    return { caps: (await this.ctx.storage.get<Caps>(CAPS)) ?? NO_CAPS, ledger: ledger.month === month ? ledger : emptyLedger(month) };
+  async spending(now: number, month = monthOf(now)): Promise<{ readonly caps: Caps; readonly ledger: Ledger }> {
+    return { caps: (await this.ctx.storage.get<Caps>(CAPS)) ?? NO_CAPS, ledger: ledgerOf(await this.monthSpend(month)) };
   }
 
   async recordSpend(project: string, by: string | null, micros: number, now: number, part: SpendPart = "model"): Promise<void> {
-    const ledger = (await this.ctx.storage.get<Ledger>(LEDGER)) ?? emptyLedger(monthOf(now));
-    await this.ctx.storage.put(LEDGER, addSpend(ledger, monthOf(now), project, by, micros, part));
+    const month = monthOf(now);
+    await this.ctx.storage.put(`${SPEND}${month}`, addSpend(await this.monthSpend(month), project, by, micros, part));
+  }
+
+  private async monthSpend(month: string): Promise<MonthSpend> {
+    return (await this.ctx.storage.get<MonthSpend>(`${SPEND}${month}`)) ?? emptyMonth(month);
   }
 
   async spendBlocked(project: string, by: string | null, now: number): Promise<string | null> {

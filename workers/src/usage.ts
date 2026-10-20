@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { costMicros, readCap, type SpendGate, type SpendPart, type TokenUsage } from "@chef/core";
+import { costMicros, PROJECT_COST, readCap, type SpendGate, type SpendPart, type TokenUsage } from "@chef/core";
 import { settingsStub } from "./settings.ts";
 import { USER_HEADER } from "./access.ts";
 
@@ -36,8 +36,8 @@ export class EngineSpend implements SpendGate {
     const micros = costMicros(model, usage);
     if (micros <= 0) return;
     await settingsStub(this.env).recordSpend(this.project, by, micros, Date.now(), part);
-    const of = session ?? spender.getStore()?.session;
-    if (of && this.onSession) await this.onSession(of, part, micros).catch((error: unknown) => console.error(`saving the cost of ${this.project} ${of} failed`, error));
+    const of = session ?? spender.getStore()?.session ?? PROJECT_COST;
+    if (this.onSession) await this.onSession(of, part, micros).catch((error: unknown) => console.error(`saving the cost of ${this.project} ${of} failed`, error));
   }
 
   scope<T>(by: string | null, work: () => Promise<T>, session?: string): Promise<T> {
@@ -62,7 +62,11 @@ function readCaps(body: unknown, key: "projects" | "members"): CapUpdate | undef
 
 export async function usageRequest(request: Request, env: Env, changed: (project: string) => Promise<void>): Promise<Response> {
   const settings = settingsStub(env);
-  if (request.method === "GET") return Response.json(await settings.spending(Date.now()));
+  if (request.method === "GET") {
+    const month = new URL(request.url).searchParams.get("month");
+    if (month !== null && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return Response.json({ error: "month is YYYY-MM" }, { status: 400 });
+    return Response.json(await settings.spending(Date.now(), month ?? undefined));
+  }
   if (request.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405 });
   const body = (await request.json().catch(() => null)) as { org?: unknown } | null;
   const org = body && "org" in body ? readCap(body.org) : undefined;
