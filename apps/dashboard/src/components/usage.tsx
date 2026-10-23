@@ -209,7 +209,7 @@ function ProjectRow(props: { readonly name: string; readonly spend: Spend; reado
     </span>
   );
   const open = live && workspace ? () => workspace.select({ project: props.name, view: "project", feature: null, session: null, panel: null, settings: { scope: "project", section: "usage" }, item: null }) : null;
-  return <SpendRow id={props.name} kind="project" label={label} spend={props.spend} title={open ? `Open ${props.name}'s usage` : `${props.name} was deleted`} onOpen={open} />;
+  return <SpendRow id={props.name} kind="project" label={label} spend={props.spend} title={open ? `Open ${props.name}'s usage` : "This project was deleted"} onOpen={open} />;
 }
 
 function BuildRow({ build }: { readonly build: BuildUsage }) {
