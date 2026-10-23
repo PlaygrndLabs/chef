@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addCost, addSpend, costMicros, emptyMonth, ledgerOf, monthOf, NO_CAPS, NO_COST, overCap, PARTS, PROJECT_COST, projectUsage, readCap, setCaps, SPEND_PARTS, sumOf } from "../../src/usage/budget.ts";
+import { addCost, addSpend, archiveProject, costMicros, emptyMonth, ledgerOf, monthOf, NO_CAPS, NO_COST, overCap, PARTS, PROJECT_COST, projectUsage, readCap, setCaps, SPEND_PARTS, sumOf } from "../../src/usage/budget.ts";
 
 describe("model spend", () => {
   it("prices tokens by model family and charges cache reads a tenth", () => {
@@ -24,6 +24,17 @@ describe("model spend", () => {
     expect(month).toEqual({ month: "2026-10", projects: { shop: { model: 8 }, blog: { model: 2, voice: 4 } }, members: { usr_a: { model: 7 } } });
     expect(ledgerOf(month)).toEqual({ month: "2026-10", org: 14, projects: { shop: 8, blog: 6 }, members: { usr_a: 7 }, parts: { model: 10, voice: 4 }, projectParts: { shop: { model: 8 }, blog: { model: 2, voice: 4 } } });
     expect(monthOf(Date.UTC(2026, 9, 31, 23, 59))).toBe("2026-10");
+  });
+
+  it("moves a deleted project's spend under its deleted name, so a new project of the same name starts at zero", () => {
+    let month = addSpend(addSpend(emptyMonth("2026-10"), "shop", "usr_a", 5), "blog", null, 2, "sandbox");
+    month = archiveProject(month, "shop");
+    expect(month.projects).toEqual({ blog: { sandbox: 2 }, "shop (deleted)": { model: 5 } });
+    month = archiveProject(addSpend(month, "shop", null, 3, "sandbox"), "shop");
+    expect(month.projects).toEqual({ blog: { sandbox: 2 }, "shop (deleted)": { model: 5, sandbox: 3 } });
+    expect(ledgerOf(month).org).toBe(10);
+    expect(month.members).toEqual({ usr_a: { model: 5 } });
+    expect(archiveProject(month, "gone")).toBe(month);
   });
 
   it("names every part once, in a group that decides its column", () => {

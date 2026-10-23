@@ -190,6 +190,17 @@ export function addSpend(spend: MonthSpend, project: string, by: string | null, 
   };
 }
 
+export function deletedName(project: string): string {
+  return `${project} (deleted)`;
+}
+
+export function archiveProject(spend: MonthSpend, project: string): MonthSpend {
+  const { [project]: gone, ...projects } = spend.projects;
+  if (!gone) return spend;
+  const archived = deletedName(project);
+  return { ...spend, projects: { ...projects, [archived]: addAll(projects[archived] ?? {}, gone) } };
+}
+
 export function ledgerOf(spend: MonthSpend): Ledger {
   const totals = (of: Readonly<Record<string, Spend>>) => Object.fromEntries(Object.entries(of).map(([name, s]) => [name, sumOf(s)]));
   const parts = Object.values(spend.projects).reduce<Spend>(addAll, {});

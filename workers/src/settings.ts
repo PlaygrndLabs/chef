@@ -3,7 +3,7 @@ import { applyUpdate, describeSettings, MANAGED_PARTS, NO_SETTINGS, readManaged,
 import type { ProjectActivity, ProjectEntry } from "@chef/adapters/projects";
 import type { GitHubAppCredentials, GitHubBroker } from "@chef/adapters/github-app";
 import type { SharedInstructions } from "@chef/adapters/guidance";
-import { addSpend, AgentSettings, emptyMonth, ledgerOf, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type MonthSpend, type SaveResult, type SpendPart, type StoredAgents } from "@chef/core";
+import { addSpend, AgentSettings, archiveProject, emptyMonth, ledgerOf, monthOf, NO_CAPS, overCap, setCaps, type AgentConfig, type AgentVersion, type Caps, type Ledger, type MonthSpend, type SaveResult, type SpendPart, type StoredAgents } from "@chef/core";
 import { aesCipher, applyEnvUpdate, envKeyBytes, newEnvKey, viewEnv, type EnvCipher, type StoredEnv } from "@chef/adapters/project-env";
 import { deploymentPassword, hashPassword, homeOrigin, passwordProblem, sessionCookie, type Access, type Caller, type Credential, type StoredPassword } from "./access.ts";
 import { deploymentGrant, deploymentKey, live, mintGrant, readGrantRequest, viewGrant, type Grant, type GrantView } from "./grants.ts";
@@ -130,6 +130,10 @@ export class Settings extends DurableObject<Env> {
     await this.ctx.storage.delete(`${ACTIVITY}${name}`);
     await this.linkRepository(name, null);
     await this.updateCaps({ projects: { [name]: null } });
+    for (const [key, spend] of await this.ctx.storage.list<MonthSpend>({ prefix: SPEND })) {
+      const archived = archiveProject(spend, name);
+      if (archived !== spend) await this.ctx.storage.put(key, archived);
+    }
     for (const grant of (await this.grants()).grants) if (grant.kind === "share" && targetOf(grant)?.project === name) await this.removeGrant(grant.id);
   }
 
