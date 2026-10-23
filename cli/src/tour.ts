@@ -353,6 +353,12 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       after = page500.at(-1)?.seq ?? after + page500.length;
     }
     writeFileSync(join(options.out, "events.jsonl"), events.map((e) => JSON.stringify(e)).join("\n"));
+    const builds = await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[]);
+    const spent = {
+      usage: await json<unknown>(page, `/api/projects/${project}/usage`).catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) })),
+      builds: await Promise.all(builds.map((s) => json<unknown>(page, `/api/projects/${project}/sessions/${s.id}`).catch((error: unknown) => ({ id: s.id, error: error instanceof Error ? error.message : String(error) })))),
+    };
+    writeFileSync(join(options.out, "usage.json"), `${JSON.stringify(spent, null, 2)}\n`);
     if (options.remove) {
       if (report.projects.includes(project) && !(options.removeExisting && options.project)) report.errors.push(`remove: ${project} was there before the tour, so the tour left it`);
       else {
