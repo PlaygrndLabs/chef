@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Browser, Page } from "playwright";
+import type { Browser, Locator, Page } from "playwright";
 
 export interface TourOptions {
   readonly url: string;
@@ -33,6 +33,7 @@ export interface TourReport {
   agents: { readonly version: number; readonly roles: string[]; readonly skills: number } | null;
   routed: { readonly prompt: string; readonly intent: string; readonly via: string; readonly classifier: string | null } | null;
   readonly setup: string[];
+  setupSteps?: string[];
   finished: boolean;
   featureRoute?: number;
   removed?: { readonly project: string; readonly listed: boolean; readonly ms: number };
@@ -104,26 +105,44 @@ async function json<T>(page: Page, path: string, init?: { method: string; data?:
   return (await response.json()) as T;
 }
 
+async function pickFromGitHub(form: Locator, repo: string): Promise<boolean> {
+  const fullName = /^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(repo)?.[1];
+  if (!fullName) return false;
+  await form.getByRole("radio", { name: "From GitHub" }).click();
+  if (!(await form.locator('[data-github="connected"]').waitFor({ timeout: 15_000 }).then(() => true, () => false))) return false;
+  const search = form.getByLabel("Search repositories");
+  if (await search.count()) await search.fill(fullName);
+  const pick = form.locator('[aria-label="GitHub repository"] [role="radio"]').filter({ hasText: new RegExp(`^${fullName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") });
+  if (!(await pick.first().waitFor({ timeout: 5000 }).then(() => true, () => false))) return false;
+  await pick.first().click();
+  return true;
+}
+
 async function createInDialog(page: Page, project: string, repo: string | undefined, report: TourReport, shot: (name: string) => Promise<void>): Promise<void> {
   await page.goto("/");
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: /new project/i }).first().click();
-  if (repo) {
-    await page.getByRole("radio", { name: "Other git host" }).click();
-    await page.getByLabel("Repository URL").fill(repo);
+  const button = page.getByRole("button", { name: /new project/i }).first();
+  const inDialog = await button.waitFor({ timeout: 10_000 }).then(() => true, () => false);
+  if (inDialog) await button.click();
+  const form = inDialog ? page.locator('[data-dialog="new-project"]') : page.locator("body");
+  if (repo && !(await pickFromGitHub(form, repo))) {
+    await form.getByRole("radio", { name: "Other git host" }).click();
+    await form.getByLabel("Repository URL").fill(repo);
   }
-  await page.getByLabel("Project name").fill(project);
-  await page.getByRole("button", { name: "Create project" }).click();
-  const dialog = page.locator('[data-dialog="new-project"]');
+  await form.getByLabel("Project name").fill(project);
+  await form.getByRole("button", { name: "Create project" }).click();
   await page.locator("[data-setup-log-toggle]").click({ timeout: 5000 }).catch(() => undefined);
   const shotTaken = shot("new-project-setup");
   const deadline = Date.now() + 180_000;
+  let seen = false;
   while (Date.now() < deadline) {
-    const steps = await dialog.locator("[data-step]").allInnerTexts().catch(() => [] as string[]);
+    const steps = await form.locator("[data-step]").allInnerTexts().catch(() => [] as string[]);
     for (const step of steps.map((s) => s.split("\n")[0]?.trim() ?? "")) if (step && !report.setup.includes(step)) report.setup.push(step);
-    const state = await dialog.locator("[data-setup]").getAttribute("data-setup", { timeout: 500 }).catch(() => null);
-    if (state === "failed") throw new Error(`setup failed: ${(await dialog.locator("[data-setup-log]").innerText().catch(() => "")).slice(-500)}`);
-    if (!(await dialog.count())) break;
+    if (steps.length) report.setupSteps = steps.map((s) => s.replace(/\s+/g, " ").trim());
+    const state = await form.locator("[data-setup]").getAttribute("data-setup", { timeout: 500 }).catch(() => null);
+    if (state === "failed") throw new Error(`setup failed: ${(await form.locator("[data-setup-log]").innerText().catch(() => "")).slice(-500)}`);
+    seen ||= state !== null;
+    if (inDialog ? !(await form.count()) : seen && state === null) break;
     await page.waitForTimeout(150);
   }
   await shotTaken;
