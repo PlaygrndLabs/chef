@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           for name in $WORKERS $INDEXES $NAMESPACE; do
-            case "$name" in chef-dev|chef-dev-*|chef-site|chef-site-*|chef-gateway|sub2api|sub2api-*|design-studio*|websims*) echo "refusing to remove $name"; exit 1;; esac
+            case "$name" in chef|chef-dev|chef-dev-*|chef-site|chef-site-*|chef-backoffice|chef-backoffice-*|chef-playgrndlabs-*|chef-gateway|chef-sandbox|sub2api|sub2api-*|design-studio*|websims*) echo "refusing to remove $name"; exit 1;; esac
           done
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
           get() { curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1"; }

@@ -35,9 +35,16 @@ const list = (value: unknown): Json[] => (Array.isArray(value) ? (value as Json[
 
 export const DEFAULT_MEMORY_INDEX = `${BASE_NAME}-memory`;
 
+export function nameProblem(name: string): string | null {
+  if (name === BASE_NAME || /^chef-[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(name)) return null;
+  const tail = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/^chef-?/, "") || "copy";
+  return `a Chef's name starts with "chef-", for example chef-${tail}, so everything it makes on Cloudflare starts with chef and is easy to tell apart from other work`;
+}
+
 export function instanceConfig(base: Json, name: string): Json {
   if (name === BASE_NAME && base["name"] === BASE_NAME) return base;
-  const workflows = new Map(list(base["workflows"]).map((w) => [String(w["name"]), `${name}-${String(w["name"])}`]));
+  const own = (n: string) => `${name}-${n.startsWith(`${BASE_NAME}-`) ? n.slice(BASE_NAME.length + 1) : n}`;
+  const workflows = new Map(list(base["workflows"]).map((w) => [String(w["name"]), own(String(w["name"]))]));
   const namespace = (n: unknown) => (n === BASE_NAME ? name : n);
   const triggers = base["triggers"] as Json | undefined;
   return {
@@ -161,6 +168,8 @@ export async function deploy(options: DeployOptions = {}): Promise<Deployed> {
   const baseFile = join(REPO_ROOT, "wrangler.jsonc");
   const base = parseJsonc(readFileSync(baseFile, "utf8"));
   const name = options.name ?? String(base["name"]);
+  const problem = options.name === undefined ? null : nameProblem(options.name);
+  if (problem) throw new Error(problem);
   let instance: Json | null = null;
   if (name !== BASE_NAME || options.image) {
     instance = options.image ? withImage(instanceConfig(base, name), options.image) : instanceConfig(base, name);

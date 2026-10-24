@@ -54,6 +54,7 @@ describe("Cloudflare view of a session", () => {
     expect(byKey["app"]?.dashboard).toBe("https://dash.cloudflare.com/acc1/workers/services/view/chef-dev-app/production/deployments");
     expect(byKey["main-app"]?.state?.text).toBe("Starting");
     expect(byKey["workflow"]?.name).toBe("chef-dev-upstream-sync");
+    expect(cloudflareView({ ...facts, engine: "chef" }).resources.find((r) => r.key === "workflow")?.name).toBe("chef-upstream-sync");
     expect(byKey["memory"]?.name).toBe("chef-dev-memory");
     expect(view.resources.filter((r) => r.group === "project").map((r) => r.key)).toEqual(["sandbox:main", "main-app", "router", "main", "engine", "project-object", "workflow", "memory"]);
   });

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       prefix:
-        description: Name prefix of the old Cloudflare resources (a Worker named exactly this, or starting with "<prefix>-")
+        description: Name of the test copy (chef-test-<name>) or old leftover whose Cloudflare resources to remove (a Worker named exactly this, or starting with "<prefix>-")
         required: true
       confirm:
         description: Type the prefix again to delete; leave empty to only list what would be deleted
@@ -39,7 +39,7 @@ jobs:
         working-directory: workers
         run: |
           set -euo pipefail
-          case "$PREFIX" in chef-dev) ;; ""|chef|chef-*) echo "refusing prefix '$PREFIX'"; exit 1;; esac
+          case "$PREFIX" in chef-dev|chef-test-?*) ;; ""|chef|chef-*) echo "refusing prefix '$PREFIX'"; exit 1;; esac
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
           get() { curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1"; }
           del() { curl -sS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$1" | jq -c '{success, errors}'; }
@@ -66,4 +66,16 @@ jobs:
           while read -r id name; do [ -n "${id:-}" ] || continue; act "container application $name" && del "containers/applications/$id"; done <<< "$containers"
           for name in $indexes; do act "vectorize index $name" && del "vectorize/v2/indexes/$name"; done
           for name in $repos; do act "artifacts repo $PREFIX/$name" && npx wrangler artifacts repos delete "$name" --namespace "$PREFIX" --force; done
+          if npx wrangler artifacts namespaces list --json 2>/dev/null | jq -e --arg p "$PREFIX" '(if type == "array" then . else (.namespaces // .result // []) end) | any(.[]; (.namespace // .name) == $p)' > /dev/null; then
+            act "artifacts namespace $PREFIX" && del "artifacts/namespaces/$PREFIX"
+          fi
+          bucket="${PREFIX:0:51}-transcripts"
+          if curl -fsS -o /dev/null -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/r2/buckets/$bucket" 2>/dev/null && act "transcript bucket $bucket and its objects"; then
+            for round in $(seq 50); do
+              keys=$(get "r2/buckets/$bucket/objects?per_page=1000" | jq -r '.result[]?.key | @uri')
+              [ -n "$keys" ] || break
+              for key in $keys; do curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/r2/buckets/$bucket/objects/$key"; done
+            done
+            del "r2/buckets/$bucket"
+          fi
           echo "done (delete=$DELETE)"

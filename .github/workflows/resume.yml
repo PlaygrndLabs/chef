@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: Name of the separate Chef copy to deploy and test (never chef-dev)
-        default: resume
+        description: Name of the separate Chef copy to deploy and test, starting with chef-test-
+        default: chef-test-resume
       prompt:
         description: Feature to build while Chef is deployed again
         default: Add a notes page where I can write a note, save it and see my saved notes in a list
@@ -31,7 +31,7 @@ jobs:
       DEPLOYS: ${{ inputs.deploys }}
     steps:
       - name: Refuse the development and hosted engines
-        run: case "$NAME" in ""|chef|chef-*) echo "use a separate copy, not $NAME"; exit 1 ;; esac
+        run: case "$NAME" in chef-test-?*) ;; *) echo "use a separate copy named chef-test-<name>, not $NAME"; exit 1 ;; esac
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
