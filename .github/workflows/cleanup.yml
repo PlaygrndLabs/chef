@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       prefix:
-        description: Name of the test copy (chef-test-<name>) or old leftover whose Cloudflare resources to remove (a Worker named exactly this, or starting with "<prefix>-")
+        description: Name of the test copy (for example chef-test-resume) or old leftover whose Cloudflare resources to remove, meaning a Worker named exactly this, and everything whose name starts with it and a dash
         required: true
       confirm:
         description: Type the prefix again to delete; leave empty to only list what would be deleted

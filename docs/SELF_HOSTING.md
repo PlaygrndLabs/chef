@@ -48,21 +48,22 @@ Any secret from [Settings](#settings) that the repository has is passed to the W
 
 ## More than one Chef in an account
 
-`pnpm run deploy --name <name>`, or the `deploy` workflow's `name` input, deploys a separate Chef with its own Artifacts namespace (`<name>`), Workflow (`<name>-upstream-sync`), memory index (`<name>-memory`), transcript bucket (`<name>-transcripts`) and app router (`<name>-app`). It is how changes to Chef itself are tried on Cloudflare before they reach the main deploy; the workflows name such test copies `chef-test-<name>`. The `cleanup` workflow removes such a copy and everything it created.
+`pnpm run deploy --name chef-trial`, or the `deploy` workflow's `name` input, deploys a separate Chef named `chef-trial` with its own Artifacts namespace, Workflow, memory index, transcript bucket and app router, all named after it as in the table below. It is how changes to Chef itself are tried on Cloudflare before they reach the main deploy; the workflows name such test copies `chef-test-…`, for example `chef-test-resume`. The `cleanup` workflow removes such a copy and everything it created.
 
 ## Names on Cloudflare
 
-Everything Chef makes in a Cloudflare account starts with `chef`, so it never mixes with your other work and can be found, or removed by hand, by that name. A Chef's name is `chef` or starts with `chef-` (`chef deploy --name` refuses any other), and each of its resources starts with that name:
+Everything Chef makes in a Cloudflare account starts with `chef`, so it never mixes with your other work and can be found, or removed by hand, by that name. A Chef's own name is `chef` or starts with `chef-` (`chef deploy --name` refuses any other), and each of its resources starts with that name. For the main Chef, `chef`, and a second one named `chef-dev`:
 
-| Resource | Name |
-| --- | --- |
-| Engine Worker, its Durable Objects and event trigger | `<chef>` |
-| Sandboxes (container application) | `<chef>-sessionagent` |
-| Workflow | `<chef>-upstream-sync` |
-| App router Worker, one preview per running app | `<chef>-app`, apps at `<build>-<project>-<chef>-app.<subdomain>.workers.dev` |
-| Artifacts namespace (each project's repos inside it) | `<chef>` |
-| Memory index | `<chef>-memory` |
-| Transcript bucket | `<chef>-transcripts` |
+| Resource | `chef` | `chef-dev` |
+| --- | --- | --- |
+| Engine Worker, its Durable Objects and event trigger | `chef` | `chef-dev` |
+| Sandboxes (container application) | `chef-sessionagent` | `chef-dev-sessionagent` |
+| Workflow | `chef-upstream-sync` | `chef-dev-upstream-sync` |
+| App router Worker, one preview per running app | `chef-app` | `chef-dev-app` |
+| A running app, for example main of the project `notes` | `main-notes-chef-app.example.workers.dev` | `main-notes-chef-dev-app.example.workers.dev` |
+| Artifacts namespace (each project's repos inside it) | `chef` | `chef-dev` |
+| Memory index | `chef-memory` | `chef-dev-memory` |
+| Transcript bucket | `chef-transcripts` | `chef-dev-transcripts` |
 
 A Worker the Deploy to Cloudflare button renamed keeps that name for its resources instead.
 

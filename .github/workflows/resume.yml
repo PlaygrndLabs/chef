@@ -31,7 +31,7 @@ jobs:
       DEPLOYS: ${{ inputs.deploys }}
     steps:
       - name: Refuse the development and hosted engines
-        run: case "$NAME" in chef-test-?*) ;; *) echo "use a separate copy named chef-test-<name>, not $NAME"; exit 1 ;; esac
+        run: case "$NAME" in chef-test-?*) ;; *) echo "use a separate copy whose name starts with chef-test-, not $NAME"; exit 1 ;; esac
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
