@@ -13,7 +13,7 @@ import { BENCH_ITEMS } from "./bench/items.ts";
 import { runVoice, VOICE_PROMPT } from "./voice.ts";
 import { exportTuneData } from "./tune/data.ts";
 import { serve } from "./serve.ts";
-import { deploy } from "./deploy.ts";
+import { deploy, nameProblem } from "./deploy.ts";
 import { tour } from "./tour.ts";
 import { changes } from "./changes.ts";
 import { renderReport, runBench, runReplay, type BenchMode, type BenchResult } from "./bench/run.ts";
@@ -256,6 +256,11 @@ async function deployCommand(args: readonly string[]): Promise<number> {
       continue;
     }
     passthrough.push(arg);
+  }
+  const problem = name ? nameProblem(name) : null;
+  if (problem) {
+    process.stderr.write(`chef deploy: ${problem}\n`);
+    return 2;
   }
   const apiKey = args.includes("--api-key") || keyFile !== undefined;
   const result = await deploy({ ...(name ? { name } : {}), ...(image ? { image } : {}), dryRun: args.includes("--dry-run"), apiKey, passthrough });

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { deploy, ensureMemoryIndex, ensureTranscripts, instanceConfig, MEMORY_DIMENSIONS, parseJsonc, refusedToken, TOKEN_HELP, transcriptBucket, withImage, withSecret, type Runner } from "../../src/deploy.ts";
+import { deploy, ensureMemoryIndex, ensureTranscripts, instanceConfig, MEMORY_DIMENSIONS, nameProblem, parseJsonc, refusedToken, TOKEN_HELP, transcriptBucket, withImage, withSecret, type Runner } from "../../src/deploy.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
 const base = parseJsonc(readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8"));
@@ -15,14 +15,15 @@ describe("deploy", () => {
 
   it("keeps the main Chef's resource names and gives a named copy its own", () => {
     expect(instanceConfig(base, "chef")).toBe(base);
-    const copy = instanceConfig(base, "trial");
+    expect(base).toMatchObject({ artifacts: [{ namespace: "chef" }], workflows: [{ name: "chef-upstream-sync" }], vectorize: [{ index_name: "chef-memory" }] });
+    const copy = instanceConfig(base, "chef-trial");
     expect(copy).toMatchObject({
-      name: "trial",
-      artifacts: [{ binding: "ARTIFACTS", namespace: "trial" }],
-      workflows: [{ binding: "UPSTREAM_SYNC", name: "trial-upstream-sync" }],
-      vectorize: [{ binding: "MEMORY", index_name: "trial-memory" }],
-      triggers: { events: [{ filter: { namespace: "trial" }, targets: [{ workflow_name: "trial-upstream-sync" }] }] },
-      vars: { PROJECT_WORKER_PREFIX: "trial-", CODER_MODEL: (base["vars"] as Record<string, string>)["CODER_MODEL"] },
+      name: "chef-trial",
+      artifacts: [{ binding: "ARTIFACTS", namespace: "chef-trial" }],
+      workflows: [{ binding: "UPSTREAM_SYNC", name: "chef-trial-upstream-sync" }],
+      vectorize: [{ binding: "MEMORY", index_name: "chef-trial-memory" }],
+      triggers: { events: [{ filter: { namespace: "chef-trial" }, targets: [{ workflow_name: "chef-trial-upstream-sync" }] }] },
+      vars: { PROJECT_WORKER_PREFIX: "chef-trial-", CODER_MODEL: (base["vars"] as Record<string, string>)["CODER_MODEL"] },
     });
     expect(copy["durable_objects"]).toEqual(base["durable_objects"]);
   });
@@ -38,6 +39,16 @@ describe("deploy", () => {
     });
     const named = { ...renamed, vectorize: [{ binding: "MEMORY", index_name: "notes" }] };
     expect(instanceConfig(named, "my-chef")).toMatchObject({ vectorize: [{ index_name: "notes" }] });
+  });
+
+  it("names every Chef so all it makes on Cloudflare starts with chef", async () => {
+    for (const name of ["chef", "chef-dev", "chef-playgrndlabs-k8mv", "chef-test-resume"]) expect(nameProblem(name)).toBeNull();
+    expect(nameProblem("resume")).toContain("chef-resume");
+    expect(nameProblem("Chef Trial")).toContain("chef-trial");
+    for (const name of ["chefdev", "chef-", "chef-Dev", "my-chef"]) expect(nameProblem(name)).not.toBeNull();
+    const ran: string[][] = [];
+    await expect(deploy({ name: "resume", run: async (args) => (ran.push([...args]), { code: 0, output: "" }), log: () => undefined })).rejects.toThrow("chef-resume");
+    expect(ran).toEqual([]);
   });
 
   it("says which token permissions to add when Cloudflare refuses the deploy's token", async () => {

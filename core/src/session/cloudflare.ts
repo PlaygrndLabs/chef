@@ -228,7 +228,7 @@ export function cloudflareView(facts: CloudflareFacts): CloudflareView {
       group: "project",
       kind: "workflow",
       title: "Workflow",
-      name: facts.engine === "chef" ? "upstream-sync" : `${facts.engine}-upstream-sync`,
+      name: `${facts.engine}-upstream-sync`,
       roles: [],
       facts: [{ label: "Does", value: "tells Chef when main gets a new commit, so open builds catch up" }],
       dashboard: dashboardLink(facts.accountId, "workers/workflows"),

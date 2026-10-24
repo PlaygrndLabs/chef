@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       name:
-        description: Worker name. Leave empty for the development Chef (chef-dev); any other name deploys a separate copy with its own repos, memory and apps, and checks that a new project's app runs.
+        description: Worker name. Leave empty for the development Chef (chef-dev); a chef-test-<name> deploys a separate copy with its own repos, memory and apps, and checks that a new project's app runs.
         required: false
         default: ""
 
@@ -29,6 +29,8 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       NAME: ${{ inputs.name || 'chef-dev' }}
     steps:
+      - name: Deploy only chef, chef-dev or a chef-test- copy, never a hosted engine
+        run: case "$NAME" in chef|chef-dev|chef-test-?*) ;; *) echo "::error::name a test copy chef-test-<name>, not $NAME"; exit 1 ;; esac
       - name: Check Cloudflare credentials
         id: creds
         run: |

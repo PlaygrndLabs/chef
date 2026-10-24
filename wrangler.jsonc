@@ -28,7 +28,7 @@
       "images": { "coder": { "dockerfile": "./workers/sandbox/Dockerfile" } }
     }
   ],
-  "workflows": [{ "name": "upstream-sync", "binding": "UPSTREAM_SYNC", "class_name": "UpstreamSync" }],
+  "workflows": [{ "name": "chef-upstream-sync", "binding": "UPSTREAM_SYNC", "class_name": "UpstreamSync" }],
   "vectorize": [{ "binding": "MEMORY", "index_name": "chef-memory" }],
   "ai": { "binding": "AI" },
   "triggers": {
@@ -36,7 +36,7 @@
       {
         "type": "cf.artifacts.repo.pushed",
         "filter": { "namespace": "chef" },
-        "targets": [{ "type": "workflow", "workflow_name": "upstream-sync" }]
+        "targets": [{ "type": "workflow", "workflow_name": "chef-upstream-sync" }]
       }
     ]
   },
