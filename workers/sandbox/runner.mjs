@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { clearInterval, setInterval } from "node:timers";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
@@ -180,6 +180,27 @@ async function finish(outcome, code) {
 const saver = setInterval(save, 15_000);
 
 const lint = process.env.CHEF_LINT ?? "/opt/chef/template/lint.mjs";
+const guard = job.guard ?? null;
+const compiled = (sources) => (sources ?? []).map((source) => new RegExp(source));
+const allowed = compiled(guard?.allow);
+const denied = compiled(guard?.deny);
+const rules = (guard?.rules ?? []).map((rule) => ({ ...rule, files: new RegExp(rule.files), forbid: new RegExp(rule.forbid) }));
+
+function blocked(file) {
+  if (!guard || typeof file !== "string") return null;
+  const path = relative(dir, resolve(dir, file));
+  if (path.startsWith("..") || isAbsolute(path)) return null;
+  if (guard.blocked[path]) return guard.blocked[path];
+  if (guard.free.includes(path)) return null;
+  if (denied.some((regex) => regex.test(path)) || !allowed.some((regex) => regex.test(path))) return `${path}: ${guard.scope}`;
+  return null;
+}
+
+const writeGuard = async (input) => {
+  const reason = blocked(input.tool_input?.file_path ?? input.tool_input?.notebook_path);
+  return reason ? { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } } : {};
+};
+
 const options = (resume) => ({
   cwd: dir,
   model: job.model,
@@ -191,6 +212,7 @@ const options = (resume) => ({
   ...(skillNames.length ? { skills: skillNames } : {}),
   includePartialMessages: true,
   maxTurns: job.maxTurns ?? 60,
+  ...(guard ? { hooks: { PreToolUse: [{ matcher: "Write|Edit|NotebookEdit", hooks: [writeGuard] }] } } : {}),
   env,
   stderr: (data) => process.stderr.write(data),
   ...(resume ? { resume } : {}),
@@ -229,12 +251,26 @@ function changedPaths() {
   return git("diff", "--cached", "--name-only", "--no-renames", "--diff-filter=AM", job.commitId).split("\n").filter(Boolean);
 }
 
+function ruleProblems(paths) {
+  const problems = [];
+  for (const path of paths) {
+    if (path.startsWith(guard.rulesDir) || guard.free.includes(path)) continue;
+    const matching = rules.filter((rule) => rule.files.test(path));
+    if (matching.length === 0) continue;
+    readFileSync(join(dir, path), "utf8").split("\n").forEach((line, index) => {
+      for (const rule of matching) if (rule.forbid.test(line)) problems.push(`${path}:${index + 1} ${rule.message} [${rule.id}]`);
+    });
+  }
+  return problems.join("\n");
+}
+
 function lintProblems() {
-  if (job.ownStructure || !existsSync(lint)) return "";
+  const template = !job.ownStructure && existsSync(lint);
+  if (!template && rules.length === 0) return "";
   const paths = changedPaths();
   if (paths.length === 0) return "";
-  const run = spawnSync("node", [lint, ...paths], { cwd: dir, encoding: "utf8" });
-  return run.status === 0 ? "" : run.stdout.trim();
+  const run = template ? spawnSync("node", [lint, ...paths], { cwd: dir, encoding: "utf8" }) : null;
+  return [run && run.status !== 0 ? run.stdout.trim() : "", !template && rules.length ? ruleProblems(paths) : ""].filter(Boolean).join("\n");
 }
 
 const earlier = await earlierConversation().catch((error) => {

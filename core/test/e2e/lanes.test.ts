@@ -264,6 +264,7 @@ describe("roles working in parallel inside one feature", () => {
     const frontend = w.coder.turns.filter((t) => t.role === "frontend");
     expect(frontend[1]?.prompt).toContain(`${PARTS.backend} belongs to backend`);
     expect(frontend[1]?.prompt).toContain(`- backend: ${PARTS.backend}`);
+    expect(frontend[1]?.guard?.blocked[PARTS.backend]).toContain("belongs to the backend role");
     expect((await w.orchestrator.mainTree()).tree[PARTS.backend]).toBe(backendRoutes);
   });
 

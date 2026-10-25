@@ -38,7 +38,7 @@ export class RunnerCoder implements Coder {
       git("add", "-A");
       git("-c", "user.email=ma.karimi76@gmail.com", "-c", "user.name=chef", "commit", "--quiet", "--allow-empty", "-m", "turn base");
       const model = input.model === "coder-default" ? this.options.model : input.model;
-      const job = { sessionId: input.sessionId, featureId: input.featureId, role: input.role, model, prompt: input.prompt, agent: input.agent, writeScope: input.writeScope, remote, ref: "main", commitId: git("rev-parse", "HEAD"), llm: { baseUrl: this.options.baseUrl } };
+      const job = { sessionId: input.sessionId, featureId: input.featureId, role: input.role, model, prompt: input.prompt, agent: input.agent, writeScope: input.writeScope, ...(input.guard ? { guard: input.guard } : {}), remote, ref: "main", commitId: git("rev-parse", "HEAD"), llm: { baseUrl: this.options.baseUrl } };
       const output = await this.spawn(job, join(root, "workspace"), input.onEvent, input.signal);
       return { changes: output.changes, summary: output.summary, model: output.model, runId: `${input.sessionId}-local-${++this.runs}`, usage: output.usage ?? { inputTokens: 0, outputTokens: 0 } };
     } finally {
