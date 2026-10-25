@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AGENTS_FILE, applyGuidanceEdit, GOAL_FILE, learnedRules, memoryEntries, projectGuidance, renderGuidance } from "../../src/guidance/guidance.ts";
+import { AGENTS_FILE, applyGuidanceEdit, CLAUDE_FILE, GOAL_FILE, learnedRules, memoryEntries, projectGuidance, renderGuidance, repositoryNotes } from "../../src/guidance/guidance.ts";
 
 const lesson = "---\nkind: lesson\nfeature: todo-add\n---\n\n# todo-add: a merge was reverted\n\nCheck the order.\n";
 
@@ -16,6 +16,17 @@ describe("project instructions and memory", () => {
     expect(text).toContain("follow this project's");
     expect(text.indexOf("every project")).toBeLessThan(text.indexOf("Mobile first."));
     expect(renderGuidance("", { goal: "A list.", instructions: "" })).not.toContain("disagree");
+  });
+
+  it("adds a repository's CLAUDE.md after the person's instructions, unless it only repeats AGENTS.md", () => {
+    const tree = { [AGENTS_FILE]: "Mobile first.\n", [CLAUDE_FILE]: "Run tests with pnpm test.\n" };
+    const text = renderGuidance("", projectGuidance(tree), repositoryNotes(tree));
+    expect(text).toContain(`## The repository's notes for coding agents (${CLAUDE_FILE})`);
+    expect(text).toContain("Run tests with pnpm test.");
+    expect(text.indexOf("Mobile first.")).toBeLessThan(text.indexOf("Run tests with pnpm test."));
+    expect(repositoryNotes({ [AGENTS_FILE]: "Be brief.\n", [CLAUDE_FILE]: "Be brief.\n" })).toBe("");
+    expect(repositoryNotes({ [AGENTS_FILE]: "Be brief.\n", [CLAUDE_FILE]: "@AGENTS.md\n" })).toBe("");
+    expect(repositoryNotes({})).toBe("");
   });
 
   it("writes GOAL.md and AGENTS.md, removes them when emptied, and refuses a stale edit", () => {

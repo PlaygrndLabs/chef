@@ -27,7 +27,7 @@ import { arrange, arrangedSpec, arrangementProblem, markRemoved, placed, subtree
 import { missingEnv, renderEnvironment, type EnvVar } from "../env/env.ts";
 import { Archiver, MainWriter, Mutex } from "./capabilities.ts";
 import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderLesson, renderRecall, MEMORY_DIR } from "../memory/memory.ts";
-import { applyGuidanceEdit, projectGuidance, renderGuidance, withGuidance, type EditResult, type GuidanceEdit } from "../guidance/guidance.ts";
+import { applyGuidanceEdit, projectGuidance, renderGuidance, repositoryNotes, withGuidance, type EditResult, type GuidanceEdit } from "../guidance/guidance.ts";
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
 import { projectRuleProblems, projectRules, renderRule, rulePath } from "../checks/project-rules.ts";
 import { failuresOf, newFailuresOnly, type MainFailures } from "../checks/baseline.ts";
@@ -1214,7 +1214,7 @@ export class Orchestrator {
   async guidance(tree?: Tree): Promise<string> {
     const shared = this.config.instructions ? await this.config.instructions() : "";
     const main = (await this.mainTree()).tree;
-    return [renderGuidance(shared, projectGuidance(main)), structureGuidance(tree ?? main)].filter(Boolean).join("\n\n");
+    return [renderGuidance(shared, projectGuidance(main), repositoryNotes(main)), structureGuidance(tree ?? main)].filter(Boolean).join("\n\n");
   }
 
   private async guidanceField(tree?: Tree): Promise<{ guidance?: string }> {

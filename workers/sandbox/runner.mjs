@@ -211,7 +211,7 @@ const options = (resume) => ({
   settingSources: skillNames.length ? ["user"] : [],
   ...(skillNames.length ? { skills: skillNames } : {}),
   includePartialMessages: true,
-  maxTurns: job.maxTurns ?? 60,
+  ...(job.maxTurns ? { maxTurns: job.maxTurns } : {}),
   ...(guard ? { hooks: { PreToolUse: [{ matcher: "Write|Edit|NotebookEdit", hooks: [writeGuard] }] } } : {}),
   env,
   stderr: (data) => process.stderr.write(data),

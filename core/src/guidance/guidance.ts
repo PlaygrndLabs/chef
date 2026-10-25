@@ -6,6 +6,7 @@ import type { MemoryKind } from "../ports/memory-index.ts";
 
 export const GOAL_FILE = "GOAL.md";
 export const AGENTS_FILE = "AGENTS.md";
+export const CLAUDE_FILE = "CLAUDE.md";
 export const MAX_INSTRUCTIONS_CHARS = 20_000;
 export const MAX_MEMORY_CHARS = 50_000;
 
@@ -18,11 +19,19 @@ export function projectGuidance(tree: Tree): ProjectGuidance {
   return { goal: (tree[GOAL_FILE] ?? "").trim(), instructions: (tree[AGENTS_FILE] ?? "").trim() };
 }
 
-export function renderGuidance(shared: string, project: ProjectGuidance): string {
+export function repositoryNotes(tree: Tree): string {
+  const text = (tree[CLAUDE_FILE] ?? "").trim();
+  const agents = (tree[AGENTS_FILE] ?? "").trim();
+  if (!text || text === agents || /^@?\.?\/?AGENTS\.md$/.test(text)) return "";
+  return text.length > MAX_INSTRUCTIONS_CHARS ? `${text.slice(0, MAX_INSTRUCTIONS_CHARS)}\n(cut off: the rest of ${CLAUDE_FILE} did not fit)` : text;
+}
+
+export function renderGuidance(shared: string, project: ProjectGuidance, repository = ""): string {
   const parts = [
     shared.trim() ? `## Instructions for every project\n\n${shared.trim()}` : null,
     project.goal ? `## This project's goal (${GOAL_FILE})\n\n${project.goal}` : null,
     project.instructions ? `## This project's instructions (${AGENTS_FILE})\n\n${project.instructions}` : null,
+    repository ? `## The repository's notes for coding agents (${CLAUDE_FILE})\n\nThe repository came with these notes. Follow them where the instructions above do not say otherwise.\n\n${repository}` : null,
   ].filter((part): part is string => part !== null);
   if (parts.length === 0) return "";
   const order = shared.trim() && project.instructions ? "\n\nWhere this project's instructions and the instructions for every project disagree, follow this project's." : "";
