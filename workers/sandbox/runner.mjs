@@ -270,7 +270,7 @@ function lintProblems() {
   const paths = changedPaths();
   if (paths.length === 0) return "";
   const run = template ? spawnSync("node", [lint, ...paths], { cwd: dir, encoding: "utf8" }) : null;
-  return [run && run.status !== 0 ? run.stdout.trim() : "", rules.length ? ruleProblems(paths) : ""].filter(Boolean).join("\n");
+  return [run && run.status !== 0 ? run.stdout.trim() : "", !template && rules.length ? ruleProblems(paths) : ""].filter(Boolean).join("\n");
 }
 
 const earlier = await earlierConversation().catch((error) => {
