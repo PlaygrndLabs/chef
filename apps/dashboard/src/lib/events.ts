@@ -1,4 +1,4 @@
-import type { AppStatus, ChatContext, ChefEvent, LaneStatus, RouteDecision, SessionState } from "@chef/core";
+import type { AppStatus, ChatContext, ChefEvent, CriterionCheck, LaneStatus, RouteDecision, SessionState } from "@chef/core";
 
 export interface LogEntry {
   readonly seq: number;
@@ -66,7 +66,7 @@ export interface SessionLive {
   version: number | null;
   commits: { readonly id: string; readonly role: string; readonly message: string }[];
   app: AppView | null;
-  verdict: { readonly approve: boolean; readonly reasons: readonly string[] } | null;
+  verdict: { readonly approve: boolean; readonly reasons: readonly string[]; readonly criteria?: readonly CriterionCheck[] } | null;
   gate: { readonly ok: boolean; readonly checks: readonly CheckView[] } | null;
   stuck: string | null;
   needs: readonly string[];
@@ -339,7 +339,7 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
     }
     case "review.verdict": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
-      s.verdict = { approve: event.approve, reasons: event.reasons };
+      s.verdict = { approve: event.approve, reasons: event.reasons, ...(event.criteria ? { criteria: event.criteria } : {}) };
       keep(s.timeline, { kind: "review", at, approve: event.approve, reasons: event.reasons, model: event.model }, TIMELINE_LIMIT);
       return true;
     }

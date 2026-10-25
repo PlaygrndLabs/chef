@@ -13,7 +13,7 @@ import { lifetime, PARTS, SPEND_PARTS, sumOf } from "@chef/core/usage";
 import { AppFrame, loadTone, useAppLoad } from "@/components/app-frame";
 import { CloudflareList, CloudflareSections } from "@/components/cloudflare-resources";
 import { ago, appHost, cost as formatCost, duration, short, tokens } from "@/lib/format";
-import type { SessionTurn } from "@chef/core";
+import type { CriterionCheck, SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
 import { addressPath, appLink, builtPage, entryPage, frameReport, frameUrl, MAIN_APP, step, visit, type AppPage, type Trail } from "@/lib/app-view";
@@ -382,6 +382,8 @@ export function DetailsTab({ node }: { readonly node: SessionNode }) {
   );
 }
 
+const CRITERION_TONE = { met: "ok", missing: "bad", unsure: "idle" } as const satisfies Record<CriterionCheck["verdict"], "ok" | "bad" | "idle">;
+
 export function ChecksTab({ node }: { readonly node: SessionNode }) {
   const verdict = node.live?.verdict ?? node.record?.verdict ?? null;
   const gate = node.live?.gate ?? null;
@@ -395,6 +397,18 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
               <ul className="flex list-disc flex-col gap-1 pl-4 text-muted-foreground">
                 {verdict.reasons.map((r, i) => (
                   <li key={i}>{r}</li>
+                ))}
+              </ul>
+            ) : null}
+            {verdict.criteria?.length ? (
+              <ul className="flex flex-col gap-1.5 border-t pt-2" data-criteria>
+                {verdict.criteria.map((c) => (
+                  <li key={c.id} className="flex items-baseline gap-2" data-criterion={c.id} data-verdict={c.verdict}>
+                    <StatusDot tone={CRITERION_TONE[c.verdict]} className="translate-y-[-1px]" />
+                    <span className="shrink-0 font-mono text-xs">{c.id}</span>
+                    <span className="min-w-0 flex-1 text-muted-foreground">{c.evidence}</span>
+                    {c.verdict === "met" ? null : <span className={cn("shrink-0 text-xs", c.verdict === "missing" ? "font-medium text-bad" : "text-muted-foreground")}>{c.verdict === "missing" ? "missing" : "not sure"}</span>}
+                  </li>
                 ))}
               </ul>
             ) : null}
