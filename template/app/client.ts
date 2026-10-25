@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { lookOf, staticPages, type LookInfo, type PageInfo, type PageMeta } from "../shared/meta.ts";
 
 const own = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -17,16 +18,23 @@ export function clientParts(paths: Iterable<string>): { readonly pages: string[]
   return { pages: pages.sort(), looks: looks.sort() };
 }
 
-export function renderClient(paths: Iterable<string>): string {
+function parts(paths: Iterable<string>): { readonly imports: string[]; readonly pages: string; readonly looks: string } {
   const { pages, looks } = clientParts(paths);
-  return [
-    `import { start } from "./shared/app.tsx";`,
-    ...pages.map((path, i) => `import { pages as pages${i} } from "./${path}";`),
-    ...looks.map((path, i) => `import { look as look${i} } from "./${path}";`),
-    "",
-    `start([${pages.map((_, i) => `...pages${i}`).join(", ")}], [${looks.map((_, i) => `look${i}`).join(", ")}]);`,
-    "",
-  ].join("\n");
+  return {
+    imports: [...pages.map((path, i) => `import { pages as pages${i} } from "./${path}";`), ...looks.map((path, i) => `import { look as look${i} } from "./${path}";`)],
+    pages: `[${pages.map((_, i) => `...pages${i}`).join(", ")}]`,
+    looks: `[${looks.map((_, i) => `look${i}`).join(", ")}]`,
+  };
+}
+
+export function renderClient(paths: Iterable<string>): string {
+  const { imports, pages, looks } = parts(paths);
+  return [`import { start } from "./shared/app.tsx";`, ...imports, "", `start(${pages}, ${looks});`, ""].join("\n");
+}
+
+export function renderPageList(paths: Iterable<string>): string {
+  const { imports, pages, looks } = parts(paths);
+  return [...imports, "", `export const pages = ${pages};`, `export const looks = ${looks};`, ""].join("\n");
 }
 
 export async function clientPaths(root: string): Promise<string[]> {
@@ -60,4 +68,24 @@ export async function bundleClient(root: string, options: { readonly minify?: bo
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
   });
   return result.outputFiles[0]?.text ?? "";
+}
+
+export async function pageMetas(root: string, served: readonly string[] = []): Promise<Map<string, PageMeta>> {
+  const { build } = await import("esbuild");
+  const result = await build({
+    stdin: { contents: renderPageList(await clientPaths(root)), resolveDir: resolve(root), sourcefile: "pages.tsx", loader: "tsx" },
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "node",
+    target: "node22",
+    jsx: "automatic",
+    legalComments: "none",
+    logLevel: "silent",
+    nodePaths: [join(own, "node_modules")],
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  });
+  const code = result.outputFiles[0]?.text ?? "";
+  const listed = (await import(`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`)) as { pages: PageInfo[]; looks: LookInfo[] };
+  return staticPages(listed.pages, lookOf(listed.looks), served);
 }

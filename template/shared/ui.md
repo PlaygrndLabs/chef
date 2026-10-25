@@ -1,6 +1,6 @@
 # UI kit
 
-This app is a React single-page app on Cloudflare Workers. The Worker answers the JSON routes each feature serves under `/api`; every other page address gets the same small HTML shell, which loads the app's React client (`/client.js`, built by `npm run build` from every feature's `pages.tsx`). Moving between pages happens in the browser and never reloads the app.
+This app is a React single-page app on Cloudflare Workers. The Worker answers the JSON routes each feature serves under `/api`; every other page address gets a small HTML shell, which loads the app's React client (`/client.js`, built by `npm run build` from every feature's `pages.tsx`). Moving between pages happens in the browser and never reloads the app.
 
 `shared/ui.tsx` gives every page the same polished look (in the style of shadcn/ui) in light and dark mode, with no fonts, CSS frameworks or CDNs to load.
 
@@ -62,7 +62,7 @@ function Todos() {
 export const pages: readonly Page[] = [{ path: "/todos", title: "Todos", nav: true, component: Todos }];
 ```
 
-- A `Page` is `{ path, title, nav?, component }`. `path` may have parameters (`/todos/:id`); the component gets them as `params`, or from `useParams()`. `title` becomes the tab title. Pages with `nav: true` show in the app's top bar.
+- A `Page` is `{ path, title, description?, nav?, component }`. `path` may have parameters (`/todos/:id`); the component gets them as `params`, or from `useParams()`. `title` becomes the tab title. `description` is one plain sentence about the page. `npm run build` writes every page without parameters as its own HTML file carrying its title and description, so search engines and link previews (chat apps, social posts) show them, and Cloudflare serves that file without running the Worker. Pages with `nav: true` show in the app's top bar.
 - `/` opens the page whose path is `/`; without one it opens the first `nav` page (or the first page), so the app never shows a list of its pages.
 - A page nobody built yet says so, with a link home.
 - Move between pages with `<Link to="/todos">` (from `shared/ui.tsx`), a plain `<a href="/todos">`, or `navigate("/todos")`. `useLocation()` gives the open `path` and its `search` params.
@@ -73,7 +73,7 @@ export const pages: readonly Page[] = [{ path: "/todos", title: "Todos", nav: tr
 
 ## The app's look
 
-A feature may export `look` from `look.ts` (or `<role>/look.ts`): `{ brand?, accent?, width?, style? }`. `brand` names the app in the top bar, `accent` is one brand color, `width` is `narrow` (28rem), `normal` (42rem), `wide` (64rem) or `full`, and `style` is extra CSS. Chef's client applies every feature's look to the whole app.
+A feature may export `look` from `look.ts` (or `<role>/look.ts`): `{ brand?, description?, accent?, width?, style? }`. `brand` names the app in the top bar and in every page's title, `description` is one sentence about the app that pages without their own use and that link previews of the app's home show, `accent` is one brand color, `width` is `narrow` (28rem), `normal` (42rem), `wide` (64rem) or `full`, and `style` is extra CSS. Chef's client applies every feature's look to the whole app.
 
 ## Classes
 

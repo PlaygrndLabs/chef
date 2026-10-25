@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, type ComponentType } from "react";
 import { createRoot } from "react-dom/client";
+import { homeOf, lookOf, pageTitle } from "./meta.ts";
 import { bySpecificity, isPage, matchPath } from "./paths.ts";
 import { Link, navigate, sameAppLink, useLocation } from "./router.tsx";
 import { COLOR } from "./theme.ts";
@@ -12,12 +13,14 @@ export interface PageProps {
 export interface Page {
   readonly path: string;
   readonly title: string;
+  readonly description?: string;
   readonly nav?: boolean;
   readonly component: ComponentType<PageProps>;
 }
 
 export interface Look {
   readonly brand?: string;
+  readonly description?: string;
   readonly accent?: string;
   readonly width?: "narrow" | "normal" | "wide" | "full";
   readonly style?: string;
@@ -37,13 +40,17 @@ export function findPage(pages: readonly Page[], path: string): { readonly page:
   return null;
 }
 
-export function homeOf(pages: readonly Page[]): string | null {
-  const open = pages.filter((page) => isPage({ method: "GET", path: page.path }));
-  return (open.find((page) => page.nav) ?? open[0])?.path ?? null;
-}
+export { homeOf, lookOf };
 
-export function lookOf(looks: readonly Look[]): Look {
-  return looks.reduce<Look>((all, look) => ({ ...all, ...look, style: [all.style, look.style].filter(Boolean).join("\n") }), {});
+function describe(text: string | undefined): void {
+  let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+  if (!text) return tag?.remove();
+  if (!tag) {
+    tag = document.createElement("meta");
+    tag.name = "description";
+    document.head.appendChild(tag);
+  }
+  tag.content = text;
 }
 
 function report(pages: readonly Page[]): void {
@@ -71,10 +78,12 @@ export function App({ pages, look = {} }: { readonly pages: readonly Page[]; rea
   useEffect(() => {
     if (home) navigate(home, { replace: true });
   }, [home]);
+  const description = found?.page.description ?? look.description;
   useEffect(() => {
-    document.title = look.brand && title !== look.brand ? `${title} · ${look.brand}` : title;
+    document.title = pageTitle(title, look);
+    describe(description);
     report(pages);
-  }, [path, title]);
+  }, [path, title, description]);
   const width = look.width && look.width !== "normal" ? ` ${look.width}` : "";
   const Body = found?.page.component;
   return (

@@ -2,7 +2,7 @@
 
 Agent-friendly template for the projects Chef builds: a React app on Cloudflare Workers, one folder per feature, typed edges in shared/, import boundaries enforced in CI.
 
-Each feature lives in `features/<id>/`: its JSON routes under `/api` in `index.ts`, its React pages in `pages.tsx`, its tests and its `flow.ts`. The Worker (`src/index.ts`) answers the routes and keeps data in a Durable Object; every other page address gets a small HTML shell that loads the React client, which `npm run build` bundles from every feature's `pages.tsx` into `dist/client/`, served as static assets. Moving between pages happens in the browser, so the app never reloads.
+Each feature lives in `features/<id>/`: its JSON routes under `/api` in `index.ts`, its React pages in `pages.tsx`, its tests and its `flow.ts`. The Worker (`src/index.ts`) answers the routes and keeps data in a Durable Object; every other page address gets a small HTML shell that loads the React client, which `npm run build` bundles from every feature's `pages.tsx` into `dist/client/`, served as static assets. The build also writes each page without parameters as its own HTML file with the page's title and description, so search engines and link previews name it and Cloudflare serves it without running the Worker. Moving between pages happens in the browser, so the app never reloads.
 
 `npm run dev` runs the whole app with `wrangler dev`, building the client first; that is how Chef runs it in each branch's sandbox, with no Docker. `npm run deploy` puts it on Cloudflare Workers.
 

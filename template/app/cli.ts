@@ -1,9 +1,10 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Flow } from "../shared/flow.ts";
 import { routeClashes, type Feature } from "../shared/http.ts";
-import { bundleClient } from "./client.ts";
+import { shellHtml } from "../shared/http.ts";
+import { bundleClient, pageMetas } from "./client.ts";
 import { drive, type Fetcher } from "./drive.ts";
 import { REGISTRY_PATH, renderRegistry } from "./gen.ts";
 
@@ -25,9 +26,14 @@ async function featurePaths(): Promise<string[]> {
   return paths;
 }
 
-async function clashes(): Promise<string[]> {
+async function registered(): Promise<readonly Feature[] | null> {
   const registry = await import(pathToFileURL(join(root, REGISTRY_PATH)).href).catch(() => null);
-  return registry ? routeClashes((registry as { features: readonly Feature[] }).features) : [];
+  return registry ? (registry as { features: readonly Feature[] }).features : null;
+}
+
+async function clashes(): Promise<string[]> {
+  const features = await registered();
+  return features ? routeClashes(features) : [];
 }
 
 async function gen(check: boolean): Promise<number> {
@@ -47,11 +53,27 @@ async function gen(check: boolean): Promise<number> {
   return 1;
 }
 
+async function writePages(out: string): Promise<void> {
+  try {
+    const served = ((await registered()) ?? []).flatMap((feature) => feature.routes.filter((route) => route.method === "GET").map((route) => route.path));
+    for (const [path, meta] of await pageMetas(root, served)) {
+      const file = join(out, path === "/" ? "index.html" : `${path.slice(1)}.html`);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, shellHtml(meta));
+    }
+  } catch (error) {
+    process.stderr.write(`page titles for link previews were skipped, so every page opens with the plain shell: ${(error as Error).message}\n`);
+  }
+}
+
 async function build(): Promise<number> {
   try {
     const code = await bundleClient(root);
-    await mkdir(join(root, "dist", "client"), { recursive: true });
-    await writeFile(join(root, "dist", "client", "client.js"), code);
+    const out = join(root, "dist", "client");
+    await rm(out, { recursive: true, force: true });
+    await mkdir(out, { recursive: true });
+    await writeFile(join(out, "client.js"), code);
+    await writePages(out);
     return 0;
   } catch (error) {
     process.stderr.write(`building the pages failed:\n${(error as Error).message}\n`);
