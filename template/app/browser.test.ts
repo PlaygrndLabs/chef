@@ -29,7 +29,7 @@ function About() {
   return <h1>About</h1>;
 }
 
-export const pages: readonly Page[] = [{ path: "/echo", title: "Echo", nav: true, component: Echo }, { path: "/about", title: "About", component: About }];
+export const pages: readonly Page[] = [{ path: "/echo", title: "Echo", nav: true, component: Echo }, { path: "/about", title: "About", description: "Who we are", component: About }];
 `;
 
 function project(files: Readonly<Record<string, string>>): string {
@@ -120,5 +120,20 @@ test("each page tells a Chef frame around the app which page is open and which p
   );
   const pages = [{ title: "Echo", path: "/echo" }, { title: "About", path: "/about" }];
   assert.deepEqual(reports, [{ chef: "page", path: "/echo", title: "Echo", pages }, { chef: "page", path: "/about", title: "About", pages }]);
+  await close();
+});
+
+test("moving to another page names it in the tab title and description", async () => {
+  const { page: tab, close } = await openPage([echo], "/echo", undefined, undefined, root);
+  const description = () => tab.evaluate(() => document.querySelector<HTMLMetaElement>('meta[name="description"]')?.content ?? null);
+  assert.equal(await tab.title(), "Echo");
+  assert.equal(await description(), null);
+  await tab.getByRole("link", { name: "About", exact: true }).click();
+  await tab.getByRole("heading", { name: "About" }).waitFor();
+  assert.equal(await tab.title(), "About");
+  assert.equal(await description(), "Who we are");
+  await tab.goBack();
+  await tab.getByRole("button", { name: "Save" }).waitFor();
+  assert.equal(await description(), null);
   await close();
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createApp, json, routeClashes, type Feature } from "./http.ts";
+import { createApp, json, routeClashes, shellHtml, type Feature } from "./http.ts";
 import { MemoryStore } from "./storage.ts";
 
 const notes: Feature = {
@@ -88,4 +88,13 @@ test("a route with a fixed path wins over a route with a parameter, whichever fe
   const app = createApp([books, top], new MemoryStore());
   assert.deepEqual(await (await app(new Request("http://app.test/api/books/top"))).json(), { top: true });
   assert.deepEqual(await (await app(new Request("http://app.test/api/books/7"))).json(), { book: "7" });
+});
+
+test("the shell names the page for link previews and escapes what it is given", () => {
+  const html = shellHtml({ title: "Notes · Jot & Co", description: 'Quick "notes" <for> everyone' });
+  assert.match(html, /<title>Notes · Jot &amp; Co<\/title>/);
+  assert.match(html, /<meta property="og:title" content="Notes · Jot &amp; Co">/);
+  assert.match(html, /<meta name="description" content="Quick &quot;notes&quot; &lt;for&gt; everyone">/);
+  assert.match(html, /<meta property="og:description" content="Quick &quot;notes&quot; &lt;for&gt; everyone">/);
+  assert.doesNotMatch(shellHtml({ title: "Notes" }), /description/);
 });

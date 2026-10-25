@@ -1,4 +1,5 @@
 import type { Store } from "./storage.ts";
+import type { PageMeta } from "./meta.ts";
 import { bySpecificity, isApi, matchPath, shape } from "./paths.ts";
 import { CSS } from "./theme.ts";
 
@@ -44,9 +45,27 @@ export function routeClashes(features: readonly Feature[]): string[] {
   return clashes;
 }
 
+const ENTITIES: Readonly<Record<string, string>> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+
+function escape(text: string): string {
+  return text.replace(/[&<>"]/g, (c) => ENTITIES[c] ?? c);
+}
+
+export function shellHtml(meta: PageMeta = { title: "App" }): string {
+  const title = escape(meta.title);
+  const description = meta.description ? escape(meta.description) : "";
+  const tags = [
+    `<title>${title}</title>`,
+    `<meta property="og:title" content="${title}">`,
+    `<meta property="og:type" content="website">`,
+    `<meta name="twitter:card" content="summary">`,
+    ...(description ? [`<meta name="description" content="${description}">`, `<meta property="og:description" content="${description}">`] : []),
+  ].join("");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${tags}<style>${CSS}</style></head><body><div id="root"></div><script type="module" src="${CLIENT_PATH}"></script></body></html>`;
+}
+
 export function shell(): Response {
-  const markup = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App</title><style>${CSS}</style></head><body><div id="root"></div><script type="module" src="${CLIENT_PATH}"></script></body></html>`;
-  return new Response(markup, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  return new Response(shellHtml(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
 function failure(request: Request, path: string, error: unknown): Response {
