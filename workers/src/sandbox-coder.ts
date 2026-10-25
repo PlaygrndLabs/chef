@@ -30,6 +30,7 @@ export class SandboxCoder implements Coder {
         prompt: input.prompt,
         agent: input.agent,
         writeScope: input.writeScope,
+        ...(input.guard ? { guard: input.guard } : {}),
         remote: input.workspace.remote,
         ref: input.workspace.ref,
         commitId: input.workspace.commitId,

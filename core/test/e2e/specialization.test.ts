@@ -45,6 +45,11 @@ describe("phase 3 specialization on fakes", () => {
     expect(rejected.map((e) => [e.role, e.rule, e.paths])).toEqual([["backend", "locked-tests", [TEST_PATH]]]);
     const retry = w.coder.turns.filter((t) => t.role === "backend").at(-1);
     expect(retry?.prompt).toContain("locked");
+    const first = w.coder.turns.find((t) => t.role === "backend");
+    expect(first?.guard?.blocked[TEST_PATH]).toContain("locked");
+    expect(first?.guard?.free).toContain("src/registry.gen.ts");
+    expect(first?.guard?.allow.some((source) => new RegExp(source).test(INDEX_PATH))).toBe(true);
+    expect(w.coder.turns.find((t) => t.role === "test")?.guard?.blocked).toEqual({});
     const main = await w.orchestrator.mainTree();
     expect(main.tree[TEST_PATH]).toBe(todo[TEST_PATH]);
   });

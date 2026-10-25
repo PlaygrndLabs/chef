@@ -1,6 +1,6 @@
 import { Agent } from "agents";
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { APP_START_SECONDS, sandboxMicros, type AppStatus, type CoderEvent, type CoderTurnResult, type CustomAgent, type FileChanges, type TurnResume } from "@chef/core";
+import { APP_START_SECONDS, sandboxMicros, type AppStatus, type CoderEvent, type CoderTurnResult, type CustomAgent, type FileChanges, type TurnGuard, type TurnResume } from "@chef/core";
 import { APP_REQUEST_HEADER } from "@chef/adapters/app-gate";
 import { appPage } from "@chef/adapters/app-page";
 import { layerStore } from "./image-layers.ts";
@@ -19,6 +19,7 @@ export interface SandboxJob {
   readonly prompt: string;
   readonly agent: CustomAgent;
   readonly writeScope: readonly string[];
+  readonly guard?: TurnGuard;
   readonly remote: string;
   readonly ref: string;
   readonly commitId: string;

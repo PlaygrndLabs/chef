@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { turnGuard } from "@chef/core";
 import { RunnerCoder } from "../../src/local/index.ts";
 import { REPO_ROOT } from "../../src/world.ts";
 
@@ -306,6 +307,92 @@ describe("coder runner on the Claude Agent SDK", () => {
       });
       expect(events.filter((e) => e.type === "chef.lint")).toHaveLength(1);
       expect(result.changes).toEqual({ "features/hello/index.ts": HELLO });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("refuses a write outside the role's paths or into a file another role owns before it happens, and says why", async () => {
+    const root = mkdtempSync(join(tmpdir(), "chef-runner-"));
+    const remote = join(root, "origin");
+    mkdirSync(remote);
+    const commitId = origin(remote);
+    const workspace = join(root, "workspace");
+    const repo = join(workspace, "s5", "repo");
+    const { server, seen } = fakeClaude((conversation) => {
+      const results = conversation.split("tool_result").length - 1;
+      if (results === 0) return { name: "Write", input: { file_path: join(repo, "shared", "x.ts"), content: HELLO } };
+      if (results === 1) return { name: "Write", input: { file_path: join(repo, "features", "hello", "routes.ts"), content: HELLO } };
+      if (results === 2) return { name: "Write", input: { file_path: join(repo, "features", "hello", "index.ts"), content: HELLO } };
+      return null;
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const job = {
+      sessionId: "s5",
+      featureId: "hello",
+      role: "backend",
+      model: "claude-sonnet-5-5",
+      prompt: "Add features/hello/index.ts exporting hello().",
+      agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default", skills: [] },
+      writeScope: ["features/hello/**"],
+      guard: turnGuard({ scope: ["features/hello/**"], generated: [], locked: [], owned: [["features/hello/routes.ts", "frontend"]], rules: [] }),
+      remote,
+      ref: "main",
+      commitId,
+      llm: { baseUrl: `http://127.0.0.1:${port}` },
+    };
+    try {
+      const run = await runRunner(job, join(root, "turns", "turnA"), workspace, root);
+      expect(run.code, run.err.slice(-2000)).toBe(0);
+      const asked = seen.filter((s) => s.tools.includes("Write")).map((s) => s.system).join("\n");
+      expect(asked).toContain("shared/x.ts: This role may change only these paths: features/hello/**.");
+      expect(asked).toContain("features/hello/routes.ts belongs to the frontend role in this feature");
+      expect(run.events.at(-1)).toMatchObject({ type: "chef.result", changes: { "features/hello/index.ts": HELLO } });
+      expect(Object.keys((run.events.at(-1)?.["changes"] ?? {}) as Record<string, string>)).toEqual(["features/hello/index.ts"]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("hands lines that break the project's learned rules back to the agent before it returns", async () => {
+    const root = mkdtempSync(join(tmpdir(), "chef-runner-"));
+    const remote = join(root, "origin");
+    mkdirSync(remote);
+    const commitId = origin(remote);
+    const workspace = join(root, "workspace");
+    const write = (content: string): Call => ({ name: "Bash", input: { command: `mkdir -p features/hello && printf '%s' '${content}' > features/hello/index.ts`, description: "Write the feature" } });
+    const { server, seen } = fakeClaude((conversation) => {
+      const results = conversation.split("tool_result").length - 1;
+      if (results === 0) return write("export const hello = () => { console.log(1); return \"hello\"; };\n");
+      if (results === 1 && conversation.includes("project lint rejects")) return write(HELLO);
+      return null;
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const rule = { id: "no-console", message: "Do not log to the console", files: "features/**/*.ts", forbid: "console\\.log", source: "lane-owner", evidence: [] };
+    const job = {
+      sessionId: "s6",
+      featureId: "hello",
+      role: "backend",
+      model: "claude-sonnet-5-5",
+      prompt: "Add features/hello/index.ts exporting hello().",
+      agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default", skills: [] },
+      writeScope: ["features/hello/**"],
+      guard: turnGuard({ scope: ["features/hello/**"], generated: [], locked: [], owned: [], rules: [rule] }),
+      remote,
+      ref: "main",
+      commitId,
+      llm: { baseUrl: `http://127.0.0.1:${port}` },
+    };
+    try {
+      const run = await runRunner(job, join(root, "turns", "turnA"), workspace, root);
+      expect(run.code, run.err.slice(-2000)).toBe(0);
+      expect(run.events.filter((e) => e.type === "chef.lint").map((e) => e["problems"])).toEqual(["features/hello/index.ts:1 Do not log to the console [no-console]"]);
+      expect(seen.map((s) => s.system).join("\n")).toContain("[no-console]");
+      expect(run.events.at(-1)).toMatchObject({ type: "chef.result", changes: { "features/hello/index.ts": HELLO } });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

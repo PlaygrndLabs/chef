@@ -18,6 +18,7 @@ import { chatContext, needsCompacting, plainSummary, readChatMemory, renderConve
 import { addTokens, DEFAULT_BUDGET, initialMachine, isTerminal, transition, type Budget, type RejectionRule, type SessionEvent } from "../session/machine.ts";
 import { laneBrief, laneItem, laneOwner, lanesBusy, lanesNamedIn, planLanes, type Lane, type LaneLayoutFor, type LaneStatus } from "../session/lanes.ts";
 import type { PendingTurn, SessionApp, SessionRecord } from "../session/record.ts";
+import { turnGuard, type TurnGuard } from "../session/guard.ts";
 import { lintSpecFiles, readSpec } from "../spec/lint.ts";
 import { renderFeature } from "../spec/parse.ts";
 import { featureFlow, specPath, type FeatureSpec } from "../spec/schema.ts";
@@ -28,7 +29,7 @@ import { Archiver, MainWriter, Mutex } from "./capabilities.ts";
 import { featureMemoryPath, lessonPath, memoryDocs, renderFeatureMemory, renderLesson, renderRecall, MEMORY_DIR } from "../memory/memory.ts";
 import { applyGuidanceEdit, projectGuidance, renderGuidance, withGuidance, type EditResult, type GuidanceEdit } from "../guidance/guidance.ts";
 import { featureMapProblems, gardenFeatureMap, mineRules, type Correction } from "../gardener/gardener.ts";
-import { projectRuleProblems, renderRule, rulePath } from "../checks/project-rules.ts";
+import { projectRuleProblems, projectRules, renderRule, rulePath } from "../checks/project-rules.ts";
 import { failuresOf, newFailuresOnly, type MainFailures } from "../checks/baseline.ts";
 import { matchesScope } from "../util/glob.ts";
 import { hashHex } from "../util/hash.ts";
@@ -1949,6 +1950,7 @@ export class Orchestrator {
         prompt,
         instructions: withGuidance(profile.instructions.replaceAll("{feature}", record.featureId), guidance),
         writeScope: scope,
+        guard: await this.turnGuard(record, item, head.tree, scope, lane),
         agent,
         attempt: { index: record.attempt.index, of: record.attempt.of },
         ...tag,
@@ -1966,6 +1968,12 @@ export class Orchestrator {
     this.dropTurn(record, slot);
     if (turnId) this.keepConversation(record, conversation, turnId);
     return { head, feature, scope, prompt, result };
+  }
+
+  private async turnGuard(record: SessionRecord, item: WorkItem, tree: Tree, scope: readonly string[], lane?: Lane): Promise<TurnGuard> {
+    const locked = this.specialization.lockTests && item.role !== "test" ? [...(await this.lockedPaths(record))].filter((path) => !hasMarkers(tree[path])) : [];
+    const owned = lane ? (record.lanes ?? []).filter((other) => other.role !== lane.role).flatMap((other) => (other.owns ?? []).map((path) => [path, other.role] as const)) : [];
+    return turnGuard({ scope, generated: this.generatedPaths(tree), locked, owned, rules: projectRules(tree) });
   }
 
   private keepConversation(record: SessionRecord, key: string, turnId: string): void {

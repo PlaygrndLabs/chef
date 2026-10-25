@@ -1,6 +1,7 @@
 import type { TokenUsage } from "../usage/budget.ts";
 import type { FileChanges, Tree } from "../git/tree.ts";
 import type { CustomAgent } from "../profiles/profile.ts";
+import type { TurnGuard } from "../session/guard.ts";
 
 export type CoderEvent =
   | { readonly type: "assistant.message_delta"; readonly delta: string }
@@ -30,6 +31,7 @@ export interface CoderTurnInput {
   readonly prompt: string;
   readonly instructions: string;
   readonly writeScope: readonly string[];
+  readonly guard?: TurnGuard;
   readonly agent: CustomAgent;
   readonly attempt: { readonly index: number; readonly of: number };
   readonly lane?: string;
