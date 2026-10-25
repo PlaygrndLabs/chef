@@ -13,9 +13,16 @@ export interface ReviewInput {
   readonly guidance?: string;
 }
 
+export interface CriterionCheck {
+  readonly id: string;
+  readonly verdict: "met" | "missing" | "unsure";
+  readonly evidence: string;
+}
+
 export interface ReviewVerdict {
   readonly approve: boolean;
   readonly reasons: readonly string[];
+  readonly criteria?: readonly CriterionCheck[];
   readonly retest?: boolean;
   readonly model: string;
 }

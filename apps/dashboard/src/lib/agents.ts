@@ -73,7 +73,7 @@ export function configOf(view: AgentsView): AgentConfig {
 }
 
 export function settingOf(r: RoleView): RoleSetting {
-  return { label: r.label, description: r.description, instructions: r.instructions, model: r.model, skills: [...r.skills] };
+  return { label: r.label, description: r.description, instructions: r.instructions, model: r.model, effort: r.effort, skills: [...r.skills] };
 }
 
 export async function saveAgents(view: AgentsView, config: AgentConfig, summary: string): Promise<boolean> {

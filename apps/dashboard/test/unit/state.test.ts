@@ -27,7 +27,7 @@ describe("project event state", () => {
       { type: "commit.created", sessionId: "s1", featureId: "todo-add", repo: "demo--todo-add--s1", commitId: "c1", role: "backend", message: "m" },
       { type: "app.updated", sessionId: "s1", featureId: "todo-add", status: "starting", url: null, commitId: "c1" },
       { type: "app.updated", sessionId: "s1", featureId: "todo-add", status: "running", url: "https://s1.example", commitId: "c1", link: "/app/demo/s1" },
-      { type: "review.verdict", sessionId: "s1", featureId: "todo-add", approve: true, reasons: ["ok"], model: "m", head: "c1", base: "b" },
+      { type: "review.verdict", sessionId: "s1", featureId: "todo-add", approve: true, reasons: ["ok"], criteria: [{ id: "AC1", verdict: "met", evidence: "add() in index.ts; test AC1: adds" }], model: "m", head: "c1", base: "b" },
       { type: "gate.result", sessionId: "s1", featureId: "todo-add", ok: true, checks: [{ name: "lint", ok: true, log: "" }] },
       { type: "main.merged", sessionId: "s1", featureId: "todo-add", commitId: "m1" },
       { type: "session.state", sessionId: "s1", featureId: "todo-add", from: "gating", to: "merged", reason: "gate_passed" },
@@ -35,6 +35,7 @@ describe("project event state", () => {
     const s = state.sessions["s1"];
     expect(s?.state).toBe("merged");
     expect(s?.merged).toBe("m1");
+    expect(s?.verdict?.criteria).toEqual([{ id: "AC1", verdict: "met", evidence: "add() in index.ts; test AC1: adds" }]);
     expect(s?.timeline.map((t) => t.kind)).toEqual(["created", "state", "text", "tool", "commit", "app", "app", "review", "gate", "merged", "state"]);
     expect(s?.timeline.find((t) => t.kind === "text")).toMatchObject({ text: "Adding route", phase: "coding" });
     expect(state.apps["todo-add"]).toMatchObject({ status: "running", url: "https://s1.example", sessionId: "s1", link: "/app/demo/s1" });

@@ -108,7 +108,7 @@ export class ProjectAgent extends Agent<Env> {
     const profiles = applyAgentConfig(loadProfiles(agentFiles), agents.config);
     const reviewerRole = role(profiles, "reviewer");
     const plannerRole = role(profiles, "planner");
-    const llmReviewer = new LlmReviewer(llm, resolveModel(reviewerRole.model, settings.models), withSkills(reviewerRole.instructions, reviewerRole.skills));
+    const llmReviewer = new LlmReviewer(llm, resolveModel(reviewerRole.model, settings.models), withSkills(reviewerRole.instructions, reviewerRole.skills), undefined, reviewerRole.effort);
     const store = new DurableStore(this.ctx.storage);
     const clock = { now: () => Date.now() };
     const engine = engineOf(env.PROJECT_WORKER_PREFIX);
@@ -124,7 +124,7 @@ export class ProjectAgent extends Agent<Env> {
         repos,
         coder: new SandboxCoder(env.SESSION, { project: this.name, model: settings.models.coder, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
         classifier: settings.jev ? new JevClassifier(new TypeSafeClient({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL, ...(settings.jev.baseUrl ? { baseURL: settings.jev.baseUrl } : {}) }), env.JEV_MODEL, (model, usage) => spend.record(currentSpender(), model, usage, "router")) : NO_CLASSIFIER,
-        planner: new LlmPlanner(llm, resolveModel(plannerRole.model, settings.models), withSkills(plannerRole.instructions, plannerRole.skills)),
+        planner: new LlmPlanner(llm, resolveModel(plannerRole.model, settings.models), withSkills(plannerRole.instructions, plannerRole.skills), plannerRole.effort),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
         apps,
         checks: new SandboxCheckRunner(env.SESSION, repos, this.name),

@@ -31,8 +31,8 @@ const house = { name: "house-style", description: "Use for any code", body: "Sma
 
 const config: AgentConfig = {
   roles: {
-    backend: { label: "Server builder", description: "Builds servers.", instructions: "Build {feature} carefully.", model: "claude-opus-5-5", skills: ["tidy-sql"] },
-    "data-modeler": { label: "Data modeler", description: "Designs tables.", instructions: "Model the data for {feature}.", model: null, skills: [] },
+    backend: { label: "Server builder", description: "Builds servers.", instructions: "Build {feature} carefully.", model: "claude-opus-5-5", effort: "medium", skills: ["tidy-sql"] },
+    "data-modeler": { label: "Data modeler", description: "Designs tables.", instructions: "Model the data for {feature}.", model: null, effort: null, skills: [] },
   },
   skills: [skill],
   router: null,
@@ -41,11 +41,12 @@ const config: AgentConfig = {
 describe("agent settings", () => {
   it("applies edits, skills and new roles on top of the file defaults", () => {
     const profiles = applyAgentConfig(defaults, config);
-    expect(profiles["backend"]).toMatchObject({ label: "Server builder", model: "claude-opus-5-5", instructions: "Build {feature} carefully.", writeScope: ["features/{feature}/**"], skills: [skill] });
+    expect(profiles["backend"]).toMatchObject({ label: "Server builder", model: "claude-opus-5-5", effort: "medium", instructions: "Build {feature} carefully.", writeScope: ["features/{feature}/**"], skills: [skill] });
     expect(profiles["data-modeler"]).toMatchObject({ runs: "agent", plannable: true, model: "coder-default", sharedAccess: true });
     expect(profiles["planner"]).toBe(planner);
     const agent = customAgent(profiles["backend"] as NonNullable<(typeof profiles)["backend"]>, "todo-add", ["features/todo-add/**"]);
     expect(agent.skills).toEqual([skill]);
+    expect(agent.effort).toBe("medium");
     expect(agent.prompt).toContain("Build todo-add carefully.");
     expect(withSkills("Plan it.", [skill])).toBe("Plan it.\n\n## Skill: tidy-sql\nUse when: Use when writing SQL\n\nKeep queries short.");
   });
@@ -92,7 +93,7 @@ describe("agent settings", () => {
     const view = agentsView(defaults, { version: 1, at: 1, summary: "s", config }, [], models, false);
     expect(view.roles.map((r) => r.role)).toEqual(["planner", "backend", "data-modeler"]);
     expect(view.roles[0]).toMatchObject({ label: "Planner", defaultModel: "opus", edited: false, custom: false, runs: "api" });
-    expect(view.roles[1]).toMatchObject({ label: "Server builder", model: "claude-opus-5-5", defaultModel: "sonnet", edited: true, skills: ["tidy-sql"], defaults: { label: "Backend builder", instructions: "Implement {feature}." } });
+    expect(view.roles[1]).toMatchObject({ label: "Server builder", model: "claude-opus-5-5", defaultModel: "sonnet", effort: "medium", defaultEffort: null, edited: true, skills: ["tidy-sql"], defaults: { label: "Backend builder", instructions: "Implement {feature}." } });
     expect(view.roles[2]).toMatchObject({ custom: true, defaults: null });
     expect(view.router).toEqual(DEFAULT_ROUTER_SETTINGS);
   });
@@ -105,9 +106,9 @@ describe("agent settings", () => {
   });
 
   it("lets a project override roles, add skills and set its own router on top of the shared settings", () => {
-    const role = (instructions: string, skills: string[] = []): RoleSetting => ({ label: "Backend builder", description: "Implements server code.", instructions, model: null, skills });
+    const role = (instructions: string, skills: string[] = []): RoleSetting => ({ label: "Backend builder", description: "Implements server code.", instructions, model: null, effort: null, skills });
     const shared: AgentConfig = { roles: { backend: role("Shared prompt.", ["tidy-sql"]) }, skills: [skill, house], router: null };
-    const own: AgentConfig = { roles: { planner: { label: "Planner", description: "Plans.", instructions: "Plan for shop.", model: null, skills: ["shop-api"] } }, skills: [{ ...house, body: "Shop style." }, { name: "shop-api", description: "Use for the shop API", body: "Call /v2.", everyone: false }], router: { ...DEFAULT_ROUTER_SETTINGS, useJev: false } };
+    const own: AgentConfig = { roles: { planner: { label: "Planner", description: "Plans.", instructions: "Plan for shop.", model: null, effort: null, skills: ["shop-api"] } }, skills: [{ ...house, body: "Shop style." }, { name: "shop-api", description: "Use for the shop API", body: "Call /v2.", everyone: false }], router: { ...DEFAULT_ROUTER_SETTINGS, useJev: false } };
     const merged = mergeAgentConfig(shared, own);
     expect(Object.keys(merged.roles).sort()).toEqual(["backend", "planner"]);
     expect(merged.skills.map((s) => [s.name, s.body])).toEqual([

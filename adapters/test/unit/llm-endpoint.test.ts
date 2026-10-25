@@ -58,7 +58,7 @@ describe("llm endpoint", () => {
   });
 
   it("drives the reviewer through a custom provider", async () => {
-    const { seen, fetchImpl } = custom({ approve: false, reasons: ["AC2 has no test"], retest: true });
+    const { seen, fetchImpl } = custom({ approve: false, reasons: ["AC2 has no test"], retest: true, criteria: [{ id: "AC1", verdict: "met", evidence: "add() in features/todo-add/index.ts" }] });
     const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl), "reviewer-model", "Review the diff.");
     const feature = { id: "todo-add", title: "Add", status: "building" as const, entrypoint: "POST /todos", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: "adds" }], body: "b" };
     const verdict = await reviewer.review({ feature, diff: { "features/todo-add/index.ts": "export {}" }, checksLog: "", scope: ["features/todo-add/**", "features/todo/**"] });
@@ -66,8 +66,30 @@ describe("llm endpoint", () => {
     expect(JSON.stringify(seen[0]?.body["messages"])).toContain("- features/todo/**");
   });
 
+  it("asks the reviewer's model for the role's effort, and for high when the role has none", async () => {
+    const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false, criteria: [] });
+    const llm = llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl);
+    const feature = { id: "todo-add", title: "Add", status: "building" as const, entrypoint: "POST /todos", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: "adds" }], body: "b" };
+    await new LlmReviewer(llm, "reviewer-model", "Review the diff.", undefined, "max").review({ feature, diff: { "features/todo-add/index.ts": "export {}" }, checksLog: "" });
+    await new LlmReviewer(llm, "reviewer-model", "Review the diff.").review({ feature, diff: { "features/todo-add/index.ts": "export {}" }, checksLog: "" });
+    expect(seen.map((call) => (call.body["output_config"] as { effort?: string } | undefined)?.effort)).toEqual(["max", "high"]);
+  });
+
+  it("asks for changes when the reviewer marks a criterion missing, and keeps every criterion's evidence", async () => {
+    const criteria = [
+      { id: "AC1", verdict: "met", evidence: "add() in features/todo-add/index.ts; test AC1: adds" },
+      { id: "AC2", verdict: "missing", evidence: "no route rejects an empty title" },
+      { id: "AC3", verdict: "unsure", evidence: "the list page is not in the diff" },
+    ];
+    const { fetchImpl } = custom({ approve: true, reasons: [], retest: false, criteria });
+    const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl), "reviewer-model", "Review the diff.");
+    const feature = { id: "todo-add", title: "Add", status: "building" as const, entrypoint: "POST /todos", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: "adds" }, { id: "AC2", text: "refuses an empty title" }, { id: "AC3", text: "lists" }], body: "b" };
+    const verdict = await reviewer.review({ feature, diff: { "features/todo-add/index.ts": "export {}" }, checksLog: "" });
+    expect(verdict).toMatchObject({ approve: false, reasons: ["AC2 is not done: no route rejects an empty title"], criteria });
+  });
+
   it("shows the reviewer the slice's unchanged files so code already on main counts", async () => {
-    const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false });
+    const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false, criteria: [] });
     const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl), "reviewer-model", "Review the diff.");
     const feature = { id: "todo-add", title: "Add", status: "building" as const, entrypoint: "POST /todos", revision: 2, shared: [], env: [], acceptance: [{ id: "AC1", text: "adds" }], body: "b" };
     const verdict = await reviewer.review({ feature, diff: { "spec/features/todo-add.md": "revision 2" }, existing: { "features/todo-add/routes.ts": "export const add = 1", "features/todo-add/todo-add.test.ts": 'test("AC1: adds")' }, checksLog: "" });
@@ -78,7 +100,7 @@ describe("llm endpoint", () => {
   });
 
   it("reviews a change that rewrites a big lockfile without its contents", async () => {
-    const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false });
+    const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false, criteria: [] });
     const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl), "reviewer-model", "Review the diff.", 1000);
     const feature = { id: "todo-due", title: "Due", status: "building" as const, entrypoint: "GET /", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: "shows" }], body: "b" };
     const verdict = await reviewer.review({ feature, diff: { "src/app.js": "due()", "package-lock.json": "x".repeat(5000) }, checksLog: "" });

@@ -24,6 +24,7 @@ describe("specialization building blocks", () => {
       prompt: "Implement todo-add so its locked tests pass.\n\nYou may only change files matching:\nfeatures/todo-add/**",
       tools: ["view", "edit"],
       model: "coder-default",
+      effort: null,
       skills: [],
     });
     expect(customAgent({ ...profile, tools: null }, "x", []).prompt).toContain("You may not change any file.");

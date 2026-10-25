@@ -1,8 +1,19 @@
 import { z } from "zod";
-import { isLockfile, withGuidance, type FileChanges, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
+import { isLockfile, withGuidance, type Effort, type FileChanges, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
-const VerdictSchema = z.object({ approve: z.boolean(), reasons: z.array(z.string()), retest: z.boolean() });
+const CriterionSchema = z.object({
+  id: z.string().describe("The acceptance criterion id, such as AC1."),
+  verdict: z.enum(["met", "missing", "unsure"]).describe("met when the code does what the criterion says and, unless tests are off, a test named after its id covers it; missing when it does not; unsure when the diff and the files shown cannot tell, which does not block on its own."),
+  evidence: z.string().describe("What shows it, in one line: the file and the function or route, and the test name. For missing or unsure, say exactly what is absent."),
+});
+
+const VerdictSchema = z.object({
+  approve: z.boolean(),
+  reasons: z.array(z.string()),
+  retest: z.boolean(),
+  criteria: z.array(CriterionSchema).describe("One entry for every acceptance criterion in the spec, in order. Empty for a chore."),
+});
 
 const PickSchema = z.object({ sessionId: z.string(), reasons: z.array(z.string()) });
 
@@ -18,6 +29,7 @@ export class LlmReviewer implements Reviewer {
     readonly model: string,
     private readonly system: string,
     private readonly maxDiffChars = 200_000,
+    private readonly effort: Effort | null = null,
   ) {}
 
   async review(input: ReviewInput): Promise<ReviewVerdict> {
@@ -27,10 +39,14 @@ export class LlmReviewer implements Reviewer {
     const result = await structured(this.llm, {
       model: this.model,
       system: withGuidance(this.system, input.guidance),
+      ...(this.effort ? { effort: this.effort } : {}),
       schema: VerdictSchema,
       prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `${input.untested ? `${UNTESTED_NOTE}\n\n` : ""}Spec:\n${JSON.stringify(input.feature, null, 2)}${renderScope(input.scope)}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}${existing}`,
     });
-    return { approve: result.approve && result.reasons.length === 0, reasons: result.reasons, retest: result.retest, model: this.model };
+    const criteria = input.chore ? [] : result.criteria;
+    const missing = criteria.filter((c) => c.verdict === "missing" && !result.reasons.some((reason) => reason.includes(c.id)));
+    const reasons = [...result.reasons, ...missing.map((c) => `${c.id} is not done: ${c.evidence}`)];
+    return { approve: result.approve && reasons.length === 0, reasons, retest: result.retest, criteria, model: this.model };
   }
 
   async pick(input: PickInput): Promise<PickVerdict> {
@@ -42,6 +58,7 @@ export class LlmReviewer implements Reviewer {
     const result = await structured(this.llm, {
       model: this.model,
       system: PICK_SYSTEM,
+      ...(this.effort ? { effort: this.effort } : {}),
       schema: PickSchema,
       prompt: `Spec:\n${JSON.stringify(input.feature, null, 2)}\n\nAttempts (${ids.join(", ")}):\n\n${attempts}`,
     });

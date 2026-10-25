@@ -3,7 +3,7 @@ import type { CoderEvent } from "../ports/coder.ts";
 import type { RouteDecision } from "../router/decision.ts";
 import type { LaneStatus } from "../session/lanes.ts";
 import type { RejectionRule, SessionState } from "../session/machine.ts";
-import type { AttemptScore } from "../ports/reviewer.ts";
+import type { AttemptScore, CriterionCheck } from "../ports/reviewer.ts";
 import type { AppStatus } from "../ports/app-host.ts";
 
 
@@ -26,7 +26,7 @@ export type ChefEvent = Base &
     | { readonly type: "lane.updated"; readonly sessionId: string; readonly featureId: string; readonly role: string; readonly branch: string; readonly status: LaneStatus; readonly commitId?: string; readonly paths?: readonly string[] }
     | { readonly type: "commit.created"; readonly sessionId: string; readonly featureId: string; readonly repo: string; readonly commitId: string; readonly role: string; readonly message: string; readonly lane?: string }
     | { readonly type: "app.updated"; readonly sessionId: string; readonly featureId: string; readonly status: AppStatus; readonly url: string | null; readonly commitId: string; readonly error?: string; readonly link?: string }
-    | { readonly type: "review.verdict"; readonly sessionId: string; readonly featureId: string; readonly approve: boolean; readonly reasons: readonly string[]; readonly model: string; readonly head: string; readonly base: string }
+    | { readonly type: "review.verdict"; readonly sessionId: string; readonly featureId: string; readonly approve: boolean; readonly reasons: readonly string[]; readonly criteria?: readonly CriterionCheck[]; readonly model: string; readonly head: string; readonly base: string }
     | { readonly type: "gate.result"; readonly sessionId: string; readonly featureId: string; readonly ok: boolean; readonly checks: readonly CheckResult[] }
     | { readonly type: "main-app.updated"; readonly status: AppStatus; readonly commitId: string; readonly url: string | null; readonly error?: string }
     | { readonly type: "main.merged"; readonly sessionId: string; readonly featureId: string; readonly commitId: string }
