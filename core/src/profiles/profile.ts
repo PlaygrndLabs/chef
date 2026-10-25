@@ -13,10 +13,15 @@ export const Skill = z.strictObject({
 
 export type Skill = z.infer<typeof Skill>;
 
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+
+export type Effort = (typeof EFFORTS)[number];
+
 export const AgentProfile = z.strictObject({
   role: z.string().regex(/^[a-z][a-z-]*$/),
   label: z.string().min(1).optional(),
   model: z.string().min(1),
+  effort: z.enum(EFFORTS).nullable().default(null),
   description: z.string().min(1),
   runs: z.enum(["agent", "api", "rules"]).default("agent"),
   plannable: z.boolean().default(false),
@@ -66,6 +71,7 @@ export interface CustomAgent {
   readonly prompt: string;
   readonly tools: readonly string[] | null;
   readonly model: string;
+  readonly effort: Effort | null;
   readonly skills: readonly Skill[];
 }
 
@@ -80,6 +86,7 @@ export function customAgent(profile: AgentProfile, featureId: string, scope: rea
     prompt: `${instructions}\n\n${rules}`,
     tools: profile.tools,
     model: profile.model,
+    effort: profile.effort,
     skills: profile.skills,
   };
 }

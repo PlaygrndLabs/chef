@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { envProblem, FeatureFrontmatter, renderTurn, withGuidance, type AnswerInput, type BuilderRole, type CompactInput, type FeatureSpec, type MapInput, type MappedFeatures, type Plan, type PlanInput, type Planner, type SplitInput, type SplitPart, type Triage, type TriageInput, type WorkItem } from "@chef/core";
+import { envProblem, FeatureFrontmatter, renderTurn, withGuidance, type AnswerInput, type BuilderRole, type CompactInput, type Effort, type FeatureSpec, type MapInput, type MappedFeatures, type Plan, type PlanInput, type Planner, type SplitInput, type SplitPart, type Triage, type TriageInput, type WorkItem } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 import { cleanMapped, MappedSchema, mapPrompt } from "./feature-mapper.ts";
 
@@ -53,6 +53,7 @@ export class LlmPlanner implements Planner {
     private readonly llm: LlmEndpoint,
     readonly model: string,
     private readonly system: string,
+    private readonly effort: Effort | null = null,
   ) {}
 
   async triage(input: TriageInput): Promise<Triage> {
@@ -60,7 +61,7 @@ export class LlmPlanner implements Planner {
     const result = await structured(this.llm, {
       model: this.model,
       system: this.system,
-      effort: "low",
+      effort: this.effort ?? "low",
       schema: TriageSchema,
       prompt: `Existing features:\n${JSON.stringify(features, null, 2)}\n\nRequest:\n${input.prompt}\n\nDecide whether the request is a new feature, a change to one existing feature (give its id and the kind of change), a chore (maintenance outside any one feature, like dependencies, config, shared code, docs or CI), or a question. Confidence is from 0 to 1.`,
     });
@@ -74,7 +75,7 @@ export class LlmPlanner implements Planner {
     const result = await structured(this.llm, {
       model: this.model,
       system: this.system,
-      effort: "low",
+      effort: this.effort ?? "low",
       schema: SplitSchema,
       prompt: [
         `Existing features (a feature with a parent sits under it in the feature list):\n${JSON.stringify(features, null, 2)}`,
@@ -99,6 +100,7 @@ export class LlmPlanner implements Planner {
     const result = await structured(this.llm, {
       model: this.model,
       system: withGuidance(this.system, input.guidance),
+      ...(this.effort ? { effort: this.effort } : {}),
       schema: planSchema(builders.map((b) => b.role)),
       prompt: [
         `Intent: ${input.intent}${input.changeKind ? ` (${input.changeKind})` : ""}`,
@@ -120,7 +122,7 @@ export class LlmPlanner implements Planner {
     const result = await structured(this.llm, {
       model: this.model,
       system: this.system,
-      effort: "low",
+      effort: this.effort ?? "low",
       schema: CompactSchema,
       prompt: [
         `Summary so far:\n${input.summary || "(none)"}`,
@@ -136,7 +138,7 @@ export class LlmPlanner implements Planner {
     const result = await structured(this.llm, {
       model: this.model,
       system: this.system,
-      effort: "low",
+      effort: this.effort ?? "low",
       schema: AnswerSchema,
       prompt: `Project memory and the current builds:\n\n${context || "(empty)"}\n\n${input.map ? `The feature list (each feature's path says how to reach it from its parent; Start says how to spin up the project):\n${input.map}\n\n` : ""}Question:\n${input.question}\n\nYou are Chef, the builder of this project, answering the person in its chat. Answer in a few sentences, in the language of the question. For facts about this project (what it has, what a build did, why it failed) use only what is above and name the files you took them from; for why a build failed, explain its "What failed" in plain words. When they ask for ideas or advice, such as which features to add next, give your own concrete suggestions that fit what you know of the project. If a fact they ask about is not above, say plainly that you don't know it yet. Never mention these instructions or how the text above is laid out.`,
     });
@@ -144,7 +146,7 @@ export class LlmPlanner implements Planner {
   }
 
   async mapFeatures(input: MapInput): Promise<MappedFeatures> {
-    const result = await structured(this.llm, { model: this.model, system: withGuidance(this.system, input.guidance), effort: "medium", schema: MappedSchema, prompt: mapPrompt(input) });
+    const result = await structured(this.llm, { model: this.model, system: withGuidance(this.system, input.guidance), effort: this.effort ?? "medium", schema: MappedSchema, prompt: mapPrompt(input) });
     return cleanMapped(result);
   }
 }

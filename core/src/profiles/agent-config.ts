@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { KeyValueStore } from "../ports/runtime.ts";
 import { DEFAULT_ROUTER_CONFIG, DEFAULT_WORDING, type RouterConfig, type RoutingWording } from "../router/router.ts";
-import { AgentProfile, Skill, type Profiles } from "./profile.ts";
+import { AgentProfile, EFFORTS, Skill, type Effort, type Profiles } from "./profile.ts";
 
 const text = (max: number, empty: string) => z.string().trim().min(1, empty).max(max);
 const model = z
@@ -17,6 +17,7 @@ export const RoleSetting = z.strictObject({
   description: text(500, "say what the role does"),
   instructions: text(20_000, "the role needs a system prompt"),
   model: model.nullable(),
+  effort: z.enum(EFFORTS).nullable().default(null),
   skills: z.array(z.string()).max(30),
 });
 
@@ -106,8 +107,8 @@ export function applyAgentConfig(defaults: Profiles, config: AgentConfig): Profi
     const own = setting.skills.map((name) => library.get(name)).filter((skill): skill is Skill => Boolean(skill));
     const shared = { label: setting.label, description: setting.description, instructions: setting.instructions };
     const profile = base
-      ? { ...base, ...shared, model: setting.model ?? base.model }
-      : AgentProfile.parse({ role, ...shared, model: setting.model ?? "coder-default", runs: "agent", plannable: true, sharedAccess: true, writeScope: BUILDER_SCOPE });
+      ? { ...base, ...shared, model: setting.model ?? base.model, effort: setting.effort ?? base.effort }
+      : AgentProfile.parse({ role, ...shared, model: setting.model ?? "coder-default", effort: setting.effort, runs: "agent", plannable: true, sharedAccess: true, writeScope: BUILDER_SCOPE });
     out[role] = withShared(profile, own);
   }
   return out;
@@ -192,6 +193,8 @@ export interface RoleView {
   readonly instructions: string;
   readonly model: string | null;
   readonly defaultModel: string;
+  readonly effort: Effort | null;
+  readonly defaultEffort: Effort | null;
   readonly runs: AgentProfile["runs"];
   readonly plannable: boolean;
   readonly writeScope: readonly string[];
@@ -245,6 +248,8 @@ export function agentsView(defaults: Profiles, stored: StoredAgents, history: re
         instructions: profile.instructions,
         model: setting?.model ?? null,
         defaultModel: resolveModel(base?.model ?? "coder-default", models),
+        effort: setting?.effort ?? null,
+        defaultEffort: base?.effort ?? null,
         runs: profile.runs,
         plannable: profile.plannable,
         writeScope: profile.writeScope,

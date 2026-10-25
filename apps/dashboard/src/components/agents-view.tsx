@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { Bot, BookOpen, History, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import type { AgentConfig, AgentsView as View, RoleSetting, RoleView, Skill } from "@chef/core";
+import type { AgentConfig, Effort, AgentsView as View, RoleSetting, RoleView, Skill } from "@chef/core";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -165,11 +165,14 @@ function SkillPicker({ skills, value, onChange }: { readonly skills: readonly Sk
   );
 }
 
+const EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
+
 const BLANK: RoleSetting = {
   label: "",
   description: "",
   instructions: "Implement the feature inside `features/{feature}/` so its locked tests pass. Import other code only from `shared/`. Do not write comments.",
   model: null,
+  effort: null,
   skills: [],
 };
 
@@ -276,6 +279,23 @@ function RoleEditor({ view, role }: { readonly view: View; readonly role: RoleVi
         {role?.runs === "rules" ? null : (
           <Field label="Model" hint={`Empty uses ${role?.defaultModel ?? view.roles.find((r) => r.role === "backend")?.defaultModel ?? "the coder model"} from Settings.`}>
             <Input value={draft.model ?? ""} onChange={(e) => change({ model: e.target.value || null })} placeholder={role?.defaultModel ?? "Default coder model"} aria-label="Model" />
+          </Field>
+        )}
+        {role?.runs === "rules" ? null : (
+          <Field label="Effort" hint="How hard the model thinks before it answers. Higher can be more careful, and takes longer and more tokens.">
+            <select
+              value={draft.effort ?? ""}
+              onChange={(e) => change({ effort: (e.target.value || null) as Effort | null })}
+              aria-label="Effort"
+              className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-base md:text-sm dark:bg-input/30"
+            >
+              <option value="">{role?.defaultEffort ? `Default (${role.defaultEffort})` : "Default"}</option>
+              {EFFORTS.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </select>
           </Field>
         )}
       </div>

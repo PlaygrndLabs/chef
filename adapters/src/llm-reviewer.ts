@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isLockfile, withGuidance, type FileChanges, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
+import { isLockfile, withGuidance, type Effort, type FileChanges, type PickInput, type PickVerdict, type ReviewInput, type ReviewVerdict, type Reviewer } from "@chef/core";
 import { structured, type LlmEndpoint } from "./anthropic.ts";
 
 const VerdictSchema = z.object({ approve: z.boolean(), reasons: z.array(z.string()), retest: z.boolean() });
@@ -18,6 +18,7 @@ export class LlmReviewer implements Reviewer {
     readonly model: string,
     private readonly system: string,
     private readonly maxDiffChars = 200_000,
+    private readonly effort: Effort | null = null,
   ) {}
 
   async review(input: ReviewInput): Promise<ReviewVerdict> {
@@ -27,6 +28,7 @@ export class LlmReviewer implements Reviewer {
     const result = await structured(this.llm, {
       model: this.model,
       system: withGuidance(this.system, input.guidance),
+      ...(this.effort ? { effort: this.effort } : {}),
       schema: VerdictSchema,
       prompt: `${input.chore ? `${CHORE_NOTE}\n\nTask:\n${input.feature.body}` : `${input.untested ? `${UNTESTED_NOTE}\n\n` : ""}Spec:\n${JSON.stringify(input.feature, null, 2)}${renderScope(input.scope)}`}\n\nPrevious gate feedback:\n${input.checksLog || "none"}\n\nDiff:\n${diff}${existing}`,
     });
@@ -42,6 +44,7 @@ export class LlmReviewer implements Reviewer {
     const result = await structured(this.llm, {
       model: this.model,
       system: PICK_SYSTEM,
+      ...(this.effort ? { effort: this.effort } : {}),
       schema: PickSchema,
       prompt: `Spec:\n${JSON.stringify(input.feature, null, 2)}\n\nAttempts (${ids.join(", ")}):\n\n${attempts}`,
     });

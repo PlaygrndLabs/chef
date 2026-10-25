@@ -66,6 +66,15 @@ describe("llm endpoint", () => {
     expect(JSON.stringify(seen[0]?.body["messages"])).toContain("- features/todo/**");
   });
 
+  it("asks the reviewer's model for the role's effort, and for high when the role has none", async () => {
+    const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false });
+    const llm = llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl);
+    const feature = { id: "todo-add", title: "Add", status: "building" as const, entrypoint: "POST /todos", revision: 1, shared: [], env: [], acceptance: [{ id: "AC1", text: "adds" }], body: "b" };
+    await new LlmReviewer(llm, "reviewer-model", "Review the diff.", undefined, "max").review({ feature, diff: { "features/todo-add/index.ts": "export {}" }, checksLog: "" });
+    await new LlmReviewer(llm, "reviewer-model", "Review the diff.").review({ feature, diff: { "features/todo-add/index.ts": "export {}" }, checksLog: "" });
+    expect(seen.map((call) => (call.body["output_config"] as { effort?: string } | undefined)?.effort)).toEqual(["max", "high"]);
+  });
+
   it("shows the reviewer the slice's unchanged files so code already on main counts", async () => {
     const { seen, fetchImpl } = custom({ approve: true, reasons: [], retest: false });
     const reviewer = new LlmReviewer(llmFromProvider({ kind: "custom", baseUrl: "https://llm.example", apiKey: "k" }, fetchImpl), "reviewer-model", "Review the diff.");

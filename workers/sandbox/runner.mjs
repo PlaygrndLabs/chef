@@ -204,6 +204,7 @@ const writeGuard = async (input) => {
 const options = (resume) => ({
   cwd: dir,
   model: job.model,
+  ...(job.agent.effort ? { effort: job.agent.effort } : {}),
   agents: { [job.agent.name]: { description: job.agent.description, prompt: job.agent.prompt, ...(job.agent.tools ? { tools: [...job.agent.tools] } : {}), ...(skillNames.length ? { skills: skillNames } : {}) } },
   agent: job.agent.name,
   canUseTool: async (_name, input) => ({ behavior: "allow", updatedInput: input }),
