@@ -263,7 +263,31 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       options.log(`${name}: ${loadedMs === null ? "did not load" : `loaded after ${loadedMs} ms${rendered ? "" : " but showed nothing"}`}; ${timeline.map((t) => `${t.ms}ms ${t.phase}`).join(", ")}`);
       await shot(`${name}-loaded`);
     };
+    const linkLoad = async (project: string, name: string) => {
+      const tab = await context.newPage();
+      const started = Date.now();
+      const timeline: { ms: number; phase: string; steps: string }[] = [];
+      const note = (phase: string, steps: string) => timeline.push({ ms: Date.now() - started, phase, steps });
+      tab.on("response", (response) => note("http", `${response.status()} ${response.request().method()} ${response.url().replace(/([?&]t=)[^&]+/, "$1…")}`));
+      tab.on("requestfailed", (request) => note("failed", `${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`));
+      void tab.goto(`/app/${project}/main`, { waitUntil: "commit" }).catch((error: unknown) => note("goto", error instanceof Error ? error.message : String(error)));
+      let loadedMs: number | null = null;
+      while (Date.now() - started < 180_000) {
+        await tab.waitForTimeout(500);
+        const url = tab.url();
+        if (url.startsWith("http") && new URL(url).host !== new URL(base).host && (await tab.evaluate(() => document.readyState).catch(() => "")) === "complete") {
+          loadedMs = Date.now() - started;
+          break;
+        }
+      }
+      const rendered = loadedMs !== null && (await tab.locator("body *:visible").first().waitFor({ timeout: 15_000 }).then(() => true, () => false));
+      report.appLoads.push({ name, loadedMs, rendered, timeline });
+      options.log(`${name}: ${loadedMs === null ? "did not load" : `loaded after ${loadedMs} ms`}; ${timeline.map((t) => `${t.ms}ms ${t.phase} ${t.steps}`).join(", ")}`);
+      await shot(name, tab);
+      await tab.close();
+    };
     await signIn(page, `${base}/`, options.password);
+    if (options.project) await Promise.all([linkLoad(options.project, "main-link-cold"), watchLoad(`/?project=${options.project}&view=main`, "main-app-cold")]);
     await shot("start");
     const agents = await json<{ version: number; roles: { role: string }[]; skills: unknown[] }>(page, "/api/agents").catch((error: unknown) => {
       report.errors.push(`agents ${error instanceof Error ? error.message : String(error)}`);

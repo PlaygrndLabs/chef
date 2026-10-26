@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { isPage } from "../../../../template/shared/http.ts";
-import { addressPath, appLink, appState, builtPage, enterAt, entryPage, frameReport, frameUrl, isPagePath, loadView, NO_STACK, stateLink, step, visit, type FrameLoad, type Trail } from "../../src/lib/app-view.ts";
+import { addressPath, appLink, appState, builtPage, enterAt, entryPage, frameKey, frameReport, frameUrl, isPagePath, loadView, NO_STACK, stateLink, step, visit, type FrameLoad, type Trail } from "../../src/lib/app-view.ts";
 
 describe("app browser", () => {
+  it("keeps the app frame while its app only starts or wakes, and loads it again for a new commit or after a failure", () => {
+    expect(frameKey({ status: "starting", commitId: "c1" })).toBe(frameKey({ status: "running", commitId: "c1" }));
+    expect(frameKey({ status: "running", commitId: "c2" })).not.toBe(frameKey({ status: "running", commitId: "c1" }));
+    expect(frameKey({ status: "failed", commitId: "c1" })).not.toBe(frameKey({ status: "starting", commitId: "c1" }));
+    expect(frameKey({ status: "no-stack", commitId: "c1" })).not.toBe(frameKey({ status: "running", commitId: "c1" }));
+  });
+
   it("opens the page named in the feature's entrypoint, never a script or an API", () => {
     expect(entryPage("GET /notes")).toBe("/notes");
     expect(entryPage("/notes")).toBe("/notes");

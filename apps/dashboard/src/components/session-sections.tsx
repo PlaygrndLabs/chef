@@ -16,7 +16,7 @@ import { ago, appHost, cost as formatCost, duration, short, tokens } from "@/lib
 import type { CriterionCheck, SessionTurn } from "@chef/core";
 import { laneSummary } from "@/lib/agents";
 import type { FeatureNode, SessionNode } from "@/lib/model";
-import { addressPath, appLink, builtPage, entryPage, frameReport, frameUrl, MAIN_APP, step, visit, type AppPage, type Trail } from "@/lib/app-view";
+import { addressPath, appLink, builtPage, entryPage, frameKey, frameReport, frameUrl, MAIN_APP, step, visit, type AppPage, type Trail } from "@/lib/app-view";
 import { useFetch } from "@/lib/use-fetch";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
@@ -460,7 +460,7 @@ export function SessionApp({ feature, node }: { readonly feature: FeatureNode; r
   const commit = app ? ` It runs ${short(app.commitId)}.` : "";
   const note = merged ? `This build is merged into main, so this is main's app, the release candidate, with this work together with everything else Chef merged. ${SLEEPS}` : `This is the app of this build's branch, with its whole stack running in the build's own sandbox. It starts again after every step Chef takes.${commit} ${SLEEPS}`;
   const page = entryPage(feature.spec?.entrypoint) ?? "/";
-  return <AppTab key={merged ? `${id}:main:${mainApp?.status ?? ""}:${mainApp?.commitId ?? ""}` : `${id}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={merged ? page : "/"} page={page} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
+  return <AppTab key={merged ? `${id}:main:${frameKey(mainApp)}` : `${id}:${frameKey(app)}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={merged ? page : "/"} page={page} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
 }
 
 export function MainApp() {
@@ -469,5 +469,5 @@ export function MainApp() {
   if (data.spec === null) return <Skeleton className="min-h-[320px] w-full flex-1 rounded-xl" aria-label="Loading main's app" />;
   if (!data.spec.commitId) return <Empty>Main has no commit yet. Its app starts after the first one.</Empty>;
   const note = `This is main's app, the release candidate, with its whole stack running in main's own sandbox${app ? ` at ${short(app.commitId)}` : ""}. Everything Chef merges shows up here. Your own production takes main from your repository. ${SLEEPS}`;
-  return <AppTab key={`${MAIN_APP}:${app?.status ?? ""}:${app?.commitId ?? ""}`} link={appLink(selection.project, MAIN_APP)} url={app?.url ?? null} start="/" title="App of main" note={note} missing="Main has no commit yet, so it has no app to open." />;
+  return <AppTab key={`${MAIN_APP}:${frameKey(app)}`} link={appLink(selection.project, MAIN_APP)} url={app?.url ?? null} start="/" title="App of main" note={note} missing="Main has no commit yet, so it has no app to open." />;
 }

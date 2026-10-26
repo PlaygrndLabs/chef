@@ -146,6 +146,7 @@ const RESET_CHECK_MS = 30_000;
 const RESTART_GRACE_MS = 5 * 60_000;
 const APP = "sandbox/app";
 const VISIT_NOTE_MS = 30_000;
+const PAGE_ANSWER_MS = 30_000;
 const APP_GRACE_MS = 60_000;
 const DIAGNOSE_MS = 20_000;
 const TURN = "sandbox/turn";
@@ -488,7 +489,10 @@ export class SessionAgent extends Agent<Env> {
     const headers = new Headers(request.headers);
     headers.delete(APP_REQUEST_HEADER);
     try {
-      return await container.getTcpPort(state.port).fetch(new Request(`http://localhost:${state.port}${url.pathname}${url.search}`, new Request(request, { headers })));
+      const answer = container.getTcpPort(state.port).fetch(new Request(`http://localhost:${state.port}${url.pathname}${url.search}`, new Request(request, { headers })));
+      if (!html || request.method !== "GET") return await answer;
+      const page = await Promise.race([answer, new Promise<null>((resolve) => setTimeout(() => resolve(null), PAGE_ANSWER_MS))]);
+      return page ?? appPage({ status: "down", target: state.target, html, error: `the app did not answer ${url.pathname} within ${PAGE_ANSWER_MS / 1000} seconds` });
     } catch (error) {
       return appPage({ status: "down", target: state.target, html, error: error instanceof Error ? error.message : String(error) });
     }

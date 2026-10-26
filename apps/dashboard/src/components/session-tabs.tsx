@@ -100,11 +100,11 @@ function Missing() {
   );
 }
 
-export function SessionTabs({ onClose }: { readonly onClose?: () => void }) {
+export function SessionTabs({ onClose, bar = true }: { readonly onClose?: () => void; readonly bar?: boolean }) {
   const { tabs } = useWorkspace();
   return (
     <div className="flex h-full min-h-0 flex-col" id="sessions">
-      <div role="tablist" aria-label="Open features" className="flex h-11 shrink-0 items-stretch overflow-x-auto dash-b bg-sidebar">
+      <div role="tablist" aria-label="Open features" className={cn("flex h-11 shrink-0 items-stretch overflow-x-auto dash-b bg-sidebar", !bar && "hidden")}>
         {tabs.map((id) => (
           <Tab key={id} id={id} />
         ))}

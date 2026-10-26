@@ -92,6 +92,8 @@ describe("app pages", () => {
     const down = appPage({ status: "down", target: "s1", html: false, error: "connection refused" });
     expect(down.status).toBe(502);
     expect(await down.json()).toEqual({ error: "This app is not answering", status: "down", detail: "connection refused" });
-    expect(await appPage({ status: "down", target: "s1", error: "connection refused" }).text()).toContain("connection refused");
+    const downPage = await appPage({ status: "down", target: "s1", error: "connection refused" }).text();
+    expect(downPage).toContain("connection refused");
+    expect(downPage).toContain('<meta http-equiv="refresh" content="6">');
   });
 });
