@@ -14,7 +14,7 @@ import { usageRequest } from "./usage.ts";
 
 export { ImageLayers } from "./image-layers.ts";
 export { ProjectAgent } from "./project-agent.ts";
-export { SandboxOutbound, SessionAgent } from "./session-agent.ts";
+export { AppObjects, SandboxOutbound, SessionAgent } from "./session-agent.ts";
 export { Settings } from "./settings.ts";
 export { UpstreamSync } from "./upstream-sync.ts";
 

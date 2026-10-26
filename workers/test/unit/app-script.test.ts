@@ -18,6 +18,7 @@ interface AppScript {
   inspected(text: string): Container[];
   wranglerFile(root: string): string | null;
   coveredBy(wanted: unknown, have: unknown): boolean;
+  workerTrouble(config: unknown): string[];
 }
 
 const script = new URL("../../sandbox/app.mjs", import.meta.url).href;
@@ -66,6 +67,16 @@ describe("the sandbox app script", () => {
     expect(app.wranglerFile(root)).toBe("wrangler.toml");
     writeFileSync(join(root, "wrangler.jsonc"), "{}\n");
     expect(app.wranglerFile(root)).toBe("wrangler.jsonc");
+  });
+
+  it("serves a Workers project from a Dynamic Worker only when nothing in its config needs a real deploy", () => {
+    const template = { compatibility_date: "2026-10-01", assets: { directory: "dist/client" }, durable_objects: { bindings: [{ name: "STORE", class_name: "StoreObject" }] }, vars: { GREETING: "hi" }, kv_namespaces: [], triggers: { crons: [] }, unsafe: {}, ai: undefined };
+    expect(app.workerTrouble(template)).toEqual([]);
+    expect(app.workerTrouble({ ...template, assets: { directory: "dist", not_found_handling: "single-page-application" } })).toEqual([]);
+    expect(app.workerTrouble({ ...template, kv_namespaces: [{ binding: "KV", id: "x" }], ai: { binding: "AI" } })).toEqual(["kv_namespaces", "ai"]);
+    expect(app.workerTrouble({ ...template, triggers: { crons: ["* * * * *"] } })).toEqual(["crons"]);
+    expect(app.workerTrouble({ ...template, durable_objects: { bindings: [{ name: "X", class_name: "X", script_name: "other" }] } })).toEqual(["durable objects of another Worker"]);
+    expect(app.workerTrouble({ ...template, assets: { directory: "dist", binding: "ASSETS", run_worker_first: true } })).toEqual(["assets binding", "run_worker_first"]);
   });
 
   it("reuses the sandbox's template packages only when they are the very versions the project asks for", () => {

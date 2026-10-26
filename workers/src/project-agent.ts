@@ -59,6 +59,7 @@ export interface MainAppState {
   readonly commitId: string;
   readonly url: string | null;
   readonly error?: string;
+  readonly via?: "worker";
   readonly at: number;
 }
 const READING_TIMEOUT_MS = 10 * 60_000;
@@ -950,8 +951,8 @@ export class ProjectAgent extends Agent<Env> {
     };
     await record({ status: "starting", commitId, url: current?.url ?? null });
     try {
-      const run = await apps.run({ target: this.mainSandbox(), repo: this.name, ref: "main", commitId });
-      await record({ status: run.status, commitId, url: run.url ?? current?.url ?? null, ...(run.error ? { error: run.error } : {}) });
+      const run = await apps.run({ target: this.mainSandbox(), repo: this.name, ref: "main", commitId, onWorkers: true });
+      await record({ status: run.status, commitId, url: run.url ?? current?.url ?? null, ...(run.via ? { via: run.via } : {}), ...(run.error ? { error: run.error } : {}) });
     } catch (error) {
       console.error(`starting ${this.name}'s main app failed`, error);
       await record({ status: "failed", commitId, url: current?.url ?? null, error: error instanceof Error ? error.message : String(error) });

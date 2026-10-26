@@ -8,8 +8,9 @@ export interface AppRun {
   readonly local: string | null;
   readonly commitId: string;
   readonly error?: string;
+  readonly via?: "worker";
 }
 
 export interface AppHost {
-  run(input: { readonly target: string; readonly repo: string; readonly ref: string; readonly commitId: string }): Promise<AppRun>;
+  run(input: { readonly target: string; readonly repo: string; readonly ref: string; readonly commitId: string; readonly onWorkers?: boolean }): Promise<AppRun>;
 }

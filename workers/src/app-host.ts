@@ -18,14 +18,14 @@ export class SandboxAppHost implements AppHost {
     },
   ) {}
 
-  async run(input: { readonly target: string; readonly repo: string; readonly ref: string; readonly commitId: string }): Promise<AppRun> {
+  async run(input: { readonly target: string; readonly repo: string; readonly ref: string; readonly commitId: string; readonly onWorkers?: boolean }): Promise<AppRun> {
     const info = await this.repos.info(input.repo);
     if (!info) throw new Error(`unknown repo ${input.repo}`);
     const token = await this.repos.createToken(input.repo, "read", TOKEN_SECONDS);
     let state: AppState;
     try {
       const stub = this.sessions.get(this.sessions.idFromName(input.target)) as unknown as AppStub;
-      const job = { target: input.target, project: this.options.project, remote: info.remote, ref: input.ref, commitId: input.commitId, env: await this.options.env(), idleMinutes: await this.options.idleMinutes(), startSeconds: APP_START_SECONDS };
+      const job = { target: input.target, project: this.options.project, remote: info.remote, ref: input.ref, commitId: input.commitId, env: await this.options.env(), idleMinutes: await this.options.idleMinutes(), startSeconds: APP_START_SECONDS, ...(input.onWorkers ? { bundle: true } : {}) };
       state = await answered(stub.runApp(job, token.secret), input);
     } finally {
       await this.repos.revokeToken(token);
@@ -35,7 +35,7 @@ export class SandboxAppHost implements AppHost {
       console.error(`giving ${input.target} its address failed`, error);
       return null;
     }) : null;
-    return { status, url, local: status === "running" && state.port ? `http://127.0.0.1:${state.port}` : null, commitId: state.commitId, ...(state.error ? { error: state.error } : status === "failed" ? { error: "the app did not start" } : {}) };
+    return { status, url, local: status === "running" && state.port ? `http://127.0.0.1:${state.port}` : null, commitId: state.commitId, ...(state.via ? { via: state.via } : {}), ...(state.error ? { error: state.error } : status === "failed" ? { error: "the app did not start" } : {}) };
   }
 }
 

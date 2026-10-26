@@ -357,6 +357,7 @@ export interface MainApp {
   readonly commitId: string;
   readonly url: string | null;
   readonly error?: string;
+  readonly via?: "worker";
   readonly at: number;
 }
 
