@@ -479,7 +479,7 @@ export class SessionAgent extends Agent<Env> {
       if (state && (state.status === "asleep" || state.status === "running")) this.ctx.waitUntil(this.wake(state));
       if (state?.status === "failed") return appPage({ status: "failed", target: state.target, html, ...(state.error ? { error: state.error } : {}) });
       if (state?.status === "no-stack") return appPage({ status: "no-stack", target: state.target, html });
-      return appPage({ status: state ? "starting" : "missing", target: state?.target ?? this.name, html });
+      return appPage({ status: state ? "starting" : "missing", target: state?.target ?? this.name, html, path: url.pathname, ...(state?.status === "starting" ? { since: state.at } : {}) });
     }
     if (Date.now() - this.visited > VISIT_NOTE_MS) {
       this.visited = Date.now();

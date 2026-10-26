@@ -79,6 +79,11 @@ describe("app pages", () => {
     expect(go.headers.get("location")).toBe("https://s1-shop.example.workers.dev/todos");
     expect(await appResponse(ready, { target: "s1", path: "", asState: true, now: 0, enter: "https://s1-shop.example.workers.dev/__chef/enter?t=x" }).json()).toEqual({ ...ready, enter: "https://s1-shop.example.workers.dev/__chef/enter?t=x" });
     expect(await appResponse({ status: "starting", since: 1000 }, { target: "s1", path: "", asState: true, now: 4000 }).json()).toEqual({ status: "starting", since: 1000, elapsedMs: 3000 });
+    const starting = await appResponse({ status: "starting", since: 1000 }, { target: "main", path: "/todos", asState: false, now: 4000 }).text();
+    expect(starting).toContain('data-since="1000" data-poll="state"');
+    expect(starting).toContain("Start the app from the latest commit");
+    expect(starting).toContain("Open /todos");
+    expect(starting).not.toContain('<meta http-equiv="refresh" content="4"><title>');
     const failed = await appResponse({ status: "failed", error: "port <8080> busy" }, { target: "s1", path: "", asState: false, now: 0 }).text();
     expect(failed).toContain("port &lt;8080&gt; busy");
     expect(await appPage({ status: "no-stack", target: "main" }).text()).toContain("compose file");
