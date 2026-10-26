@@ -146,27 +146,44 @@ export async function lookAt(features: readonly Feature[], paths: readonly strin
   const families = Object.values(look.fonts ?? {}).flatMap((name) => (isFont(name) ? [FONTS[name].family] : []));
   const views = VIEWS.filter((view) => !look.scheme || view.scheme === look.scheme);
   const found: LookProblem[] = [];
+  const states = new Map<string, number>();
   if (out) await mkdir(out, { recursive: true });
   for (const path of paths) {
     const opened = await openPage(features, path, undefined, undefined, root);
     const errors: string[] = [];
     opened.page.on("pageerror", (error) => errors.push(error.message));
+    const check = async (view: string) => {
+      states.set(path, (states.get(path) ?? 0) + 1);
+      await opened.page.evaluate(settle);
+      found.push(...problems(path, view, await opened.page.evaluate(inspect, families), errors.splice(0)));
+      if (out) await opened.page.screenshot({ path: join(out, `${path.replace(/^\//, "").replace(/\//g, "_") || "home"}-${view.replace(/,? /g, "-")}.png`), fullPage: true });
+    };
     try {
       for (const view of views) {
         await opened.page.setViewportSize({ width: view.width, height: view.height });
         await opened.page.emulateMedia({ colorScheme: view.scheme });
-        await opened.page.evaluate(settle);
-        found.push(...problems(path, view.name, await opened.page.evaluate(inspect, families), errors.splice(0)));
-        if (out) await opened.page.screenshot({ path: join(out, `${path.replace(/^\//, "").replace(/\//g, "_") || "home"}-${view.name.replace(" ", "-")}.png`), fullPage: true });
+        const gate = look.gate ? opened.page.getByRole("button", { name: look.gate }).first() : null;
+        if (gate) {
+          await opened.page.evaluate(() => {
+            localStorage.clear();
+            sessionStorage.clear();
+          });
+          await opened.page.reload();
+        }
+        if (gate && (await gate.isVisible())) {
+          await check(`${view.name}, gate`);
+          await gate.click();
+        }
+        await check(view.name);
       }
     } finally {
       await opened.close();
     }
   }
-  return dedupe(found, views.length);
+  return dedupe(found, states);
 }
 
-function dedupe(found: readonly LookProblem[], views: number): LookProblem[] {
+function dedupe(found: readonly LookProblem[], states: ReadonlyMap<string, number>): LookProblem[] {
   const grouped = new Map<string, LookProblem & { seen: string[] }>();
   for (const problem of found) {
     const key = `${problem.path}|${problem.severity}|${problem.message}`;
@@ -174,5 +191,5 @@ function dedupe(found: readonly LookProblem[], views: number): LookProblem[] {
     if (known) known.seen.push(problem.view);
     else grouped.set(key, { ...problem, seen: [problem.view] });
   }
-  return [...grouped.values()].map(({ seen, ...problem }) => ({ ...problem, view: seen.length === views ? "every view" : seen.join(", ") }));
+  return [...grouped.values()].map(({ seen, ...problem }) => ({ ...problem, view: seen.length === states.get(problem.path) ? "every view" : seen.join(", ") }));
 }

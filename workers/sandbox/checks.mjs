@@ -48,9 +48,10 @@ const cached = install ? join(deps, install.key) : null;
 if (!install && !existsSync(modules)) symlinkSync("/opt/chef/template/node_modules", modules, "dir");
 
 function run(command) {
+  const started = Date.now();
   const done = spawnSync(command.argv[0], command.argv.slice(1), { cwd: dir, encoding: "utf8", timeout: command.timeoutMs ?? 300000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, ...command.env } });
   const stderr = `${done.stderr ?? ""}${done.error ? `\n${command.argv[0]} failed: ${done.error.message}` : ""}`;
-  return { name: command.name, code: done.status ?? 1, stdout: (done.stdout ?? "").slice(-20000), stderr: stderr.slice(-20000) };
+  return { name: command.name, code: done.status ?? 1, stdout: (done.stdout ?? "").slice(-20000), stderr: stderr.slice(-20000), ms: Date.now() - started };
 }
 
 const results = [];

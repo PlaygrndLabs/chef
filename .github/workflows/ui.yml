@@ -25,7 +25,7 @@ on:
         required: false
         default: true
       app_click:
-        description: Button to press on main's app before its full-page shots (for example an age check); empty presses nothing
+        description: Part of the name of a button to press on main's app before its full-page shots (for example 21 or older for an age check); empty presses nothing. Taken after the build when a prompt is sent
         required: false
         default: ""
       delete_existing:

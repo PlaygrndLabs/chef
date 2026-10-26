@@ -19,6 +19,7 @@ export interface LookInfo {
   readonly fonts?: Partial<Record<FontRole, FontName>>;
   readonly colors?: { readonly light?: Colors; readonly dark?: Colors };
   readonly radius?: string;
+  readonly gate?: string;
   readonly style?: string;
 }
 

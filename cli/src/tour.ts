@@ -290,13 +290,16 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     const opened = (await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[])).at(-1);
     if (opened) await watchLoad(`/?project=${project}&feature=${opened.featureId}&session=${opened.id}&panel=app`, "app-load");
     await watchLoad(`/?project=${project}&view=main`, "main-app-load");
-    await appLook(browser, context, base, project, options.appClick, async (name, target) => {
-      await target.waitForTimeout(1500);
-      const file = `${String(++n).padStart(3, "0")}-${name}.png`;
-      await target.screenshot({ path: join(options.out, file), fullPage: true });
-      report.shots.push(file);
-      options.log(`shot ${file}`);
-    }).catch((error: unknown) => options.log(`app look: ${error instanceof Error ? error.message : String(error)}`));
+    const lookAtMain = () =>
+      appLook(browser, context, base, project, options.appClick, async (name, target) => {
+        await target.waitForTimeout(1500);
+        const file = `${String(++n).padStart(3, "0")}-${name}.png`;
+        await target.screenshot({ path: join(options.out, file), fullPage: true });
+        report.shots.push(file);
+        options.log(`shot ${file}`);
+      }).catch((error: unknown) => options.log(`app look: ${error instanceof Error ? error.message : String(error)}`));
+    const prompts = (options.prompt ?? "").split("\n").map((p) => p.trim()).filter(Boolean);
+    if (prompts.length === 0) await lookAtMain();
     const routed = await json<{ intent: string; via: string; classifier?: { model: string; accepted: boolean } | null }>(page, `/api/projects/${project}/route`, { method: "POST", data: { prompt: ROUTE_PROMPT } }).catch((error: unknown) => {
       report.errors.push(`route ${error instanceof Error ? error.message : String(error)}`);
       return null;
@@ -308,7 +311,6 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         await shot(`settings-${scope}-${section}`);
       }
     }
-    const prompts = (options.prompt ?? "").split("\n").map((p) => p.trim()).filter(Boolean);
     if (prompts.length > 0) {
       await go(`/?project=${project}`);
       const input = page.locator("#chat textarea");
@@ -369,6 +371,10 @@ export async function tour(options: TourOptions): Promise<TourReport> {
           await night.goto(`/?project=${project}&feature=${latest.featureId}&session=${latest.id}&panel=details`);
           await shot("final-details-dark", night);
           await dark.close();
+        }
+        if (prompts.length > 0) {
+          await watchLoad(`/?project=${project}&view=main`, "final-main-app-load");
+          await lookAtMain();
         }
         await go(`/?project=${project}&settings=project.usage`);
         await shot("project-usage");

@@ -75,6 +75,14 @@ describe("sandbox checks", () => {
     expect(jobs[0]?.commands.at(-1)?.argv).toEqual(["npm", "run", "--silent", "app", "--", "look", "--features", "items-left"]);
   });
 
+  it("keeps how long each check took", async () => {
+    const tree = { "app/gen.ts": "export {};\n", "src/registry.gen.ts": renderRegistry([]), "package.json": "{}" };
+    const { repos, commitId } = await repoWith(tree);
+    const { namespace } = sandbox((job) => job.commands.map((c, i) => ({ name: c.name, code: 0, stdout: "", stderr: "", ms: 1000 * (i + 1) })));
+    const results = await new SandboxCheckRunner(namespace, repos, "todos").run({ repo: "todos--items-left--s1", commitId, tree });
+    expect(results.map((r) => [r.name, r.ms])).toEqual([["typecheck", 1000], ["test", 2000], ["generated", 3000], ["lint", 4000], ["spec-lint", undefined]]);
+  });
+
   it("proves an app by asking its running app for a page the way a browser does", async () => {
     const { repos, commitId } = await repoWith(imported);
     const { jobs, namespace } = sandbox(() => [{ name: "probe", code: 0, stdout: JSON.stringify({ steps: [{ name: "GET /", ok: true, detail: "http://127.0.0.1:3000/ answered 200 OK" }] }), stderr: "" }]);

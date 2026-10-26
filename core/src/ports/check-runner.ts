@@ -10,6 +10,7 @@ export interface CheckResult {
   readonly ok: boolean;
   readonly log: string;
   readonly cases?: readonly TestCase[];
+  readonly ms?: number;
 }
 
 export interface CheckRunner {
