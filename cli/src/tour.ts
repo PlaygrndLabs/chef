@@ -155,12 +155,9 @@ async function removeInSettings(page: Page, project: string, report: TourReport,
   const dialog = page.locator('[data-dialog="delete-project"]');
   const typed = dialog.getByLabel("Project name to delete");
   await dialog.getByRole("button", { name: `Copy ${project}` }).click();
-  await typed.focus();
-  await page.keyboard.press("ControlOrMeta+V");
-  if ((await typed.inputValue()) !== project) {
-    report.errors.push(`remove: pasting the copied name gave "${await typed.inputValue()}", not ${project}`);
-    await typed.fill(project);
-  }
+  const copied = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
+  if (copied !== project) report.errors.push(`remove: the copy button copied "${copied}", not ${project}`);
+  await typed.fill(copied || project);
   await shot(`delete-${project}`);
   await dialog.getByRole("button", { name: "Delete project" }).click();
   await page.waitForURL((url) => !url.searchParams.has("project"), { timeout: 10 * 60_000 });
