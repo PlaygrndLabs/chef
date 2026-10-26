@@ -22,6 +22,13 @@ test("a clean page has nothing to fix", async () => {
   assert.deepEqual(await lookAt([], ["/home"], {}, root), []);
 });
 
+test("colors that fade when the scheme changes are read once they settle", async () => {
+  const root = project(`const css = ".slow{background:#fff;color:#111;transition:background-color 5s}@media (prefers-color-scheme: dark){.slow{background:#111;color:#fff}}";
+
+export const pages: readonly Page[] = [{ path: "/home", title: "Home", component: () => <><style>{css}</style><p className="slow">Fades with the scheme</p></> }];\n`);
+  assert.deepEqual(await lookAt([], ["/home"], {}, root), []);
+});
+
 test("catches invisible text, covered text and a page that scrolls sideways", async () => {
   const root = project(`function Home() {
   return (

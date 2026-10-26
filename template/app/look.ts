@@ -124,6 +124,12 @@ function inspect(families: readonly string[]): Found {
   return { overflow, contrast, covered, clipped, fonts };
 }
 
+async function settle(): Promise<void> {
+  await document.fonts.ready;
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  for (const animation of document.getAnimations()) if (animation.effect?.getComputedTiming().endTime !== Infinity) animation.finish();
+}
+
 function problems(path: string, view: string, found: Found, errors: readonly string[]): LookProblem[] {
   const out: LookProblem[] = [];
   const add = (severity: LookProblem["severity"], message: string) => out.push({ path, view, severity, message });
@@ -149,7 +155,7 @@ export async function lookAt(features: readonly Feature[], paths: readonly strin
       for (const view of views) {
         await opened.page.setViewportSize({ width: view.width, height: view.height });
         await opened.page.emulateMedia({ colorScheme: view.scheme });
-        await opened.page.evaluate(() => document.fonts.ready.then(() => new Promise((resolve) => requestAnimationFrame(resolve))));
+        await opened.page.evaluate(settle);
         found.push(...problems(path, view.name, await opened.page.evaluate(inspect, families), errors.splice(0)));
         if (out) await opened.page.screenshot({ path: join(out, `${path.replace(/^\//, "").replace(/\//g, "_") || "home"}-${view.name.replace(" ", "-")}.png`), fullPage: true });
       }
