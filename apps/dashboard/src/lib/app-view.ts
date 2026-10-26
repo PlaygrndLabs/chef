@@ -14,6 +14,11 @@ export interface Trail {
   readonly index: number;
 }
 
+export function frameKey(app: { readonly status: string; readonly commitId: string } | null): string {
+  if (!app) return "none";
+  return `${app.commitId}:${app.status === "failed" || app.status === "no-stack" ? app.status : "up"}`;
+}
+
 export function isPagePath(path: string): boolean {
   if (path === "/" || path.includes(":") || path === "/api" || path.startsWith("/api/")) return false;
   return !/\.[A-Za-z0-9]+$/.test(path.split("/").pop() ?? "");
