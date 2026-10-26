@@ -448,6 +448,7 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
 }
 
 const SLEEPS = "It stops when nobody opens it for a while and starts again on the next visit.";
+const ON_WORKERS = "It runs on Workers as a Dynamic Worker, with no sandbox, so it opens at once and costs nothing while nobody uses it.";
 
 export function SessionApp({ feature, node }: { readonly feature: FeatureNode; readonly node: SessionNode | null }) {
   const { data, selection } = useWorkspace();
@@ -458,7 +459,7 @@ export function SessionApp({ feature, node }: { readonly feature: FeatureNode; r
   const committed = Boolean(node?.record?.head ?? node?.live?.commits.length);
   if (!id || (!app && !merged && !committed)) return <Empty>This build's app starts after Chef's first commit.</Empty>;
   const commit = app ? ` It runs ${short(app.commitId)}.` : "";
-  const note = merged ? `This build is merged into main, so this is main's app, the release candidate, with this work together with everything else Chef merged. ${SLEEPS}` : `This is the app of this build's branch, with its whole stack running in the build's own sandbox. It starts again after every step Chef takes.${commit} ${SLEEPS}`;
+  const note = merged ? `This build is merged into main, so this is main's app, the release candidate, with this work together with everything else Chef merged. ${mainApp?.via === "worker" ? ON_WORKERS : SLEEPS}` : `This is the app of this build's branch, with its whole stack running in the build's own sandbox. It starts again after every step Chef takes.${commit} ${SLEEPS}`;
   const page = entryPage(feature.spec?.entrypoint) ?? "/";
   return <AppTab key={merged ? `${id}:main:${frameKey(mainApp)}` : `${id}:${frameKey(app)}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={merged ? page : "/"} page={page} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
 }
@@ -468,6 +469,6 @@ export function MainApp() {
   const app = data.spec?.mainApp ?? null;
   if (data.spec === null) return <Skeleton className="min-h-[320px] w-full flex-1 rounded-xl" aria-label="Loading main's app" />;
   if (!data.spec.commitId) return <Empty>Main has no commit yet. Its app starts after the first one.</Empty>;
-  const note = `This is main's app, the release candidate, with its whole stack running in main's own sandbox${app ? ` at ${short(app.commitId)}` : ""}. Everything Chef merges shows up here. Your own production takes main from your repository. ${SLEEPS}`;
+  const note = app?.via === "worker" ? `This is main's app, the release candidate, at ${short(app.commitId)}. Everything Chef merges shows up here. Your own production takes main from your repository. ${ON_WORKERS}` : `This is main's app, the release candidate, with its whole stack running in main's own sandbox${app ? ` at ${short(app.commitId)}` : ""}. Everything Chef merges shows up here. Your own production takes main from your repository. ${SLEEPS}`;
   return <AppTab key={`${MAIN_APP}:${frameKey(app)}`} link={appLink(selection.project, MAIN_APP)} url={app?.url ?? null} start="/" title="App of main" note={note} missing="Main has no commit yet, so it has no app to open." />;
 }

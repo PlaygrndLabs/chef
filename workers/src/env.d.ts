@@ -13,4 +13,5 @@ interface Env {
   readonly CHEF_HOME?: string;
   readonly REVIEWER_LORA?: string;
   readonly TRANSCRIPTS?: R2Bucket;
+  readonly LOADER?: WorkerLoader;
 }

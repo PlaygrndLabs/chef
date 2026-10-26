@@ -6,6 +6,7 @@ import { appPage } from "@chef/adapters/app-page";
 import { layerStore } from "./image-layers.ts";
 import { LAYER_CACHE_ADDRESS, layerCacheFetch } from "./layer-cache.ts";
 import { TRANSCRIPT_ADDRESS, transcriptFetch } from "./transcripts.ts";
+import { WORKER_APP, assetPath, assetResponse, dropWorkerApp, saveWorkerApp, workerCode, type WorkerAppMeta, type WorkerBundle } from "./worker-app.ts";
 import { busySeconds, exitedForMemory, nextStep, oomKills, sandboxSize, sizeLabel, sizeStep } from "./sandbox-size.ts";
 
 export const PLACEHOLDER = "chef-placeholder";
@@ -72,6 +73,29 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
   }
 }
 
+interface ObjectsProps {
+  readonly sandbox: string;
+}
+
+type ObjectsHost = {
+  objectFetch(binding: string, name: string, request: Request): Promise<Response>;
+  objectCall(binding: string, name: string, method: string, args: unknown[]): Promise<unknown>;
+};
+
+export class AppObjects extends WorkerEntrypoint<Env, ObjectsProps> {
+  private host(): ObjectsHost {
+    return this.env.SESSION.get(this.env.SESSION.idFromName(this.ctx.props.sandbox)) as unknown as ObjectsHost;
+  }
+
+  fetchObject(binding: string, name: string, request: Request): Promise<Response> {
+    return this.host().objectFetch(binding, name, request);
+  }
+
+  callObject(binding: string, name: string, method: string, args: unknown[]): Promise<unknown> {
+    return this.host().objectCall(binding, name, method, args);
+  }
+}
+
 export interface ChecksJob {
   readonly sessionId: string;
   readonly project: string;
@@ -93,6 +117,7 @@ export interface AppJob {
   readonly env: Readonly<Record<string, string>>;
   readonly idleMinutes: number;
   readonly startSeconds?: number;
+  readonly bundle?: boolean;
 }
 
 export interface AppState {
@@ -104,6 +129,7 @@ export interface AppState {
   readonly error?: string;
   readonly idleMinutes: number;
   readonly at: number;
+  readonly via?: "worker";
 }
 
 export interface CommandResult {
@@ -147,6 +173,7 @@ const RESTART_GRACE_MS = 5 * 60_000;
 const APP = "sandbox/app";
 const VISIT_NOTE_MS = 30_000;
 const PAGE_ANSWER_MS = 30_000;
+const WORKER_FACETS = "worker-app-facets";
 const APP_GRACE_MS = 60_000;
 const DIAGNOSE_MS = 20_000;
 const TURN = "sandbox/turn";
@@ -430,12 +457,22 @@ export class SessionAgent extends Agent<Env> {
       await this.ctx.storage.put(APP, state);
       if (alone && this.ctx.container?.running) await this.shell(STOP_APP, {}).catch(() => undefined);
       const startSeconds = job.startSeconds ?? APP_START_SECONDS;
-      const script = { ...job, startSeconds, readToken };
+      const script = { ...job, bundle: job.bundle === true && this.env.LOADER !== undefined, startSeconds, readToken };
+      const files = { modules: new Map<string, Uint8Array>(), assets: new Map<string, Uint8Array>() };
+      let bundle: WorkerBundle | null = null;
       const { code, tail, stopped } = await this.runScript(
         "app.mjs",
         script,
         (event) => {
+          if (event["type"] === "chef.bundle" && typeof event["path"] === "string" && typeof event["data"] === "string") {
+            (event["kind"] === "module" ? files.modules : files.assets).set(event["path"], fromBase64(event["data"]));
+            return;
+          }
           if (event["type"] !== "chef.app") return;
+          if (event["status"] === "bundled") {
+            bundle = event["bundle"] as WorkerBundle;
+            return;
+          }
           const status = event["status"] as AppStatus;
           const port = typeof event["port"] === "number" ? event["port"] : null;
           state = { ...state, status, port, at: Date.now(), ...(typeof event["error"] === "string" ? { error: event["error"] } : {}) };
@@ -444,9 +481,11 @@ export class SessionAgent extends Agent<Env> {
         {},
         startSeconds * 1000 + APP_GRACE_MS,
       );
+      if (bundle) state = await this.keepWorkerApp(state, job, bundle, files);
+      else if (state.status !== "starting" && (await this.ctx.storage.get(WORKER_APP))) await dropWorkerApp(this.ctx.storage);
       if (state.status === "starting") state = { ...state, status: "failed", error: stopped ? await this.stuckApp(job, startSeconds) : `the app runner stopped with exit code ${code}${this.exit ? ` (the sandbox stopped: ${this.exit})` : ""}: ${tail.slice(-500) || "no output"}`, at: Date.now() };
       await this.ctx.storage.put(APP, state);
-      if (state.status === "running") await this.ctx.container?.setInactivityTimeout((await this.backstopSeconds()) * 1000).catch(() => undefined);
+      if (state.status === "running" && state.via !== "worker") await this.ctx.container?.setInactivityTimeout((await this.backstopSeconds()) * 1000).catch(() => undefined);
       return state;
     } finally {
       this.appsStarting--;
@@ -460,8 +499,67 @@ export class SessionAgent extends Agent<Env> {
     return `the app did not start within ${minutes} minutes, so Chef stopped it${this.exit ? ` (the sandbox stopped: ${this.exit})` : ""}: ${logs.out.trim().slice(-3000) || "no output"}`;
   }
 
+  private async keepWorkerApp(state: AppState, job: AppJob, bundle: WorkerBundle, files: { readonly modules: Map<string, Uint8Array>; readonly assets: Map<string, Uint8Array> }): Promise<AppState> {
+    try {
+      await saveWorkerApp(this.ctx.storage, { commitId: job.commitId, env: job.env, bundle, files });
+      for (const name of (await this.ctx.storage.get<string[]>(WORKER_FACETS)) ?? []) this.ctx.facets.abort(name, "main has a new build");
+      return { ...state, status: "running", port: null, via: "worker", at: Date.now() };
+    } catch (error) {
+      return { ...state, status: "failed", port: null, error: `keeping the built app failed: ${error instanceof Error ? error.message : String(error)}`, at: Date.now() };
+    }
+  }
+
+  private workerStub(meta: WorkerAppMeta): WorkerStub {
+    const loader = this.env.LOADER;
+    if (!loader) throw new Error("this Chef has no Worker Loader binding");
+    const objects = (this.ctx.exports as unknown as Record<string, (options: { props: { sandbox: string } }) => Fetcher>)["AppObjects"];
+    if (!objects) throw new Error("this Chef does not export AppObjects");
+    return loader.get(meta.codeId, () => workerCode(this.ctx.storage, meta, objects({ props: { sandbox: this.name } })));
+  }
+
+  private async workerApp(request: Request, url: URL, state: AppState, html: boolean): Promise<Response> {
+    const meta = await this.ctx.storage.get<WorkerAppMeta>(WORKER_APP);
+    if (!meta || meta.commitId !== state.commitId) {
+      this.ctx.waitUntil(this.wake(state));
+      return appPage({ status: "starting", target: state.target, html, path: url.pathname });
+    }
+    if (request.method === "GET" || request.method === "HEAD") {
+      const path = assetPath(meta, url.pathname, request.method === "GET" && html);
+      if (path) return assetResponse(this.ctx.storage, meta, path, request);
+    }
+    const headers = new Headers(request.headers);
+    headers.delete(APP_REQUEST_HEADER);
+    try {
+      return await this.workerStub(meta).getEntrypoint().fetch(new Request(request, { headers }));
+    } catch (error) {
+      return appPage({ status: "down", target: state.target, html, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  private async facet(binding: string, name: string): Promise<Fetcher> {
+    const meta = await this.ctx.storage.get<WorkerAppMeta>(WORKER_APP);
+    const object = meta?.objects.find((o) => o.binding === binding);
+    if (!meta || !object) throw new Error(`this app has no Durable Object binding ${binding}`);
+    const facet = `${binding}:${name}`;
+    const known = (await this.ctx.storage.get<string[]>(WORKER_FACETS)) ?? [];
+    if (!known.includes(facet)) await this.ctx.storage.put(WORKER_FACETS, [...known, facet]);
+    return this.ctx.facets.get(facet, () => ({ class: this.workerStub(meta).getDurableObjectClass(object.className) }));
+  }
+
+  async objectFetch(binding: string, name: string, request: Request): Promise<Response> {
+    return (await this.facet(binding, name)).fetch(request);
+  }
+
+  async objectCall(binding: string, name: string, method: string, args: unknown[]): Promise<unknown> {
+    const facet = (await this.facet(binding, name)) as unknown as Record<string, unknown>;
+    const call = facet[method];
+    if (typeof call !== "function") throw new Error(`${binding} has no method ${method}`);
+    return (call as (...input: unknown[]) => Promise<unknown>).apply(facet, args);
+  }
+
   async appState(): Promise<AppState | null> {
     const state = (await this.ctx.storage.get<AppState>(APP)) ?? null;
+    if (state?.via === "worker") return state;
     if (state?.status === "starting" && this.appsStarting === 0) return { ...state, status: "asleep" };
     if (!state || this.ctx.container?.running) return state;
     return state.status === "running" || state.status === "starting" ? { ...state, status: "asleep" } : state;
@@ -473,6 +571,7 @@ export class SessionAgent extends Agent<Env> {
     const container = this.ctx.container;
     const html = (request.headers.get("accept") ?? "").includes("text/html");
     const url = new URL(request.url);
+    if (state?.via === "worker" && state.status === "running") return this.workerApp(request, url, state, html);
     if (!container?.running || state?.status !== "running" || !state.port) {
       const moved = html && state && (state.status === "asleep" || state.status === "running") ? await this.movedTo(state, url) : null;
       if (moved) return new Response(null, { status: 302, headers: { location: moved, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
@@ -810,6 +909,10 @@ function toBase64(text: string): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
+}
+
+function fromBase64(text: string): Uint8Array {
+  return Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 }
 
 function splitLines(flush: boolean): TransformStream<string, string> {

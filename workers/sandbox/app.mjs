@@ -1,7 +1,9 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const job = process.env.CHEF_JOB ? JSON.parse(Buffer.from(process.env.CHEF_JOB, "base64").toString("utf8")) : {};
 const home = join(process.env.CHEF_WORKSPACE ?? "/workspace", job.target ?? "none");
@@ -14,6 +16,9 @@ const WORKER_PORT = 8787;
 const TEMPLATE_DEPS = process.env.CHEF_TEMPLATE_DIR ?? "/opt/chef/template";
 const pidFile = join(home, "app.pid");
 const logFile = join(home, "app.log");
+const bundleDir = join(home, "bundle");
+const BINDING_LISTS = ["kv_namespaces", "r2_buckets", "d1_databases", "services", "vectorize", "hyperdrive", "analytics_engine_datasets", "mtls_certificates", "dispatch_namespaces", "pipelines", "secrets_store_secrets", "workflows", "send_email", "worker_loaders", "containers", "ratelimits", "vpc_services", "tail_consumers"];
+const BINDING_OBJECTS = ["ai", "browser", "images", "version_metadata", "media"];
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, "g");
 const START_SECONDS = 600;
@@ -129,6 +134,72 @@ function prepareModules() {
 
 function logTail(lines = 40) {
   return existsSync(logFile) ? tail(readFileSync(logFile, "utf8"), lines) : "";
+}
+
+export function workerTrouble(config) {
+  const trouble = BINDING_LISTS.filter((name) => Array.isArray(config[name]) && config[name].length > 0);
+  for (const name of BINDING_OBJECTS) if (config[name] && typeof config[name] === "object" && Object.keys(config[name]).length > 0) trouble.push(name);
+  if ((config.queues?.producers ?? []).length > 0 || (config.queues?.consumers ?? []).length > 0) trouble.push("queues");
+  if ((config.triggers?.crons ?? []).length > 0) trouble.push("crons");
+  if ((config.unsafe?.bindings ?? []).length > 0) trouble.push("unsafe");
+  if ((config.durable_objects?.bindings ?? []).some((b) => b.script_name)) trouble.push("durable objects of another Worker");
+  const assets = config.assets;
+  if (assets?.binding) trouble.push("assets binding");
+  if (assets?.run_worker_first) trouble.push("run_worker_first");
+  if (assets?.not_found_handling && !["none", "single-page-application"].includes(assets.not_found_handling)) trouble.push(`not_found_handling ${assets.not_found_handling}`);
+  if (assets?.html_handling && assets.html_handling !== "auto-trailing-slash") trouble.push(`html_handling ${assets.html_handling}`);
+  if (Object.values(config.vars ?? {}).some((value) => typeof value !== "string")) trouble.push("non-text vars");
+  return trouble;
+}
+
+function filesUnder(root) {
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath ?? entry.path, entry.name));
+}
+
+async function bundleWorker(file) {
+  prepareModules();
+  let config;
+  try {
+    const wrangler = await import(pathToFileURL(createRequire(join(dir, "package.json")).resolve("wrangler")).href);
+    config = wrangler.unstable_readConfig({ config: join(dir, file) }, { hideWarnings: true });
+  } catch (error) {
+    process.stderr.write(`reading ${file} for a Worker build failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    return false;
+  }
+  const trouble = workerTrouble(config);
+  if (trouble.length > 0) {
+    process.stderr.write(`running with wrangler dev, since a Dynamic Worker cannot give this app: ${trouble.join(", ")}\n`);
+    return false;
+  }
+  emit({ status: "starting", commitId: job.commitId });
+  rmSync(bundleDir, { recursive: true, force: true });
+  const local = join(dir, "node_modules", ".bin", "wrangler");
+  const argv = existsSync(local) ? [local] : ["npx", "--yes", "wrangler"];
+  const built = run([...argv, "deploy", "--dry-run", "--outdir", bundleDir, "--config", file], { env: { ...process.env, CI: "true", WRANGLER_SEND_METRICS: "false" } });
+  if (built.code !== 0) fail("building the app", built.out);
+  const modules = filesUnder(bundleDir).map((path) => relative(bundleDir, path)).filter((name) => !name.endsWith(".map") && name !== "README.md");
+  const mainModule = modules.find((name) => name === "index.js") ?? modules.find((name) => /\.m?js$/.test(name));
+  if (!mainModule) fail("building the app", `wrangler wrote no Worker module to ${bundleDir}`);
+  const send = (kind, path, bytes) => process.stdout.write(`${JSON.stringify({ type: "chef.bundle", kind, path, data: bytes.toString("base64") })}\n`);
+  for (const name of modules) send("module", name, readFileSync(join(bundleDir, name)));
+  const assets = config.assets?.directory ? join(dir, config.assets.directory) : null;
+  if (assets) for (const path of filesUnder(assets)) send("asset", `/${relative(assets, path).split("\\").join("/")}`, readFileSync(path));
+  emit({
+    status: "bundled",
+    commitId: job.commitId,
+    bundle: {
+      mainModule,
+      compatibilityDate: config.compatibility_date,
+      compatibilityFlags: config.compatibility_flags ?? [],
+      vars: config.vars ?? {},
+      objects: (config.durable_objects?.bindings ?? []).map((b) => ({ binding: b.name, className: b.class_name })),
+      notFound: config.assets?.not_found_handling === "single-page-application" ? "single-page-application" : "none",
+    },
+  });
+  return true;
 }
 
 async function runWorker(file) {
@@ -283,6 +354,7 @@ async function main() {
   const file = composeFile(dir);
   if (!file) {
     const worker = wranglerFile(dir);
+    if (worker && job.bundle && (await bundleWorker(worker))) return;
     if (worker) return runWorker(worker);
     emit({ status: "no-stack", commitId: job.commitId });
     return;
