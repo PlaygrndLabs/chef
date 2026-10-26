@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { fontAssets, type FontAssets } from "./fonts.ts";
 import { lookOf, staticPages, type LookInfo, type PageInfo, type PageMeta } from "../shared/meta.ts";
 
 const own = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -18,11 +19,11 @@ export function clientParts(paths: Iterable<string>): { readonly pages: string[]
   return { pages: pages.sort(), looks: looks.sort() };
 }
 
-function parts(paths: Iterable<string>): { readonly imports: string[]; readonly pages: string; readonly looks: string } {
+function parts(paths: Iterable<string>, owned = false): { readonly imports: string[]; readonly pages: string; readonly looks: string } {
   const { pages, looks } = clientParts(paths);
   return {
     imports: [...pages.map((path, i) => `import { pages as pages${i} } from "./${path}";`), ...looks.map((path, i) => `import { look as look${i} } from "./${path}";`)],
-    pages: `[${pages.map((_, i) => `...pages${i}`).join(", ")}]`,
+    pages: `[${pages.map((path, i) => (owned ? `...pages${i}.map((page) => ({ ...page, feature: ${JSON.stringify(path.split("/")[1])} }))` : `...pages${i}`)).join(", ")}]`,
     looks: `[${looks.map((_, i) => `look${i}`).join(", ")}]`,
   };
 }
@@ -33,7 +34,7 @@ export function renderClient(paths: Iterable<string>): string {
 }
 
 export function renderPageList(paths: Iterable<string>): string {
-  const { imports, pages, looks } = parts(paths);
+  const { imports, pages, looks } = parts(paths, true);
   return [...imports, "", `export const pages = ${pages};`, `export const looks = ${looks};`, ""].join("\n");
 }
 
@@ -70,7 +71,9 @@ export async function bundleClient(root: string, options: { readonly minify?: bo
   return result.outputFiles[0]?.text ?? "";
 }
 
-export async function pageMetas(root: string, served: readonly string[] = []): Promise<Map<string, PageMeta>> {
+export type OwnedPage = PageInfo & { readonly feature: string };
+
+export async function listed(root: string): Promise<{ readonly pages: OwnedPage[]; readonly look: LookInfo }> {
   const { build } = await import("esbuild");
   const result = await build({
     stdin: { contents: renderPageList(await clientPaths(root)), resolveDir: resolve(root), sourcefile: "pages.tsx", loader: "tsx" },
@@ -86,6 +89,15 @@ export async function pageMetas(root: string, served: readonly string[] = []): P
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
   });
   const code = result.outputFiles[0]?.text ?? "";
-  const listed = (await import(`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`)) as { pages: PageInfo[]; looks: LookInfo[] };
-  return staticPages(listed.pages, lookOf(listed.looks), served);
+  const found = (await import(`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`)) as { pages: OwnedPage[]; looks: LookInfo[] };
+  return { pages: found.pages, look: lookOf(found.looks) };
+}
+
+export async function pageMetas(root: string, served: readonly string[] = []): Promise<Map<string, PageMeta>> {
+  const { pages, look } = await listed(root);
+  return staticPages(pages, look, served);
+}
+
+export async function appFonts(root: string): Promise<FontAssets> {
+  return fontAssets((await listed(root)).look.fonts, join(own, "node_modules"));
 }

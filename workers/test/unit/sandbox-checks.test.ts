@@ -66,6 +66,15 @@ describe("sandbox checks", () => {
     expect(results.map((r) => r.name)).toEqual(["typecheck", "test", "generated", "lint", "spec-lint"]);
   });
 
+  it("looks at the changed features' pages on a template that has the look check", async () => {
+    const tree = { "app/gen.ts": "export {};\n", "app/look.ts": "export {};\n", "src/registry.gen.ts": renderRegistry([]), "package.json": "{}" };
+    const { repos, commitId } = await repoWith(tree);
+    const { jobs, namespace } = sandbox(passing);
+    await new SandboxCheckRunner(namespace, repos, "todos").run({ repo: "todos--items-left--s1", commitId, tree, features: ["items-left"] });
+    expect(jobs[0]?.commands.map((c) => c.name)).toEqual(["typecheck", "test", "generated", "lint", "look"]);
+    expect(jobs[0]?.commands.at(-1)?.argv).toEqual(["npm", "run", "--silent", "app", "--", "look", "--features", "items-left"]);
+  });
+
   it("proves an app by asking its running app for a page the way a browser does", async () => {
     const { repos, commitId } = await repoWith(imported);
     const { jobs, namespace } = sandbox(() => [{ name: "probe", code: 0, stdout: JSON.stringify({ steps: [{ name: "GET /", ok: true, detail: "http://127.0.0.1:3000/ answered 200 OK" }] }), stderr: "" }]);

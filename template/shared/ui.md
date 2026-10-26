@@ -2,7 +2,7 @@
 
 This app is a React single-page app on Cloudflare Workers. The Worker answers the JSON routes each feature serves under `/api`; every other page address gets a small HTML shell, which loads the app's React client (`/client.js`, built by `npm run build` from every feature's `pages.tsx`). Moving between pages happens in the browser and never reloads the app.
 
-`shared/ui.tsx` gives every page the same polished look (in the style of shadcn/ui) in light and dark mode, with no fonts, CSS frameworks or CDNs to load.
+`shared/ui.tsx` gives every page the same polished look (in the style of shadcn/ui) in light and dark mode, with no CSS frameworks or CDNs to load. The app's look (below) sets its fonts, colors and shapes.
 
 ## Pages
 
@@ -73,7 +73,35 @@ export const pages: readonly Page[] = [{ path: "/todos", title: "Todos", nav: tr
 
 ## The app's look
 
-A feature may export `look` from `look.ts` (or `<role>/look.ts`): `{ brand?, description?, accent?, width?, style? }`. `brand` names the app in the top bar and in every page's title, `description` is one sentence about the app that pages without their own use and that link previews of the app's home show, `accent` is one brand color, `width` is `narrow` (28rem), `normal` (42rem), `wide` (64rem) or `full`, and `style` is extra CSS. Chef's client applies every feature's look to the whole app.
+The look is the app's design system: one set of fonts, colors and shapes every page shares. A feature may export `look` from `look.ts` (or `<role>/look.ts`), and Chef's client merges every feature's look into one. The first feature that shapes the app writes it; later features keep what is there and add only what is new.
+
+`look` is `{ brand?, description?, scheme?, fonts?, colors?, radius?, accent?, width?, style? }`:
+
+- `brand` names the app in the top bar and in every page's title. `description` is one sentence about the app that pages without their own use and that link previews of the app's home show.
+- `scheme` is `"light"` or `"dark"` when the design has one look only. Leave it out to follow the visitor's setting; then every color you set needs a `dark` value too.
+- `fonts` is `{ display?, body?, mono? }`, each a name from `shared/fonts.ts`. `display` sets `h1`, `h2` and the `display` class, `body` sets everything else, `mono` sets code. The fonts ship with the app and load from its own address. Condensed display: Anton, Bebas Neue, Big Shoulders Display, Archivo (also wide, with `font-stretch`). Characterful sans: Bricolage Grotesque, Syne, Unbounded, Space Grotesk. Serif display: DM Serif Display, Fraunces, Instrument Serif, Playfair Display. Body: Inter, Geist, Manrope, DM Sans, IBM Plex Sans, Outfit, Source Serif 4. Persian and Arabic: Vazirmatn. Mono: JetBrains Mono, Geist Mono, IBM Plex Mono.
+- `colors` is `{ light?, dark? }`, each mapping the kit's color names (`bg`, `fg`, `card`, `muted`, `muted-bg`, `border`, `input`, `ring`, `primary`, `primary-fg`, `accent`, `danger`, `success`, `warning`, `info`) to CSS colors. Every kit class follows them.
+- `radius` is the corner size, from `"0"` (square) to `"1.5rem"`. `accent` is one brand color for highlights. `width` is `narrow` (28rem), `normal` (42rem), `wide` (64rem) or `full`. `style` is extra CSS that uses the kit's variables.
+
+```ts
+export const look = {
+  brand: "Ashgrove",
+  scheme: "light",
+  fonts: { display: "Anton", body: "Inter" },
+  colors: { light: { bg: "#f4f4f4", fg: "#1a1a1a", primary: "#111111", "primary-fg": "#ffffff", accent: "#ff6fb5" } },
+  radius: "1.5rem",
+  width: "full",
+} as const;
+```
+
+## Pages people see first
+
+A landing page, a home page or an onboarding screen is judged on how it looks. Build it the way a designer would, in the same turn as the code:
+
+1. Decide the direction before writing markup: a palette, a pair of fonts and one layout idea that comes from the subject. When the request names a site, a screenshot or a style, match it. Write the direction into the look.
+2. Build the hero first (headline, one supporting line, the primary action) and check it before adding the sections below it, one at a time.
+3. Run `npm run app -- look /path --out /tmp/look`. It opens each page on a phone and a desktop, in light and dark, prints every problem (text covered or cut off, low contrast, a page that scrolls sideways, a font that did not load) and saves full-page screenshots you can open. The gate runs the same check on the pages a change touches, so fix every `FAIL` before handing in.
+4. Give every flourish a reason. Big type, color blocks and generous space beat ornaments.
 
 ## Classes
 
@@ -86,7 +114,7 @@ A feature may export `look` from `look.ts` (or `<role>/look.ts`): `{ brand?, des
 - Status: `badge` (`badge-accent`, `badge-success`, `badge-warning`, `badge-danger`, `badge-info`, `badge-outline`), `dot`, `alert` (`alert-success`, `alert-warning`, `alert-danger`, `alert-info`), `empty` (an icon, a `strong` title, a line of text, an optional button).
 - Other: `tabs` (buttons with `aria-selected="true"` or `.active`), `dialog`, `skeleton`, `spin`, `muted`, `small`, `tiny`, `strong`, `center`, `mono`, `truncate`.
 
-Colors come from CSS variables: `--bg`, `--fg`, `--card`, `--muted`, `--muted-bg`, `--border`, `--primary`, `--accent`, `--danger`, `--success`, `--warning`, `--info`, `--radius`, `--shadow`. Extra CSS in a `look.ts` `style` uses these so dark mode keeps working. In JSX, classes go in `className`.
+Colors come from CSS variables: `--bg`, `--fg`, `--card`, `--muted`, `--muted-bg`, `--border`, `--primary`, `--accent`, `--danger`, `--success`, `--warning`, `--info`, `--radius`, `--shadow`. Set them through the look's `colors`; extra CSS in its `style` uses these variables so both color schemes keep working. In JSX, classes go in `className`.
 
 ## Design rules
 
@@ -96,6 +124,6 @@ Colors come from CSS variables: `--bg`, `--fg`, `--card`, `--muted`, `--muted-bg
 - Give buttons an icon and a word ("Add", "Save"). An icon-only button needs `aria-label`.
 - Show an `empty` state with an icon and a hint when there is nothing yet, and a `skeleton` or disabled button while loading or saving.
 - Report errors with `<ErrorText error={error} />` or `toast(message(error), "danger")`, never with `alert()`.
-- Pick one `accent` color that fits the app (in a feature's `look.ts`) and use it for highlights, not for everything.
+- Pick one `accent` color that fits the app (in the look) and use it for highlights, not for everything.
 - Keep pages responsive: grids collapse on phones, and nothing should scroll sideways.
-- Do not load fonts, CSS frameworks or scripts from other sites; the app must work offline.
+- Use only the fonts in `shared/fonts.ts`. Do not load fonts, CSS frameworks or scripts from other sites; the app must work offline.

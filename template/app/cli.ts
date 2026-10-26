@@ -1,11 +1,15 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Flow } from "../shared/flow.ts";
 import { routeClashes, type Feature } from "../shared/http.ts";
 import { shellHtml } from "../shared/http.ts";
-import { bundleClient, pageMetas } from "./client.ts";
+import { FONTS_PATH } from "../shared/fonts.ts";
+import { isPage } from "../shared/paths.ts";
+import { closeBrowser } from "./browser.ts";
+import { appFonts, bundleClient, listed, pageMetas } from "./client.ts";
 import { drive, type Fetcher } from "./drive.ts";
+import { lookAt } from "./look.ts";
 import { REGISTRY_PATH, renderRegistry } from "./gen.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
@@ -66,6 +70,19 @@ async function writePages(out: string): Promise<void> {
   }
 }
 
+async function writeFonts(out: string): Promise<void> {
+  let css = "";
+  try {
+    const fonts = await appFonts(root);
+    await mkdir(join(out, "fonts"), { recursive: true });
+    for (const [file, source] of fonts.files) await copyFile(source, join(out, "fonts", file));
+    css = fonts.css;
+  } catch (error) {
+    process.stderr.write(`the app's fonts were skipped, so pages use the system fonts: ${(error as Error).message}\n`);
+  }
+  await writeFile(join(out, FONTS_PATH.slice(1)), css);
+}
+
 async function build(): Promise<number> {
   try {
     const code = await bundleClient(root);
@@ -74,10 +91,27 @@ async function build(): Promise<number> {
     await mkdir(out, { recursive: true });
     await writeFile(join(out, "client.js"), code);
     await writePages(out);
+    await writeFonts(out);
     return 0;
   } catch (error) {
     process.stderr.write(`building the pages failed:\n${(error as Error).message}\n`);
     return 1;
+  }
+}
+
+async function look(args: readonly string[]): Promise<number> {
+  const wanted = option(args, "features")?.split(",").filter(Boolean);
+  const { pages, look } = await listed(root);
+  const named = args.slice(1).filter((arg, i, all) => arg.startsWith("/") && all[i - 1] !== "--out");
+  const paths = named.length ? named : [...new Set(pages.filter((page) => (!wanted || wanted.includes(page.feature)) && (page.path === "/" || isPage({ method: "GET", path: page.path }))).map((page) => page.path))];
+  try {
+    const found = await lookAt((await registered()) ?? [], paths, look, root, option(args, "out"));
+    for (const problem of found) process.stdout.write(`${problem.severity === "fail" ? "FAIL" : "warn"} ${problem.path} (${problem.view}): ${problem.message}\n`);
+    const failed = found.filter((problem) => problem.severity === "fail").length;
+    process.stdout.write(`looked at ${paths.length} page${paths.length === 1 ? "" : "s"} on phone and desktop, light and dark: ${failed ? `${failed} problem${failed === 1 ? "" : "s"} to fix` : "no problems"}${found.length > failed ? `, ${found.length - failed} to consider` : ""}\n`);
+    return failed ? 1 : 0;
+  } finally {
+    await closeBrowser();
   }
 }
 
@@ -104,6 +138,7 @@ async function main(args: readonly string[]): Promise<number> {
   const [command, target] = args;
   if (command === "gen") return gen(args.includes("--check"));
   if (command === "build") return build();
+  if (command === "look") return look(args);
   if ((command === "drive" || command === "proof") && target) {
     const { code, output } = await runDrive(target, args);
     const proof = command === "proof" ? { ...(output as object), commit: option(args, "commit") ?? null, at: new Date().toISOString() } : output;
@@ -115,7 +150,7 @@ async function main(args: readonly string[]): Promise<number> {
     process.stdout.write(`${JSON.stringify(proof, null, 2)}\n`);
     return code;
   }
-  process.stderr.write("usage: app gen [--check] | app build | app drive <feature> [--url URL] | app proof <feature> --url URL [--commit SHA] [--out FILE]\n");
+  process.stderr.write("usage: app gen [--check] | app build | app look [/path ...] [--features a,b] [--out dir] | app drive <feature> [--url URL] | app proof <feature> --url URL [--commit SHA] [--out FILE]\n");
   return 2;
 }
 

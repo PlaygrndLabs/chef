@@ -3,7 +3,9 @@ import { createRoot } from "react-dom/client";
 import { homeOf, lookOf, pageTitle } from "./meta.ts";
 import { bySpecificity, isPage, matchPath } from "./paths.ts";
 import { Link, navigate, sameAppLink, useLocation } from "./router.tsx";
-import { COLOR } from "./theme.ts";
+import type { FontName, FontRole } from "./fonts.ts";
+import type { Colors } from "./meta.ts";
+import { lookCss } from "./theme.ts";
 import { Icon } from "./ui.tsx";
 
 export interface PageProps {
@@ -23,6 +25,10 @@ export interface Look {
   readonly description?: string;
   readonly accent?: string;
   readonly width?: "narrow" | "normal" | "wide" | "full";
+  readonly scheme?: "light" | "dark";
+  readonly fonts?: Partial<Record<FontRole, FontName>>;
+  readonly colors?: { readonly light?: Colors; readonly dark?: Colors };
+  readonly radius?: string;
   readonly style?: string;
 }
 
@@ -132,10 +138,11 @@ function Root({ pages, looks }: { readonly pages: readonly Page[]; readonly look
 
 export function start(pages: readonly Page[], looks: readonly Look[] = []): void {
   const look = lookOf(looks);
-  const accent = look.accent && COLOR.test(look.accent) ? `:root{--accent:${look.accent};--primary:${look.accent};--primary-fg:#fff}` : "";
-  if (accent || look.style) {
+  if (look.scheme === "light" || look.scheme === "dark") document.documentElement.dataset.scheme = look.scheme;
+  const css = lookCss(look);
+  if (css) {
     const style = document.createElement("style");
-    style.textContent = accent + (look.style ?? "");
+    style.textContent = css;
     document.head.appendChild(style);
   }
   document.addEventListener("click", (event) => {

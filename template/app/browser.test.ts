@@ -137,3 +137,15 @@ test("moving to another page names it in the tab title and description", async (
   assert.equal(await description(), null);
   await close();
 });
+
+test("pages render in the fonts the look picks", async () => {
+  const styled = project({
+    "features/notes/pages.tsx": `import type { Page } from "../../shared/app.tsx";\n\nexport const pages: readonly Page[] = [{ path: "/notes", title: "Notes", component: () => <h1>Notes</h1> }];\n`,
+    "features/notes/look.ts": `export const look = { fonts: { display: "Anton", body: "Inter" } };\n`,
+  });
+  const { page: tab, close } = await openPage([], "/notes", undefined, undefined, styled);
+  await tab.evaluate(() => document.fonts.ready);
+  assert.equal(await tab.evaluate(() => document.fonts.check('32px "Anton"')), true);
+  assert.match(await tab.getByRole("heading", { name: "Notes" }).evaluate((el) => getComputedStyle(el).fontFamily), /^"?Anton"?,/);
+  await close();
+});

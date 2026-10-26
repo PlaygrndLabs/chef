@@ -1,4 +1,5 @@
 import type { Store } from "./storage.ts";
+import { FONTS_PATH } from "./fonts.ts";
 import type { PageMeta } from "./meta.ts";
 import { bySpecificity, isApi, matchPath, shape } from "./paths.ts";
 import { CSS } from "./theme.ts";
@@ -61,7 +62,7 @@ export function shellHtml(meta: PageMeta = { title: "App" }): string {
     `<meta name="twitter:card" content="summary">`,
     ...(description ? [`<meta name="description" content="${description}">`, `<meta property="og:description" content="${description}">`] : []),
   ].join("");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${tags}<style>${CSS}</style></head><body><div id="root"></div><script type="module" src="${CLIENT_PATH}"></script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${tags}<style>${CSS}</style><link rel="stylesheet" href="${FONTS_PATH}"></head><body><div id="root"></div><script type="module" src="${CLIENT_PATH}"></script></body></html>`;
 }
 
 export function shell(): Response {

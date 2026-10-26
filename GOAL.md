@@ -47,14 +47,14 @@ core/        spec, router, session state machine, orchestrator, merge gate, port
 adapters/    Artifacts, Jev, Claude planner and reviewer, Vectorize memory, CopilotKit agent, GitHub
 apps/        the dashboard
 agents/      default role profiles (planner, test, frontend, backend, designer, reviewer, conflict-resolver, gardener, chore)
-template/    the template every project starts from: a React app on Cloudflare Workers, with its UI kit and the app CLI (gen, build, drive, proof)
+template/    the template every project starts from: a React app on Cloudflare Workers, with its UI kit, font catalog and the app CLI (gen, build, look, drive, proof)
 cli/         Chef CLI: spec lint, deploy, benchmarks, test server
 spec/        Chef's own feature map
 ```
 
 ## Where it stands
 
-Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the feature list, tabs and chat project page, request splitting into child features, parallel role lanes, a running app per branch, project keys, guidance and memory, and a UI kit so the apps it builds look polished by default. New projects start as React apps on Cloudflare Workers that run in their sandbox without Docker.
+Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the feature list, tabs and chat project page, request splitting into child features, parallel role lanes, a running app per branch, project keys, guidance and memory, a UI kit so the apps it builds look polished by default, and a design system per app (bundled fonts, color tokens, a look check in the gate) as the first step toward design on par with dedicated design tools. New projects start as React apps on Cloudflare Workers that run in their sandbox without Docker.
 
 ## Definition of done
 

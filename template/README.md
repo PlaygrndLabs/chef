@@ -6,7 +6,7 @@ Each feature lives in `features/<id>/`: its JSON routes under `/api` in `index.t
 
 `npm run dev` runs the whole app with `wrangler dev`, building the client first; that is how Chef runs it in each branch's sandbox, with no Docker. `npm run deploy` puts it on Cloudflare Workers.
 
-Pages are built with the UI kit in `shared/ui.tsx` (guide in `shared/ui.md`): `Icon`, `api`, `useLoad`, `ErrorText` and the kit's classes give every page a polished look in light and dark mode with no fonts, CSS frameworks or CDNs.
+Pages are built with the UI kit in `shared/ui.tsx` (guide in `shared/ui.md`): `Icon`, `api`, `useLoad`, `ErrorText` and the kit's classes give every page a polished look in light and dark mode with no CSS frameworks or CDNs. The app's look is its design system: fonts from the catalog in `shared/fonts.ts` (bundled into `dist/client/fonts/` by the build, so they load from the app's own address), colors for light and dark, and corner size. `npm run app -- look` opens each page on a phone and a desktop in both color schemes and reports covered or cut-off text, low contrast, sideways scrolling and fonts that did not load; Chef's gate runs it on the pages a change touches.
 
 Feature tests run with `node --test`. Each test makes its app with `testApp(t, features)` from `app/testing.ts`, which gives that test its own empty store: `app.fetch(path, init)` calls a route, `app.store` holds the test's data, and `app.open(path)` loads the React page in headless Chromium, serving every request from the same app in memory. Each step waits at most five seconds (`STEP_TIMEOUT_MS`), so a test against a page that is not built yet fails fast.
 
