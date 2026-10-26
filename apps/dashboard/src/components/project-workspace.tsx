@@ -1,12 +1,11 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ResizeHandle, useStoredWidth } from "@/components/resize-handle";
 import { ChatViewSkeleton, Shown } from "@/components/loading";
 import { preloadSettings, SettingsHost } from "@/components/settings-host";
 import { ContextMeter } from "@/components/context-meter";
 import { ProjectBar } from "@/components/project-bar";
-import { SessionTabs, SessionView, TabContent } from "@/components/session-tabs";
+import { SessionTabs, SessionView } from "@/components/session-tabs";
 import { ProjectHeader, TreePane } from "@/components/sidebar";
 import { projectApi } from "@/lib/api";
 import { preloadable, useOpenedOnce, whenIdle } from "@/lib/lazy";
@@ -17,6 +16,7 @@ import { rememberProject, returningToNewProject } from "@/lib/projects";
 import type { Selection, SettingsScope } from "@/lib/selection";
 import { useSettings } from "@/lib/settings";
 import { MAIN_TAB, useTabs } from "@/lib/tabs";
+import { cn } from "@/lib/utils";
 import { WorkspaceContext, type TabPlace, type Workspace } from "@/lib/workspace";
 
 export const MainView = preloadable(() => import("@/components/main-view").then((m) => m.MainView));
@@ -200,63 +200,64 @@ export function ProjectWorkspace(props: { readonly selection: Selection; readonl
     [],
   );
 
-  const showTabs = !(expanded && (feature !== null || activeTab === MAIN_TAB));
+  const large = expanded && (feature !== null || activeTab === MAIN_TAB);
+  const closeTabs = () => select({ view: "project", feature: null, session: null, panel: null });
+
+  useEffect(() => {
+    if (!large && !(compact && activeTab !== null)) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector('[role="dialog"]:not([data-large]), [role="menu"], [role="listbox"]')) return;
+      if (large) setExpanded(false);
+      else closeTabs();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   return (
     <WorkspaceContext.Provider value={workspace}>
       <Shown />
       <div className="flex h-dvh flex-col overflow-hidden">
-        {compact ? (
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            <ChatPane onMenu={() => setTreeSheet(true)} />
-          </div>
-        ) : (
-          <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1">
+          {compact ? null : (
             <aside className="relative shrink-0 border-r" style={{ width: tree }} aria-label="Features">
               <TreePane header />
               <span aria-hidden className="joint top-[42px] -right-px" />
               <span aria-hidden className="joint -right-px -bottom-0.5" />
               <ResizeHandle edge="right" width={tree} min={TREE.min} max={TREE.max} initial={TREE.initial} onResize={setTreeWidth} label="Resize the feature list" />
             </aside>
-            <main className="relative min-w-0 flex-1" aria-label="Open features">
-              {showTabs ? <SessionTabs /> : null}
-            </main>
-            <section className="relative shrink-0 border-l" style={{ width: chat }} aria-label="Chat">
-              <ChatPane />
-              <span aria-hidden className="joint top-[42px] -left-px" />
-              <span aria-hidden className="joint -bottom-0.5 -left-px" />
-              <ResizeHandle edge="left" width={chat} min={CHAT.min} max={chatMax} initial={chatInitial(width)} onResize={setChatWidth} label="Resize the chat" />
-            </section>
-          </div>
-        )}
+          )}
+          <main
+            className={cn(compact ? "fixed inset-0 z-40 bg-background" : "relative min-w-0 flex-1", compact && activeTab === null && "hidden", large && !compact && "fixed inset-4 z-50 overflow-hidden border bg-background shadow-2xl")}
+            aria-label="Open features"
+            aria-modal={large || undefined}
+            role={large ? "dialog" : undefined}
+            data-large={large || undefined}
+          >
+            <SessionTabs bar={!large} {...(compact ? { onClose: closeTabs } : {})} />
+          </main>
+          <section className={compact ? "relative flex min-h-0 flex-1 flex-col" : "relative shrink-0 border-l"} style={compact ? undefined : { width: chat }} aria-label="Chat">
+            <ChatPane {...(compact ? { onMenu: () => setTreeSheet(true) } : {})} />
+            {compact ? null : (
+              <>
+                <span aria-hidden className="joint top-[42px] -left-px" />
+                <span aria-hidden className="joint -bottom-0.5 -left-px" />
+                <ResizeHandle edge="left" width={chat} min={CHAT.min} max={chatMax} initial={chatInitial(width)} onResize={setChatWidth} label="Resize the chat" />
+              </>
+            )}
+          </section>
+        </div>
         <ProjectBar />
       </div>
+      {large && !compact ? <div aria-hidden className="fixed inset-0 z-40 bg-black/50" onClick={() => setExpanded(false)} /> : null}
       {compact ? (
-        <>
-          <Sheet open={treeSheet} onOpenChange={setTreeSheet}>
-            <SheetContent side="left" className="w-72 p-0">
-              <SheetTitle className="sr-only">Features</SheetTitle>
-              <TreePane />
-            </SheetContent>
-          </Sheet>
-          <Sheet
-            open={activeTab !== null && !expanded}
-            onOpenChange={(open) => {
-              if (!open) select({ view: "project", feature: null, session: null, panel: null });
-            }}
-          >
-            <SheetContent side="right" className="w-screen max-w-none p-0 data-[side=right]:w-screen data-[side=right]:sm:max-w-none [&>button]:hidden">
-              <SheetTitle className="sr-only">Open features</SheetTitle>
-              <SessionTabs onClose={() => select({ view: "project", feature: null, session: null, panel: null })} />
-            </SheetContent>
-          </Sheet>
-        </>
+        <Sheet open={treeSheet} onOpenChange={setTreeSheet}>
+          <SheetContent side="left" className="w-72 p-0">
+            <SheetTitle className="sr-only">Features</SheetTitle>
+            <TreePane />
+          </SheetContent>
+        </Sheet>
       ) : null}
-      <Dialog open={expanded && (feature !== null || activeTab === MAIN_TAB)} onOpenChange={setExpanded}>
-        <DialogContent showCloseButton={false} className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none" aria-describedby={undefined}>
-          <DialogTitle className="sr-only">{feature?.title ?? (activeTab === MAIN_TAB ? "main" : "Feature")}</DialogTitle>
-          <TabContent />
-        </DialogContent>
-      </Dialog>
       {paletteLoaded ? (
         <Suspense fallback={null}>
           <CommandPalette open={palette} onOpenChange={setPalette} />

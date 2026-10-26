@@ -74,10 +74,16 @@ describe("dashboard in a browser", () => {
       await branch.locator('[data-commit=":all"]').click();
       await expect.poll(() => branch.innerText(), { timeout: 10_000 }).toContain("features/todo-add/index.ts");
       expect(await page.getByRole("separator", { name: "Resize the chat" }).count()).toBe(1);
+      await branch.evaluate((panel) => panel.setAttribute("data-mounted", "before-large"));
       await page.getByRole("button", { name: "Open large" }).click();
       await page.getByRole("dialog").getByRole("tabpanel", { name: "Changes" }).waitFor({ timeout: 10_000 });
+      expect(await page.getByRole("dialog").locator('[data-mounted="before-large"]').count()).toBe(1);
+      await page.keyboard.press("Escape");
+      await page.locator('#sessions > [role="tablist"]').waitFor({ timeout: 10_000 });
+      await page.getByRole("button", { name: "Open large" }).click();
       await page.getByRole("button", { name: "Make smaller" }).click();
       await page.locator("#sessions").getByRole("tabpanel", { name: "Changes" }).waitFor({ timeout: 10_000 });
+      expect(await page.locator('#sessions [data-mounted="before-large"]').count()).toBe(1);
 
       await page.locator('[data-view="feature"] [data-action="share"]').click();
       const share = page.locator('[data-dialog="share"]');
