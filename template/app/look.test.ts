@@ -65,3 +65,18 @@ test("a look that commits to light is only looked at in light", async () => {
   writeFileSync(join(root, "features", "home", "look.ts"), `export const look = { scheme: "light" as const };\n`);
   assert.deepEqual(await lookAt([], ["/home"], { scheme: "light" }, root), []);
 });
+
+test("a look with a gate looks at the gate and at the page behind it", async () => {
+  const root = project(`import { useState } from "react";
+
+function Home() {
+  const [entered, setEntered] = useState(() => localStorage.getItem("age") === "ok");
+  if (!entered) return <div role="dialog"><p>Are you 21 or older?</p><button className="btn" onClick={() => { localStorage.setItem("age", "ok"); setEntered(true); }}>I'm 21 or older</button></div>;
+  return <p style={{ color: "#fafafa", background: "#ffffff" }}>Faint words behind the gate</p>;
+}
+
+export const pages: readonly Page[] = [{ path: "/home", title: "Home", component: Home }];\n`);
+  assert.deepEqual(await lookAt([], ["/home"], { scheme: "light" }, root), []);
+  const found = await lookAt([], ["/home"], { scheme: "light", gate: "21 or older" }, root);
+  assert.deepEqual(found.map((p) => [p.view, p.severity, p.message.split(" has ")[0]]), [["phone, desktop", "fail", '"Faint words behind the gate"']]);
+});
