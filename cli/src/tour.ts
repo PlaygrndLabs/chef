@@ -287,7 +287,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       await tab.close();
     };
     await signIn(page, `${base}/`, options.password);
-    if (options.project) await linkLoad(options.project, "main-link-cold");
+    if (options.project) await Promise.all([linkLoad(options.project, "main-link-cold"), watchLoad(`/?project=${options.project}&view=main`, "main-app-cold")]);
     await shot("start");
     const agents = await json<{ version: number; roles: { role: string }[]; skills: unknown[] }>(page, "/api/agents").catch((error: unknown) => {
       report.errors.push(`agents ${error instanceof Error ? error.message : String(error)}`);
