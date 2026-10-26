@@ -153,7 +153,14 @@ async function removeInSettings(page: Page, project: string, report: TourReport,
   await page.goto(`/?project=${project}&settings=project.general`);
   await page.getByRole("button", { name: "Delete project" }).first().click();
   const dialog = page.locator('[data-dialog="delete-project"]');
-  await dialog.getByLabel("Project name to delete").fill(project);
+  const typed = dialog.getByLabel("Project name to delete");
+  await dialog.getByRole("button", { name: `Copy ${project}` }).click();
+  await typed.focus();
+  await page.keyboard.press("ControlOrMeta+V");
+  if ((await typed.inputValue()) !== project) {
+    report.errors.push(`remove: pasting the copied name gave "${await typed.inputValue()}", not ${project}`);
+    await typed.fill(project);
+  }
   await shot(`delete-${project}`);
   await dialog.getByRole("button", { name: "Delete project" }).click();
   await page.waitForURL((url) => !url.searchParams.has("project"), { timeout: 10 * 60_000 });
@@ -170,7 +177,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
   const report: TourReport = { shots: [], errors: [], projects: [], states: {}, agents: null, routed: null, setup: [], finished: false, appLoads: [], sent: [] };
   const browser: Browser = await chromium.launch();
   try {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base });
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base, permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
     page.on("pageerror", (error) => report.errors.push(`pageerror ${error.message}`));
     let leaving = false;

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Brain, FolderGit2, Wallet, KeyRound, Route, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Bot, BookOpen, Brain, Check, Copy, FolderGit2, Wallet, KeyRound, Route, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { OutboundMode, SyncState } from "@chef/core";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -28,6 +28,24 @@ function Field(props: { readonly label: string; readonly children: ReactNode }) 
       {props.label}
       {props.children}
     </label>
+  );
+}
+
+function CopyName(props: { readonly name: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(props.name);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      toast.error("Could not copy it");
+    }
+  };
+  return (
+    <Button type="button" size="icon-xs" variant="ghost" aria-label={`Copy ${props.name}`} title={`Copy ${props.name}`} onClick={() => void copy()}>
+      {copied ? <Check className="text-ok" /> : <Copy />}
+    </Button>
   );
 }
 
@@ -323,9 +341,15 @@ function DeleteProjectGroup(props: { readonly project: string; readonly linked: 
               Chef stops all work on it and removes its running apps, code and memory from your Cloudflare account. This can't be undone.{props.linked ? ` ${props.linked} stays as it is.` : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <Field label={`Type ${project} to confirm`}>
-            <Input value={typed} onChange={(e) => setTyped(e.target.value)} aria-label="Project name to delete" className="font-mono" autoComplete="off" disabled={busy} />
-          </Field>
+          <div className="grid gap-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <label htmlFor="delete-project-name">
+                Type <span className="font-mono text-foreground">{project}</span> to confirm
+              </label>
+              <CopyName name={project} />
+            </div>
+            <Input id="delete-project-name" value={typed} onChange={(e) => setTyped(e.target.value)} aria-label="Project name to delete" className="font-mono" autoComplete="off" spellCheck={false} disabled={busy} />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Keep it</AlertDialogCancel>
             <AlertDialogAction
