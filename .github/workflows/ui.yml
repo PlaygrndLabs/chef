@@ -24,6 +24,10 @@ on:
         type: boolean
         required: false
         default: true
+      app_click:
+        description: Button to press on main's app before its full-page shots (for example an age check); empty presses nothing
+        required: false
+        default: ""
       delete_existing:
         description: Also delete the named project when it was there before this run (only a test project an earlier run created)
         type: boolean
@@ -63,6 +67,7 @@ jobs:
           [ -n "$PROJECT" ] && args+=(--project "$PROJECT")
           [ -n "$REPO" ] && args+=(--repo "$REPO")
           [ -n "$PROMPT" ] && args+=(--prompt "$PROMPT")
+          [ -n "$APP_CLICK" ] && args+=(--app-click "$APP_CLICK")
           [ "$DELETE" = "true" ] && args+=(--delete)
           [ "$DELETE_EXISTING" = "true" ] && [ -n "$PROJECT" ] && args+=(--delete-existing)
           node --import tsx cli/src/bin.ts tour "${args[@]}"
@@ -73,6 +78,7 @@ jobs:
           MINUTES: ${{ inputs.minutes }}
           DELETE: ${{ inputs.delete }}
           DELETE_EXISTING: ${{ inputs.delete_existing }}
+          APP_CLICK: ${{ inputs.app_click }}
       - name: Worker logs
         if: always()
         run: |

@@ -287,6 +287,7 @@ async function tourCommand(args: readonly string[]): Promise<number> {
     everySeconds: Number(option(args, "every") ?? 45),
     remove: args.includes("--delete") || args.includes("--delete-existing"),
     removeExisting: args.includes("--delete-existing"),
+    appClick: option(args, "app-click"),
     out: resolve(option(args, "out") ?? "results/tour"),
     log: (line) => process.stderr.write(`${line}\n`),
   });
@@ -315,7 +316,7 @@ async function main(args: readonly string[]): Promise<number> {
     process.stdout.write(`${JSON.stringify({ changes: changes(REPO_ROOT, Number(option(args, "limit") ?? 200), option(args, "ref") ?? "HEAD") }, null, 2)}\n`);
     return 0;
   }
-  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef deploy [--name n] [--image ref] [--api-key | --api-key-file path] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--repo url] [--prompt text] [--minutes n] [--every s] [--out dir] [--delete] [--delete-existing] | chef changes [--limit n] [--ref r]\n");
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef deploy [--name n] [--image ref] [--api-key | --api-key-file path] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--repo url] [--prompt text] [--minutes n] [--every s] [--out dir] [--delete] [--delete-existing] [--app-click text] | chef changes [--limit n] [--ref r]\n");
   return 2;
 }
 

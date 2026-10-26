@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Browser, Locator, Page } from "playwright";
+import type { Browser, BrowserContext, Locator, Page } from "playwright";
 
 export interface TourOptions {
   readonly url: string;
@@ -12,6 +12,7 @@ export interface TourOptions {
   readonly everySeconds: number;
   readonly remove?: boolean;
   readonly removeExisting?: boolean;
+  readonly appClick?: string | undefined;
   readonly out: string;
   readonly log: (line: string) => void;
 }
@@ -167,6 +168,29 @@ async function removeInSettings(page: Page, project: string, report: TourReport,
   if (listed) report.errors.push(`remove: ${project} is still listed after deleting it`);
 }
 
+async function appLook(browser: Browser, from: BrowserContext, base: string, project: string, click: string | undefined, take: (name: string, page: Page) => Promise<void>): Promise<void> {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: base, storageState: await from.storageState() });
+  try {
+    const look = await context.newPage();
+    await look.goto(`/app/${project}/main`, { waitUntil: "networkidle" });
+    await take("look-desktop", look);
+    if (click) {
+      const button = look.getByRole("button", { name: click }).first();
+      if (await button.isVisible().catch(() => false)) {
+        await button.click();
+        await take("look-desktop-after-click", look);
+      }
+    }
+    await look.emulateMedia({ colorScheme: "dark" });
+    await take("look-desktop-dark", look);
+    await look.emulateMedia({ colorScheme: "light" });
+    await look.setViewportSize({ width: 390, height: 844 });
+    await take("look-phone", look);
+  } finally {
+    await context.close();
+  }
+}
+
 export async function tour(options: TourOptions): Promise<TourReport> {
   const { chromium } = await import("playwright");
   mkdirSync(options.out, { recursive: true });
@@ -266,6 +290,13 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     const opened = (await json<SessionRow[]>(page, `/api/projects/${project}/sessions`).catch(() => [] as SessionRow[])).at(-1);
     if (opened) await watchLoad(`/?project=${project}&feature=${opened.featureId}&session=${opened.id}&panel=app`, "app-load");
     await watchLoad(`/?project=${project}&view=main`, "main-app-load");
+    await appLook(browser, context, base, project, options.appClick, async (name, target) => {
+      await target.waitForTimeout(1500);
+      const file = `${String(++n).padStart(3, "0")}-${name}.png`;
+      await target.screenshot({ path: join(options.out, file), fullPage: true });
+      report.shots.push(file);
+      options.log(`shot ${file}`);
+    }).catch((error: unknown) => options.log(`app look: ${error instanceof Error ? error.message : String(error)}`));
     const routed = await json<{ intent: string; via: string; classifier?: { model: string; accepted: boolean } | null }>(page, `/api/projects/${project}/route`, { method: "POST", data: { prompt: ROUTE_PROMPT } }).catch((error: unknown) => {
       report.errors.push(`route ${error instanceof Error ? error.message : String(error)}`);
       return null;
