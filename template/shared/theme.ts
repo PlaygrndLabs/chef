@@ -1,3 +1,5 @@
+import type { ColorToken, Colors } from "./meta.ts";
+
 export const ICONS = {
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   minus: '<path d="M5 12h14"/>',
@@ -63,18 +65,20 @@ export const ICONS = {
 export type IconName = keyof typeof ICONS;
 
 export const CSS = `:root{--bg:#fafafa;--fg:#09090b;--card:#fff;--muted:#71717a;--muted-bg:#f4f4f5;--border:#e4e4e7;--input:#d4d4d8;--ring:#a1a1aa;--primary:#18181b;--primary-fg:#fafafa;--accent:#4f46e5;--danger:#dc2626;--danger-bg:#fef2f2;--success:#16a34a;--success-bg:#f0fdf4;--warning:#d97706;--warning-bg:#fffbeb;--info:#2563eb;--info-bg:#eff6ff;--radius:.75rem;--shadow:0 1px 2px rgb(0 0 0/.04),0 1px 3px rgb(0 0 0/.06);--shadow-lg:0 10px 30px -10px rgb(0 0 0/.2);color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#09090b;--fg:#fafafa;--card:#111113;--muted:#a1a1aa;--muted-bg:#1f1f23;--border:#27272a;--input:#3f3f46;--ring:#71717a;--primary:#fafafa;--primary-fg:#18181b;--accent:#818cf8;--danger:#f87171;--danger-bg:#2a1215;--success:#4ade80;--success-bg:#0f2417;--warning:#fbbf24;--warning-bg:#2a2010;--info:#60a5fa;--info-bg:#0f1b2e;--shadow:0 1px 2px rgb(0 0 0/.3);--shadow-lg:0 10px 30px -10px rgb(0 0 0/.6);color-scheme:dark}}
+@media (prefers-color-scheme:dark){:root:not([data-scheme=light]){--bg:#09090b;--fg:#fafafa;--card:#111113;--muted:#a1a1aa;--muted-bg:#1f1f23;--border:#27272a;--input:#3f3f46;--ring:#71717a;--primary:#fafafa;--primary-fg:#18181b;--accent:#818cf8;--danger:#f87171;--danger-bg:#2a1215;--success:#4ade80;--success-bg:#0f2417;--warning:#fbbf24;--warning-bg:#2a2010;--info:#60a5fa;--info-bg:#0f1b2e;--shadow:0 1px 2px rgb(0 0 0/.3);--shadow-lg:0 10px 30px -10px rgb(0 0 0/.6);color-scheme:dark}}
+:root[data-scheme=dark]{--bg:#09090b;--fg:#fafafa;--card:#111113;--muted:#a1a1aa;--muted-bg:#1f1f23;--border:#27272a;--input:#3f3f46;--ring:#71717a;--primary:#fafafa;--primary-fg:#18181b;--accent:#818cf8;--danger:#f87171;--danger-bg:#2a1215;--success:#4ade80;--success-bg:#0f2417;--warning:#fbbf24;--warning-bg:#2a2010;--info:#60a5fa;--info-bg:#0f1b2e;--shadow:0 1px 2px rgb(0 0 0/.3);--shadow-lg:0 10px 30px -10px rgb(0 0 0/.6);color-scheme:dark}
 *,*::before,*::after{box-sizing:border-box}
 [hidden]{display:none!important}
 .alert:empty,.error:empty{display:none}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:15px/1.55 var(--font-body,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 h1,h2,h3,h4{margin:0;line-height:1.2;letter-spacing:-.02em;font-weight:650}
+h1,h2,.display{font-family:var(--font-display,inherit)}
 h1{font-size:1.875rem}h2{font-size:1.25rem}h3{font-size:1.05rem}h4{font-size:.95rem}
 p{margin:0}
 a{color:inherit;text-underline-offset:3px;text-decoration-color:var(--ring)}
 a:hover{text-decoration-color:currentColor}
-code,kbd,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85em}
+code,kbd,pre{font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:.85em}
 code{background:var(--muted-bg);padding:.1rem .35rem;border-radius:.35rem}
 pre{background:var(--muted-bg);padding:1rem;border-radius:var(--radius);overflow:auto}
 hr{border:0;border-top:1px solid var(--border);margin:1.5rem 0}
@@ -86,7 +90,7 @@ img{max-width:100%;display:block}
 .page-header p{color:var(--muted);margin-top:.4rem}
 .eyebrow{display:inline-flex;align-items:center;gap:.4rem;font-size:.8rem;font-weight:600;color:var(--accent);margin-bottom:.5rem}
 .section{margin-top:2.5rem}.section>h2{margin-bottom:1rem}
-.muted{color:var(--muted)}.small{font-size:.85rem}.tiny{font-size:.75rem}.strong{font-weight:600}.center{text-align:center}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.muted{color:var(--muted)}.small{font-size:.85rem}.tiny{font-size:.75rem}.strong{font-weight:600}.center{text-align:center}.mono{font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace)}
 .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .done{text-decoration:line-through;color:var(--muted)}
 .stack{display:flex;flex-direction:column;gap:1rem}.stack-sm{display:flex;flex-direction:column;gap:.5rem}.stack-lg{display:flex;flex-direction:column;gap:1.75rem}
@@ -187,3 +191,15 @@ dialog h2{margin-bottom:.5rem}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}`;
 
 export const COLOR = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|(?:rgb|hsl|oklch)\([0-9.,%\s/a-z-]+\))$/;
+
+const TOKENS: readonly ColorToken[] = ["bg", "fg", "card", "muted", "muted-bg", "border", "input", "ring", "primary", "primary-fg", "accent", "danger", "success", "warning", "info"];
+
+function tokens(colors: Colors | undefined): string {
+  return TOKENS.flatMap((token) => (colors?.[token] && COLOR.test(colors[token]) ? [`--${token}:${colors[token]}`] : [])).join(";");
+}
+
+export function lookCss(look: { readonly accent?: string; readonly scheme?: "light" | "dark"; readonly colors?: { readonly light?: Colors; readonly dark?: Colors }; readonly radius?: string; readonly style?: string }): string {
+  const light = [look.accent && COLOR.test(look.accent) ? `--accent:${look.accent};--primary:${look.accent};--primary-fg:#fff` : "", tokens(look.colors?.light), look.radius && /^(0|[0-9.]+(rem|px|em))$/.test(look.radius) ? `--radius:${look.radius}` : ""].filter(Boolean).join(";");
+  const dark = tokens(look.colors?.dark);
+  return [light ? `:root{${light}}` : "", dark ? `@media (prefers-color-scheme:dark){:root:not([data-scheme=light]){${dark}}}\n:root[data-scheme=dark]{${dark}}` : "", look.style ?? ""].filter(Boolean).join("\n");
+}

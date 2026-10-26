@@ -78,3 +78,28 @@ test("build still ships the app when a page module cannot load outside the brows
   assert.ok(existsSync(join(dir, "dist", "client", "client.js")));
   assert.equal(existsSync(join(dir, "dist", "client", "notes.html")), false);
 });
+
+test("build ships the fonts the look picks with the app, so pages never load them from another site", () => {
+  const dir = project({
+    "features/notes/index.ts": feature("notes", "GET", "/api/notes"),
+    "features/notes/pages.tsx": pages,
+    "features/notes/look.ts": `export const look = { fonts: { display: "Anton", body: "Inter" } };\n`,
+  });
+  const result = cli(dir, "build");
+  assert.equal(result.stderr, "");
+  assert.equal(result.status, 0);
+  const css = readFileSync(join(dir, "dist", "client", "fonts.css"), "utf8");
+  assert.match(css, /font-family: 'Anton';/);
+  assert.match(css, /url\(\/fonts\/anton-latin-400-normal\.woff2\)/);
+  assert.match(css, /--font-display:"Anton",Impact/);
+  assert.match(css, /--font-body:"Inter Variable",/);
+  assert.ok(existsSync(join(dir, "dist", "client", "fonts", "anton-latin-400-normal.woff2")));
+  assert.ok(existsSync(join(dir, "dist", "client", "fonts", "inter-latin-wght-normal.woff2")));
+  assert.match(readFileSync(join(dir, "dist", "client", "notes.html"), "utf8"), /<link rel="stylesheet" href="\/fonts\.css">/);
+});
+
+test("build writes an empty font sheet when the look picks no fonts", () => {
+  const dir = project({ "features/notes/index.ts": feature("notes", "GET", "/api/notes"), "features/notes/pages.tsx": pages });
+  assert.equal(cli(dir, "build").status, 0);
+  assert.equal(readFileSync(join(dir, "dist", "client", "fonts.css"), "utf8"), "");
+});

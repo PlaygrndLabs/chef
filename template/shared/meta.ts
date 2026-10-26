@@ -1,3 +1,4 @@
+import type { FontName, FontRole } from "./fonts.ts";
 import { isPage, matchPath } from "./paths.ts";
 
 export interface PageInfo {
@@ -7,9 +8,17 @@ export interface PageInfo {
   readonly nav?: boolean;
 }
 
+export type ColorToken = "bg" | "fg" | "card" | "muted" | "muted-bg" | "border" | "input" | "ring" | "primary" | "primary-fg" | "accent" | "danger" | "success" | "warning" | "info";
+
+export type Colors = Partial<Record<ColorToken, string>>;
+
 export interface LookInfo {
   readonly brand?: string;
   readonly description?: string;
+  readonly scheme?: "light" | "dark";
+  readonly fonts?: Partial<Record<FontRole, FontName>>;
+  readonly colors?: { readonly light?: Colors; readonly dark?: Colors };
+  readonly radius?: string;
   readonly style?: string;
 }
 
@@ -19,7 +28,16 @@ export interface PageMeta {
 }
 
 export function lookOf<T extends LookInfo>(looks: readonly T[]): T {
-  return looks.reduce<T>((all, look) => ({ ...all, ...look, style: [all.style, look.style].filter(Boolean).join("\n") }), {} as T);
+  return looks.reduce<T>(
+    (all, look) => ({
+      ...all,
+      ...look,
+      fonts: { ...all.fonts, ...look.fonts },
+      colors: { light: { ...all.colors?.light, ...look.colors?.light }, dark: { ...all.colors?.dark, ...look.colors?.dark } },
+      style: [all.style, look.style].filter(Boolean).join("\n"),
+    }),
+    {} as T,
+  );
 }
 
 export function homeOf(pages: readonly PageInfo[]): string | null {
