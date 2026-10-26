@@ -9,6 +9,7 @@ export interface CheckView {
   readonly name: string;
   readonly ok: boolean;
   readonly log: string;
+  readonly ms?: number;
 }
 
 export type TimelineItem =
@@ -345,7 +346,7 @@ export function apply(state: ProjectLive, entry: LogEntry): boolean {
     }
     case "gate.result": {
       const s = sessionOf(state, event.sessionId, event.featureId, at);
-      const checks = event.checks.map((c) => ({ name: c.name, ok: c.ok, log: clip(c.log ?? "") }));
+      const checks = event.checks.map((c) => ({ name: c.name, ok: c.ok, log: clip(c.log ?? ""), ...(c.ms === undefined ? {} : { ms: c.ms }) }));
       s.gate = { ok: event.ok, checks };
       keep(s.timeline, { kind: "gate", at, ok: event.ok, checks }, TIMELINE_LIMIT);
       return true;

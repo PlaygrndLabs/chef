@@ -425,7 +425,10 @@ export function ChecksTab({ node }: { readonly node: SessionNode }) {
                 <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60">
                   <StatusDot tone={c.ok ? "ok" : "bad"} />
                   <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                  <span className={cn("text-xs", c.ok ? "text-muted-foreground" : "font-medium text-bad")}>{c.ok ? "passed" : "failed"}</span>
+                  <span className={cn("text-xs", c.ok ? "text-muted-foreground" : "font-medium text-bad")}>
+                    {c.ok ? "passed" : "failed"}
+                    {c.ms === undefined ? null : ` · ${(c.ms / 1000).toFixed(1)} s`}
+                  </span>
                   {c.log ? <ChevronDown className="size-3.5 text-muted-foreground" /> : null}
                 </CollapsibleTrigger>
                 {c.log ? (

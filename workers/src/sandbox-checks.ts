@@ -33,11 +33,11 @@ export class SandboxCheckRunner implements CheckRunner {
     const specLint = { name: "spec-lint", ok: spec.length === 0, log: spec.map((p) => `${p.path}: ${p.message}`).join("\n") || "spec ok" };
     if (usesChefTemplate(input.tree)) {
       const results = await this.runCommands(input, templateChecks(input.features, "app/look.ts" in input.tree));
-      return [...results.map((r) => ({ name: r.name, ok: r.code === 0, log: (r.name === "test" && r.code !== 0 ? tapFailures(r.stdout) : "") || tail(`${r.stdout}\n${r.stderr}`) || `${r.name} ok`, ...(r.name === "test" ? { cases: parseTap(r.stdout) } : {}) })), specLint];
+      return [...results.map((r) => ({ name: r.name, ok: r.code === 0, log: (r.name === "test" && r.code !== 0 ? tapFailures(r.stdout) : "") || tail(`${r.stdout}\n${r.stderr}`) || `${r.name} ok`, ...(r.name === "test" ? { cases: parseTap(r.stdout) } : {}), ...(r.ms === undefined ? {} : { ms: r.ms }) })), specLint];
     }
     const own = repoChecks(input.tree);
     const results = own.install ? await this.runCommands(input, own.commands, own.install) : [];
-    return [...results.map((r) => ({ name: r.name, ok: r.code === 0, log: tail(`${r.stdout}\n${r.stderr}`, 60) || `${r.name} ok` })), ...own.notes, specLint];
+    return [...results.map((r) => ({ name: r.name, ok: r.code === 0, log: tail(`${r.stdout}\n${r.stderr}`, 60) || `${r.name} ok`, ...(r.ms === undefined ? {} : { ms: r.ms }) })), ...own.notes, specLint];
   }
 
   private async runCommands(input: { repo: string; commitId: string; tree: Tree }, commands: ChecksJob["commands"], install?: ChecksJob["install"]): Promise<CommandResult[]> {
