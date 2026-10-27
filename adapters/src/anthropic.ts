@@ -78,6 +78,7 @@ export interface StructuredInput<S extends z.ZodType> {
   readonly prompt: string;
   readonly schema: S;
   readonly effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  readonly images?: readonly string[];
 }
 
 interface ParsedLike {
@@ -92,8 +93,14 @@ function unwrap<S extends z.ZodType>(response: ParsedLike): z.infer<S> {
   return response.parsed_output as z.infer<S>;
 }
 
+function userContent(input: StructuredInput<z.ZodType>) {
+  if (!input.images?.length) return input.prompt;
+  const images = input.images.map((data) => ({ type: "image" as const, source: { type: "base64" as const, media_type: "image/png" as const, data } }));
+  return [...images, { type: "text" as const, text: input.prompt }];
+}
+
 export async function structured<S extends z.ZodType>(endpoint: LlmEndpoint, input: StructuredInput<S>): Promise<z.infer<S>> {
-  const common = { model: input.model, max_tokens: 16000, system: input.system, messages: [{ role: "user" as const, content: input.prompt }] };
+  const common = { model: input.model, max_tokens: 16000, system: input.system, messages: [{ role: "user" as const, content: userContent(input) }] };
   if (endpoint.serverFallbacks) {
     const response = await endpoint.client.beta.messages.parse({
       ...common,

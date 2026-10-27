@@ -1,0 +1,118 @@
+name: design
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Apps to build, comma separated (landing, dashboard, booking); empty builds all three
+        required: false
+        default: ""
+      minutes:
+        description: How long to follow each build
+        required: true
+        default: "25"
+      keep:
+        description: Keep each project on chef-dev afterwards to look at it; off deletes it so its sandboxes stop
+        type: boolean
+        required: false
+        default: false
+      model:
+        description: Model that scores the screenshots; empty uses claude-opus-5-5
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: landing
+            prompt: Build a landing page for Ashgrove Leaf Co., a small tobacco brand from the hills of Ashgrove. Visitors confirm they are 21 or older before they see it. Make it look like https://ploy.ai
+            click: 21 or older
+          - id: dashboard
+            prompt: Build a sales dashboard for a small coffee roaster with this month's revenue, orders by day as a chart, the top products and a table of recent orders, from sample data
+            click: ""
+          - id: booking
+            prompt: Build a booking app for a hair salon where a visitor picks a service, a stylist, a day and a time, enters a name and phone number, and sees a confirmation
+            click: ""
+    env:
+      CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
+      CHEF_PASSWORD: ${{ secrets.CHEF_PASSWORD }}
+      LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      PICKED: ${{ inputs.only == '' || contains(format(',{0},', inputs.only), format(',{0},', matrix.id)) }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.PICKED == 'true'
+      - uses: pnpm/action-setup@v4
+        if: env.PICKED == 'true'
+      - uses: actions/setup-node@v4
+        if: env.PICKED == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: env.PICKED == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: env.PICKED == 'true'
+        run: pnpm --filter @chef/cli exec playwright install --with-deps chromium
+      - name: Build the app on chef-dev
+        if: env.PICKED == 'true'
+        continue-on-error: true
+        run: |
+          args=(--project "design-$ID-$GITHUB_RUN_NUMBER" --prompt "$PROMPT" --minutes "$MINUTES" --out results/design)
+          [ -n "$CLICK" ] && args+=(--app-click "$CLICK")
+          [ "$KEEP" != "true" ] && args+=(--delete)
+          node --import tsx cli/src/bin.ts tour "${args[@]}"
+        env:
+          ID: ${{ matrix.id }}
+          PROMPT: ${{ matrix.prompt }}
+          CLICK: ${{ matrix.click }}
+          MINUTES: ${{ inputs.minutes }}
+          KEEP: ${{ inputs.keep }}
+      - name: Score the screenshots
+        if: env.PICKED == 'true'
+        run: |
+          args=(--dir results/design --name "$ID" --request "$PROMPT" --out results/design/score.json)
+          [ -n "$MODEL" ] && args+=(--model "$MODEL")
+          node --import tsx cli/src/bin.ts design score "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+        env:
+          ID: ${{ matrix.id }}
+          PROMPT: ${{ matrix.prompt }}
+          MODEL: ${{ inputs.model }}
+      - uses: actions/upload-artifact@v4
+        if: always() && env.PICKED == 'true'
+        with:
+          name: design-${{ matrix.id }}
+          path: results/design/
+
+  summary:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: design-*
+          path: results
+      - name: Table of every app's scores
+        run: |
+          mkdir -p results/summary
+          node --import tsx cli/src/bin.ts design table results/design-*/score.json | tee results/summary/design.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: design-summary
+          path: results/summary/

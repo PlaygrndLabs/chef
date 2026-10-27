@@ -271,6 +271,27 @@ async function deployCommand(args: readonly string[]): Promise<number> {
   return result.code;
 }
 
+async function designCommand(args: readonly string[]): Promise<number> {
+  const { designTable, scoreDesign } = await import("./design-score.ts");
+  if (args[1] === "table") {
+    const results = positional(args).slice(2).map((file) => JSON.parse(readFileSync(file, "utf8")) as Awaited<ReturnType<typeof scoreDesign>>);
+    process.stdout.write(`${designTable(results)}\n`);
+    return 0;
+  }
+  const dir = option(args, "dir");
+  const request = option(args, "request");
+  if (args[1] !== "score" || !dir || !request) {
+    process.stderr.write("usage: chef design score --dir tour-dir --request text [--name n] [--model id] [--out file] | chef design table score.json...\n");
+    return 2;
+  }
+  const { llmFromEnv } = await import("@chef/adapters/anthropic");
+  const result = await scoreDesign({ dir: resolve(dir), name: option(args, "name") ?? "app", request, llm: llmFromEnv(process.env), model: option(args, "model") ?? process.env["DESIGN_JUDGE_MODEL"] ?? "claude-opus-5-5" });
+  const out = option(args, "out");
+  if (out) writeFileSync(out, `${JSON.stringify(result, null, 2)}\n`);
+  process.stdout.write(`${designTable([result])}\n`);
+  return result.scores ? 0 : 1;
+}
+
 async function tourCommand(args: readonly string[]): Promise<number> {
   const url = option(args, "url") ?? process.env["CHEF_URL"];
   if (!url) {
@@ -311,12 +332,13 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "tune" && sub === "data") return tuneData(args);
   if (command === "serve") return serveCommand(args);
   if (command === "tour") return tourCommand(args);
+  if (command === "design") return designCommand(args);
   if (command === "deploy") return deployCommand(args);
   if (command === "changes") {
     process.stdout.write(`${JSON.stringify({ changes: changes(REPO_ROOT, Number(option(args, "limit") ?? 200), option(args, "ref") ?? "HEAD") }, null, 2)}\n`);
     return 0;
   }
-  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef deploy [--name n] [--image ref] [--api-key | --api-key-file path] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--repo url] [--prompt text] [--minutes n] [--every s] [--out dir] [--delete] [--delete-existing] [--app-click text] | chef changes [--limit n] [--ref r]\n");
+  process.stderr.write("usage: chef spec lint [dir] | chef check [--root dir] [--rules a,b] | chef route <prompt> [--spec dir] | chef demo [prompt] [--fake-checks] [--live] | chef spike jev [--mode raw|translated|both] [--data file] [--out file.md] | chef llm check [prompt] [--model id] | chef bench [--mode phase2|phase3|phase4|replay|both] [--only a,b] [--out file.md] | chef voice [--say text] [--live] | chef tune data [--out dir] | chef serve [--port n] [--project id] [--attempts n] [--fake-checks] | chef deploy [--name n] [--image ref] [--api-key | --api-key-file path] [--dry-run] [wrangler args] | chef tour --url u [--project id] [--repo url] [--prompt text] [--minutes n] [--every s] [--out dir] [--delete] [--delete-existing] [--app-click text] | chef design score --dir d --request text | chef design table score.json... | chef changes [--limit n] [--ref r]\n");
   return 2;
 }
 

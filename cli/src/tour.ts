@@ -402,6 +402,8 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         }
         await go(`/?project=${project}&settings=project.usage`);
         await shot("project-usage");
+        await go(`/?project=${project}&settings=project.design`);
+        await shot("project-design");
         await go(`/?project=${project}&settings=app.usage`);
         await shot("app-usage");
         const laned = sessions.filter((s) => s.lanes?.length).at(-1);
