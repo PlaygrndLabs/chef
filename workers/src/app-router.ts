@@ -31,6 +31,8 @@ export function appName(label: string, router: string): string {
   );
 }
 
+const CONCURRENT_RETRIES = 5;
+
 export class AppRouter {
   constructor(
     private readonly account: { readonly accountId: string; readonly apiToken: string },
@@ -100,12 +102,18 @@ export class AppRouter {
 
   private async api<T>(method: string, path: string, body?: unknown, missingOk = false): Promise<T | null> {
     const form = body instanceof FormData;
-    const response = await this.fetcher(`https://api.cloudflare.com/client/v4/accounts/${this.account.accountId}${path}`, {
-      method,
-      headers: { authorization: `Bearer ${this.account.apiToken}`, ...(body === undefined || form ? {} : { "content-type": "application/json" }) },
-      ...(body === undefined ? {} : { body: form ? body : JSON.stringify(body) }),
-    });
-    const text = await response.text().catch(() => "");
+    let response: Response;
+    let text: string;
+    for (let attempt = 0; ; attempt++) {
+      response = await this.fetcher(`https://api.cloudflare.com/client/v4/accounts/${this.account.accountId}${path}`, {
+        method,
+        headers: { authorization: `Bearer ${this.account.apiToken}`, ...(body === undefined || form ? {} : { "content-type": "application/json" }) },
+        ...(body === undefined ? {} : { body: form ? body : JSON.stringify(body) }),
+      });
+      text = await response.text().catch(() => "");
+      if (response.status !== 409 || !/"code"\s*:\s*11024\b/.test(text) || attempt >= CONCURRENT_RETRIES) break;
+      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt + Math.random() * 250));
+    }
     if (missingOk && (response.status === 404 || /"code"\s*:\s*10025\b/.test(text))) return null;
     if (!response.ok) throw new Error(`${method} ${path.replace(/\/previews\/.*/, "/previews/…")} on Cloudflare failed with ${response.status}: ${text.replace(/"text"\s*:\s*"[^"]*"/g, '"text":"…"').slice(0, 500)}`);
     return ((JSON.parse(text || "{}") as { result?: T }).result ?? null) as T | null;

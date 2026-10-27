@@ -41,6 +41,18 @@ const exclude = join(dir, ".git", "info", "exclude");
 const excluded = existsSync(exclude) ? readFileSync(exclude, "utf8") : "";
 const installed = INSTALLED_DIRS.filter((name) => !excluded.split("\n").includes(name));
 if (installed.length) appendFileSync(exclude, `\n${installed.join("\n")}\n`);
+const references = !job.uploads ? [] : [...new Set([...String(job.prompt ?? "").matchAll(/^Reference image: uploads\/([0-9a-f]{20}\.(?:png|jpg|webp|gif|avif))$/gm)].map((match) => match[1]))];
+for (const name of references) {
+  const response = await fetch(`${job.uploads}/${name}`).catch(() => null);
+  if (!response?.ok) {
+    process.stderr.write(`the attached image ${name} could not be fetched (${response?.status ?? "no answer"})\n`);
+    continue;
+  }
+  mkdirSync(join(dir, "uploads"), { recursive: true });
+  writeFileSync(join(dir, "uploads", name), Buffer.from(await response.arrayBuffer()));
+  const listed = existsSync(exclude) ? readFileSync(exclude, "utf8") : "";
+  if (!listed.split("\n").includes(`/uploads/${name}`)) appendFileSync(exclude, `/uploads/${name}\n`);
+}
 const modules = process.env.CHEF_NODE_MODULES ?? "/opt/chef/template/node_modules";
 if (!job.ownStructure && existsSync(modules) && !existsSync(join(dir, "node_modules"))) symlinkSync(modules, join(dir, "node_modules"), "dir");
 

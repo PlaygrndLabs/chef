@@ -53,6 +53,21 @@ describe("app addresses", () => {
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["GET /workers/workers/chef-dev-app", "GET /workers/workers/chef-dev-app/previews/main-shop", "POST /workers/workers/chef-dev-app/previews", "GET /workers/workers/chef-dev-app/previews/main-shop", "POST /workers/workers/chef-dev-app/previews/main-shop/deployments"]);
   });
 
+  it("tries again when another app's address changed the router at the same moment", async () => {
+    const busy = () => Response.json({ success: false, errors: [{ code: 11024, message: "The Worker was modified concurrently by another request. Please try again." }] }, { status: 409 });
+    const { calls, fetcher } = cloudflare([
+      Response.json({ success: true, result: { name: "chef-dev-app", tags: ["chef-router"] } }),
+      Response.json({ success: true, result: { id: "p1", name: "main-shop", urls: ["https://main-shop-chef-dev-app.acme.workers.dev"] } }),
+      busy(),
+      busy(),
+      Response.json({ success: true, result: { id: "d1" } }),
+    ]);
+    const router = new AppRouter({ accountId: "acc1", apiToken: "tok" }, "chef-dev-app", "chef-dev", fetcher);
+    expect(await router.address({ label: "main-shop", target: "shop--main", key: "k" })).toBe("https://main-shop-chef-dev-app.acme.workers.dev");
+    expect(calls.filter((c) => c.path.endsWith("/deployments"))).toHaveLength(3);
+    expect(calls.at(-1)?.body).toMatchObject({ env: { CHEF_TARGET: { text: "shop--main" } } });
+  });
+
   it("refuses a router name Chef did not make, and forgets addresses that are already gone", async () => {
     const taken = cloudflare([Response.json({ success: true, result: { tags: [] } })]);
     await expect(new AppRouter({ accountId: "acc1", apiToken: "tok" }, "chef-dev-app", "chef-dev", taken.fetcher).address({ label: "main-shop", target: "shop--main", key: "k" })).rejects.toBeInstanceOf(RouterTakenError);
