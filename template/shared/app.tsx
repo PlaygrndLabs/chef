@@ -17,6 +17,7 @@ export interface Page {
   readonly title: string;
   readonly description?: string;
   readonly nav?: boolean;
+  readonly bare?: boolean;
   readonly component: ComponentType<PageProps>;
 }
 
@@ -29,6 +30,7 @@ export interface Look {
   readonly fonts?: Partial<Record<FontRole, FontName>>;
   readonly colors?: { readonly light?: Colors; readonly dark?: Colors };
   readonly radius?: string;
+  readonly materials?: { readonly [name: string]: string };
   readonly gate?: string;
   readonly references?: readonly string[];
   readonly style?: string;
@@ -96,7 +98,7 @@ export function App({ pages, look = {} }: { readonly pages: readonly Page[]; rea
   const Body = found?.page.component;
   return (
     <>
-      {look.brand || nav.length ? (
+      {(look.brand || nav.length) && !found?.page.bare ? (
         <header className="topbar">
           <div className={`container-bar${width}`}>
             <Link className="brand" to="/">

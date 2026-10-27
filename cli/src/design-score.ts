@@ -91,7 +91,7 @@ function spent(dir: string): number | null {
   const file = join(dir, "usage.json");
   if (!existsSync(file)) return null;
   const usage = (JSON.parse(readFileSync(file, "utf8")) as { usage?: { spent?: unknown } }).usage;
-  return typeof usage?.spent === "number" ? Math.round(usage.spent * 100) / 100 : null;
+  return typeof usage?.spent === "number" ? Math.round(usage.spent / 10_000) / 100 : null;
 }
 
 export async function scoreDesign(options: { readonly dir: string; readonly name: string; readonly request: string; readonly llm: LlmEndpoint; readonly model: string }): Promise<DesignBenchResult> {

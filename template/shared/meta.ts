@@ -10,7 +10,7 @@ export interface PageInfo {
 
 export type ColorToken = "bg" | "fg" | "card" | "muted" | "muted-bg" | "border" | "input" | "ring" | "primary" | "primary-fg" | "accent" | "danger" | "success" | "warning" | "info";
 
-export type Colors = Partial<Record<ColorToken, string>>;
+export type Colors = Partial<Record<ColorToken, string>> & { readonly [name: string]: string | undefined };
 
 export interface LookInfo {
   readonly brand?: string;
@@ -19,6 +19,7 @@ export interface LookInfo {
   readonly fonts?: Partial<Record<FontRole, FontName>>;
   readonly colors?: { readonly light?: Colors; readonly dark?: Colors };
   readonly radius?: string;
+  readonly materials?: { readonly [name: string]: string };
   readonly gate?: string;
   readonly references?: readonly string[];
   readonly style?: string;
@@ -36,6 +37,7 @@ export function lookOf<T extends LookInfo>(looks: readonly T[]): T {
       ...look,
       fonts: { ...all.fonts, ...look.fonts },
       colors: { light: { ...all.colors?.light, ...look.colors?.light }, dark: { ...all.colors?.dark, ...look.colors?.dark } },
+      materials: { ...all.materials, ...look.materials },
       references: [...new Set([...(all.references ?? []), ...(look.references ?? [])])],
       style: [all.style, look.style].filter(Boolean).join("\n"),
     }),

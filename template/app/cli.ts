@@ -9,7 +9,7 @@ import { isPage } from "../shared/paths.ts";
 import { closeBrowser } from "./browser.ts";
 import { appFonts, bundleClient, listed, pageMetas } from "./client.ts";
 import { drive, type Fetcher } from "./drive.ts";
-import { lookAt } from "./look.ts";
+import { lookAt, outsideLook } from "./look.ts";
 import { referenceOf, summary, uploadAddress } from "./ref.ts";
 import { REGISTRY_PATH, renderRegistry } from "./gen.ts";
 
@@ -106,10 +106,10 @@ async function look(args: readonly string[]): Promise<number> {
   const named = args.slice(1).filter((arg, i, all) => arg.startsWith("/") && all[i - 1] !== "--out");
   const paths = named.length ? named : [...new Set(pages.filter((page) => (!wanted || wanted.includes(page.feature)) && (page.path === "/" || isPage({ method: "GET", path: page.path }))).map((page) => page.path))];
   try {
-    const found = await lookAt((await registered()) ?? [], paths, look, root, option(args, "out"));
+    const found = [...(await outsideLook(root, wanted)), ...(await lookAt((await registered()) ?? [], paths, look, root, option(args, "out")))];
     for (const problem of found) process.stdout.write(`${problem.severity === "fail" ? "FAIL" : "warn"} ${problem.path} (${problem.view}): ${problem.message}\n`);
     const failed = found.filter((problem) => problem.severity === "fail").length;
-    process.stdout.write(`looked at ${paths.length} page${paths.length === 1 ? "" : "s"} on phone and desktop, light and dark: ${failed ? `${failed} problem${failed === 1 ? "" : "s"} to fix` : "no problems"}${found.length > failed ? `, ${found.length - failed} to consider` : ""}\n`);
+    process.stdout.write(`looked at the features' code and ${paths.length} page${paths.length === 1 ? "" : "s"} on phone and desktop, light and dark: ${failed ? `${failed} problem${failed === 1 ? "" : "s"} to fix` : "no problems"}${found.length > failed ? `, ${found.length - failed} to consider` : ""}\n`);
     return failed ? 1 : 0;
   } finally {
     await closeBrowser();

@@ -52,7 +52,7 @@ describe("designOf", () => {
   it("merges every feature's look in path order", () => {
     const design = designOf({
       "features/brand/look.ts": `export const look = { brand: "Ashgrove", fonts: { display: "Anton", body: "Inter" }, colors: { light: { bg: "#f4f4f4", fg: "#111" }, dark: { bg: "#000" } }, references: ["https://ploy.ai"] } as const;`,
-      "features/shop/frontend/look.ts": `export const look = { fonts: { body: "Geist" }, colors: { light: { accent: "#ff6fb5" } }, gate: "21 or older", references: ["https://ploy.ai", "https://linear.app"] } as const;`,
+      "features/shop/frontend/look.ts": `export const look = { fonts: { body: "Geist" }, colors: { light: { accent: "#ff6fb5" } }, materials: { hero: "linear-gradient(var(--blush), var(--bg))" }, gate: "21 or older", references: ["https://ploy.ai", "https://linear.app"] } as const;`,
       "features/broken/look.ts": `export const look = build();`,
       "features/shop/frontend/page.tsx": `export const look = { brand: "Not a look file" };`,
       "shared/look.ts": `export const look = { brand: "Not a feature" };`,
@@ -63,6 +63,7 @@ describe("designOf", () => {
       scheme: null,
       fonts: { display: "Anton", body: "Geist" },
       colors: { light: { bg: "#f4f4f4", fg: "#111", accent: "#ff6fb5" }, dark: { bg: "#000" } },
+      materials: { hero: "linear-gradient(var(--blush), var(--bg))" },
       radius: null,
       accent: null,
       width: null,

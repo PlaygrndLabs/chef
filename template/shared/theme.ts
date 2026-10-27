@@ -163,6 +163,7 @@ input[type=checkbox],input[type=radio]{width:1.1rem;height:1.1rem;margin:0;accen
 .table th,.table td{padding:.7rem 1rem;border-bottom:1px solid var(--border);vertical-align:middle}
 .table tr:last-child td{border-bottom:0}
 .table tbody tr:hover{background:color-mix(in srgb,var(--muted-bg) 45%,transparent)}
+@media (max-width:640px){.table.stacked thead{display:none}.table.stacked tr{display:block;border-bottom:1px solid var(--border);padding:.4rem 0}.table.stacked tr:last-child{border-bottom:0}.table.stacked td{display:flex;justify-content:space-between;align-items:center;gap:1rem;border:0;padding:.35rem 1rem;text-align:right}.table.stacked td::before{content:attr(data-label);color:var(--muted);font-size:.8rem;text-align:left}}
 .stat{display:flex;flex-direction:column;gap:.25rem}.stat .value{font-size:1.75rem;font-weight:650;letter-spacing:-.02em}.stat .label{color:var(--muted);font-weight:500}
 .avatar{display:inline-flex;align-items:center;justify-content:center;width:2.25rem;height:2.25rem;border-radius:999px;background:var(--muted-bg);font-size:.8rem;font-weight:600;flex:none;overflow:hidden}
 .tabs{display:inline-flex;gap:.25rem;padding:.25rem;background:var(--muted-bg);border-radius:calc(var(--radius) - .1rem)}
@@ -194,12 +195,25 @@ export const COLOR = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|(?:rgb|hsl|oklch)\([0-9.,%\s
 
 const TOKENS: readonly ColorToken[] = ["bg", "fg", "card", "muted", "muted-bg", "border", "input", "ring", "primary", "primary-fg", "accent", "danger", "success", "warning", "info"];
 
+const NAME = /^[a-z][a-z0-9-]{0,39}$/;
+const MATERIAL = /^[^;{}<>]{1,600}$/;
+
 function tokens(colors: Colors | undefined): string {
-  return TOKENS.flatMap((token) => (colors?.[token] && COLOR.test(colors[token]) ? [`--${token}:${colors[token]}`] : [])).join(";");
+  const names = [...TOKENS, ...Object.keys(colors ?? {}).filter((name) => NAME.test(name) && !(TOKENS as readonly string[]).includes(name))];
+  return names.flatMap((name) => {
+    const value = colors?.[name];
+    return value && COLOR.test(value) ? [`--${name}:${value}`] : [];
+  }).join(";");
 }
 
-export function lookCss(look: { readonly accent?: string; readonly scheme?: "light" | "dark"; readonly colors?: { readonly light?: Colors; readonly dark?: Colors }; readonly radius?: string; readonly style?: string }): string {
+function materialCss(materials: { readonly [name: string]: string } | undefined): string {
+  const named = Object.entries(materials ?? {}).filter(([name, value]) => NAME.test(name) && MATERIAL.test(value));
+  if (!named.length) return "";
+  return [`:root{${named.map(([name, value]) => `--material-${name}:${value}`).join(";")}}`, ...named.map(([name]) => `.material-${name}{background:var(--material-${name})}`)].join("\n");
+}
+
+export function lookCss(look: { readonly accent?: string; readonly scheme?: "light" | "dark"; readonly colors?: { readonly light?: Colors; readonly dark?: Colors }; readonly radius?: string; readonly materials?: { readonly [name: string]: string }; readonly style?: string }): string {
   const light = [look.accent && COLOR.test(look.accent) ? `--accent:${look.accent};--primary:${look.accent};--primary-fg:#fff` : "", tokens(look.colors?.light), look.radius && /^(0|[0-9.]+(rem|px|em))$/.test(look.radius) ? `--radius:${look.radius}` : ""].filter(Boolean).join(";");
   const dark = tokens(look.colors?.dark);
-  return [light ? `:root{${light}}` : "", dark ? `@media (prefers-color-scheme:dark){:root:not([data-scheme=light]){${dark}}}\n:root[data-scheme=dark]{${dark}}` : "", look.style ?? ""].filter(Boolean).join("\n");
+  return [light ? `:root{${light}}` : "", dark ? `@media (prefers-color-scheme:dark){:root:not([data-scheme=light]){${dark}}}\n:root[data-scheme=dark]{${dark}}` : "", materialCss(look.materials), look.style ?? ""].filter(Boolean).join("\n");
 }

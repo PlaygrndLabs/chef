@@ -14,6 +14,14 @@ describe("project routes", () => {
     expect(projectOf("/app/treetest/s1a2b3c4")).toBe("treetest");
   });
 
+  it("sends the look and attached images to the project", () => {
+    expect(projectOf("/api/projects/treetest/design")).toBe("treetest");
+    expect(projectOf("/api/projects/treetest/uploads")).toBe("treetest");
+    expect(projectOf("/api/projects/treetest/uploads/0123456789abcdef0123.png")).toBe("treetest");
+    expect(projectOf("/api/projects/treetest/uploads/../memory")).toBeNull();
+    expect(projectOf("/api/projects/treetest/uploads/notes.txt")).toBeNull();
+  });
+
   it("sends a new app key to the project", () => {
     expect(projectOf("/api/projects/treetest/app-key")).toBe("treetest");
   });

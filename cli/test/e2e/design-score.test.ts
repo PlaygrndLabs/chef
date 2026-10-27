@@ -32,7 +32,7 @@ describe("design score", () => {
     await browser.close();
     writeFileSync(join(dir, "report.json"), JSON.stringify({ shots }));
     writeFileSync(join(dir, "events.jsonl"), [{ event: { type: "route.decided", at: 1_000 } }, { event: { type: "main.merged", at: 151_000 } }].map((e) => JSON.stringify(e)).join("\n"));
-    writeFileSync(join(dir, "usage.json"), JSON.stringify({ usage: { spent: 0.4567 } }));
+    writeFileSync(join(dir, "usage.json"), JSON.stringify({ usage: { spent: 456_700 } }));
 
     interface Sent {
       readonly messages: readonly { readonly content: readonly { readonly type: string; readonly text?: string }[] }[];
