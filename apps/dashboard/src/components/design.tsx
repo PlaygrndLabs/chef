@@ -38,6 +38,10 @@ function Preview(props: { readonly design: DesignView; readonly scheme: "light" 
   );
 }
 
+function variables(colors: Readonly<Record<string, string>>): Record<string, string> {
+  return Object.fromEntries(Object.entries(colors).map(([name, value]) => [`--${name}`, value]));
+}
+
 function Swatches(props: { readonly colors: Readonly<Record<string, string>> }) {
   const entries = Object.entries(props.colors);
   if (!entries.length) return <p className="text-xs text-muted-foreground">The kit's own colors.</p>;
@@ -95,6 +99,21 @@ export function DesignSection(props: { readonly api: ProjectApi }) {
           <Swatches colors={design.colors[scheme]} />
         </Group>
       ))}
+      {Object.keys(design.materials).length ? (
+        <Group title="Materials" note="Surfaces made of more than one color: gradients, glass, grain or image fills.">
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
+            {Object.entries(design.materials).map(([name, value]) => (
+              <li key={name} className="grid min-w-0 gap-1" data-material={name}>
+                <span className="h-14 rounded border" style={{ ...variables(design.colors[schemes[0] ?? "light"]), background: value }} />
+                <span className="truncate text-xs">{name}</span>
+                <span className="truncate font-mono text-[11px] text-muted-foreground" title={value}>
+                  {value}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Group>
+      ) : null}
       <Group title="References" note="Sites and images the look was matched to.">
         {design.references.length ? (
           <ul className="grid gap-1">

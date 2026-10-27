@@ -8,6 +8,7 @@ export interface DesignView {
   readonly scheme: "light" | "dark" | null;
   readonly fonts: Partial<Record<FontRoleName, string>>;
   readonly colors: { readonly light: Readonly<Record<string, string>>; readonly dark: Readonly<Record<string, string>> };
+  readonly materials: Readonly<Record<string, string>>;
   readonly radius: string | null;
   readonly accent: string | null;
   readonly width: string | null;
@@ -175,7 +176,7 @@ export function designOf(tree: Tree): DesignView {
     .filter((path) => LOOK_FILE.test(path))
     .sort();
   const unread: string[] = [];
-  let design: DesignView = { brand: null, description: null, scheme: null, fonts: {}, colors: { light: {}, dark: {} }, radius: null, accent: null, width: null, gate: null, references: [], sources, unread };
+  let design: DesignView = { brand: null, description: null, scheme: null, fonts: {}, colors: { light: {}, dark: {} }, materials: {}, radius: null, accent: null, width: null, gate: null, references: [], sources, unread };
   for (const path of sources) {
     const look = readLookLiteral(tree[path] ?? "");
     if (!look) {
@@ -192,6 +193,7 @@ export function designOf(tree: Tree): DesignView {
       scheme: scheme ?? design.scheme,
       fonts: { ...design.fonts, ...strings(look["fonts"] ?? null) },
       colors: { light: { ...design.colors.light, ...strings(colors["light"] ?? null) }, dark: { ...design.colors.dark, ...strings(colors["dark"] ?? null) } },
+      materials: { ...design.materials, ...strings(look["materials"] ?? null) },
       radius: text(look["radius"]) ?? design.radius,
       accent: text(look["accent"]) ?? design.accent,
       width: text(look["width"]) ?? design.width,

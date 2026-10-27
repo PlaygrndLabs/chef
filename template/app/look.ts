@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FONTS, isFont } from "../shared/fonts.ts";
 import type { Feature } from "../shared/http.ts";
@@ -192,4 +192,40 @@ function dedupe(found: readonly LookProblem[], states: ReadonlyMap<string, numbe
     else grouped.set(key, { ...problem, seen: [problem.view] });
   }
   return [...grouped.values()].map(({ seen, ...problem }) => ({ ...problem, view: seen.length === states.get(problem.path) ? "every view" : seen.join(", ") }));
+}
+
+const STYLE_FILE = /\.(tsx|css)$/;
+const HEX = /(?<![\w&/#-])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])/g;
+const COLOR_FUNCTION = /\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(\s*[0-9.]/g;
+const FONT = /font-?[fF]amily\s*[:=](?!\s*\{?\s*["'`]?\s*(?:var\(|inherit\b))\s*\{?\s*["'`]?([^;"'`}]+)/g;
+const LINK = /(?:href|to|id|htmlFor)=\{?["'`]?[^"'`\s]*$/;
+
+export async function outsideLook(root: string, features?: readonly string[]): Promise<LookProblem[]> {
+  const found: LookProblem[] = [];
+  const dir = join(root, "features");
+  const names = features ?? (await readdir(dir).catch(() => [] as string[]));
+  for (const feature of names) {
+    const files = await readdir(join(dir, feature), { recursive: true }).catch(() => [] as string[]);
+    for (const file of files.filter((f) => STYLE_FILE.test(f) && !/(^|\/)look\.ts$/.test(f) && !/\.test\.tsx?$/.test(f)).sort()) {
+      const path = `features/${feature}/${file}`;
+      const lines = (await readFile(join(dir, feature, file), "utf8").catch(() => "")).split("\n");
+      const stray = new Map<string, number>();
+      lines.forEach((line, i) => {
+        for (const match of line.matchAll(HEX)) if (!LINK.test(line.slice(0, match.index))) stray.set(match[0], stray.get(match[0]) ?? i + 1);
+        for (const match of line.matchAll(COLOR_FUNCTION)) {
+          const name = `${match[0].replace(/\(.*/, "")}(...)`;
+          stray.set(name, stray.get(name) ?? i + 1);
+        }
+        for (const match of line.matchAll(FONT)) {
+          const name = match[1]?.trim().slice(0, 40);
+          if (name) stray.set(`font "${name}"`, stray.get(`font "${name}"`) ?? i + 1);
+        }
+      });
+      for (const [what, line] of stray) {
+        const font = what.startsWith("font");
+        found.push({ path: `${path}:${line}`, view: "code", severity: "fail", message: `${what} is written outside the look. ${font ? "Pick fonts in the look's fonts and use the display, mono or body styles (var(--font-display), var(--font-body), var(--font-mono))" : "Name it in the look's colors (light and dark) or materials and use var(--name) or the material-<name> class"}, so the design system holds every color, font and material the app uses.` });
+      }
+    }
+  }
+  return found;
 }

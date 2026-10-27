@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { closeBrowser } from "./browser.ts";
-import { lookAt } from "./look.ts";
+import { lookAt, outsideLook } from "./look.ts";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 
 function project(pages: string): string {
   const dir = mkdtempSync(join(tmpdir(), "look-"));
@@ -79,4 +80,21 @@ export const pages: readonly Page[] = [{ path: "/home", title: "Home", component
   assert.deepEqual(await lookAt([], ["/home"], { scheme: "light" }, root), []);
   const found = await lookAt([], ["/home"], { scheme: "light", gate: "21 or older" }, root);
   assert.deepEqual(found.map((p) => [p.view, p.severity, p.message.split(" has ")[0]]), [["phone, desktop", "fail", '"Faint words behind the gate"']]);
+});
+
+test("colors, color functions and fonts written outside the look fail, links and look.ts do not", async () => {
+  const root = await mkdtemp(join(tmpdir(), "outside-look-"));
+  await mkdir(join(root, "features", "shop", "frontend"), { recursive: true });
+  await writeFile(join(root, "features", "shop", "pages.tsx"), ['const a = <a href="#faded">Faded</a>;', 'const b = <div style={{ background: "#ffb8fc", color: "var(--fg)" }} />;', 'const c = <p style={{ fontFamily: "Comic Sans MS" }} />;', 'const d = <p style={{ fontFamily: "var(--font-display)" }} />;', 'const e = <svg><path fill="rgb(1 2 3)" /></svg>;', 'const f = <div className="material-hero" style={{ boxShadow: "0 1px 2px color-mix(in srgb, var(--fg) 20%, transparent)" }} />;'].join("\n"));
+  await writeFile(join(root, "features", "shop", "look.ts"), 'export const look = { colors: { light: { blush: "#ffb8fc" } } } as const;');
+  await writeFile(join(root, "features", "shop", "frontend", "look.ts"), 'export const look = { materials: { hero: "linear-gradient(#000, #fff)" } } as const;');
+  await writeFile(join(root, "features", "shop", "frontend", "card.css"), ".card-x{border-color:#abc}");
+  await writeFile(join(root, "features", "shop", "pages.test.tsx"), 'const t = "#123456";');
+  const found = await outsideLook(root);
+  assert.deepEqual(
+    found.map((p) => `${p.path} ${p.message.split(" is written")[0]}`),
+    ["features/shop/frontend/card.css:1 #abc", "features/shop/pages.tsx:2 #ffb8fc", 'features/shop/pages.tsx:3 font "Comic Sans MS"', "features/shop/pages.tsx:5 rgb(...)"],
+  );
+  assert.ok(found.every((p) => p.severity === "fail"));
+  assert.deepEqual(await outsideLook(root, ["other"]), []);
 });

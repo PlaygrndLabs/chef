@@ -6,6 +6,7 @@ import { appPage } from "@chef/adapters/app-page";
 import { layerStore } from "./image-layers.ts";
 import { LAYER_CACHE_ADDRESS, layerCacheFetch } from "./layer-cache.ts";
 import { TRANSCRIPT_ADDRESS, transcriptFetch } from "./transcripts.ts";
+import { UPLOADS_ADDRESS, uploadFetch } from "./uploads.ts";
 import { WORKER_APP, assetPath, assetResponse, dropWorkerApp, saveWorkerApp, workerCode, type WorkerAppMeta, type WorkerBundle } from "./worker-app.ts";
 import { busySeconds, exitedForMemory, nextStep, oomKills, sandboxSize, sizeLabel, sizeStep } from "./sandbox-size.ts";
 
@@ -56,6 +57,7 @@ export class SandboxOutbound extends WorkerEntrypoint<Env, OutboundProps> {
     const access = await (sessions.get(sessions.idFromName(this.ctx.props.sandbox)) as unknown as AccessStub).outboundAccess();
     if (!access) return new Response("this sandbox has no access to anything yet", { status: 503 });
     if (url.hostname === TRANSCRIPT_ADDRESS) return this.env.TRANSCRIPTS && access.project ? transcriptFetch(request, this.env.TRANSCRIPTS, access.project) : new Response("this Chef keeps no transcripts", { status: 404 });
+    if (url.hostname === UPLOADS_ADDRESS) return this.env.TRANSCRIPTS && access.project ? uploadFetch(request, this.env.TRANSCRIPTS, access.project) : new Response("this Chef keeps no uploads", { status: 404 });
     if (url.hostname === LAYER_CACHE_ADDRESS) return layerCacheFetch(request, layerStore(this.env.IMAGE_LAYERS), access.cacheScope);
     if (url.protocol !== "https:") return new Response("https only", { status: 403 });
     const headers = new Headers(request.headers);
@@ -827,7 +829,7 @@ export class SessionAgent extends Agent<Env> {
     const container = this.ctx.container;
     if (!container) throw new Error("the SessionAgent container is not configured");
     const hosts = [...new Set([props.artifactsHost, ...(props.llmHost ? [props.llmHost] : [])])].filter((host) => !this.intercepted.has(host));
-    const addresses = [LAYER_CACHE_ADDRESS, ...(this.env.TRANSCRIPTS ? [TRANSCRIPT_ADDRESS] : [])].filter((address) => !this.intercepted.has(address));
+    const addresses = [LAYER_CACHE_ADDRESS, ...(this.env.TRANSCRIPTS ? [TRANSCRIPT_ADDRESS, UPLOADS_ADDRESS] : [])].filter((address) => !this.intercepted.has(address));
     if (hosts.length === 0 && addresses.length === 0) return;
     const outbound = (this.ctx.exports as unknown as Record<string, (opts: { props: OutboundProps }) => Fetcher>)["SandboxOutbound"];
     if (!outbound) throw new Error("SandboxOutbound export is missing");

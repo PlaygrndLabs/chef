@@ -441,7 +441,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
     ) : item ? (
       <div key={`${item.at}-${item.prompt}`} className="flex flex-col gap-4">
         <You>
-          <PromptText text={stripFeatureTag(item.prompt).text} />
+          <PromptText text={stripFeatureTag(item.prompt).text} project={selection.project} />
         </You>
         <Reply text={item.reply} sessions={item.sessions} waiting={item.waiting} />
       </div>
@@ -468,7 +468,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
               {pending.map(({ prompt, failed, reason }) => (
                 <div key={`pending-${prompt}`} className="flex flex-col gap-4" data-pending={failed ? "failed" : "sending"}>
                   <You>
-                    <PromptText text={prompt} />
+                    <PromptText text={prompt} project={selection.project} />
                   </You>
                   <div className="flex items-center gap-3">
                     <Avatar />
@@ -503,7 +503,7 @@ export function Home({ composerRef }: { readonly composerRef: Ref<HTMLTextAreaEl
                 You can view this project. Ask someone who manages it to let you edit.
               </p>
             ) : (
-              <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "Chef is working. You can keep typing." : "Chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} onLive={goLive} />
+              <Composer ref={composerRef} placeholder="Describe a feature or a change" hint={busy ? "Chef is working. You can keep typing." : "Chef figures out which feature it belongs to. Start with /hotfix or /chore for those."} onSend={send} draft={draft} onLive={goLive} {...(viewOnly ? {} : { onUpload: (file: File) => api.upload(file).then((upload) => upload.path) })} />
             )}
           </div>
         )}
