@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { STATE_LABEL, stateTone, type Tone } from "@/lib/format";
 import { isChore, isHotfix, type FeatureStatus, type SessionNode } from "@/lib/model";
 import { splitCommands, type Command } from "@/lib/progress";
+import { splitImages } from "@/lib/uploads";
 
 const DOT: Readonly<Record<Tone, string>> = {
   run: "bg-run pulse-run",
@@ -67,14 +68,24 @@ export function CommandBadge({ command }: { readonly command: Command }) {
   );
 }
 
-export function PromptText({ text }: { readonly text: string }) {
-  const { commands, text: rest } = splitCommands(text);
+export function PromptText({ text, project }: { readonly text: string; readonly project?: string }) {
+  const { commands, text: words } = splitCommands(text);
+  const { text: rest, images } = project ? splitImages(words) : { text: words, images: [] };
   return (
     <>
       {commands.map((command, i) => (
         <CommandBadge key={`${i}-${command}`} command={command} />
       ))}
       {rest}
+      {images.length ? (
+        <span className="mt-2 flex flex-wrap gap-2" data-prompt-images>
+          {images.map((path) => (
+            <a key={path} href={`/api/projects/${project}/${path}`} target="_blank" rel="noreferrer" className="block size-24 overflow-hidden rounded-lg border bg-background">
+              <img src={`/api/projects/${project}/${path}`} alt="Attached image" className="size-full object-cover" loading="lazy" />
+            </a>
+          ))}
+        </span>
+      ) : null}
     </>
   );
 }

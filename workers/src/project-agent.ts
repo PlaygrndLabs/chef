@@ -35,6 +35,7 @@ import { publicOrigin } from "./github-pages.ts";
 import { gitHubApp } from "./github.ts";
 import { agentStore, currentSettings, envCipher, settingsStub } from "./settings.ts";
 import { removeTranscripts } from "./transcripts.ts";
+import { readUpload, saveUpload } from "./uploads.ts";
 import { validSignature } from "./webhook.ts";
 import type { AppState, SandboxRestart, SandboxStatus } from "./session-agent.ts";
 import { containerAppName, EngineIdCache } from "./cloudflare-ids.ts";
@@ -213,6 +214,8 @@ export class ProjectAgent extends Agent<Env> {
     if (action === "env" && url.pathname.endsWith(`/projects/${this.name}/env`)) return this.envRequest(request);
     if (action === "instructions" && url.pathname.endsWith(`/projects/${this.name}/instructions`)) return instructionsRequest(request, await this.guidanceHost());
     if (action === "memory" && url.pathname.endsWith(`/projects/${this.name}/memory`)) return memoryRequest(request, await this.guidanceHost());
+    if (url.pathname.endsWith(`/projects/${this.name}/uploads`) && request.method === "POST") return this.env.TRANSCRIPTS ? saveUpload(request, this.env.TRANSCRIPTS, this.name) : Response.json({ error: "this Chef has no file storage; deploy it with a token that can edit Workers R2 Storage" }, { status: 409 });
+    if (url.pathname.includes(`/projects/${this.name}/uploads/`) && request.method === "GET" && action) return this.env.TRANSCRIPTS ? readUpload(this.env.TRANSCRIPTS, this.name, action) : new Response("no such upload", { status: 404 });
     if (request.method === "GET" && action === "design" && url.pathname.endsWith(`/projects/${this.name}/design`)) return Response.json(designOf((await orchestrator.mainTree()).tree));
     if (url.pathname.endsWith(`/projects/${this.name}/agents`) || url.pathname.endsWith(`/projects/${this.name}/agents/restore`)) {
       return projectAgentsRequest(request, { project: this.name, store: this.agentSettings(), shared: agentStore(this.env), defaults: loadProfiles(agentFiles), models: settings.models, jev: settings.jev !== null });

@@ -426,6 +426,7 @@ export function projectApi(project: string) {
     addNote: (title: string, text: string) => call<MemoryView & { readonly path: string | null }>(`${base}/memory`, post({ title, text })),
     editMemory: (path: string, text: string | null, previous: string) => call<MemoryView>(`${base}/memory`, json("PUT", { path, text, previous })),
     design: () => call<DesignView>(`${base}/design`),
+    upload: (file: Blob) => call<{ readonly name: string; readonly path: string }>(`${base}/uploads`, { method: "POST", headers: { "content-type": file.type }, body: file }),
     overview: () => call<OverviewState>(`${base}/overview`),
     readCode: () => call<OverviewState>(`${base}/overview`, { method: "POST" }),
   };

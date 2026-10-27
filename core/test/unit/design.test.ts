@@ -77,3 +77,13 @@ describe("designOf", () => {
     expect(designOf({ "features/todo/page.tsx": "" })).toMatchObject({ brand: null, sources: [], unread: [], fonts: {}, references: [] });
   });
 });
+
+describe("withReferenceImages", () => {
+  it("carries the request's attached images into a part that lost them", async () => {
+    const { withReferenceImages } = await import("../../src/orchestrator/orchestrator.ts");
+    const whole = "Build a shop and a landing\n\nReference image: uploads/0123456789abcdef0123.png";
+    expect(withReferenceImages("Build the landing", whole)).toBe("Build the landing\n\nReference image: uploads/0123456789abcdef0123.png");
+    expect(withReferenceImages(whole, whole)).toBe(whole);
+    expect(withReferenceImages("Build the shop", "Build a shop")).toBe("Build the shop");
+  });
+});

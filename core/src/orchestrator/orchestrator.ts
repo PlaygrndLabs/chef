@@ -174,6 +174,11 @@ export interface CommitChanges {
   readonly files: SessionChanges["files"];
 }
 
+export function withReferenceImages(part: string, whole: string): string {
+  const images = whole.split("\n").filter((line) => /^Reference image: uploads\/\S+$/.test(line.trim()) && !part.includes(line.trim()));
+  return images.length ? `${part.trim()}\n\n${images.map((line) => line.trim()).join("\n")}` : part;
+}
+
 export class Orchestrator {
   readonly canonical: string;
   private readonly router: Router;
@@ -311,7 +316,7 @@ export class Orchestrator {
     const withBuilding = [...routing, ...building.filter((f, i) => building.findIndex((g) => g.id === f.id) === i)];
     const planned = chore || (await this.steps()).plan;
     const parts = planned && !chore ? await this.router.split(prompt, withBuilding, decision, chat, outline) : null;
-    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, withBuilding, parts.length > 1 ? part.prompt : prompt, chat, outline)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat, outline)];
+    const plans = parts ? uniqueIds(await Promise.all(parts.map((part) => this.planPart(part, decision, spec, withBuilding, parts.length > 1 ? withReferenceImages(part.prompt, prompt) : prompt, chat, outline)))) : [chore ? await this.planChore(prompt, spec) : await this.planFeature(prompt, decision, spec, null, chat, outline)];
     const attempts = chore || hotfix ? 1 : Math.max(1, Math.floor(attemptsWanted ?? this.specialization.attempts));
     const created: string[] = [];
     for (const [at, plan] of plans.entries()) {
@@ -471,7 +476,8 @@ export class Orchestrator {
     }
     const result = await this.deps.planner.plan({ prompt: request, intent, changeKind: decision.changeKind, featureId: decision.featureId, ...(parent ? { parent } : {}), ...(chat ? { conversation: chat } : {}), ...(map ? { map } : {}), spec, roles, env: await this.environment(), ...(usesChefTemplate(tree) ? {} : { ownStructure: true }), ...(await this.guidanceField(tree)) });
     const mappedOnly = decision.featureId && !spec.some((f) => f.id === decision.featureId) ? decision.featureId : null;
-    const planned = described(mappedOnly ? renamed(result, mappedOnly) : result, request);
+    const written = described(mappedOnly ? renamed(result, mappedOnly) : result, request);
+    const planned = { ...written, items: written.items.map((item) => (item.kind === "spec_change" ? item : { ...item, prompt: withReferenceImages(item.prompt, request) })) };
     if (!steps.tests) return { ...planned, items: planned.items.filter((i) => i.kind !== "test") };
     return this.config.profiles["test"] ? withTestItem(planned, "test", usesChefTemplate(tree)) : planned;
   }

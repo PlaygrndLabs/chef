@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
@@ -17,6 +17,7 @@ export interface RefFont {
 
 export interface Reference {
   readonly url: string;
+  readonly kind: "site" | "image";
   readonly title: string;
   readonly fonts: { readonly display: RefFont | null; readonly body: RefFont | null };
   readonly colors: { readonly bg: string; readonly fg: string; readonly surfaces: readonly string[]; readonly accents: readonly string[] };
@@ -232,6 +233,7 @@ export async function reference(url: string, out?: string): Promise<Reference> {
     await catalogPage(fonts);
     return {
       url,
+      kind: "site",
       title: measured.title,
       fonts: { display: await closest(fonts, measured.display), body: await closest(fonts, measured.body) },
       colors: { bg: measured.bg, fg: measured.fg, surfaces: measured.surfaces, accents: measured.accents },
@@ -244,6 +246,145 @@ export async function reference(url: string, out?: string): Promise<Reference> {
   }
 }
 
+interface Bin {
+  readonly color: [number, number, number];
+  readonly share: number;
+  readonly flat: number;
+}
+
+const IMAGE_TYPES: Readonly<Record<string, string>> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", avif: "image/avif" };
+
+async function pixels(data: { readonly src: string }): Promise<{ readonly bins: Bin[]; readonly edge: [number, number, number] | null; readonly width: number; readonly height: number }> {
+  const image = new Image();
+  image.src = data.src;
+  await image.decode();
+  const scale = Math.min(1, Math.sqrt(2_000_000 / (image.naturalWidth * image.naturalHeight)));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("this browser cannot read images");
+  context.imageSmoothingEnabled = false;
+  context.drawImage(image, 0, 0, width, height);
+  const { data: rgba } = context.getImageData(0, 0, width, height);
+  const exact = new Map<number, number>();
+  const flat = new Map<number, number>();
+  const edges = new Map<number, number>();
+  const frame = Math.max(1, Math.round(Math.min(width, height) * 0.03));
+  let counted = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if ((rgba[i + 3] ?? 0) < 128) continue;
+      const key = ((rgba[i] ?? 0) << 16) | ((rgba[i + 1] ?? 0) << 8) | (rgba[i + 2] ?? 0);
+      exact.set(key, (exact.get(key) ?? 0) + 1);
+      const same = (j: number) => rgba[j] === rgba[i] && rgba[j + 1] === rgba[i + 1] && rgba[j + 2] === rgba[i + 2];
+      const even = (x + 1 < width && same(i + 4)) || (y + 1 < height && same(i + width * 4));
+      if (even) flat.set(key, (flat.get(key) ?? 0) + 1);
+      counted++;
+      if (even && (x < frame || y < frame || x >= width - frame || y >= height - frame)) edges.set(key, (edges.get(key) ?? 0) + 1);
+    }
+  }
+  const rgb = (key: number): [number, number, number] => [(key >> 16) & 255, (key >> 8) & 255, key & 255];
+  const coarse = new Map<number, { top: number; most: number; count: number; flat: number }>();
+  for (const [key, count] of exact) {
+    const bin = ((key >> 19) << 10) | (((key >> 11) & 31) << 5) | ((key >> 3) & 31);
+    const known = coarse.get(bin) ?? { top: key, most: 0, count: 0, flat: 0 };
+    if (count > known.most) Object.assign(known, { top: key, most: count });
+    known.count += count;
+    known.flat += flat.get(key) ?? 0;
+    coarse.set(bin, known);
+  }
+  const edgeKey = [...edges.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const bins = [...coarse.values()].filter((bin) => bin.count / counted >= 0.0005).map((bin) => ({ color: rgb(bin.top), share: bin.count / counted, flat: bin.flat / counted }));
+  return { bins, edge: edgeKey === undefined ? null : rgb(edgeKey), width: image.naturalWidth, height: image.naturalHeight };
+}
+
+const toHex = (c: readonly number[]) => `#${c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
+const distance = (a: readonly number[], b: readonly number[]) => Math.hypot((a[0] ?? 0) - (b[0] ?? 0), (a[1] ?? 0) - (b[1] ?? 0), (a[2] ?? 0) - (b[2] ?? 0));
+const luminance = (c: readonly number[]) => {
+  const [r, g, b] = c.map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrast = (a: readonly number[], b: readonly number[]) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+};
+const vivid = (c: readonly number[]) => (Math.max(...c) - Math.min(...c)) / 255 > 0.18;
+
+export function imagePalette(bins: readonly Bin[], edge: readonly number[] | null): Reference["colors"] {
+  const groups: { color: number[]; share: number; flat: number }[] = [];
+  for (const bin of [...bins].sort((a, b) => b.share - a.share)) {
+    const near = groups.find((group) => distance(group.color, bin.color) < 12);
+    if (near) {
+      near.share += bin.share;
+      near.flat += bin.flat;
+    } else groups.push({ color: [...bin.color], share: bin.share, flat: bin.flat });
+  }
+  const bg = (edge ? groups.find((group) => distance(group.color, edge) < 12) : undefined) ?? groups[0];
+  if (!bg) return { bg: "#ffffff", fg: "#111111", surfaces: [], accents: [] };
+  const rest = groups.filter((group) => group !== bg && distance(group.color, bg.color) >= 10);
+  const readable = rest.filter((group) => group.flat >= 0.002 && contrast(group.color, bg.color) >= 4.5);
+  const fg = readable.sort((a, b) => Number(vivid(a.color)) - Number(vivid(b.color)) || b.flat - a.flat)[0] ?? rest.sort((a, b) => contrast(b.color, bg.color) - contrast(a.color, bg.color))[0];
+  const fills = rest.filter((group) => group !== fg && group.flat >= group.share * 0.6).sort((a, b) => b.flat - a.flat);
+  return {
+    bg: toHex(bg.color),
+    fg: fg ? toHex(fg.color) : luminance(bg.color) > 0.4 ? "#111111" : "#f5f5f5",
+    surfaces: fills.filter((group) => !vivid(group.color) && group.flat >= 0.02).slice(0, 4).map((group) => toHex(group.color)),
+    accents: fills.filter((group) => vivid(group.color) && group.flat >= 0.004).slice(0, 6).map((group) => toHex(group.color)),
+  };
+}
+
+export function imageType(name: string, type: string | null): string | null {
+  const declared = type?.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (declared.startsWith("image/") && declared !== "image/svg+xml") return declared;
+  const ext = /\.([a-z0-9]+)(?:[?#].*)?$/i.exec(name)?.[1]?.toLowerCase();
+  return ext ? (IMAGE_TYPES[ext] ?? null) : null;
+}
+
+export async function imageReference(source: string, bytes: Buffer, type: string, out?: string): Promise<Reference> {
+  const context = await (await browser()).newContext();
+  try {
+    const page = await context.newPage();
+    const read = await page.evaluate(pixels, { src: `data:${type};base64,${bytes.toString("base64")}` });
+    const shots: string[] = [];
+    if (out) {
+      await mkdir(out, { recursive: true });
+      const file = join(out, `ref-image.${Object.entries(IMAGE_TYPES).find(([, known]) => known === type)?.[0] ?? "png"}`);
+      await writeFile(file, bytes);
+      shots.push(file);
+    }
+    return { url: source, kind: "image", title: `${read.width}x${read.height} image`, fonts: { display: null, body: null }, colors: imagePalette(read.bins, read.edge), button: null, radius: null, shots };
+  } finally {
+    await context.close();
+  }
+}
+
+export const UPLOADS_ADDRESS = "http://198.18.0.4";
+
+export function uploadAddress(source: string): string {
+  const name = /^uploads\/([\w.-]+)$/.exec(source)?.[1];
+  return name ? `${UPLOADS_ADDRESS}/${name}` : source;
+}
+
+export async function referenceOf(source: string, out?: string): Promise<Reference> {
+  if (!/^https?:\/\//.test(source)) {
+    const type = imageType(source, null);
+    if (!type) throw new Error("give a site address, an image address, or the path of a png, jpg, webp, gif or avif file");
+    return imageReference(source, await readFile(source), type, out);
+  }
+  const response = await fetch(source, { redirect: "follow" }).catch(() => null);
+  const type = response ? imageType(new URL(response.url || source).pathname, response.headers.get("content-type")) : null;
+  if (response?.ok && type) return imageReference(source, Buffer.from(await response.arrayBuffer()), type, out);
+  await response?.body?.cancel().catch(() => undefined);
+  return reference(source, out);
+}
+
 function describe(font: RefFont | null): string {
   if (!font) return "none found";
   return `"${font.family}" ${font.size}px, weight ${font.weight}${font.upper ? ", all caps" : ""} -> ${font.closest ?? "no close match"}`;
@@ -251,27 +392,31 @@ function describe(font: RefFont | null): string {
 
 export function summary(ref: Reference): string {
   const rem = ref.radius ? `${Math.round((ref.radius / 16) * 100) / 100}rem` : null;
-  const light: Record<string, string> = { bg: ref.colors.bg, fg: ref.colors.fg };
-  if (ref.colors.surfaces[0]) light["card"] = ref.colors.surfaces[0];
+  const colors: Record<string, string> = { bg: ref.colors.bg, fg: ref.colors.fg };
+  if (ref.colors.surfaces[0]) colors["card"] = ref.colors.surfaces[0];
   if (ref.button) {
-    light["primary"] = ref.button.bg;
-    light["primary-fg"] = ref.button.fg;
+    colors["primary"] = ref.button.bg;
+    colors["primary-fg"] = ref.button.fg;
   }
-  if (ref.colors.accents[0]) light["accent"] = ref.colors.accents[0];
+  if (ref.colors.accents[0]) colors["accent"] = ref.colors.accents[0];
   const fonts: Record<string, string> = {};
   if (ref.fonts.display?.closest) fonts["display"] = ref.fonts.display.closest;
   if (ref.fonts.body?.closest) fonts["body"] = ref.fonts.body.closest;
-  const look = { fonts, colors: { light }, ...(rem ? { radius: rem } : {}), references: [ref.url] };
+  const dark = luminance([1, 3, 5].map((i) => parseInt(ref.colors.bg.slice(i, i + 2), 16))) < 0.2;
+  const scheme = dark ? "dark" : "light";
+  const look = { ...(ref.kind === "site" ? { fonts } : {}), scheme, colors: { [scheme]: colors }, ...(rem ? { radius: rem } : {}), references: [ref.url] };
+  const image = ref.kind === "image";
   return [
     `reference ${ref.url}${ref.title ? ` (${ref.title})` : ""}`,
-    `display font: ${describe(ref.fonts.display)}`,
-    `body font: ${describe(ref.fonts.body)}`,
-    `page ${ref.colors.bg}, text ${ref.colors.fg}${ref.colors.surfaces.length ? `, surfaces ${ref.colors.surfaces.join(" ")}` : ""}`,
+    ...(image
+      ? [`fonts: an image has no font names. Open it, judge each face (serif or sans, condensed or wide, its weight) and pick the closest from shared/fonts.ts`]
+      : [`display font: ${describe(ref.fonts.display)}`, `body font: ${describe(ref.fonts.body)}`]),
+    `page ${ref.colors.bg} (${scheme}), text ${ref.colors.fg}${ref.colors.surfaces.length ? `, surfaces ${ref.colors.surfaces.join(" ")}` : ""}`,
     `accents: ${ref.colors.accents.join(" ") || "none"}`,
-    `buttons: ${ref.button ? `${ref.button.bg} with ${ref.button.fg} text${ref.button.pill ? ", pill shaped" : ""}` : "none found"}`,
-    `corners: ${ref.radius ? `${ref.radius}px (${rem})` : "square"}`,
-    ...(ref.shots.length ? [`screenshots: ${ref.shots.join(" ")}`] : []),
-    `a starting look, to adjust by eye against the screenshots:`,
+    image ? `buttons and corners: read them off the image` : `buttons: ${ref.button ? `${ref.button.bg} with ${ref.button.fg} text${ref.button.pill ? ", pill shaped" : ""}` : "none found"}`,
+    ...(image ? [] : [`corners: ${ref.radius ? `${ref.radius}px (${rem})` : "square"}`]),
+    ...(ref.shots.length ? [`${image ? "the image" : "screenshots"}: ${ref.shots.join(" ")}`] : []),
+    `a starting look, to adjust by eye against the ${image ? "image" : "screenshots"}:`,
     `export const look = ${JSON.stringify(look, null, 2)} as const;`,
   ].join("\n");
 }
