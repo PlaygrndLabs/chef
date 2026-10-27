@@ -30,6 +30,7 @@ export interface Look {
   readonly colors?: { readonly light?: Colors; readonly dark?: Colors };
   readonly radius?: string;
   readonly gate?: string;
+  readonly references?: readonly string[];
   readonly style?: string;
 }
 

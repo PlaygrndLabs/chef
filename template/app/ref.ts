@@ -261,7 +261,7 @@ export function summary(ref: Reference): string {
   const fonts: Record<string, string> = {};
   if (ref.fonts.display?.closest) fonts["display"] = ref.fonts.display.closest;
   if (ref.fonts.body?.closest) fonts["body"] = ref.fonts.body.closest;
-  const look = { fonts, colors: { light }, ...(rem ? { radius: rem } : {}) };
+  const look = { fonts, colors: { light }, ...(rem ? { radius: rem } : {}), references: [ref.url] };
   return [
     `reference ${ref.url}${ref.title ? ` (${ref.title})` : ""}`,
     `display font: ${describe(ref.fonts.display)}`,

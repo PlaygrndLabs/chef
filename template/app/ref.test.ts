@@ -38,6 +38,7 @@ test("a reference site gives its fonts with the closest ones Chef ships, its col
     assert.deepEqual(ref.button, { bg: "#111111", fg: "#ffffff", pill: true });
     assert.equal(ref.radius, 32);
     assert.match(summary(ref), /"display": "Anton"/);
+    assert.match(summary(ref), /"references": \[\s*"http:\/\/127\.0\.0\.1:\d+\/"\s*\]/);
   } finally {
     server.close();
   }

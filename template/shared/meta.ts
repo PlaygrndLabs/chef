@@ -20,6 +20,7 @@ export interface LookInfo {
   readonly colors?: { readonly light?: Colors; readonly dark?: Colors };
   readonly radius?: string;
   readonly gate?: string;
+  readonly references?: readonly string[];
   readonly style?: string;
 }
 
@@ -35,6 +36,7 @@ export function lookOf<T extends LookInfo>(looks: readonly T[]): T {
       ...look,
       fonts: { ...all.fonts, ...look.fonts },
       colors: { light: { ...all.colors?.light, ...look.colors?.light }, dark: { ...all.colors?.dark, ...look.colors?.dark } },
+      references: [...new Set([...(all.references ?? []), ...(look.references ?? [])])],
       style: [all.style, look.style].filter(Boolean).join("\n"),
     }),
     {} as T,
