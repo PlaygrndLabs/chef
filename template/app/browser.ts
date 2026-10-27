@@ -47,7 +47,7 @@ async function fontFile(root: string, pathname: string): Promise<{ readonly type
   return source ? { type: source.endsWith(".woff") ? "font/woff" : "font/woff2", body: await readFile(source) } : null;
 }
 
-function browser(): Promise<Browser> {
+export function browser(): Promise<Browser> {
   shared ??= chromium.launch({ headless: true, chromiumSandbox: false });
   return shared;
 }

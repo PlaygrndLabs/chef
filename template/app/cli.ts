@@ -10,6 +10,7 @@ import { closeBrowser } from "./browser.ts";
 import { appFonts, bundleClient, listed, pageMetas } from "./client.ts";
 import { drive, type Fetcher } from "./drive.ts";
 import { lookAt } from "./look.ts";
+import { reference, summary } from "./ref.ts";
 import { REGISTRY_PATH, renderRegistry } from "./gen.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
@@ -115,6 +116,23 @@ async function look(args: readonly string[]): Promise<number> {
   }
 }
 
+async function ref(args: readonly string[]): Promise<number> {
+  const url = args[1];
+  if (!url || !/^https?:\/\//.test(url)) {
+    process.stderr.write("usage: app ref <https://site> [--out dir]\n");
+    return 2;
+  }
+  try {
+    process.stdout.write(`${summary(await reference(url, option(args, "out")))}\n`);
+    return 0;
+  } catch (error) {
+    process.stderr.write(`could not open ${url}: ${(error as Error).message.split("\n")[0]}\n`);
+    return 1;
+  } finally {
+    await closeBrowser();
+  }
+}
+
 async function flowFor(feature: string): Promise<Flow> {
   const spec = await readFile(join(root, "spec", "features", `${feature}.md`), "utf8").catch(() => "");
   const name = /^flow:\s*([a-z0-9-]+)\s*$/m.exec(spec)?.[1] ?? feature;
@@ -139,6 +157,7 @@ async function main(args: readonly string[]): Promise<number> {
   if (command === "gen") return gen(args.includes("--check"));
   if (command === "build") return build();
   if (command === "look") return look(args);
+  if (command === "ref") return ref(args);
   if ((command === "drive" || command === "proof") && target) {
     const { code, output } = await runDrive(target, args);
     const proof = command === "proof" ? { ...(output as object), commit: option(args, "commit") ?? null, at: new Date().toISOString() } : output;
@@ -150,7 +169,7 @@ async function main(args: readonly string[]): Promise<number> {
     process.stdout.write(`${JSON.stringify(proof, null, 2)}\n`);
     return code;
   }
-  process.stderr.write("usage: app gen [--check] | app build | app look [/path ...] [--features a,b] [--out dir] | app drive <feature> [--url URL] | app proof <feature> --url URL [--commit SHA] [--out FILE]\n");
+  process.stderr.write("usage: app gen [--check] | app build | app look [/path ...] [--features a,b] [--out dir] | app ref <https://site> [--out dir] | app drive <feature> [--url URL] | app proof <feature> --url URL [--commit SHA] [--out FILE]\n");
   return 2;
 }
 

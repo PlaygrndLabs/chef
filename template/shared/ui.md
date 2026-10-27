@@ -100,6 +100,8 @@ export const look = {
 A landing page, a home page or an onboarding screen is judged on how it looks. Build it the way a designer would, in the same turn as the code:
 
 1. Decide the direction before writing markup: a palette, a pair of fonts and one layout idea that comes from the subject. When the request names a site, a screenshot or a style, match it. Write the direction into the look.
+   - For a site, run `npm run app -- ref https://site --out /tmp/ref` first. It saves screenshots of the site (`ref-desktop-top.png` is its hero) and prints its fonts with the closest ones in `shared/fonts.ts`, its colors, buttons and corners, and a starting look. Open the screenshots, then adjust the look by eye.
+   - For a link to an image (a screenshot or a mockup), download it with `curl -sL -o /tmp/ref.png <link>` and open it.
 2. Build the hero first (headline, one supporting line, the primary action) and check it before adding the sections below it, one at a time.
 3. Run `npm run app -- look /path --out /tmp/look`. It opens each page on a phone and a desktop, in light and dark, prints every problem (text covered or cut off, low contrast, a page that scrolls sideways, a font that did not load) and saves full-page screenshots you can open, past the look's `gate` too, so there is no need for screenshot scripts of your own. Chef runs the same check before it merges a change, on the pages the change touches, so fix every `FAIL` before handing in.
 4. Give every flourish a reason. Big type, color blocks and generous space beat ornaments.
