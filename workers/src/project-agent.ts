@@ -63,7 +63,7 @@ export interface MainAppState {
   readonly at: number;
 }
 const READING_TIMEOUT_MS = 10 * 60_000;
-const POLL_SECONDS = 300;
+const EXTERNAL_CHECK_MS = 60_000;
 const MAIN_WAIT_SECONDS = 120;
 const STARTING_STALE_MS = (APP_START_SECONDS + 300) * 1000;
 const NOTE_REPEAT_MS = 10 * 60_000;
@@ -84,6 +84,7 @@ export class ProjectAgent extends Agent<Env> {
   private readonly engineIds = new EngineIdCache();
   private runningMain = false;
   private mainAgain = false;
+  private checkedAt = 0;
   private readonly waking = new Set<string>();
   private lastNote: { readonly note: string; readonly at: number } | null = null;
 
@@ -226,6 +227,7 @@ export class ProjectAgent extends Agent<Env> {
     if (history && request.method === "GET") return historyResponse(orchestrator, history[1] ?? null, url.searchParams.get("limit"));
     if (request.method === "GET" && action === "spec") {
       const main = await orchestrator.mainTree();
+      await this.checkExternal();
       if (await this.mainBehind()) await this.schedule(0, "runMainApp", undefined, { idempotent: true });
       return Response.json({ commitId: main.commitId, features: readSpec(main.tree), map: readFeatureMap(main.tree), layout: await orchestrator.layout(), fresh: await this.fresh(), mainApp: (await this.ctx.storage.get<MainAppState>(MAIN_APP)) ?? null });
     }
@@ -235,10 +237,9 @@ export class ProjectAgent extends Agent<Env> {
     }
     if (request.method === "POST" && action === "bootstrap") {
       return setupResponse(request, async (progress) => {
-        const existing = (await orchestrator.mainTree()).commitId;
+        const existing = await this.mainHead();
         if (existing) {
           await this.schedule(0, "runMainApp", undefined, { idempotent: true });
-          if (external) await this.ensurePolling();
           if ((await this.overview()).status === "none" && !(await this.fresh())) await this.startReading();
           return { commitId: existing, created: false };
         }
@@ -246,7 +247,6 @@ export class ProjectAgent extends Agent<Env> {
         if (external) {
           const pulled = await external.pull(progress);
           if (pulled.status !== "imported") throw new SetupError(`importing the linked repository did not finish: ${pulled.status}`, 409);
-          await this.ensurePolling();
           await this.startReading();
           return { commitId: pulled.commitId, created: true, imported: true };
         }
@@ -256,7 +256,7 @@ export class ProjectAgent extends Agent<Env> {
       });
     }
     if (action === "overview" && request.method === "GET") {
-      if ((await this.overview()).status === "none" && !(await this.fresh()) && (await orchestrator.mainTree()).commitId) await this.startReading();
+      if ((await this.overview()).status === "none" && !(await this.fresh()) && (await this.mainHead())) await this.startReading();
       return Response.json(await this.overview());
     }
     if (action === "overview" && request.method === "POST") {
@@ -272,6 +272,7 @@ export class ProjectAgent extends Agent<Env> {
       const blocked = await orchestrator.blocked(by);
       if (blocked) return Response.json({ error: blocked }, { status: 402 });
       if ((await orchestrator.budgetChanged()).length > 0) await this.schedule(1, "drive");
+      await this.checkExternal();
       const result = await orchestrator.submit(prompt.trim(), { by });
       if (result.sessionId) await this.schedule(1, "drive");
       return Response.json(result, { status: 202 });
@@ -415,7 +416,7 @@ export class ProjectAgent extends Agent<Env> {
       projectObject: this.ctx.id.toString(),
       namespaces: ids.namespaces,
       containerApp: { name: containerAppName(engine), id: ids.containerApp },
-      main: { remote: main?.remote ?? null, commitId: (await orchestrator.mainTree()).commitId },
+      main: { remote: main?.remote ?? null, commitId: await this.mainHead() },
       session: { id, fork: record.fork, remote: fork?.remote ?? null, removed: record.forkDeleted ? (record.machine.state === "dropped" ? "dropped" : "merged") : null, head: record.head, lanes: (record.lanes ?? []).map((l) => ({ role: l.role, branch: l.branch, head: l.head })) },
       agents: agentsOf(record),
       sandboxes: { session, main: mainBox },
@@ -611,10 +612,7 @@ export class ProjectAgent extends Agent<Env> {
     const linkedRepo = linked?.installation !== undefined ? gitHubRepo(linked.url) : null;
     await settingsStub(this.env).linkRepository(this.name, linkedRepo ? `${linkedRepo.owner}/${linkedRepo.repo}` : null);
     const saved = readProjectSettings(result.settings);
-    if (saved.git) {
-      await this.ensurePolling();
-      await this.schedule(0, "syncExternal");
-    } else await this.stopPolling();
+    if (saved.git) await this.schedule(0, "syncExternal");
     return Response.json(viewProjectSettings(saved));
   }
 
@@ -624,7 +622,7 @@ export class ProjectAgent extends Agent<Env> {
       main: () => orchestrator.mainTree(),
       shared: () => settingsStub(this.env).sharedInstructions(),
       edit: async (edit) => {
-        const before = (await orchestrator.mainTree()).commitId;
+        const before = await this.mainHead();
         const result = await orchestrator.editGuidance(edit);
         if (result.ok && result.commitId && result.commitId !== before) {
           const mainApp = await this.ctx.storage.get<MainAppState>(MAIN_APP);
@@ -773,6 +771,7 @@ export class ProjectAgent extends Agent<Env> {
         : new RealtimeHost({ baseUrl: voice.baseUrl, apiKey: voice.apiKey, model: settings.models.voice, voice: this.env.VOICE, connect: workersConnect });
     const target = {
       submitSpoken: async (prompt: string, call: { voiceSessionId: string; delegationId: string }) => {
+        await this.checkExternal();
         const result = await orchestrator.submitSpoken(prompt, { ...call, by });
         if (result.sessionId) await this.schedule(1, "drive");
         return result;
@@ -802,8 +801,10 @@ export class ProjectAgent extends Agent<Env> {
   }
 
   async syncExternal(): Promise<void> {
-    const { external, orchestrator } = await this.build();
-    if (!external || !(await orchestrator.mainTree()).commitId) return;
+    for (const schedule of await this.listSchedules()) if (schedule.callback === "syncExternal" && schedule.type === "interval") await this.cancelSchedule(schedule.id);
+    const { external } = await this.build();
+    if (!external || !(await this.mainHead())) return;
+    this.checkedAt = Date.now();
     try {
       const pulled = await external.pull();
       if (pulled.status === "merged" || pulled.status === "resolved") await this.schedule(1, "drive");
@@ -823,12 +824,10 @@ export class ProjectAgent extends Agent<Env> {
     }
   }
 
-  private async ensurePolling(): Promise<void> {
-    await this.scheduleEvery(POLL_SECONDS, "syncExternal");
-  }
-
-  private async stopPolling(): Promise<void> {
-    for (const schedule of await this.listSchedules()) if (schedule.callback === "syncExternal") await this.cancelSchedule(schedule.id);
+  private async checkExternal(): Promise<void> {
+    if (Date.now() - this.checkedAt < EXTERNAL_CHECK_MS || !(await this.projectSettings()).git) return;
+    this.checkedAt = Date.now();
+    await this.schedule(0, "syncExternal", undefined, { idempotent: true });
   }
 
   private async webhook(request: Request): Promise<Response> {
@@ -906,9 +905,13 @@ export class ProjectAgent extends Agent<Env> {
     await this.schedule(0, "runMainApp", undefined, { idempotent: true });
   }
 
-  private async mainBehind(): Promise<boolean> {
+  private async mainHead(): Promise<string | null> {
     const { repos } = await this.build();
-    const head = await repos.resolveRef(this.name, "main");
+    return repos.resolveRef(this.name, "main");
+  }
+
+  private async mainBehind(): Promise<boolean> {
+    const head = await this.mainHead();
     const mainApp = await this.ctx.storage.get<MainAppState>(MAIN_APP);
     if (head === null) return false;
     return head !== mainApp?.commitId || (mainApp.status === "starting" && !this.runningMain);
