@@ -13,6 +13,7 @@ export interface TourOptions {
   readonly remove?: boolean;
   readonly removeExisting?: boolean;
   readonly appClick?: string | undefined;
+  readonly image?: string | undefined;
   readonly out: string;
   readonly log: (line: string) => void;
 }
@@ -339,6 +340,10 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       await go(`/?project=${project}`);
       const input = page.locator("#chat textarea");
       for (const [i, prompt] of prompts.entries()) {
+        if (i === 0 && options.image) {
+          await attachImage(page, options.image);
+          await shot("attached");
+        }
         await input.fill(prompt);
         await input.press("Enter");
         const outcome = await answered(page);
@@ -457,4 +462,18 @@ export async function tour(options: TourOptions): Promise<TourReport> {
     writeFileSync(join(options.out, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
     await browser.close();
   }
+}
+
+async function attachImage(page: Page, image: string): Promise<void> {
+  const chat = page.locator("#chat");
+  if (/^https?:\/\//.test(image)) {
+    const response = await fetch(image);
+    if (!response.ok) throw new Error(`could not download ${image}: ${response.status}`);
+    const mimeType = (response.headers.get("content-type") ?? "image/png").split(";")[0] ?? "image/png";
+    const name = `reference.${mimeType.split("/")[1] ?? "png"}`.replace("jpeg", "jpg");
+    await chat.locator('input[type="file"]').setInputFiles({ name, mimeType, buffer: Buffer.from(await response.arrayBuffer()) });
+  } else {
+    await chat.locator('input[type="file"]').setInputFiles(image);
+  }
+  await chat.locator('[data-attached-image^="uploads/"]').first().waitFor({ timeout: 60_000 });
 }
