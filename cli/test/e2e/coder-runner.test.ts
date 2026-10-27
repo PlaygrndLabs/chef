@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,6 +39,7 @@ function sse(res: ServerResponse, model: string, blocks: readonly Block[], stop:
 }
 
 const HELLO = "export const hello = () => \"hello\";\n";
+const IMAGE = Buffer.from("89504e470d0a1a0a0000000d4948445200000001000000010806000000", "hex");
 
 type Call = { readonly name: string; readonly input: object };
 
@@ -56,6 +57,7 @@ function fakeClaude(call: Call | ((conversation: string) => Call | null)) {
         stored.set(req.url ?? "", Buffer.concat(chunks));
         return void res.writeHead(204).end();
       }
+      if (req.method === "GET" && (req.url ?? "").startsWith("/uploads/")) return void (req.url === "/uploads/0123456789abcdef0123.png" ? res.writeHead(200).end(IMAGE) : res.writeHead(404).end());
       if (req.method === "GET" && (req.url ?? "").startsWith("/transcripts/")) {
         const body = stored.get(req.url ?? "");
         return void (body ? res.writeHead(200).end(body) : res.writeHead(404).end());
@@ -208,6 +210,44 @@ describe("coder runner on the Claude Agent SDK", () => {
       expect(asked(later)).toContain("This is a new turn on the same feature");
       expect(asked(later)).toContain("Make hello() say hi.");
       expect(asked(later)).toContain("The sandbox restarted while you were working on this turn");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("puts the images attached to the request in the repository for the turn, outside its changes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "chef-runner-"));
+    const remote = join(root, "origin");
+    mkdirSync(remote);
+    const commitId = origin(remote);
+    const workspace = join(root, "workspace");
+    const { server } = fakeClaude({ name: "Write", input: { file_path: join(workspace, "s6", "repo", "features", "hello", "index.ts"), content: HELLO } });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const job = {
+      sessionId: "s6",
+      featureId: "hello",
+      role: "backend",
+      model: "claude-sonnet-5-5",
+      prompt: "Build a landing page.\n\nReference image: uploads/0123456789abcdef0123.png\nReference image: uploads/ffffffffffffffffffff.png",
+      agent: { name: "chef-backend", displayName: "chef backend", description: "Implements a feature.", prompt: "Implement the feature.", tools: null, model: "coder-default", effort: null, skills: [] },
+      writeScope: ["features/hello/**"],
+      remote,
+      ref: "main",
+      commitId,
+      llm: { baseUrl: `http://127.0.0.1:${port}` },
+      uploads: `http://127.0.0.1:${port}/uploads`,
+    };
+    try {
+      const run = await runRunner(job, join(root, "turns", "turnA"), workspace, root);
+      expect(run.code, run.err.slice(-2000)).toBe(0);
+      const repo = join(workspace, "s6", "repo");
+      expect(readFileSync(join(repo, "uploads", "0123456789abcdef0123.png"))).toEqual(IMAGE);
+      expect(existsSync(join(repo, "uploads", "ffffffffffffffffffff.png"))).toBe(false);
+      expect(run.err).toContain("the attached image ffffffffffffffffffff.png could not be fetched (404)");
+      expect(run.events.at(-1)).toMatchObject({ type: "chef.result", changes: { "features/hello/index.ts": HELLO } });
+      expect(Object.keys(Object(run.events.at(-1)?.["changes"]))).toEqual(["features/hello/index.ts"]);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

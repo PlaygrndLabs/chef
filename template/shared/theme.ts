@@ -71,6 +71,7 @@ export const CSS = `:root{--bg:#fafafa;--fg:#09090b;--card:#fff;--muted:#71717a;
 [hidden]{display:none!important}
 .alert:empty,.error:empty{display:none}
 html{-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;letter-spacing:inherit}
 body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:15px/1.55 var(--font-body,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 h1,h2,h3,h4{margin:0;line-height:1.2;letter-spacing:-.02em;font-weight:650}
 h1,h2,.display{font-family:var(--font-display,inherit)}

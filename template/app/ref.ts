@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
@@ -369,7 +370,7 @@ export const UPLOADS_ADDRESS = "http://198.18.0.4";
 
 export function uploadAddress(source: string): string {
   const name = /^uploads\/([\w.-]+)$/.exec(source)?.[1];
-  return name ? `${UPLOADS_ADDRESS}/${name}` : source;
+  return name && !existsSync(source) ? `${UPLOADS_ADDRESS}/${name}` : source;
 }
 
 export async function referenceOf(source: string, out?: string): Promise<Reference> {

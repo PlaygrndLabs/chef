@@ -328,7 +328,7 @@ export class SessionAgent extends Agent<Env> {
     void readToken;
     void turnId;
     void lane;
-    const transcripts = this.env.TRANSCRIPTS ? { transcripts: `http://${TRANSCRIPT_ADDRESS}/${job.sessionId}/` } : {};
+    const transcripts = this.env.TRANSCRIPTS ? { transcripts: `http://${TRANSCRIPT_ADDRESS}/${job.sessionId}/`, uploads: `http://${UPLOADS_ADDRESS}` } : {};
     const started = await this.shell(LAUNCH, { DIR: turn.dir, LANE: laneDir, SCRIPT: "runner.mjs", CHEF_JOB: toBase64(JSON.stringify({ ...visible, ...transcripts })) });
     if (started.code !== 0) throw new Error(`the coder runner did not start: ${started.out.slice(-500)}`);
     await this.ctx.storage.put(key, turn);
