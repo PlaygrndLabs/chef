@@ -66,6 +66,11 @@ export interface ArtifactsBindingLike {
   import?(params: { source: { url: string; branch?: string; depth?: number }; target: { name: string; opts?: { description?: string; readOnly?: boolean } } }): Promise<{ name: string; remote: string; defaultBranch: string }>;
 }
 
+function released<T>(result: T): T {
+  (result as { [Symbol.dispose]?: () => void } | null)?.[Symbol.dispose]?.();
+  return result;
+}
+
 export function bindingControl(binding: ArtifactsBindingLike): ArtifactsControl {
   const withRepo = async <T>(name: string, task: (repo: ArtifactsRepoHandle) => Promise<T>): Promise<T> => {
     const repo = await binding.get(name);
@@ -123,14 +128,14 @@ export function bindingControl(binding: ArtifactsBindingLike): ArtifactsControl 
       }
     },
     read: {
-      readCommit: (repo, hash) => withRepo(repo, async (handle) => (handle.readCommit ? handle.readCommit(hash) : null)),
-      readTree: (repo, hash) => withRepo(repo, async (handle) => (handle.readTree ? handle.readTree(hash) : null)),
+      readCommit: (repo, hash) => withRepo(repo, async (handle) => released(handle.readCommit ? await handle.readCommit(hash) : null)),
+      readTree: (repo, hash) => withRepo(repo, async (handle) => released(handle.readTree ? await handle.readTree(hash) : null)),
       readBlob: (repo, hash) =>
         withRepo(repo, async (handle) => {
           const blob = handle.readBlob ? await handle.readBlob(hash) : null;
           return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
         }),
-      log: (repo, ref, limit) => withRepo(repo, async (handle) => (handle.log ? handle.log({ ref, limit }) : [])),
+      log: (repo, ref, limit) => withRepo(repo, async (handle) => released(handle.log ? await handle.log({ ref, limit }) : [])),
     },
   };
 }

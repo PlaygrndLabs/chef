@@ -79,10 +79,10 @@ function SyncStatus(props: { readonly project: string; readonly api: ProjectApi;
         </a>
       ) : null}
       {props.git.github ? (
-        <p className="text-muted-foreground">GitHub tells Chef about every push, and Chef also checks every 5 minutes.</p>
+        <p className="text-muted-foreground">GitHub tells Chef about every push, and Chef also checks when you open the project or start a task.</p>
       ) : (
         <>
-          <p className="text-muted-foreground">Chef checks the repository every 5 minutes. For instant syncs, add a webhook for push events:</p>
+          <p className="text-muted-foreground">Chef checks the repository when you open the project or start a task. For instant syncs, add a webhook for push events:</p>
           <Input readOnly value={webhook} aria-label="Webhook URL" onFocus={(e) => e.currentTarget.select()} />
           <Input readOnly value={props.git.webhookSecret} aria-label="Webhook secret" type="password" onFocus={(e) => ((e.currentTarget.type = "text"), e.currentTarget.select())} />
         </>
