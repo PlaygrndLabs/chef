@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, BookOpen, Brain, Check, Copy, FolderGit2, Wallet, KeyRound, Route, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Bot, BookOpen, Brain, Check, Copy, FolderGit2, Wallet, KeyRound, Palette, Route, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { OutboundMode, SyncState } from "@chef/core";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GitHubPicker } from "@/components/github-picker";
+import { DesignSection } from "@/components/design";
 import { EnvironmentForm } from "@/components/environment";
 import { MemoryForm, ProjectInstructionsForm } from "@/components/guidance";
 import { AgentsSection, type AgentSection, type AgentsNav } from "@/components/agents-view";
@@ -449,6 +450,13 @@ export function ProjectSettingsDialog(props: {
         ) : (
           loading()
         ),
+    },
+    {
+      id: "design",
+      label: "Design",
+      icon: Palette,
+      note: "The app's look: fonts, colors and shapes every page shares, as main has them now.",
+      render: () => <DesignSection api={api} />,
     },
     {
       id: "instructions",

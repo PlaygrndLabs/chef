@@ -75,7 +75,7 @@ export const pages: readonly Page[] = [{ path: "/todos", title: "Todos", nav: tr
 
 The look is the app's design system: one set of fonts, colors and shapes every page shares. A feature may export `look` from `look.ts` (or `<role>/look.ts`), and Chef's client merges every feature's look into one. The first feature that shapes the app writes it; later features keep what is there and add only what is new.
 
-`look` is `{ brand?, description?, scheme?, fonts?, colors?, radius?, accent?, width?, gate?, style? }`:
+`look` is `{ brand?, description?, scheme?, fonts?, colors?, radius?, accent?, width?, gate?, references?, style? }`:
 
 - `brand` names the app in the top bar and in every page's title. `description` is one sentence about the app that pages without their own use and that link previews of the app's home show.
 - `scheme` is `"light"` or `"dark"` when the design has one look only. Leave it out to follow the visitor's setting; then every color you set needs a `dark` value too.
@@ -83,6 +83,7 @@ The look is the app's design system: one set of fonts, colors and shapes every p
 - `colors` is `{ light?, dark? }`, each mapping the kit's color names (`bg`, `fg`, `card`, `muted`, `muted-bg`, `border`, `input`, `ring`, `primary`, `primary-fg`, `accent`, `danger`, `success`, `warning`, `info`) to CSS colors. Every kit class follows them.
 - `radius` is the corner size, from `"0"` (square) to `"1.5rem"`. `accent` is one brand color for highlights. `width` is `narrow` (28rem), `normal` (42rem), `wide` (64rem) or `full`. `style` is extra CSS that uses the kit's variables.
 - `gate` is part of the name of the button a first-time visitor presses before the page shows, such as an age check (`"21 or older"`) or a cookie notice. The look check then looks at the gate and, after pressing it, at the page behind it.
+- `references` lists the sites or images the look was matched to, such as `["https://ploy.ai"]`. Chef shows them with the look in the project's Design settings.
 
 ```ts
 export const look = {
@@ -100,6 +101,8 @@ export const look = {
 A landing page, a home page or an onboarding screen is judged on how it looks. Build it the way a designer would, in the same turn as the code:
 
 1. Decide the direction before writing markup: a palette, a pair of fonts and one layout idea that comes from the subject. When the request names a site, a screenshot or a style, match it. Write the direction into the look.
+   - For a site, run `npm run app -- ref https://site --out /tmp/ref` first. It saves screenshots of the site (`ref-desktop-top.png` is its hero) and prints its fonts with the closest ones in `shared/fonts.ts`, its colors, buttons and corners, and a starting look. Open the screenshots, then adjust the look by eye.
+   - For a link to an image (a screenshot or a mockup), download it with `curl -sL -o /tmp/ref.png <link>` and open it.
 2. Build the hero first (headline, one supporting line, the primary action) and check it before adding the sections below it, one at a time.
 3. Run `npm run app -- look /path --out /tmp/look`. It opens each page on a phone and a desktop, in light and dark, prints every problem (text covered or cut off, low contrast, a page that scrolls sideways, a font that did not load) and saves full-page screenshots you can open, past the look's `gate` too, so there is no need for screenshot scripts of your own. Chef runs the same check before it merges a change, on the pages the change touches, so fix every `FAIL` before handing in.
 4. Give every flourish a reason. Big type, color blocks and generous space beat ornaments.

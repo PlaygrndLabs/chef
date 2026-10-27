@@ -1,5 +1,5 @@
 import { readSetupStream, SETUP_STREAM, type SetupEvent } from "@chef/core/setup";
-import type { AgentConfig, ChefEvent, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, FeatureArrangement, FeatureLayout, FeatureMap, FeatureSpec, MapEdit, LearnedRule, MainHistory, MemoryEntry, OutboundMode, ProjectUsage, RouteDecision, SessionChanges, BuildCost, SessionHistory, Spend, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
+import type { AgentConfig, ChefEvent, AgentsView, AppStatus, Budget, CloudflareView, CommitChanges, DesignView, FeatureArrangement, FeatureLayout, FeatureMap, FeatureSpec, MapEdit, LearnedRule, MainHistory, MemoryEntry, OutboundMode, ProjectUsage, RouteDecision, SessionChanges, BuildCost, SessionHistory, Spend, SessionRecord, SessionTurn, SubmitResult, SyncState } from "@chef/core";
 
 export class ApiError extends Error {
   constructor(
@@ -425,6 +425,7 @@ export function projectApi(project: string) {
     memory: () => call<MemoryView>(`${base}/memory`),
     addNote: (title: string, text: string) => call<MemoryView & { readonly path: string | null }>(`${base}/memory`, post({ title, text })),
     editMemory: (path: string, text: string | null, previous: string) => call<MemoryView>(`${base}/memory`, json("PUT", { path, text, previous })),
+    design: () => call<DesignView>(`${base}/design`),
     overview: () => call<OverviewState>(`${base}/overview`),
     readCode: () => call<OverviewState>(`${base}/overview`, { method: "POST" }),
   };

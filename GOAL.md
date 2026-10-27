@@ -54,7 +54,7 @@ spec/        Chef's own feature map
 
 ## Where it stands
 
-Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the feature list, tabs and chat project page, request splitting into child features, parallel role lanes, a running app per branch, project keys, guidance and memory, a UI kit so the apps it builds look polished by default, and a design system per app (bundled fonts, color tokens, a look check in the gate) as the first step toward design on par with dedicated design tools. New projects start as React apps on Cloudflare Workers that run in their sandbox without Docker.
+Phases 0 to 5 of the original plan (spikes, core loop, concurrency, specialization, memory, voice and learning) are done, with evidence in `docs/progress/`. Since then Chef gained the feature list, tabs and chat project page, request splitting into child features, parallel role lanes, a running app per branch, project keys, guidance and memory, a UI kit so the apps it builds look polished by default, and a design system per app (bundled fonts, color tokens, a look check in the gate that also passes an age or cookie gate), reference sites as input (`app ref` matches a named site's fonts, colors and shapes), a Design section in Project settings, and a design benchmark that scores three fixed apps from their screenshots, as steps toward design on par with dedicated design tools. New projects start as React apps on Cloudflare Workers that run in their sandbox without Docker.
 
 ## Definition of done
 
