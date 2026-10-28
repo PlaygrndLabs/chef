@@ -63,7 +63,7 @@ export const pages: readonly Page[] = [{ path: "/todos", title: "Todos", nav: tr
 ```
 
 - A `Page` is `{ path, title, description?, nav?, bare?, component }`. `path` may have parameters (`/todos/:id`); the component gets them as `params`, or from `useParams()`. `title` becomes the tab title. `description` is one plain sentence about the page. `npm run build` writes every page without parameters as its own HTML file carrying its title and description, so search engines and link previews (chat apps, social posts) show them, and Cloudflare serves that file without running the Worker. Pages with `nav: true` show in the app's top bar. A page that draws its own header, such as a landing page with its own nav, sets `bare: true` so the app's top bar does not show above it twice.
-- `/` opens the page whose path is `/`; without one it opens the first `nav` page (or the first page), so the app never shows a list of its pages.
+- `/` opens the page whose path is `/`; without one it shows the first `nav` page (or the first page) right at `/`, without moving the address to that page's path, so the app never shows a list of its pages and its home address stays clean. That page's top-bar link points to `/`.
 - A page nobody built yet says so, with a link home.
 - Move between pages with `<Link to="/todos">` (from `shared/ui.tsx`), a plain `<a href="/todos">`, or `navigate("/todos")`. `useLocation()` gives the open `path` and its `search` params.
 - Load data with `useLoad(() => api(...), deps)`: it returns `{ data, error, loading, reload }` and loads again when `deps` change.
