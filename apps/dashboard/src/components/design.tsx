@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Palette } from "lucide-react";
 import { toast } from "sonner";
 import type { DesignView } from "@chef/core";
+import { Button } from "@/components/ui/button";
 import { Group } from "@/components/settings-shell";
 import type { ProjectApi } from "@/lib/api";
 
@@ -69,18 +70,31 @@ function Row(props: { readonly label: string; readonly children: ReactNode }) {
   );
 }
 
-export function DesignSection(props: { readonly api: ProjectApi }) {
+export function DesignSection(props: { readonly api: ProjectApi; readonly onEdit: () => void }) {
   const [design, setDesign] = useState<DesignView | null>(null);
   useEffect(() => {
     props.api.design().then(setDesign, (e: unknown) => toast.error("Could not load the design", { description: message(e) }));
   }, [props.api]);
   if (!design) return <p className="text-xs text-muted-foreground">Loading…</p>;
-  if (!design.sources.length) return <p className="text-sm text-muted-foreground">This project has no look yet. Chef writes one with the first page it builds; ask in the chat for the look you want, or name a site to match.</p>;
+  if (!design.sources.length)
+    return (
+      <div className="grid justify-items-start gap-3">
+        <p className="text-sm text-muted-foreground">This project has no look yet. Chef writes one with the first page it builds; ask in the chat for the look you want, name a site to match, or start one in the design manager.</p>
+        <Button type="button" size="sm" onClick={props.onEdit}>
+          <Palette /> Open the design manager
+        </Button>
+      </div>
+    );
   const schemes = design.scheme ? [design.scheme] : (["light", "dark"] as const);
   const fonts = (["display", "body", "mono"] as const).filter((role) => design.fonts[role]);
   return (
     <>
-      <Group title="Look" note="How the app's pages look on main. To change it, ask in the chat, for example “make it darker” or “use the fonts of linear.app”.">
+      <Group title="Look" note="How the app's pages look on main. Edit it in the design manager and see each change on the app as you make it, or ask in the chat, for example “make it darker” or “use the fonts of linear.app”.">
+        <div>
+          <Button type="button" size="sm" onClick={props.onEdit}>
+            <Palette /> Open the design manager
+          </Button>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {schemes.map((scheme) => (
             <Preview key={scheme} design={design} scheme={scheme} />

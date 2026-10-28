@@ -16,6 +16,29 @@ export interface DesignView {
   readonly references: readonly string[];
   readonly sources: readonly string[];
   readonly unread: readonly string[];
+  readonly kit: { readonly light: Readonly<Record<string, string>>; readonly dark: Readonly<Record<string, string>> };
+  readonly catalog: readonly CatalogFont[];
+}
+
+export interface CatalogFont {
+  readonly name: string;
+  readonly kind: "sans" | "serif" | "mono" | "condensed";
+}
+
+export interface DesignDraft {
+  readonly brand: string | null;
+  readonly scheme: "light" | "dark" | null;
+  readonly fonts: Partial<Record<FontRoleName, string>>;
+  readonly colors: { readonly light: Readonly<Record<string, string>>; readonly dark: Readonly<Record<string, string>> };
+  readonly materials: Readonly<Record<string, string>>;
+  readonly radius: string | null;
+  readonly width: string | null;
+}
+
+export interface DesignChange {
+  readonly what: string;
+  readonly from: string | null;
+  readonly to: string | null;
 }
 
 type Value = string | number | boolean | null | undefined | Value[] | { [key: string]: Value };
@@ -171,12 +194,66 @@ function strings(value: Value): Record<string, string> {
   return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
+const COLOR_VALUE = /^(?:#[0-9a-fA-F]{3,8}|(?:rgb|hsl|oklch)a?\()/;
+
+function cssVars(block: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [, name, value] of (block ?? "").matchAll(/--([a-z][a-z0-9-]*)\s*:\s*([^;]+)/g)) if (name && value && COLOR_VALUE.test(value.trim())) out[name] = value.trim();
+  return out;
+}
+
+export function kitColors(theme: string): DesignView["kit"] {
+  return { light: cssVars(/:root\{([^}]*)\}/.exec(theme)?.[1]), dark: cssVars(/:root\[data-scheme=dark\]\{([^}]*)\}/.exec(theme)?.[1]) };
+}
+
+const KINDS: Readonly<Record<string, CatalogFont["kind"]>> = { SANS: "sans", SERIF: "serif", MONO: "mono", CONDENSED: "condensed" };
+
+export function fontCatalog(fonts: string): readonly CatalogFont[] {
+  const block = /export\s+const\s+FONTS\s*=\s*\{([\s\S]*?)\n\}/.exec(fonts)?.[1] ?? "";
+  return [...block.matchAll(/^\s*(?:"([^"]+)"|([A-Za-z][\w]*))\s*:\s*(?:fixed|variable)\([\s\S]*?,\s*([A-Z]+)\s*\),?\s*$/gm)].flatMap(([, quoted, plain, kind]) => {
+    const name = quoted ?? plain;
+    return name ? [{ name, kind: KINDS[kind ?? ""] ?? "sans" }] : [];
+  });
+}
+
+export function draftOf(design: DesignView): DesignDraft {
+  return { brand: design.brand, scheme: design.scheme, fonts: design.fonts, colors: design.colors, materials: design.materials, radius: design.radius, width: design.width };
+}
+
+const ROLES: readonly FontRoleName[] = ["display", "body", "mono"];
+
+export function designChanges(design: DesignView, draft: DesignDraft): readonly DesignChange[] {
+  const changes: DesignChange[] = [];
+  const add = (what: string, from: string | null | undefined, to: string | null | undefined) => {
+    if ((from ?? null) !== (to ?? null)) changes.push({ what, from: from ?? null, to: to ?? null });
+  };
+  add("brand", design.brand, draft.brand);
+  add("scheme", design.scheme, draft.scheme);
+  for (const role of ROLES) add(`${role} font`, design.fonts[role], draft.fonts[role]);
+  for (const scheme of ["light", "dark"] as const) {
+    const names = [...new Set([...Object.keys(design.colors[scheme]), ...Object.keys(draft.colors[scheme])])];
+    for (const name of names) add(`${scheme} color ${name}`, design.colors[scheme][name], draft.colors[scheme][name]);
+  }
+  for (const name of [...new Set([...Object.keys(design.materials), ...Object.keys(draft.materials)])]) add(`material ${name}`, design.materials[name], draft.materials[name]);
+  add("corners", design.radius, draft.radius);
+  add("width", design.width, draft.width);
+  return changes;
+}
+
+const said = (value: string | null, what: string) => (value === null ? (what === "scheme" ? "follow the visitor's setting" : "not set") : JSON.stringify(value));
+
+export function designRequest(changes: readonly DesignChange[]): string | null {
+  if (!changes.length) return null;
+  const lines = changes.map((change) => `- ${change.what}: ${said(change.from, change.what)} -> ${said(change.to, change.what)}`);
+  return `/chore Update the design system to what was chosen in the Design manager. Set each value in the app's look, in the look.ts that sets it now (or the first feature's look.ts when none does), keep every other value as it is, and run \`npm run app -- look\` until it reports no FAIL.\n${lines.join("\n")}`;
+}
+
 export function designOf(tree: Tree): DesignView {
   const sources = Object.keys(tree)
     .filter((path) => LOOK_FILE.test(path))
     .sort();
   const unread: string[] = [];
-  let design: DesignView = { brand: null, description: null, scheme: null, fonts: {}, colors: { light: {}, dark: {} }, materials: {}, radius: null, accent: null, width: null, gate: null, references: [], sources, unread };
+  let design: DesignView = { brand: null, description: null, scheme: null, fonts: {}, colors: { light: {}, dark: {} }, materials: {}, radius: null, accent: null, width: null, gate: null, references: [], sources, unread, kit: kitColors(tree["shared/theme.ts"] ?? ""), catalog: fontCatalog(tree["shared/fonts.ts"] ?? "") };
   for (const path of sources) {
     const look = readLookLiteral(tree[path] ?? "");
     if (!look) {

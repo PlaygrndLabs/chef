@@ -7,6 +7,7 @@ export interface FrameReport {
   readonly path: string;
   readonly title: string;
   readonly pages: readonly AppPage[];
+  readonly look: boolean;
 }
 
 export interface Trail {
@@ -33,10 +34,10 @@ export function entryPage(entrypoint: string | undefined): string | null {
 
 export function frameReport(data: unknown): FrameReport | null {
   if (!data || typeof data !== "object") return null;
-  const { chef, path, title, pages } = data as Record<string, unknown>;
+  const { chef, path, title, pages, look } = data as Record<string, unknown>;
   if (chef !== "page" || typeof path !== "string" || !path.startsWith("/") || !Array.isArray(pages)) return null;
   const valid = pages.filter((p): p is AppPage => Boolean(p) && typeof p.path === "string" && p.path.startsWith("/") && typeof p.title === "string");
-  return { path, title: typeof title === "string" ? title : "", pages: valid };
+  return { path, title: typeof title === "string" ? title : "", pages: valid, look: typeof look === "number" && look >= 1 };
 }
 
 export function builtPage(wanted: string | null, report: FrameReport, start: string): string | null {
