@@ -42,6 +42,7 @@ export interface TourReport {
   readonly sent: { readonly prompt: string; readonly answered: boolean; readonly retried: boolean }[];
   readonly appLoads: { readonly name: string; readonly loadedMs: number | null; readonly rendered: boolean; readonly timeline: { readonly ms: number; readonly phase: string; readonly steps: string }[] }[];
   tabsKept?: { readonly app: boolean | null; readonly messages: boolean; readonly panel: string | null };
+  designPreview?: { readonly live: boolean; readonly before: { readonly primary: string; readonly display: string }; readonly after: { readonly primary: string; readonly display: string } };
 }
 
 const SETTLE_MS = 15_000;
@@ -237,6 +238,28 @@ export async function tour(options: TourOptions): Promise<TourReport> {
       report.shots.push(file);
       options.log(`shot ${file}`);
     };
+    const tryDesign = async () => {
+      await page.getByRole("button", { name: "Open the design manager" }).click();
+      const manager = page.locator("[data-design-manager]");
+      await manager.waitFor({ timeout: SETTLE_MS });
+      const element = await manager.locator("iframe").elementHandle({ timeout: APP_LOAD_MS });
+      const frame = await element?.contentFrame();
+      if (!frame) throw new Error("main's app did not open beside the design manager");
+      await frame.waitForLoadState("load");
+      await manager.locator("[data-design-changes]").waitFor();
+      const read = () => frame.evaluate(() => ({ primary: getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(), display: getComputedStyle(document.documentElement).getPropertyValue("--font-display").trim() }));
+      await page.waitForTimeout(1500);
+      const before = await read();
+      await shot("design-manager");
+      await manager.locator('[data-color="primary"] input:not([type=color])').fill("#e8743b");
+      await manager.getByLabel("Headings").click();
+      await page.getByRole("option", { name: "Anton", exact: true }).click();
+      await page.waitForTimeout(2500);
+      const after = await read();
+      report.designPreview = { live: after.primary === "#e8743b" && after.display.includes("Anton"), before, after };
+      await shot("design-manager-live");
+      await manager.getByRole("button", { name: "Discard" }).click();
+    };
     const watchLoad = async (url: string, name: string) => {
       const started = Date.now();
       await go(url);
@@ -409,6 +432,7 @@ export async function tour(options: TourOptions): Promise<TourReport> {
         await shot("project-usage");
         await go(`/?project=${project}&settings=project.design`);
         await shot("project-design");
+        await tryDesign().catch((error: unknown) => report.errors.push(`design manager: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2000)));
         await go(`/?project=${project}&settings=app.usage`);
         await shot("app-usage");
         const laned = sessions.filter((s) => s.lanes?.length).at(-1);
