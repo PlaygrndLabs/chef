@@ -416,6 +416,52 @@ describe("dashboard in a browser", () => {
     }
   });
 
+  it("edits the design system next to main's app, checks contrast, and saves it through Chef", async () => {
+    const local = await serve({ port: 0, real: false, assets: DIST, project: "shop" });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.goto(`${local.url}/?project=shop&settings=project.design`);
+      await page.getByRole("button", { name: "Open the design manager" }).click();
+      const manager = page.locator("[data-design-manager]");
+      await manager.waitFor({ timeout: 10_000 });
+      expect(await page.getByRole("tab", { name: "Design" }).getAttribute("aria-selected")).toBe("true");
+      expect(await manager.locator("[data-design-changes]").innerText()).toBe("No changes yet");
+      await manager.getByRole("radio", { name: "Light" }).click();
+      const field = (name: string) => manager.locator(`[data-color="${name}"] input:not([type=color])`);
+      expect(await field("primary").inputValue()).toBe("#18181b");
+      await field("primary").fill("#e8743b");
+      await manager.locator('[data-design-changes="1"]').waitFor();
+      await field("primary-fg").fill("#e8743b");
+      await manager.locator('[data-contrast="fail"]').filter({ hasText: "Text on main buttons" }).waitFor();
+      await field("primary-fg").fill("#14261d");
+      await expect.poll(() => manager.locator('[data-contrast="fail"]').count()).toBe(0);
+      await manager.getByLabel("Headings").click();
+      await page.getByRole("option", { name: "Fraunces" }).click();
+      await expect.poll(() => manager.getByLabel("Headings").evaluate((el) => getComputedStyle(el).fontFamily)).toContain("Fraunces Variable");
+      expect(await page.evaluate(() => document.fonts.check('16px "Fraunces Variable"'))).toBe(true);
+      await manager.getByLabel("Add a brand color").fill("leaf");
+      await manager.getByRole("button", { name: "Add" }).first().click();
+      await field("leaf").waitFor();
+      await manager.getByRole("button", { name: "Save to main" }).click();
+      await manager.locator("[data-design-changes]").filter({ hasText: "Saved" }).waitFor({ timeout: 10_000 });
+      await expect
+        .poll(async () => ((await (await page.request.get(`${local.url}/api/projects/shop/sessions`)).json()) as { plan: { feature: { id: string } }; rootPrompt?: string }[]).map((s) => s.plan.feature.id), { timeout: 10_000 })
+        .toContain("chore-update-design-system-what");
+      const sessions = (await (await page.request.get(`${local.url}/api/projects/shop/sessions`)).json()) as { record?: { rootPrompt?: string }; rootPrompt?: string }[];
+      const asked = JSON.stringify(sessions);
+      expect(asked).toContain('light color primary: not set -> \\"#e8743b\\"');
+      expect(asked).toContain('display font: not set -> \\"Fraunces\\"');
+      expect(asked).toContain('dark color leaf: not set -> \\"#818cf8\\"');
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+      await local.close();
+    }
+  });
+
   it("asks for a missing key on the feature page, carries on once it is saved and keeps the value hidden", async () => {
     const local = await serve({ port: 0, real: false, assets: DIST, project: "shop" });
     const browser = await chromium.launch();

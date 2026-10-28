@@ -27,7 +27,8 @@ describe("app browser", () => {
   });
 
   it("reads only well formed page reports from the app", () => {
-    expect(frameReport({ chef: "page", path: "/notes", title: "Notes", pages: [{ title: "Notes", path: "/notes" }, { path: 3 }] })).toEqual({ path: "/notes", title: "Notes", pages: [{ title: "Notes", path: "/notes" }] });
+    expect(frameReport({ chef: "page", path: "/notes", title: "Notes", pages: [{ title: "Notes", path: "/notes" }, { path: 3 }] })).toEqual({ path: "/notes", title: "Notes", pages: [{ title: "Notes", path: "/notes" }], look: false });
+    expect(frameReport({ chef: "page", path: "/notes", title: "Notes", pages: [], look: 1 })?.look).toBe(true);
     expect(frameReport({ chef: "other", path: "/notes", pages: [] })).toBeNull();
     expect(frameReport({ chef: "page", path: "notes", pages: [] })).toBeNull();
     expect(frameReport("page")).toBeNull();
@@ -130,7 +131,7 @@ describe("app browser", () => {
   });
 
   it("moves on to a build's own page only once the app lists it", () => {
-    const home = (pages: readonly string[]) => ({ path: "/", title: "Home", pages: pages.map((path) => ({ path, title: "" })) });
+    const home = (pages: readonly string[]) => ({ path: "/", title: "Home", pages: pages.map((path) => ({ path, title: "" })), look: false });
     expect(builtPage("/reading-list", home(["/"]), "/")).toBeNull();
     expect(builtPage("/reading-list", home(["/", "/reading-list"]), "/")).toBe("/reading-list");
     expect(builtPage("/reading-list", { ...home(["/reading-list"]), path: "/other" }, "/")).toBeNull();

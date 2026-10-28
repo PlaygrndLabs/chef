@@ -2,9 +2,10 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { previewFontsPlugin } from "./preview-fonts.ts";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), previewFontsPlugin(fileURLToPath(new URL("../../template/node_modules", import.meta.url)))],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   build: { outDir: "dist", emptyOutDir: true, chunkSizeWarningLimit: 2500 },
   server: { proxy: { "/api": "http://127.0.0.1:8787", "/agents": { target: "ws://127.0.0.1:8787", ws: true } } },

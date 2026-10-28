@@ -49,7 +49,12 @@ function Facts({ rows }: { readonly rows: readonly (readonly [string, React.Reac
 
 const useProjectLevel = chefHost.useProjectLevel ?? (() => null);
 
-function AppTab({ link, url, start, page = start, title, note, missing }: { readonly link: string; readonly url: string | null; readonly start: string; readonly page?: string; readonly title: string; readonly note: string; readonly missing: string }) {
+interface Preview {
+  readonly message: unknown;
+  readonly onSupport: (supported: boolean) => void;
+}
+
+function AppTab({ link, url, start, page = start, title, note, missing, preview }: { readonly link: string; readonly url: string | null; readonly start: string; readonly page?: string; readonly title: string; readonly note: string; readonly missing: string; readonly preview?: Preview | undefined }) {
   const [trail, setTrail] = useState<Trail>({ entries: [start], index: 0 });
   const [reloads, setReloads] = useState(0);
   const [pages, setPages] = useState<readonly AppPage[] | null>(null);
@@ -69,11 +74,20 @@ function AppTab({ link, url, start, page = start, title, note, missing }: { read
   };
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  const post = () => {
+    const message = previewRef.current?.message;
+    if (message) frame.current?.contentWindow?.postMessage(message, "*");
+  };
+  useEffect(post, [preview?.message]);
   useEffect(() => {
     const listen = (event: MessageEvent) => {
       if (!frame.current || event.source !== frame.current.contentWindow) return;
       const report = frameReport(event.data);
       if (!report) return;
+      previewRef.current?.onSupport(report.look);
+      if (report.look) post();
       loaded();
       setPages(report.pages);
       setTrail((current) => visit(current, report.path));
@@ -464,11 +478,11 @@ export function SessionApp({ feature, node }: { readonly feature: FeatureNode; r
   return <AppTab key={merged ? `${id}:main:${frameKey(mainApp)}` : `${id}:${frameKey(app)}`} link={appLink(selection.project, id)} url={merged ? null : (app?.url ?? null)} start={merged ? page : "/"} page={page} title="App" note={note} missing="This build has no commit yet, so it has no app to open." />;
 }
 
-export function MainApp() {
+export function MainApp({ preview }: { readonly preview?: Preview | undefined } = {}) {
   const { data, selection } = useWorkspace();
   const app = data.spec?.mainApp ?? null;
   if (data.spec === null) return <Skeleton className="min-h-[320px] w-full flex-1 rounded-xl" aria-label="Loading main's app" />;
   if (!data.spec.commitId) return <Empty>Main has no commit yet. Its app starts after the first one.</Empty>;
   const note = app?.via === "worker" ? `This is main's app, the release candidate, at ${short(app.commitId)}. Everything Chef merges shows up here. Your own production takes main from your repository. ${ON_WORKERS}` : `This is main's app, the release candidate, with its whole stack running in main's own sandbox${app ? ` at ${short(app.commitId)}` : ""}. Everything Chef merges shows up here. Your own production takes main from your repository. ${SLEEPS}`;
-  return <AppTab key={`${MAIN_APP}:${frameKey(app)}`} link={appLink(selection.project, MAIN_APP)} url={app?.url ?? null} start="/" title="App of main" note={note} missing="Main has no commit yet, so it has no app to open." />;
+  return <AppTab key={`${MAIN_APP}:${frameKey(app)}`} link={appLink(selection.project, MAIN_APP)} url={app?.url ?? null} start="/" title="App of main" note={note} missing="Main has no commit yet, so it has no app to open." preview={preview} />;
 }

@@ -381,6 +381,7 @@ export function ProjectSettingsDialog(props: {
   readonly nav: AgentsNav & { readonly section: (section: string) => void };
   readonly sharedAttempts: number | null;
   readonly onEditShared: () => void;
+  readonly onOpenDesign: () => void;
 }) {
   const { open, project, api, nav } = props;
   const [settings, setSettings] = useState<ProjectSettingsView | null>(null);
@@ -456,7 +457,7 @@ export function ProjectSettingsDialog(props: {
       label: "Design",
       icon: Palette,
       note: "The app's look: fonts, colors and shapes every page shares, as main has them now.",
-      render: () => <DesignSection api={api} />,
+      render: () => <DesignSection api={api} onEdit={props.onOpenDesign} />,
     },
     {
       id: "instructions",

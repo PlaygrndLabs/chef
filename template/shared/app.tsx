@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, type ComponentType } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import { createRoot } from "react-dom/client";
 import { homeOf, lookOf, pageTitle } from "./meta.ts";
 import { bySpecificity, isPage, matchPath } from "./paths.ts";
 import { Link, navigate, sameAppLink, useLocation } from "./router.tsx";
-import type { FontName, FontRole } from "./fonts.ts";
+import { FONT_ROLES, fontStack, isFont, type FontName, type FontRole } from "./fonts.ts";
 import type { Colors } from "./meta.ts";
 import { lookCss } from "./theme.ts";
 import { Icon } from "./ui.tsx";
@@ -66,7 +66,7 @@ function describe(text: string | undefined): void {
 function report(pages: readonly Page[]): void {
   if (window.parent === window) return;
   const listed = pages.filter((page) => isPage({ method: "GET", path: page.path })).map((page) => ({ title: page.title, path: page.path }));
-  window.parent.postMessage({ chef: "page", path: location.pathname + location.search, title: document.title, pages: listed }, "*");
+  window.parent.postMessage({ chef: "page", path: location.pathname + location.search, title: document.title, pages: listed, look: LOOK_PREVIEW }, "*");
 }
 
 function Empty({ icon, title, children }: { readonly icon: "sparkles" | "search"; readonly title: string; readonly children: React.ReactNode }) {
@@ -134,8 +134,94 @@ export function App({ pages, look = {} }: { readonly pages: readonly Page[]; rea
   );
 }
 
+const LOOK_PREVIEW = 1;
+
+export interface FontFaceData {
+  readonly data: ArrayBuffer;
+  readonly weight?: string;
+  readonly style?: string;
+  readonly unicodeRange?: string;
+}
+
+export interface LookPreview {
+  readonly look: Look | null;
+  readonly scheme: "light" | "dark" | null;
+  readonly fonts: readonly { readonly family: string; readonly faces: readonly FontFaceData[] }[];
+}
+
+export function lookPreview(data: unknown): LookPreview | null {
+  if (!data || typeof data !== "object" || (data as { chef?: unknown }).chef !== "look") return null;
+  const { look, scheme, fonts } = data as { look?: unknown; scheme?: unknown; fonts?: unknown };
+  return {
+    look: look && typeof look === "object" ? (look as Look) : null,
+    scheme: scheme === "light" || scheme === "dark" ? scheme : null,
+    fonts: Array.isArray(fonts) ? fonts.filter((font): font is LookPreview["fonts"][number] => typeof font?.family === "string" && Array.isArray(font.faces)) : [],
+  };
+}
+
+export function fontVars(fonts: Look["fonts"]): string {
+  const vars = FONT_ROLES.flatMap((role) => {
+    const name = fonts?.[role];
+    return isFont(name) ? [`--font-${role}:${fontStack(name)}`] : [];
+  });
+  return vars.length ? `:root{${vars.join(";")}}` : "";
+}
+
+const loadedFaces = new Set<string>();
+
+function addFonts(fonts: LookPreview["fonts"]): void {
+  if (typeof FontFace === "undefined") return;
+  for (const font of fonts) {
+    for (const face of font.faces) {
+      const key = [font.family, face.weight, face.style, face.unicodeRange].join("|");
+      if (loadedFaces.has(key) || !(face.data instanceof ArrayBuffer)) continue;
+      loadedFaces.add(key);
+      const descriptors: FontFaceDescriptors = { display: "swap" };
+      if (face.weight) descriptors.weight = face.weight;
+      if (face.style) descriptors.style = face.style;
+      if (face.unicodeRange) descriptors.unicodeRange = face.unicodeRange;
+      try {
+        document.fonts.add(new FontFace(font.family, face.data, descriptors));
+      } catch {
+        loadedFaces.delete(key);
+      }
+    }
+  }
+}
+
+function usePreview(looks: readonly Look[]): LookPreview | null {
+  const [preview, setPreview] = useState<LookPreview | null>(null);
+  useEffect(() => {
+    const listen = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      const next = lookPreview(event.data);
+      if (!next) return;
+      addFonts(next.fonts);
+      setPreview(next.look || next.scheme ? next : null);
+    };
+    window.addEventListener("message", listen);
+    return () => window.removeEventListener("message", listen);
+  }, []);
+  useEffect(() => {
+    let style = document.getElementById("chef-look-preview");
+    const scheme = preview?.scheme ?? (preview?.look ? lookOf([...looks, preview.look]).scheme : lookOf(looks).scheme);
+    if (scheme === "light" || scheme === "dark") document.documentElement.dataset.scheme = scheme;
+    else delete document.documentElement.dataset.scheme;
+    if (!preview?.look) return void style?.remove();
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "chef-look-preview";
+      document.head.appendChild(style);
+    }
+    const look = lookOf([...looks, preview.look]);
+    style.textContent = [lookCss(look), fontVars(look.fonts)].filter(Boolean).join("\n");
+  }, [preview, looks]);
+  return preview;
+}
+
 function Root({ pages, looks }: { readonly pages: readonly Page[]; readonly looks: readonly Look[] }) {
-  const look = useMemo(() => lookOf(looks), [looks]);
+  const preview = usePreview(looks);
+  const look = useMemo(() => lookOf(preview?.look ? [...looks, preview.look] : looks), [looks, preview]);
   return <App pages={pages} look={look} />;
 }
 

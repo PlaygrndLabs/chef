@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useRef } from "react";
 import { preloadable, useOpenedOnce } from "@/lib/lazy";
+import { openDesign } from "@/lib/main-section";
 import { missingSettings } from "@/lib/settings";
 import type { SettingsScope } from "@/lib/selection";
 import { useWorkspace } from "@/lib/workspace";
@@ -64,6 +65,10 @@ export function SettingsHost() {
             nav={nav("project")}
             sharedAttempts={app.settings?.attempts.value ?? null}
             onEditShared={() => openSettings("app", "instructions")}
+            onOpenDesign={() => {
+              openDesign(selection.project);
+              select({ settings: null, item: null, view: "main", feature: null, session: null, panel: null });
+            }}
           />
         </Suspense>
       ) : null}

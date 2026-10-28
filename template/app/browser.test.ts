@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, test } from "node:test";
@@ -127,7 +127,7 @@ test("each page tells a Chef frame around the app which page is open and which p
       }),
   );
   const pages = [{ title: "Echo", path: "/echo" }, { title: "About", path: "/about" }];
-  assert.deepEqual(reports, [{ chef: "page", path: "/echo", title: "Echo", pages }, { chef: "page", path: "/about", title: "About", pages }]);
+  assert.deepEqual(reports, [{ chef: "page", path: "/echo", title: "Echo", pages, look: 1 }, { chef: "page", path: "/about", title: "About", pages, look: 1 }]);
   await close();
 });
 
@@ -155,5 +155,34 @@ test("pages render in the fonts the look picks", async () => {
   await tab.evaluate(() => document.fonts.ready);
   assert.equal(await tab.evaluate(() => document.fonts.check('32px "Anton"')), true);
   assert.match(await tab.getByRole("heading", { name: "Notes" }).evaluate((el) => getComputedStyle(el).fontFamily), /^"?Anton"?,/);
+  await close();
+});
+
+test("a Chef frame previews a changed look live, fonts included, and takes it back", async () => {
+  const styled = project({
+    "features/notes/pages.tsx": `import type { Page } from "../../shared/app.tsx";\n\nexport const pages: readonly Page[] = [{ path: "/notes", title: "Notes", component: () => <h1>Notes</h1> }];\n`,
+    "features/notes/look.ts": `export const look = { brand: "Ashgrove", scheme: "light", colors: { light: { bg: "#f4f4f4" } } };\n`,
+  });
+  const { page: tab, close } = await openPage([], "/notes", undefined, undefined, styled);
+  const face = [...readFileSync(join(import.meta.dirname, "..", "node_modules", "@fontsource-variable", "fraunces", "files", "fraunces-latin-wght-normal.woff2"))];
+  const state = () =>
+    tab.evaluate(() => ({
+      bg: getComputedStyle(document.body).backgroundColor,
+      brand: document.querySelector(".brand")?.textContent ?? null,
+      display: getComputedStyle(document.documentElement).getPropertyValue("--font-display").trim(),
+      scheme: document.documentElement.dataset["scheme"] ?? null,
+    }));
+  assert.deepEqual(await state(), { bg: "rgb(244, 244, 244)", brand: "Ashgrove", display: "", scheme: "light" });
+  await tab.evaluate((bytes) => {
+    const data = new Uint8Array(bytes).buffer;
+    window.postMessage({ chef: "look", look: { brand: "Fernhouse", scheme: undefined, fonts: { display: "Fraunces" }, colors: { dark: { bg: "#14261d" } } }, scheme: "dark", fonts: [{ family: "Fraunces Variable", faces: [{ data, weight: "100 900", style: "normal" }] }] }, "*");
+  }, face);
+  await tab.getByText("Fernhouse").waitFor();
+  assert.deepEqual(await state(), { bg: "rgb(20, 38, 29)", brand: "Fernhouse", display: '"Fraunces Variable",ui-serif,Georgia,Cambria,"Times New Roman",serif', scheme: "dark" });
+  await tab.evaluate(() => document.fonts.ready);
+  assert.equal(await tab.evaluate(() => document.fonts.check('32px "Fraunces Variable"')), true);
+  await tab.evaluate(() => window.postMessage({ chef: "look", look: null, scheme: null, fonts: [] }, "*"));
+  await tab.getByText("Ashgrove").waitFor();
+  assert.deepEqual(await state(), { bg: "rgb(244, 244, 244)", brand: "Ashgrove", display: "", scheme: "light" });
   await close();
 });

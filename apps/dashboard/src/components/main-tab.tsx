@@ -1,30 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DesignManager } from "@/components/design-manager";
 import { HistoryView } from "@/components/history-view";
 import { MainApp } from "@/components/session-sections";
 import { ToneBadge } from "@/components/status";
 import { APP_STATUS_LABEL, APP_TONE, short } from "@/lib/format";
+import { OPEN_DESIGN, rememberedSection as remembered, rememberSection as remember, type MainSection as Section } from "@/lib/main-section";
 import { useWorkspace } from "@/lib/workspace";
-
-type Section = "app" | "history";
-
-function remembered(project: string): Section {
-  try {
-    return localStorage.getItem(`chef:main:${project}`) === "history" ? "history" : "app";
-  } catch {
-    return "app";
-  }
-}
-
-function remember(project: string, section: Section) {
-  try {
-    localStorage.setItem(`chef:main:${project}`, section);
-  } catch {
-    return;
-  }
-}
 
 export function MainTab() {
   const { data, selection, panelExpanded, expandPanel } = useWorkspace();
@@ -33,6 +17,11 @@ export function MainTab() {
     setSection(next);
     remember(selection.project, next);
   };
+  useEffect(() => {
+    const open = () => show("design");
+    window.addEventListener(OPEN_DESIGN, open);
+    return () => window.removeEventListener(OPEN_DESIGN, open);
+  }, [selection.project]);
   const app = data.spec?.mainApp ?? null;
   return (
     <Tabs value={section} onValueChange={(v) => show(v as Section)} className="flex h-full min-h-0 flex-col gap-0 bg-background" data-view="main" data-section={section}>
@@ -54,6 +43,9 @@ export function MainTab() {
           <TabsTrigger value="app" className="min-w-0 px-2.5 text-[13px]">
             App
           </TabsTrigger>
+          <TabsTrigger value="design" className="min-w-0 px-2.5 text-[13px]">
+            Design
+          </TabsTrigger>
           <TabsTrigger value="history" className="min-w-0 px-2.5 text-[13px]">
             History
           </TabsTrigger>
@@ -61,6 +53,9 @@ export function MainTab() {
       </div>
       <TabsContent value="app" className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         <MainApp />
+      </TabsContent>
+      <TabsContent value="design" className="flex min-h-0 flex-1 flex-col">
+        <DesignManager />
       </TabsContent>
       <TabsContent value="history" className="flex min-h-0 flex-1 flex-col">
         <HistoryView />
