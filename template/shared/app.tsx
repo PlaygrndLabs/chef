@@ -81,14 +81,13 @@ function Empty({ icon, title, children }: { readonly icon: "sparkles" | "search"
 
 export function App({ pages, look = {} }: { readonly pages: readonly Page[]; readonly look?: Look }) {
   const { path } = useLocation();
-  const found = findPage(pages, path);
-  const home = path === "/" && !found ? homeOf(pages) : null;
+  const home = findPage(pages, "/") ? null : homeOf(pages);
+  const shown = path === "/" && home ? home : path;
+  const atHome = shown !== path;
+  const found = findPage(pages, shown);
   const nav = pages.filter((page) => page.nav && isPage({ method: "GET", path: page.path }));
-  const title = found ? found.page.title : path === "/" ? (look.brand ?? "App") : "This page isn't built yet";
-  useEffect(() => {
-    if (home) navigate(home, { replace: true });
-  }, [home]);
-  const description = found?.page.description ?? look.description;
+  const title = found ? (atHome ? (look.brand ?? found.page.title) : found.page.title) : path === "/" ? (look.brand ?? "App") : "This page isn't built yet";
+  const description = atHome ? (look.description ?? found?.page.description) : (found?.page.description ?? look.description);
   useEffect(() => {
     document.title = pageTitle(title, look);
     describe(description);
@@ -107,7 +106,7 @@ export function App({ pages, look = {} }: { readonly pages: readonly Page[]; rea
             {nav.length ? (
               <nav>
                 {nav.map((page) => (
-                  <Link key={page.path} to={page.path} aria-current={page.path === path ? "page" : undefined}>
+                  <Link key={page.path} to={page.path === home ? "/" : page.path} aria-current={page.path === path || (atHome && page.path === home) ? "page" : undefined}>
                     {page.title}
                   </Link>
                 ))}
@@ -121,7 +120,7 @@ export function App({ pages, look = {} }: { readonly pages: readonly Page[]; rea
           <Params.Provider value={found.params}>
             <Body params={found.params} />
           </Params.Provider>
-        ) : home ? null : path === "/" ? (
+        ) : path === "/" ? (
           <Empty icon="sparkles" title="Nothing here yet">
             This app's pages show up here as Chef builds them.
           </Empty>

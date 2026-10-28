@@ -72,10 +72,18 @@ test("links move between pages inside the app without loading it again", async (
   await close();
 });
 
-test("home opens the app's first page, and a page nobody built says so", async () => {
+test("home shows the app's first page at its own address, and a page nobody built says so", async () => {
   const { page: tab, close } = await openPage([echo], "/", undefined, undefined, root);
   await tab.getByLabel("Name").waitFor();
-  assert.equal(new URL(tab.url()).pathname, "/echo");
+  assert.equal(new URL(tab.url()).pathname, "/");
+  const echoLink = tab.getByRole("navigation").getByRole("link", { name: "Echo" });
+  assert.equal(await echoLink.getAttribute("href"), "/");
+  assert.equal(await echoLink.getAttribute("aria-current"), "page");
+  await tab.getByRole("link", { name: "About" }).first().click();
+  await tab.getByRole("heading", { name: "About" }).waitFor();
+  await echoLink.click();
+  await tab.getByLabel("Name").waitFor();
+  assert.equal(new URL(tab.url()).pathname, "/");
   await tab.goto("/missing");
   await tab.getByText("This page isn't built yet").waitFor();
   await close();
