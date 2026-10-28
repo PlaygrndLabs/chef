@@ -423,12 +423,18 @@ describe("dashboard in a browser", () => {
       const page = await browser.newPage();
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.route("**/app/shop/main?state=1*", (route) => route.fulfill({ json: { status: "ready", url: "https://main-tealeaf-chef-dev-app.playgrndlabs.workers.dev" } }));
+      await page.route("https://main-tealeaf-chef-dev-app.playgrndlabs.workers.dev/**", (route) => route.fulfill({ contentType: "text/html", body: "<h1>Shop</h1>" }));
       await page.goto(`${local.url}/?project=shop&settings=project.design`);
       await page.getByRole("button", { name: "Open the design manager" }).click();
       const manager = page.locator("[data-design-manager]");
       await manager.waitFor({ timeout: 10_000 });
       expect(await page.getByRole("tab", { name: "Design" }).getAttribute("aria-selected")).toBe("true");
       expect(await manager.locator("[data-design-changes]").innerText()).toBe("No changes yet");
+      await manager.locator("iframe").waitFor({ timeout: 10_000 });
+      const spill = () => manager.evaluate((el) => Math.max(...[...el.querySelectorAll("*")].map((child) => child.getBoundingClientRect().right)) - el.getBoundingClientRect().right);
+      expect(await spill()).toBeLessThanOrEqual(1);
       await manager.getByRole("radio", { name: "Light" }).click();
       const field = (name: string) => manager.locator(`[data-color="${name}"] input:not([type=color])`);
       expect(await field("primary").inputValue()).toBe("#18181b");
