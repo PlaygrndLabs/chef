@@ -1,5 +1,5 @@
 export function apiRoot(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, "").replace(/\/+v1$/, "");
+  return baseUrl.trim().replace(/\/+$/, "").replace(/([^/:])\/+v1$/, "$1");
 }
 
 export function v1Base(baseUrl: string): string {

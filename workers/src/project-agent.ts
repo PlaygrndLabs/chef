@@ -2,7 +2,6 @@ import { Agent, type Connection, type ConnectionContext, type WSMessage } from "
 import { ArtifactsRepoHost, bindingControl, type ArtifactsBindingLike } from "@chef/adapters/artifacts";
 import { JevClassifier } from "@chef/adapters/jev";
 import { llmFromProvider, meteredFetch, providerBaseUrl, type LlmEndpoint, type MessagesClient } from "@chef/adapters/anthropic";
-import { apiRoot } from "@chef/adapters/base-url";
 import { currentSpender, EngineSpend, nextMonth, requester } from "./usage.ts";
 import { NO_CLOUDFLARE, NO_LLM, type Resolved } from "@chef/adapters/settings";
 import { LlmPlanner } from "@chef/adapters/llm-planner";
@@ -20,7 +19,6 @@ import { gitHubRepo, GitRemote, remoteBranch } from "@chef/adapters/external-git
 import { exploreProject, withChefSuggestions, type OverviewState } from "@chef/adapters/project-explorer";
 import { activityNote } from "@chef/adapters/projects";
 import { laneLayout, renderRegistry, renderStub, stubPath } from "@chef/template/gen";
-import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { DurableStore } from "./do-store.ts";
 import { agentFiles, templateFiles } from "./embedded.gen.ts";
 import { DurableEventBus } from "./event-bus.ts";
@@ -127,7 +125,7 @@ export class ProjectAgent extends Agent<Env> {
       {
         repos,
         coder: new SandboxCoder(env.SESSION, { project: this.name, model: settings.models.coder, llm: settings.llm ? { baseUrl: providerBaseUrl(settings.llm), apiKey: settings.llm.apiKey } : null }),
-        classifier: settings.jev ? new JevClassifier(new TypeSafeClient({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL, ...(settings.jev.baseUrl ? { baseURL: apiRoot(settings.jev.baseUrl) } : {}) }), env.JEV_MODEL, (model, usage) => spend.record(currentSpender(), model, usage, "router")) : NO_CLASSIFIER,
+        classifier: settings.jev ? JevClassifier.fromEnv({ apiKey: settings.jev.apiKey, defaultModel: env.JEV_MODEL, ...(settings.jev.baseUrl ? { baseURL: settings.jev.baseUrl } : {}) }, (model, usage) => spend.record(currentSpender(), model, usage, "router")) : NO_CLASSIFIER,
         planner: new LlmPlanner(llm, resolveModel(plannerRole.model, settings.models), withSkills(plannerRole.instructions, plannerRole.skills), plannerRole.effort),
         reviewer: env.REVIEWER_LORA ? new WorkersAiReviewer(env.AI as unknown as TextGenerator, env.REVIEWER_LORA, llmReviewer) : llmReviewer,
         apps,

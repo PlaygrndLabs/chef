@@ -1,5 +1,6 @@
 import { TypeSafeClient, type TypeSafeClientConfig } from "@typesafe-ai/sdk";
 import type { ChoiceAnswers, ChoiceQuestions, Classifier, TokenUsage } from "@chef/core";
+import { apiRoot } from "./base-url.ts";
 
 export type JevUsage = (model: string, usage: TokenUsage) => Promise<void> | void;
 
@@ -14,9 +15,10 @@ export class JevClassifier implements Classifier {
     this.model = model;
   }
 
-  static fromEnv(config: TypeSafeClientConfig = {}): JevClassifier {
+  static fromEnv(config: TypeSafeClientConfig = {}, onUsage?: JevUsage): JevClassifier {
     const model = config.defaultModel ?? process.env["TYPESAFE_DEFAULT_MODEL"] ?? "jev-1.13.0";
-    return new JevClassifier(new TypeSafeClient({ ...config, defaultModel: model }), model);
+    const baseUrl = (config.baseURL ?? process.env["TYPESAFE_BASE_URL"])?.trim();
+    return new JevClassifier(new TypeSafeClient({ ...config, defaultModel: model, ...(baseUrl ? { baseURL: apiRoot(baseUrl) } : {}) }), model, onUsage);
   }
 
   async choose<const Q extends ChoiceQuestions>(state: unknown, questions: Q): Promise<ChoiceAnswers<Q>> {

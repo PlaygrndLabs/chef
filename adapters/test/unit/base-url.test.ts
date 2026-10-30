@@ -7,6 +7,8 @@ describe("provider base URLs", () => {
     expect(apiRoot("https://chef.example/llm/model")).toBe("https://chef.example/llm/model");
     expect(apiRoot("https://gateway.example/api/v1")).toBe("https://gateway.example/api");
     expect(apiRoot("https://gateway.example/v10")).toBe("https://gateway.example/v10");
+    expect(apiRoot("http://v1")).toBe("http://v1");
+    expect(apiRoot("http://v1:8080/v1")).toBe("http://v1:8080");
   });
 
   it("adds /v1 to a bare host and keeps any path the provider gave", () => {
