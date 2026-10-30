@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
+import { apiRoot } from "./base-url.ts";
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
 
@@ -34,7 +35,7 @@ export function providerFromEnv(env: LlmEnv): LlmProvider | null {
 }
 
 export function providerBaseUrl(provider: LlmProvider): string {
-  return provider.kind === "custom" ? provider.baseUrl.replace(/\/+$/, "") : ANTHROPIC_BASE_URL;
+  return provider.kind === "custom" ? apiRoot(provider.baseUrl) : ANTHROPIC_BASE_URL;
 }
 
 export function llmFromProvider(provider: LlmProvider, fetchImpl?: typeof fetch): LlmEndpoint {

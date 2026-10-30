@@ -88,4 +88,18 @@ describe("GPT-Live adapter", () => {
     expect([...(await speak({ apiKey: "k", text: "Add an item", fetchImpl }))]).toEqual([1, 2, 3, 4]);
     expect(body).toEqual({ model: "gpt-4o-mini-tts", voice: "alloy", input: "Add an item", response_format: "pcm" });
   });
+
+  it("adds /v1 to a bare host and keeps a managing app's path", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string | URL | Request) => (urls.push(String(url)), new Response(new Uint8Array([1])))) as typeof fetch;
+    await speak({ apiKey: "k", text: "hi", baseUrl: "https://gateway.example/", fetchImpl });
+    await speak({ apiKey: "k", text: "hi", baseUrl: "https://chef.example/llm/voice", fetchImpl });
+    expect(urls).toEqual(["https://gateway.example/v1/audio/speech", "https://chef.example/llm/voice/audio/speech"]);
+    const connects: string[] = [];
+    const socket = new FakeSocket((message, s) => {
+      if (message["type"] === "session.start") s.receive({ type: "session.started", session: { id: "sess_1" } });
+    });
+    await startServerSession({ apiKey: "k", baseUrl: "https://gateway.example", instructions: "i", onEvent: () => {}, connect: async (url) => (connects.push(url), socket) });
+    expect(connects).toEqual(["wss://gateway.example/v1/live/sessions"]);
+  });
 });
