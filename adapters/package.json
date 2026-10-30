@@ -13,6 +13,7 @@
     "./feature-mapper": "./src/feature-mapper.ts",
     "./github-app": "./src/github-app.ts",
     "./anthropic": "./src/anthropic.ts",
+    "./base-url": "./src/base-url.ts",
     "./design-judge": "./src/design-judge.ts",
     "./settings": "./src/settings.ts",
     "./project-settings": "./src/project-settings.ts",

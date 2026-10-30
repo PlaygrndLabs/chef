@@ -116,5 +116,14 @@ describe("llm endpoint", () => {
     expect(llmFromEnv({ ANTHROPIC_API_KEY: "k" }).serverFallbacks).toBe(true);
     expect(providerBaseUrl({ kind: "anthropic", apiKey: "k" })).toBe("https://api.anthropic.com");
     expect(providerBaseUrl({ kind: "custom", baseUrl: "https://llm.example/", apiKey: "k" })).toBe("https://llm.example");
+    expect(providerBaseUrl({ kind: "custom", baseUrl: "https://llm.example/v1", apiKey: "k" })).toBe("https://llm.example");
+  });
+
+  it("calls a custom provider on /v1/messages whether its base URL ends in /v1 or not", async () => {
+    for (const baseUrl of ["https://llm.example", "https://llm.example/v1/"]) {
+      const { seen, fetchImpl } = custom({ approve: true, reasons: [] });
+      await structured(llmFromProvider({ kind: "custom", baseUrl, apiKey: "k" }, fetchImpl), { model: "claude-opus-5-5", system: "s", prompt: "p", schema: z.object({ approve: z.boolean(), reasons: z.array(z.string()) }) });
+      expect(seen[0]?.url).toBe("https://llm.example/v1/messages");
+    }
   });
 });

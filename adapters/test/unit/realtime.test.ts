@@ -120,6 +120,12 @@ describe("realtime endpoints", () => {
     expect(endpoint("https://gateway.example/v1/", "/realtime?model=gpt-realtime")).toBe("https://gateway.example/v1/realtime?model=gpt-realtime");
     expect(endpoint("https://api.openai.com/v1", "/realtime?call_id=c1")).toBe("https://api.openai.com/v1/realtime?call_id=c1");
   });
+
+  it("adds /v1 to a bare host and keeps a path the base URL already has", () => {
+    expect(endpoint("https://gateway.example", "/realtime?model=gpt-realtime")).toBe("https://gateway.example/v1/realtime?model=gpt-realtime");
+    expect(endpoint("https://gateway.example/", "/realtime?model=gpt-realtime")).toBe("https://gateway.example/v1/realtime?model=gpt-realtime");
+    expect(endpoint("https://chef.example/llm/voice", "/realtime?model=gpt-realtime")).toBe("https://chef.example/llm/voice/realtime?model=gpt-realtime");
+  });
 });
 
 describe("voice usage", () => {

@@ -1,4 +1,5 @@
 import type { LiveCommand, LiveConnection, LiveEvent, VoiceHost, VoiceStream } from "@chef/core";
+import { v1Base } from "./base-url.ts";
 
 export interface SocketLike {
   send(data: string): void;
@@ -28,7 +29,7 @@ function text(data: unknown): string {
 }
 
 function wsUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/^http/, "ws").replace(/\/$/, "")}${path}`;
+  return `${v1Base(baseUrl).replace(/^http/, "ws")}${path}`;
 }
 
 function listen(socket: SocketLike, onEvent: (event: LiveEvent) => void): { closed: Promise<void>; finished: Promise<void> } {
@@ -140,7 +141,7 @@ export async function startServerSession(options: LiveOptions & { readonly instr
 }
 
 export async function speak(options: { readonly apiKey: string; readonly text: string; readonly voice?: string; readonly model?: string; readonly baseUrl?: string; readonly fetchImpl?: typeof fetch }): Promise<Uint8Array> {
-  const response = await (options.fetchImpl ?? fetch)(`${options.baseUrl ?? OPENAI_BASE_URL}/audio/speech`, {
+  const response = await (options.fetchImpl ?? fetch)(`${v1Base(options.baseUrl ?? OPENAI_BASE_URL)}/audio/speech`, {
     method: "POST",
     headers: { authorization: `Bearer ${options.apiKey}`, "content-type": "application/json" },
     body: JSON.stringify({ model: options.model ?? "gpt-4o-mini-tts", voice: options.voice ?? "alloy", input: options.text, response_format: "pcm" }),

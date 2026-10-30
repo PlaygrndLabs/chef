@@ -86,9 +86,11 @@ A self-hosted Chef is set up from its own dashboard, like any other app. On the 
 | --- | --- | --- | --- |
 | Model | Claude through your Anthropic API key, or any Anthropic-compatible provider (base URL and key); the planner, reviewer and coder model ids; parallel attempts per feature | Yes | `ANTHROPIC_API_KEY`, or `LLM_BASE_URL` and `LLM_API_KEY`; `PLANNER_MODEL`, `REVIEWER_MODEL`, `CODER_MODEL`, `ATTEMPTS` |
 | App addresses | Cloudflare account id and an API token that can edit Workers, for the small router that gives each branch's running app its address | Yes | `CF_ACCOUNT_ID`, `CF_API_TOKEN` |
-| Voice | An OpenAI key (GPT-Live), or a provider that serves the OpenAI Realtime API (base URL with `/v1`, and key) | No | `OPENAI_API_KEY`, or `VOICE_BASE_URL` and `VOICE_API_KEY` |
+| Voice | An OpenAI key (GPT-Live), or a provider that serves the OpenAI Realtime API (base URL and key) | No | `OPENAI_API_KEY`, or `VOICE_BASE_URL` and `VOICE_API_KEY` |
 | Routing | A TypeSafe key, so Jev routes requests in about 100ms; without it Claude routes them | No | `TYPESAFE_API_KEY` |
 | Password | The password for signing in from a browser | For browsers | `CHEF_PASSWORD` |
 | API keys | Named keys for scripts and apps, each revocable | No | `CHEF_API_KEY`, one key for an app that manages Chef |
+
+A provider's base URL is just its address, such as `https://your-provider.example`; Chef adds `/v1` where the API needs it, and one given with `/v1` works too.
 
 What is saved in the dashboard wins over the Worker's secrets, so the secrets are only defaults for a scripted deploy. Saved settings live in the `Settings` Durable Object; the password is stored as a salted PBKDF2 hash. Keys never go back to the browser; the dashboard shows only their last four characters. The coder sandbox gets only placeholders; the Worker's outbound handler swaps in the real keys on the provider's and Cloudflare's hosts.

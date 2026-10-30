@@ -19,7 +19,7 @@ export const MODEL_CHOICES: readonly Choice[] = [
 
 export const VOICE_CHOICES: readonly Choice[] = [
   { kind: "openai", label: "OpenAI API key", keyLabel: "OpenAI API key" },
-  { kind: "custom", label: "Custom provider", keyLabel: "API key", urlHint: "https://your-provider.example/v1" },
+  { kind: "custom", label: "Custom provider", keyLabel: "API key", urlHint: "https://your-provider.example" },
 ];
 
 export type Save = (update: SettingsUpdate, done?: string) => Promise<boolean>;

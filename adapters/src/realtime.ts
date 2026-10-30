@@ -1,4 +1,5 @@
 import type { LiveCommand, LiveConnection, LiveEvent, TokenUsage, VoiceHost, VoiceStream } from "@chef/core";
+import { v1Base } from "./base-url.ts";
 import { encodeBase64, type Connect, type SocketLike } from "./gpt-live.ts";
 
 export const REALTIME_MODEL = "gpt-realtime";
@@ -37,7 +38,7 @@ export function realtimeSession(options: { readonly model?: string; readonly voi
 }
 
 export function endpoint(baseUrl: string, path: string): string {
-  const url = new URL(baseUrl);
+  const url = new URL(v1Base(baseUrl));
   return `${url.origin}${`${url.pathname}/${path}`.replace(/\/{2,}/g, "/")}`;
 }
 
