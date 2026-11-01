@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { addCost, addSpend, archiveProject, costMicros, emptyMonth, ledgerOf, monthOf, NO_CAPS, NO_COST, overCap, PARTS, PROJECT_COST, projectUsage, readCap, setCaps, SPEND_PARTS, sumOf } from "../../src/usage/budget.ts";
 
 describe("model spend", () => {
-  it("prices tokens by model family and charges cache reads a tenth", () => {
+  it("prices tokens by model family, cache reads at the model's read rate and cache writes at a quarter more", () => {
     expect(costMicros("claude-sonnet-5-5", { inputTokens: 1_000_000, outputTokens: 0 })).toBe(2_000_000);
     expect(costMicros("claude-opus-5-5", { inputTokens: 0, outputTokens: 1_000_000 })).toBe(20_000_000);
     expect(costMicros("claude-haiku-4-5", { inputTokens: 1_000_000, outputTokens: 1_000_000, cachedInputTokens: 1_000_000 })).toBe(5_100_000);
     expect(costMicros("some-gateway-model", { inputTokens: 1_000_000, outputTokens: 0 })).toBe(4_000_000);
+    expect(costMicros("claude-opus-5-5", { inputTokens: 3_000_000, outputTokens: 0, cachedInputTokens: 1_000_000, cacheWriteTokens: 1_000_000 })).toBe(4_000_000 + 200_000 + 5_000_000);
   });
 
   it("prices routing and live talk, with audio at its own rate", () => {

@@ -313,5 +313,5 @@ for (const line of git("diff", "--cached", "--name-status", "--no-renames", job.
   const [status, path] = line.split("\t");
   changes[path] = status === "D" ? null : readFileSync(join(dir, path), "utf8");
 }
-emit({ type: "chef.result", changes, summary: result.result, model: job.model, usage: { inputTokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0), outputTokens: usage.output_tokens, cachedInputTokens: usage.cache_read_input_tokens ?? 0 } });
+emit({ type: "chef.result", changes, summary: result.result, model: job.model, usage: { inputTokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0), outputTokens: usage.output_tokens, cachedInputTokens: usage.cache_read_input_tokens ?? 0, cacheWriteTokens: usage.cache_creation_input_tokens ?? 0 } });
 await finish("done", 0);

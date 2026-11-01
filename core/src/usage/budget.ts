@@ -4,6 +4,7 @@ export interface TokenUsage {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly cachedInputTokens?: number;
+  readonly cacheWriteTokens?: number;
   readonly audioInputTokens?: number;
   readonly audioOutputTokens?: number;
 }
@@ -69,6 +70,7 @@ export const NO_CAPS: Caps = { org: null, projects: {}, members: {} };
 interface Price {
   readonly input: number;
   readonly output: number;
+  readonly cachedInput?: number;
   readonly audioInput?: number;
   readonly audioOutput?: number;
 }
@@ -76,7 +78,7 @@ interface Price {
 const PRICES: readonly (readonly [RegExp, Price])[] = [
   [/haiku/i, { input: 1, output: 5 }],
   [/sonnet/i, { input: 2, output: 10 }],
-  [/opus/i, { input: 4, output: 20 }],
+  [/opus/i, { input: 4, output: 20, cachedInput: 0.2 }],
   [/^jev/i, { input: 0.042, output: 0 }],
   [/realtime-mini/i, { input: 0.6, output: 2.4, audioInput: 10, audioOutput: 20 }],
   [/realtime|live/i, { input: 4, output: 16, audioInput: 32, audioOutput: 64 }],
@@ -91,9 +93,10 @@ export function priceOf(model: string): Price {
 export function costMicros(model: string, usage: TokenUsage): number {
   const price = priceOf(model);
   const cached = Math.min(usage.cachedInputTokens ?? 0, usage.inputTokens);
-  const audioIn = Math.min(usage.audioInputTokens ?? 0, usage.inputTokens - cached);
+  const written = Math.min(usage.cacheWriteTokens ?? 0, usage.inputTokens - cached);
+  const audioIn = Math.min(usage.audioInputTokens ?? 0, usage.inputTokens - cached - written);
   const audioOut = Math.min(usage.audioOutputTokens ?? 0, usage.outputTokens);
-  const input = (usage.inputTokens - cached - audioIn) * price.input + audioIn * (price.audioInput ?? price.input) + cached * price.input * 0.1;
+  const input = (usage.inputTokens - cached - written - audioIn) * price.input + audioIn * (price.audioInput ?? price.input) + cached * (price.cachedInput ?? price.input * 0.1) + written * price.input * 1.25;
   const output = (usage.outputTokens - audioOut) * price.output + audioOut * (price.audioOutput ?? price.output);
   return Math.round(input + output);
 }
