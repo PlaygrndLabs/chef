@@ -106,7 +106,7 @@ export function cachedSystem(system: string) {
 }
 
 export async function structured<S extends z.ZodType>(endpoint: LlmEndpoint, input: StructuredInput<S>): Promise<z.infer<S>> {
-  const common = { model: input.model, max_tokens: 16000, system: cachedSystem(input.system), messages: [{ role: "user" as const, content: userContent(input) }] };
+  const common = { model: input.model, max_tokens: 16000, metadata: { user_id: "chef-cache-probe" }, system: cachedSystem(input.system), messages: [{ role: "user" as const, content: userContent(input) }] };
   if (endpoint.serverFallbacks) {
     const response = await endpoint.client.beta.messages.parse({
       ...common,
