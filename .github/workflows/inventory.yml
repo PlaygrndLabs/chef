@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       records:
-        description: Project whose coder turn records to print from its transcript bucket; empty prints none
+        description: Project whose coder turn records and prompt cache use to print from its transcript bucket; empty prints none
         required: false
         default: ""
       tail:
@@ -71,6 +71,14 @@ jobs:
               for key in $(echo "$objects" | jq -r --arg p "$RECORDS/" '.result[]? | .key | select(startswith($p) and test("/turns/[^/]+\\.json$"))'); do
                 echo "#### $key"
                 get "r2/buckets/$bucket/objects/$(jq -rn --arg k "$key" '$k | @uri')" | jq -c .
+              done
+              for key in $(echo "$objects" | jq -r --arg p "$RECORDS/" '.result[]? | .key | select(startswith($p) and endswith(".jsonl"))'); do
+                echo "#### prompt cache in $key"
+                get "r2/buckets/$bucket/objects/$(jq -rn --arg k "$key" '$k | @uri')" | jq -rs '
+                  (reduce (.[] | select(.type == "assistant" and .message.usage != null) | {id: .message.id, u: .message.usage}) as $x ([]; if any(.[]; .id == $x.id) then . else . + [$x] end)) as $r
+                  | ($r | map(.u.input_tokens // 0) | add // 0) as $i | ($r | map(.u.cache_creation_input_tokens // 0) | add // 0) as $w | ($r | map(.u.cache_read_input_tokens // 0) | add // 0) as $c
+                  | "requests=\($r | length) uncached=\($i) cache_write=\($w) cache_read=\($c) read_share=\(if ($i + $w + $c) > 0 then ($c * 1000 / ($i + $w + $c) | floor) / 10 else 0 end)%",
+                    ($r | to_entries[] | select((.value.u.cache_creation_input_tokens // 0) > 4000) | "  request \(.key + 1): cache_write=\(.value.u.cache_creation_input_tokens) cache_read=\(.value.u.cache_read_input_tokens // 0)")'
               done
             fi
           done

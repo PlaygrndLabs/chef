@@ -50,7 +50,7 @@ export function llmFromEnv(env: LlmEnv, fetchImpl?: typeof fetch): LlmEndpoint {
   return llmFromProvider(provider, fetchImpl);
 }
 
-export type UsageListener = (model: string, usage: { readonly inputTokens: number; readonly outputTokens: number; readonly cachedInputTokens: number }) => Promise<void> | void;
+export type UsageListener = (model: string, usage: { readonly inputTokens: number; readonly outputTokens: number; readonly cachedInputTokens: number; readonly cacheWriteTokens: number }) => Promise<void> | void;
 
 interface UsageBody {
   readonly model?: unknown;
@@ -65,7 +65,8 @@ export function meteredFetch(onUsage: UsageListener, base: typeof fetch = fetch)
     const usage = body?.usage;
     if (usage && typeof body.model === "string") {
       const cached = usage.cache_read_input_tokens ?? 0;
-      await Promise.resolve(onUsage(body.model, { inputTokens: (usage.input_tokens ?? 0) + cached + (usage.cache_creation_input_tokens ?? 0), outputTokens: usage.output_tokens ?? 0, cachedInputTokens: cached })).catch(() => undefined);
+      const written = usage.cache_creation_input_tokens ?? 0;
+      await Promise.resolve(onUsage(body.model, { inputTokens: (usage.input_tokens ?? 0) + cached + written, outputTokens: usage.output_tokens ?? 0, cachedInputTokens: cached, cacheWriteTokens: written })).catch(() => undefined);
     }
     return response;
   };
@@ -100,8 +101,12 @@ function userContent(input: StructuredInput<z.ZodType>) {
   return [...images, { type: "text" as const, text: input.prompt }];
 }
 
+export function cachedSystem(system: string) {
+  return [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }];
+}
+
 export async function structured<S extends z.ZodType>(endpoint: LlmEndpoint, input: StructuredInput<S>): Promise<z.infer<S>> {
-  const common = { model: input.model, max_tokens: 16000, system: input.system, messages: [{ role: "user" as const, content: userContent(input) }] };
+  const common = { model: input.model, max_tokens: 16000, system: cachedSystem(input.system), messages: [{ role: "user" as const, content: userContent(input) }] };
   if (endpoint.serverFallbacks) {
     const response = await endpoint.client.beta.messages.parse({
       ...common,

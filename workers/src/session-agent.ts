@@ -146,7 +146,7 @@ interface TurnOutput {
   readonly changes: FileChanges;
   readonly summary: string;
   readonly model: string;
-  readonly usage?: { readonly inputTokens: number; readonly outputTokens: number; readonly cachedInputTokens?: number };
+  readonly usage?: { readonly inputTokens: number; readonly outputTokens: number; readonly cachedInputTokens?: number; readonly cacheWriteTokens?: number };
 }
 
 export type SandboxRestart = "restarted" | "waiting" | "sleeping";

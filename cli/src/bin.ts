@@ -213,15 +213,17 @@ async function tuneData(args: readonly string[]): Promise<number> {
 
 async function llmCheck(args: readonly string[]): Promise<number> {
   const prompt = positional(args)[2] ?? "Add an item to a todo list";
-  const { llmFromEnv } = await import("@chef/adapters/anthropic");
+  const { llmFromEnv, meteredFetch } = await import("@chef/adapters/anthropic");
   const { LlmPlanner } = await import("@chef/adapters/llm-planner");
   const { LlmReviewer } = await import("@chef/adapters/llm-reviewer");
-  const llm = llmFromEnv(process.env);
+  const llm = llmFromEnv(process.env, meteredFetch((model, usage) => void process.stdout.write(`  tokens ${model}: ${usage.inputTokens} in (${usage.cachedInputTokens} cache read, ${usage.cacheWriteTokens} cache write), ${usage.outputTokens} out\n`)));
   const model = option(args, "model") ?? process.env["PLANNER_MODEL"] ?? "claude-opus-5-5";
   const planner = new LlmPlanner(llm, model, promptOf("planner"));
   const started = Date.now();
   const triage = await planner.triage({ prompt, spec: [] });
   process.stdout.write(`triage via ${llm.via} ${model}: ${triage.intent} (${triage.confidence.toFixed(2)}) ${triage.reason}\n`);
+  process.stdout.write("second triage, which should read the planner's system prompt from the cache:\n");
+  await planner.triage({ prompt: `${prompt}, please`, spec: [] });
   const plan = await planner.plan({ prompt, spec: [], intent: "new_feature", featureId: null, changeKind: null });
   process.stdout.write(`plan: ${plan.feature.id} with ${plan.feature.acceptance.length} acceptance criteria and ${plan.items.length} work items\n`);
   const fixture = readTree(join(REPO_ROOT, "core", "test", "fixtures", "todo"));

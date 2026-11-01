@@ -41,6 +41,16 @@ describe("llm endpoint", () => {
     expect(request?.headers.get("anthropic-beta")).toBeNull();
     expect(request?.body["fallbacks"]).toBeUndefined();
     expect((request?.body["output_config"] as { format: { type: string } }).format.type).toBe("json_schema");
+    expect(request?.body["system"]).toEqual([{ type: "text", text: "s", cache_control: { type: "ephemeral" } }]);
+  });
+
+  it("ends the system prompt in a cache breakpoint on Anthropic too, and leaves the per-call prompt after it", async () => {
+    const { seen, fetchImpl } = custom({ approve: true, reasons: [] });
+    const llm = llmFromProvider({ kind: "anthropic", apiKey: "k" }, fetchImpl);
+    await structured(llm, { model: "claude-opus-5-5", system: "role", prompt: "per call", schema: z.object({ approve: z.boolean(), reasons: z.array(z.string()) }) });
+    const [request] = seen;
+    expect(request?.body["system"]).toEqual([{ type: "text", text: "role", cache_control: { type: "ephemeral" } }]);
+    expect(request?.body["messages"]).toEqual([{ role: "user", content: "per call" }]);
   });
 
   it("waits out a custom provider that is still starting", async () => {
