@@ -43,7 +43,7 @@ permissions:
 
 jobs:
   tour:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
       CHEF_URL: https://chef-dev.playgrndlabs.workers.dev
